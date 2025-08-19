@@ -8,17 +8,22 @@ export default function Header() {
       <div className="mx-auto max-w-6xl p-4 flex items-center justify-between">
         <Link to="/" className="font-bold text-xl" style={{ color: "var(--brand)" }}>LIMS</Link>
         <nav className="flex items-center gap-4 text-sm">
-          <Link to="/">Dashboard</Link>
+          {
+            !user ? (
+              <>
+              <Link to="/home">Home</Link>
+              <Link to= "login" className="px-3 py-1 rounded-md bg-[var(--brand)] text-white">Login</Link>
+              </>
+            ):(<>
+            <Link to="/">Dashboard</Link>
           <Link to="/samples">Samples</Link>
           <Link to="/results">Results</Link>
           <Link to="/reports">Reports</Link>
           <Link to="/audit">Audit</Link>
-          {user ? (
             <button onClick={logout} className="px-3 py-1 rounded-md bg-gray-900 text-white">Logout</button>
-          ) : (
-            <Link to="/login" className="px-3 py-1 rounded-md bg-[var(--brand)] text-white">Login</Link>
-          )}
-        </nav>
+        
+            </>)
+          }</nav>
       </div>
     </header>
   );

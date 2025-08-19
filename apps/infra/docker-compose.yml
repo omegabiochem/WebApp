@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: lims
+      POSTGRES_PASSWORD: lims
+      POSTGRES_DB: lims
+    ports: ["5432:5432"]
+    volumes: [dbdata:/var/lib/postgresql/data]
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@gmail.com"
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports: ["5050:80"]
+volumes:
+  dbdata:
+    external: true
+    name: infra_dbdata
