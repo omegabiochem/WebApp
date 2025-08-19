@@ -1,0 +1,32 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  role         String // admin|qa|analyst|frontdesk|client
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Sample {
+  id         String   @id @default(cuid())
+  clientId   String
+  sampleCode String   @unique
+  sampleType String
+  receivedAt DateTime @default(now())
+  status     String // received|in_progress|review|reported|archived
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
