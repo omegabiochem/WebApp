@@ -9,15 +9,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  SYSTEMADMIN
+  ADMIN
+  FRONTDESK
+  MICRO
+  CHEMISTRY
+  QA
+  CLIENT
+}
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  role         String // admin|qa|analyst|frontdesk|client
-  passwordHash String
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String?
+  role               UserRole @default(CLIENT)
+  passwordHash       String
+  mustChangePassword Boolean  @default(false)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model Sample {

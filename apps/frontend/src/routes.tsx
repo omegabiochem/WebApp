@@ -6,21 +6,39 @@ import Results from "./pages/Results";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
 import Login from "./pages/Auth/Login";
-import Home from "./pages/Home";
+import Home from "./pages/Home";         // ✅ fixed path
+import AdminDashboard from "./pages/Admin";
+import ChangePassword from "./pages/Auth/ChangePassword";
 import Root from "./Routes/Root";
+import SystemAdminDashboard from "./pages/Dashboard/SystemAdminDashboard";
+import ClientDashboard from "./pages/Dashboard/ClientDashboard";
+import QaDashboard from "./pages/Dashboard/QaDashboard";
+import MicroDashboard from "./pages/Dashboard/MicroDashboard";
+import ChemistryDashboard from "./pages/Dashboard/ChemistryDashboard";
+import FrontdeskDashboard from "./pages/Dashboard/FrontdeskDashboard";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
     children: [
-      { index: true, element: <Root /> },       // <-- smart root
-      { path: "home", element: <Home /> },      // optional extra route
+      { index: true, element: <Root /> },
+      { path: "home", element: <Home /> },
       { path: "login", element: <Login /> },
       { path: "samples", element: <Samples /> },
       { path: "results", element: <Results /> },
       { path: "reports", element: <Reports /> },
       { path: "audit", element: <Audit /> },
+      { path: "admin", element: <AdminDashboard /> },          // ✅ admin route
+      { path: "auth/change-password", element: <ChangePassword /> },
+      { path: "adminDashboard", element: <AdminDashboard /> },
+      { path: "systemAdminDashboard", element: <SystemAdminDashboard /> },
+      { path: "chemistryDashboard", element: <ChemistryDashboard /> },
+      { path: "microDashboard", element: <MicroDashboard /> },
+      { path: "qaDashboard", element: <QaDashboard/> },
+      { path: "clientDashboard", element: <ClientDashboard/> },
+      { path: "frontdeskDashboard", element: <FrontdeskDashboard/> },
+      { path: "*", element: <div style={{padding:16}}>Not Found</div> }, // helpful catch-all
     ],
   },
 ]);
