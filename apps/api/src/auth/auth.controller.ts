@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
+import { Public } from 'src/common/public.decorator';
 
 const prisma = new PrismaClient();
 
@@ -28,13 +29,14 @@ const prisma = new PrismaClient();
 export class AuthController {
   constructor(private auth: AuthService) {}
 
+  @Public()
   @Post('login')
   login(@Body() body: { email: string; password: string }) {
     return this.auth.login(body.email, body.password);
   }
 
   // Authenticated user changes their own password (first login flow)
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard)
   @Post('change-password')
   async changePassword(
     @Req() req: any,

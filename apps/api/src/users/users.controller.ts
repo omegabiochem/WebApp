@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { Roles } from '../common/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+import { RolesGuard } from 'src/common/roles.guard';
+import { Roles } from 'src/common/roles.decorator';
+
+@UseGuards(JwtAuthGuard,RolesGuard)
 @Controller('users')
 export class UsersController {
   constructor(private svc: UsersService) {}

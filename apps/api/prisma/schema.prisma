@@ -9,6 +9,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  QA_APPROVED
+  LOCKED
+}
+
+model Report {
+  id               String   @id @default(cuid())
+
+  // Header
+  client           String
+  dateSent         DateTime?
+  testType         String?
+  sampleType       String?
+  formulaNo        String?
+  description      String?
+  lotNo            String?
+  manufactureDate  DateTime?
+
+  // Testing meta
+  testSop          String?   // e.g., "OM 05B"
+  dateTested       DateTime?
+  preliminaryResults String?
+  preliminaryDate  DateTime?
+  dateCompleted    DateTime?
+
+  // Counts (TBC/TFC)
+  totalBacterialCount String?   // e.g., "x 10^1 ... CFU/ml"
+  totalMoldYeastCount String?   // e.g., "x 10^1 ... CFU/ml"
+
+  // Pathogen screening (present/absent/by amount)
+  pathogen_ecoli        String?  // "Absent" | "Present in 1g" etc.
+  pathogen_paeruginosa  String?
+  pathogen_saureus      String?
+  pathogen_salmonella   String?
+  pathogen_clostridia   String?
+  pathogen_calbicans    String?
+  pathogen_bcepacia     String?
+  pathogen_other        String?  // free text + spec
+  comments              String?
+
+  // Signatures / roles
+  testedByUserId     String?
+  testedAt           DateTime?
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+
+  status             ReportStatus @default(DRAFT)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+
+
 enum UserRole {
   SYSTEMADMIN
   ADMIN
@@ -41,3 +98,5 @@ model Sample {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+

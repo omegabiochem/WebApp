@@ -1,0 +1,136 @@
+import { useEffect, useState } from "react";
+
+import { useParams } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { canEditHeader, canEditMicro, canQA } from "../../utils/roles";
+import { getReport, lockReport, qaApprove, updateHeader, updateMicro } from "../../services/reportsService";
+
+export default function MicroMixReportDetail() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const [report, setReport] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { (async () => { if (id) setReport(await getReport(id)); })(); }, [id]);
+
+  if (!user) return <p>Please log in.</p>;
+  if (!report) return <p>Loading...</p>;
+
+  const locked = report.status === "LOCKED";
+  const canHead = canEditHeader(user.role) && !locked;
+  const canMic = canEditMicro(user.role) && !locked;
+  const canQa = canQA(user.role) && !locked;
+
+  async function saveHeader(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    const fd = new FormData(e.currentTarget);
+    const dto = Object.fromEntries(fd.entries());
+    const updated = await updateHeader(report.id, dto);
+    setReport(updated); setSaving(false);
+  }
+
+  async function saveMicro(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    const fd = new FormData(e.currentTarget);
+    const dto = Object.fromEntries(fd.entries());
+    const updated = await updateMicro(report.id, dto);
+    setReport(updated); setSaving(false);
+  }
+
+  async function doQaApprove() {
+    const updated = await qaApprove(report.id);
+    setReport(updated);
+  }
+
+  async function doLock() {
+    const updated = await lockReport(report.id);
+    setReport(updated);
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6">
+      <div className="bg-white rounded-xl shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-semibold">Report #{report.id.slice(0,6)} • <span className="text-gray-500">{report.status}</span></h1>
+        </div>
+
+        {/* Header section */}
+        <form onSubmit={saveHeader} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            ["client","Client"],
+            ["dateSent","Date Sent","date"],
+            ["testType","Test Type"],
+            ["sampleType","Sample Type"],
+            ["formulaNo","Formula #"],
+            ["description","Description"],
+            ["lotNo","Lot #"],
+            ["manufactureDate","Manufacture Date","date"],
+            ["testSop","Test SOP #"],
+            ["dateTested","Date Tested","date"],
+            ["preliminaryResults","Preliminary Results"],
+            ["preliminaryDate","Preliminary Results Date","date"],
+            ["dateCompleted","Date Completed","date"]
+          ].map(([key,label,type]) => (
+            <div key={key} className={key==="description" ? "md:col-span-2" : ""}>
+              <label className="text-sm">{label}</label>
+              <input name={key} type={type||"text"} defaultValue={report[key as keyof typeof report] ?? ""} disabled={!canHead}
+                     className="w-full border rounded-md p-2 disabled:bg-gray-100" />
+            </div>
+          ))}
+          {canHead && (
+            <div className="md:col-span-2 text-right">
+              <button disabled={saving} className="bg-[var(--brand)] text-white rounded-md px-4 py-2">
+                {saving ? "Saving..." : "Save Header"}
+              </button>
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* Micro/Chem section */}
+      <div className="bg-white rounded-xl shadow p-6">
+        <h2 className="font-semibold mb-3">Counts & Pathogens</h2>
+        <form onSubmit={saveMicro} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            ["totalBacterialCount","Total Bacterial Count (CFU/ml or g)"],
+            ["totalMoldYeastCount","Total Mold & Yeast Count (CFU/ml or g)"],
+            ["pathogen_ecoli","E.coli (Absent/Present...)"],
+            ["pathogen_paeruginosa","P.aeruginosa"],
+            ["pathogen_saureus","S.aureus"],
+            ["pathogen_salmonella","Salmonella"],
+            ["pathogen_clostridia","Clostridia species"],
+            ["pathogen_calbicans","C.albicans"],
+            ["pathogen_bcepacia","B.cepacia"],
+            ["pathogen_other","Other (with spec)"],
+            ["comments","Comments"]
+          ].map(([key,label]) => (
+            <div key={key} className={key==="comments" ? "md:col-span-2" : ""}>
+              <label className="text-sm">{label}</label>
+              <input name={key} defaultValue={report[key as keyof typeof report] ?? ""} disabled={!canMic}
+                     className="w-full border rounded-md p-2 disabled:bg-gray-100" />
+            </div>
+          ))}
+          {canMic && (
+            <div className="md:col-span-2 text-right">
+              <button disabled={saving} className="bg-[var(--brand)] text-white rounded-md px-4 py-2">
+                {saving ? "Saving..." : "Save Micro/Chem"}
+              </button>
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* QA actions */}
+      {canQa && (
+        <div className="bg-white rounded-xl shadow p-6 flex gap-3">
+          <button onClick={doQaApprove} className="px-4 py-2 rounded-md bg-emerald-600 text-white">QA Approve</button>
+          {report.status === "QA_APPROVED" && (
+            <button onClick={doLock} className="px-4 py-2 rounded-md bg-gray-900 text-white">Lock Report</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

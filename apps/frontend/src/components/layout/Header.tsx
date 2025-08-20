@@ -58,7 +58,7 @@ const menuByRole: Record<string, MenuItem[]> = {
   ADMIN: [
     { label: "Home", path: "/adminDashboard" },
     { label: "Samples", path: "/samples" },
-    { label: "Reports", path: "/reports" },
+    { label: "Reports", path: "/reports/:id" },
     { label: "Audit", path: "/audit" },
     { label: "Results", path: "/results" },
   ],
@@ -71,7 +71,7 @@ const menuByRole: Record<string, MenuItem[]> = {
     { label: "Home", path: "/systemAdminDashboard" },
     { label: "Dashboard", path: "/" },
     { label: "Samples", path: "/samples" },
-    { label: "Reports", path: "/reports" },
+    { label: "Reports", path: "/reports/new" },
     { label: "Audit", path: "/audit" },
   ],
   MICRO: [

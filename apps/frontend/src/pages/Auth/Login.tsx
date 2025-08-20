@@ -42,6 +42,7 @@ export default function Login() {
 
     // set auth state
     login(accessToken, user);
+    console.log(accessToken)
     console.log(user);
 
     // first-login flow

@@ -18,6 +18,8 @@ import { JwtStrategy } from './common/jwt.strategy';
 import { UsersModule } from './users/users.module';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './common/roles.guard';
+import { ReportsModule } from './reports/reports.module';
+import { JwtAuthGuard } from './common/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -25,7 +27,12 @@ import { RolesGuard } from './common/roles.guard';
     AuthModule,
     SamplesModule,
     UsersModule,
+    ReportsModule,
   ],
-  providers: [JwtStrategy, { provide: APP_GUARD, useClass: RolesGuard }],
+  providers: [
+    JwtStrategy,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
 })
 export class AppModule {}

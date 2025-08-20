@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { setToken, clearToken } from "../lib/api";
+import type { Role } from "../utils/roles";
 
-type User = { id: string; email: string; role: string; name?: string;mustChangePassword?: boolean; } | null;
+type User = { id: string; email: string; role: Role; name?: string;mustChangePassword?: boolean; } | null;
 
 const Ctx = createContext<{ user: User; login: (t:string,u:User)=>void; logout:()=>void; }>
 ({ user: null, login: () => {}, logout: () => {} });
