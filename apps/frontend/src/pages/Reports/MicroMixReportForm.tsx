@@ -2,19 +2,12 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 
 // ----- Roles (keep in sync with backend) -----
-type Role =
-  | "SYSTEMADMIN"
-  | "ADMIN"
-  | "FRONTDESK"
-  | "MICRO"
-  | "CHEMISTRY"
-  | "QA"
-  | "CLIENT";
+type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "QA" | "CLIENT";
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
 function canEdit(role: Role | undefined, field: string) {
   const map: Record<Role, string[]> = {
-    SYSTEMADMIN: ["*"],
+    SYSTEMADMIN: [],
     ADMIN: ["*"],
     FRONTDESK: [
       "client",
@@ -25,37 +18,27 @@ function canEdit(role: Role | undefined, field: string) {
       "description",
       "lotNo",
       "manufactureDate",
-      "testSopNo",
     ],
     MICRO: [
-      "tbc_dilution",
+      "testSopNo",
+      "dateTested",
+      "preliminaryResults",
+      "preliminaryResultsDate",
+      "dateCompleted",
+      // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
       "tbc_spec",
-      "tmy_dilution",
+      // "tmy_dilution",
       "tmy_gram",
       "tmy_result",
       "tmy_spec",
       "pathogens",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
+      "comments",
+      "testedBy",
+      "testedDate",
     ],
-    CHEMISTRY: [
-      "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      "tbc_spec",
-      "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "tmy_spec",
-      "pathogens",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-    ],
-    QA: ["dateCompleted", "reviewedBy", "reviewedDate", "comments"],
+    QA: ["reviewedBy", "reviewedDate"],
     CLIENT: [], // read-only
   };
   if (!role) return false;
@@ -306,12 +289,14 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         <button
           className="px-3 py-1 rounded-md border"
           onClick={() => window.print()}
+          disabled={role === "SYSTEMADMIN"}
         >
           Print
         </button>
         <button
           className="px-3 py-1 rounded-md border bg-blue-600 text-white"
           onClick={handleSave}
+          disabled={role === "SYSTEMADMIN"}
         >
           {report?.id ? "Update Report" : "Save Report"}
         </button>
@@ -656,7 +641,13 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                   copy[idx] = { ...p, checked: e.target.checked };
                   setPathogens(copy);
                 }}
-                disabled={lock("pathogens")}
+                disabled={
+                  role === "ADMIN" ||
+                  role === "FRONTDESK" ||
+                  role === "MICRO" ||
+                  role === "QA" ||
+                  role === "SYSTEMADMIN"
+                }
               />
               <span className="font-bold">{p.label}</span>
               {p.key === "OTHER" && (
@@ -680,7 +671,13 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                     copy[idx] = { ...p, result: "Absent" };
                     setPathogens(copy);
                   }}
-                  disabled={lock("pathogens")}
+                  disabled={
+                    role === "ADMIN" ||
+                    role === "FRONTDESK" ||
+                    role === "CLIENT" ||
+                    role === "QA" ||
+                    role === "SYSTEMADMIN"
+                  }
                 />
                 Absent
               </label>
@@ -695,11 +692,17 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                     copy[idx] = { ...p, result: "Present" };
                     setPathogens(copy);
                   }}
-                  disabled={lock("pathogens")}
+                  disabled={
+                    role === "ADMIN" ||
+                    role === "FRONTDESK" ||
+                    role === "CLIENT" ||
+                    role === "QA" ||
+                    role === "SYSTEMADMIN"
+                  }
                 />
                 Present
               </label>
-              <span className="ml-1">in 11g</span>
+              <span className="ml-1">in 11g of sample</span>
             </div>
 
             {/* Third column */}

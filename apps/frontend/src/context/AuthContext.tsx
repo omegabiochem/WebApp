@@ -37,8 +37,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const storedToken = getToken();
     const storedUser = localStorage.getItem("user");
-    if (storedToken) setTokenState(storedToken);
-    if (storedUser) setUser(JSON.parse(storedUser));
+
+    if (storedToken) {
+      fetch("http://localhost:3000/auth/me", {
+        headers: { Authorization: `Bearer ${storedToken}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setTokenState(storedToken);
+            setUser(data);
+          } else {
+            logout(); // 🚨 invalid token → clear everything
+          }
+        });
+    } else if (storedUser) {
+      // no token but old user still in localStorage → clear
+      localStorage.removeItem("user");
+    }
   }, []);
 
   const login = (t: string, u: User) => {
@@ -51,7 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    clearToken();
+    clearToken(); // removes token
+    localStorage.removeItem("user"); // remove persisted user
     setTokenState(null);
     setUser(null);
   };

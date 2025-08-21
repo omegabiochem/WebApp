@@ -17,6 +17,7 @@ import MicroDashboard from "./pages/Dashboard/MicroDashboard";
 import ChemistryDashboard from "./pages/Dashboard/ChemistryDashboard";
 import FrontdeskDashboard from "./pages/Dashboard/FrontdeskDashboard";
 import MicroMixReportForm from "./pages/Reports/MicroMixReportForm";
+import SamplesPage from "./pages/Samples/SamplesPage";
 
 export const router = createBrowserRouter([
   {
@@ -26,7 +27,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Root /> },
       { path: "home", element: <Home /> },
       { path: "login", element: <Login /> },
-      { path: "samples", element: <Samples /> },
+      { path: "samples", element: <SamplesPage /> },
       { path: "results", element: <Results /> },
       { path: "reports", element: <Reports /> },
       { path: "audit", element: <Audit /> },

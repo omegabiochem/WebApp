@@ -1,54 +1,3 @@
-// import { Link } from "react-router-dom";
-// import { useAuth } from "../../context/AuthContext";
-
-// export default function Header() {
-//   const { user, logout } = useAuth();
-//   return (
-//     <header className="border-b bg-white">
-//       <div className="mx-auto max-w-6xl p-4 flex items-center justify-between">
-//         <Link
-//           to="/"
-//           className="font-bold text-xl"
-//           style={{ color: "var(--brand)" }}
-//         >
-//           LIMS
-//         </Link>
-//         <nav className="flex items-center gap-4 text-sm">
-//           {!user ? (
-//             <>
-//               <Link to="/home">Home</Link>
-//               <Link
-//                 to="/login"
-//                 className="px-3 py-1 rounded-md bg-[var(--brand)] text-white"
-//               >
-//                 Login
-//               </Link>
-//             </>
-//           ) : (
-//             <>
-//               {(user?.role === "ADMIN" || user?.role === "SYSTEMADMIN") && (
-//                 <Link to="/admin">Admin</Link>
-//               )}
-//               <Link to="/">Dashboard</Link>
-//               <Link to="/samples">Samples</Link>
-//               <Link to="/results">Results</Link>
-//               <Link to="/reports">Reports</Link>
-//               <Link to="/audit">Audit</Link>
-//               <button
-//                 onClick={logout}
-//                 className="px-3 py-1 rounded-md bg-gray-900 text-white"
-//               >
-//                 Logout
-//               </button>
-//             </>
-//           )}
-//         </nav>
-//       </div>
-//     </header>
-//   );
-// }
-
-
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -64,8 +13,8 @@ const menuByRole: Record<string, MenuItem[]> = {
   ],
   CLIENT: [
     { label: "Home", path: "/clientDashboard" },
-    { label: "Reports", path: "/reports" },
-    { label: "Audit", path: "/audit" },
+    { label: "Reports", path: "/reports/new" },
+    { label: "Samples", path: "/samples" },
   ],
   SYSTEMADMIN: [
     { label: "Home", path: "/systemAdminDashboard" },
@@ -77,31 +26,32 @@ const menuByRole: Record<string, MenuItem[]> = {
   MICRO: [
     { label: "Home", path: "/microDashboard" },
     { label: "Samples", path: "/samples" },
+    { label: "Reports", path: "/reports/new" },
   ],
   CHEMISTRY: [
     { label: "Home", path: "/chemistryDashboard" },
-    { label: "Samples", path: "/samples" },
+    { label: "Reports", path: "/reports/new" },
   ],
   QA: [
     { label: "Home", path: "/qaDashboard" },
-    { label: "Reports", path: "/reports" },
+    { label: "Samples", path: "/samples" },
+    { label: "Reports", path: "/reports/new" },
   ],
   FRONTDESK: [
     { label: "Home", path: "/frontdeskDashboard" },
-    { label: "Reports", path: "/reports" },
+    { label: "Reports", path: "/reports/new" },
+    { label: "Samples", path: "/samples/new" },
   ],
-  DEFAULT: [
-    { label: "Home", path: "/home" },
-  ],
+  DEFAULT: [{ label: "Home", path: "/home" }],
 };
 
 export default function Header() {
   const { user, logout } = useAuth();
-  const navigate =  useNavigate();
+  const navigate = useNavigate();
   const handleLogout = () => {
     logout();
     navigate("/login");
-  }
+  };
 
   const role = user?.role ?? "DEFAULT";
   const menu = menuByRole[role] ?? menuByRole.DEFAULT;
@@ -151,4 +101,3 @@ export default function Header() {
     </header>
   );
 }
-
