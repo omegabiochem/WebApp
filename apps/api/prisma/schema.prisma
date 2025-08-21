@@ -12,56 +12,58 @@ datasource db {
 
 enum ReportStatus {
   DRAFT
-  SUBMITTED
-  QA_APPROVED
+  IN_REVIEW
+  APPROVED
   LOCKED
 }
 
-model Report {
-  id               String   @id @default(cuid())
+model MicroMixReport {
+  id                       String       @id @default(cuid())
+  reportNumber             Int          @unique
+  prefix                   String       @default("M")
+  // Header/meta
+  client                   String?
+  dateSent                 DateTime?
+  typeOfTest               String?
+  sampleType               String?
+  formulaNo                String?
+  description              String?
+  lotNo                    String?
+  manufactureDate          DateTime?
+  testSopNo                String?
+  dateTested               DateTime?
+  preliminaryResults       String?
+  preliminaryResultsDate   DateTime?
+  dateCompleted            DateTime?
 
-  // Header
-  client           String
-  dateSent         DateTime?
-  testType         String?
-  sampleType       String?
-  formulaNo        String?
-  description      String?
-  lotNo            String?
-  manufactureDate  DateTime?
+  // TBC/TFC blocks (use String to keep exact printed format e.g., "x 10^1", "CFU/ml")
+  tbc_dilution             String?      // e.g., "x 10^1"
+  tbc_gram                 String?
+  tbc_result               String?
+  tbc_spec                 String?
+  tmy_dilution             String?
+  tmy_gram                 String?
+  tmy_result               String?
+  tmy_spec                 String?
 
-  // Testing meta
-  testSop          String?   // e.g., "OM 05B"
-  dateTested       DateTime?
-  preliminaryResults String?
-  preliminaryDate  DateTime?
-  dateCompleted    DateTime?
+  // Pathogens as JSON [{ key, label, grams, result, spec }]
+  pathogens                Json?
 
-  // Counts (TBC/TFC)
-  totalBacterialCount String?   // e.g., "x 10^1 ... CFU/ml"
-  totalMoldYeastCount String?   // e.g., "x 10^1 ... CFU/ml"
+  comments                 String?
 
-  // Pathogen screening (present/absent/by amount)
-  pathogen_ecoli        String?  // "Absent" | "Present in 1g" etc.
-  pathogen_paeruginosa  String?
-  pathogen_saureus      String?
-  pathogen_salmonella   String?
-  pathogen_clostridia   String?
-  pathogen_calbicans    String?
-  pathogen_bcepacia     String?
-  pathogen_other        String?  // free text + spec
-  comments              String?
+  // Sign-off
+  testedBy                 String?
+  testedDate               DateTime?
+  reviewedBy               String?
+  reviewedDate             DateTime?
 
-  // Signatures / roles
-  testedByUserId     String?
-  testedAt           DateTime?
-  reviewedByUserId   String?
-  reviewedAt         DateTime?
-
-  status             ReportStatus @default(DRAFT)
-
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  // Part 11 / control
+  status                   ReportStatus @default(DRAFT)
+  lockedAt                 DateTime?
+  createdBy                String?
+  updatedBy                String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
 }
 
 
@@ -86,6 +88,9 @@ model User {
   active             Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+
+
 }
 
 model Sample {

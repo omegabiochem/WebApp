@@ -58,7 +58,7 @@ const menuByRole: Record<string, MenuItem[]> = {
   ADMIN: [
     { label: "Home", path: "/adminDashboard" },
     { label: "Samples", path: "/samples" },
-    { label: "Reports", path: "/reports/:id" },
+    { label: "Reports", path: "/reports/new" },
     { label: "Audit", path: "/audit" },
     { label: "Results", path: "/results" },
   ],

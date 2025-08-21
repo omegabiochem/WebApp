@@ -4,3 +4,29 @@
 
 /* tokens */
 :root { --brand:#0057A3; }
+
+@layer components {
+    .input-editable {
+      @apply border border-transparent outline-none 
+             py-[2px] text-[10px] leading-tight
+             hover:border-black 
+             focus:border-blue-500 
+             focus:ring-1 focus:ring-blue-400;
+    }
+}
+
+@media print {
+    body * {
+      visibility: hidden;
+    }
+    .sheet, .sheet * {
+      visibility: visible;
+    }
+    .sheet {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+    }
+  }
+  

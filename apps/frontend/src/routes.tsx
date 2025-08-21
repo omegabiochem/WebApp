@@ -16,8 +16,7 @@ import QaDashboard from "./pages/Dashboard/QaDashboard";
 import MicroDashboard from "./pages/Dashboard/MicroDashboard";
 import ChemistryDashboard from "./pages/Dashboard/ChemistryDashboard";
 import FrontdeskDashboard from "./pages/Dashboard/FrontdeskDashboard";
-import MicroMixReport from "./pages/Reports/MicroMixReport";
-import MicroMixReportDetail from "./pages/Reports/MicroMixReportDetail";
+import MicroMixReportForm from "./pages/Reports/MicroMixReportForm";
 
 export const router = createBrowserRouter([
   {
@@ -40,8 +39,8 @@ export const router = createBrowserRouter([
       { path: "qaDashboard", element: <QaDashboard /> },
       { path: "clientDashboard", element: <ClientDashboard /> },
       { path: "frontdeskDashboard", element: <FrontdeskDashboard /> },
-      { path: "reports/new", element: <MicroMixReport /> },
-      { path: "reports/:id", element: <MicroMixReportDetail /> },
+      { path: "reports/new", element: <MicroMixReportForm /> },
+      // { path: "reports/:id", element: <MicroMixReportForm /> },
       { path: "*", element: <div style={{ padding: 16 }}>Not Found</div> }, // helpful catch-all
     ],
   },

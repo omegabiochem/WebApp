@@ -3,9 +3,16 @@ let token = "";
 
 export function setToken(t: string) {
   token = t;
+  localStorage.setItem("token", token);
 }
 export function clearToken() {
+  localStorage.removeItem("token");
   token = "";
+}
+
+export function getToken() {
+  if (token) return token;
+  return localStorage.getItem("token");
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
