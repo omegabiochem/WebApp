@@ -1,11 +1,157 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useBeforeUnload, useBlocker } from "react-router-dom";
+
+// Hook for confirming navigation
+function useConfirmOnLeave(isDirty: boolean) {
+  const blocker = useBlocker(isDirty);
+
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      if (window.confirm("⚠️ You have unsaved changes. Leave anyway?")) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker]);
+}
 
 // ----- Roles (keep in sync with backend) -----
 type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "QA" | "CLIENT";
 
+// ----- ReportStatus (mirror backend) -----
+export type ReportStatus =
+  | "DRAFT"
+  | "SUBMITTED_BY_CLIENT"
+  | "CLIENT_NEEDS_CORRECTION"
+  | "RECEIVED_BY_FRONTDESK"
+  | "FRONTDESK_ON_HOLD"
+  | "FRONTDESK_REJECTED"
+  | "UNDER_TESTING_REVIEW"
+  | "TESTING_ON_HOLD"
+  | "TESTING_REJECTED"
+  | "UNDER_QA_REVIEW"
+  | "QA_NEEDS_CORRECTION"
+  | "QA_REJECTED"
+  | "UNDER_ADMIN_REVIEW"
+  | "ADMIN_NEEDS_CORRECTION"
+  | "ADMIN_REJECTED"
+  | "APPROVED"
+  | "LOCKED";
+
+// ---- Mirror of backend STATUS_TRANSITIONS ----
+const STATUS_TRANSITIONS: Record<
+  ReportStatus,
+  { canSet: Role[]; next: ReportStatus[]; nextEditableBy: Role[] }
+> = {
+  DRAFT: {
+    canSet: ["CLIENT", "FRONTDESK", "ADMIN", "SYSTEMADMIN"],
+    next: ["SUBMITTED_BY_CLIENT", "CLIENT_NEEDS_CORRECTION"],
+    nextEditableBy: ["CLIENT", "FRONTDESK"],
+  },
+  SUBMITTED_BY_CLIENT: {
+    canSet: ["CLIENT"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["FRONTDESK"],
+  },
+  RECEIVED_BY_FRONTDESK: {
+    canSet: ["FRONTDESK"],
+    next: ["UNDER_TESTING_REVIEW", "FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
+    nextEditableBy: ["MICRO"],
+  },
+  FRONTDESK_ON_HOLD: {
+    canSet: ["FRONTDESK"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["FRONTDESK"],
+  },
+  FRONTDESK_REJECTED: {
+    canSet: ["FRONTDESK"],
+    next: ["CLIENT_NEEDS_CORRECTION"],
+    nextEditableBy: ["CLIENT"],
+  },
+  CLIENT_NEEDS_CORRECTION: {
+    canSet: ["CLIENT"],
+    next: ["SUBMITTED_BY_CLIENT"],
+    nextEditableBy: ["CLIENT"],
+  },
+  UNDER_TESTING_REVIEW: {
+    canSet: ["MICRO"],
+    next: ["TESTING_ON_HOLD", "TESTING_REJECTED", "UNDER_QA_REVIEW"],
+    nextEditableBy: ["MICRO"],
+  },
+  TESTING_ON_HOLD: {
+    canSet: ["MICRO"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO"],
+  },
+  TESTING_REJECTED: {
+    canSet: ["MICRO"],
+    next: ["FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
+    nextEditableBy: ["FRONTDESK"],
+  },
+  UNDER_QA_REVIEW: {
+    canSet: ["QA"],
+    next: ["QA_NEEDS_CORRECTION", "QA_REJECTED", "UNDER_ADMIN_REVIEW"],
+    nextEditableBy: ["QA"],
+  },
+  QA_NEEDS_CORRECTION: {
+    canSet: ["QA"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO"],
+  },
+  QA_REJECTED: {
+    canSet: ["QA"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO"],
+  },
+  UNDER_ADMIN_REVIEW: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
+    nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
+  },
+  ADMIN_NEEDS_CORRECTION: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_QA_REVIEW"],
+    nextEditableBy: ["QA"],
+  },
+  ADMIN_REJECTED: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_QA_REVIEW"],
+    nextEditableBy: ["QA"],
+  },
+  APPROVED: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["LOCKED"],
+    nextEditableBy: [],
+  },
+  LOCKED: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: [],
+    nextEditableBy: [],
+  },
+};
+
+// ---- Map each transition to buttons ----
+
+const statusButtons: Record<string, { label: string; color: string }> = {
+  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
+  RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
+  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-yellow-500" },
+  FRONTDESK_REJECTED: { label: "Reject", color: "bg-red-600" },
+  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+  TESTING_ON_HOLD: { label: "Hold", color: "bg-yellow-500" },
+  TESTING_REJECTED: { label: "Reject", color: "bg-red-600" },
+  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
+  QA_REJECTED: { label: "Reject", color: "bg-red-600" },
+  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
+  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
+  APPROVED: { label: "Approve", color: "bg-green-700" },
+};
+
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
-function canEdit(role: Role | undefined, field: string) {
+function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   const map: Record<Role, string[]> = {
     SYSTEMADMIN: [],
     ADMIN: ["*"],
@@ -39,9 +185,22 @@ function canEdit(role: Role | undefined, field: string) {
       "testedDate",
     ],
     QA: ["reviewedBy", "reviewedDate"],
-    CLIENT: [], // read-only
+    CLIENT: [
+      "client",
+      "dateSent",
+      "typeOfTest",
+      "sampleType",
+      "formulaNo",
+      "description",
+      "lotNo",
+      "manufactureDate",
+    ], // read-only
   };
   if (!role) return false;
+  // special rule: client can edit anything in DRAFT
+  if (role === "CLIENT" && status === "DRAFT") {
+    return true;
+  }
   if (map[role]?.includes("*")) return true;
   return map[role]?.includes(field) ?? false;
 }
@@ -93,6 +252,13 @@ const PrintStyles = () => (
 export default function MicroMixReportForm({ report }: { report?: any }) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
+
+  const initialData = JSON.stringify(report || {});
+  const [isDirty, setIsDirty] = useState(false);
+
+  const [status, setStatus] = useState(report?.status || "DRAFT");
+  // inside MicroMixReportForm
+  const [reportId, setReportId] = useState(report?.id || null);
 
   // ---- local state (prefill from report if editing) ----
   const [client, setClient] = useState(report?.client || "");
@@ -217,12 +383,17 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
   const [testedDate, setTestedDate] = useState(report?.testedDate || "");
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
 
-  const lock = (f: string) => !canEdit(role, f);
+  // const lock = (f: string) => !canEdit(role, f);
+  // use:
+  const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
 
   // ----------- Save handler -----------
+
   const handleSave = async () => {
     const token = localStorage.getItem("token");
-    const payload = {
+    const API_BASE = "http://localhost:3000";
+
+    const payload: any = {
       client,
       dateSent,
       typeOfTest,
@@ -249,544 +420,643 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       testedDate,
       reviewedDate,
     };
+    if (!reportId) {
+      payload.status = "DRAFT";
+    }
 
     try {
-      // const API_BASE = import.meta.env.VITE_API_URL;
-      const API_BASE = "http://localhost:3000";
-      const url = report?.id
-        ? `${API_BASE}/reports/micro-mix/${report.id}` //existing one
-        : `${API_BASE}/reports/micro-mix`; // new one
+      let res;
 
-      const method = report?.id ? "PATCH" : "POST";
+      if (reportId) {
+        // update
+        res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // create
+        res = await fetch(`${API_BASE}/reports/micro-mix`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      }
 
-      console.log("Token being sent:", token);
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // from useAuth()
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error(`Save failed: ${res.statusText}`);
+      if (!res.ok) throw new Error("Failed to save draft");
       const saved = await res.json();
+      setIsDirty(false);
 
-      alert(`✅ Report saved: ${saved.fullNumber || saved.id}`);
+      setReportId(saved.id); // 👈 keep the new id
+      setStatus("DRAFT");
+      alert("✅ Report saved as draft");
     } catch (err: any) {
       console.error(err);
-      alert("❌ Error saving report: " + err.message);
+      alert("❌ Error saving draft: " + err.message);
     }
   };
 
+  const handleStatusChange = async (newStatus: string) => {
+    const token = localStorage.getItem("token");
+
+    try {
+      const API_BASE = "http://localhost:3000";
+
+      // if report not saved → save first
+      if (!reportId) {
+        await handleSave();
+      }
+
+      const url = `${API_BASE}/reports/micro-mix/${reportId}/status`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
+      setStatus(newStatus);
+      alert(`✅ Status changed to ${newStatus}`);
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Error changing status: " + err.message);
+    }
+  };
+
+  function markDirty() {
+    if (!isDirty) setIsDirty(true);
+  }
+
+  // Block tab close / refresh
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  // Block in-app navigation
+  useConfirmOnLeave(isDirty);
+
+  // // For in-app navigation (react-router)
+  // useBeforeUnload(isDirty, (event) => {
+  //   event.preventDefault();
+  // });
+
   return (
-    <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
-      <PrintStyles />
+    <>
+      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+        <PrintStyles />
 
-      {/* Header + print controls */}
-      <div className="no-print mb-4 flex justify-end gap-2">
-        <button
-          className="px-3 py-1 rounded-md border"
-          onClick={() => window.print()}
-          disabled={role === "SYSTEMADMIN"}
-        >
-          Print
-        </button>
-        <button
-          className="px-3 py-1 rounded-md border bg-blue-600 text-white"
-          onClick={handleSave}
-          disabled={role === "SYSTEMADMIN"}
-        >
-          {report?.id ? "Update Report" : "Save Report"}
-        </button>
-      </div>
+        {/* Header + print controls */}
+        <div className="no-print mb-4 flex justify-end gap-2">
+          <button
+            className="px-3 py-1 rounded-md border"
+            onClick={() => window.print()}
+            disabled={role === "SYSTEMADMIN"}
+          >
+            Print
+          </button>
+          <button
+            className="px-3 py-1 rounded-md border bg-blue-600 text-white"
+            onClick={handleSave}
+            disabled={role === "SYSTEMADMIN"}
+          >
+            {reportId ? "Update Report" : "Save Report"}
+          </button>
+        </div>
 
-      {/* Letterhead */}
-      <div className="mb-2 text-center">
-        <div
-          className="font-bold tracking-wide text-[22px]"
-          style={{ color: "blue" }}
-        >
-          OMEGA BIOLOGICAL LABORATORY, INC.
-        </div>
-        <div className="text-[16px]" style={{ color: "blue" }}>
-          (FDA REG.)
-        </div>
-        <div className="text-[12px]">
-          56 PARK AVENUE, LYNDHURST, NJ 07071 <br></br>
-          Tel: (201) 883 1222 • Fax: (201) 883 0449
-        </div>
-        <div>
+        {/* Letterhead */}
+        <div className="mb-2 text-center">
+          <div
+            className="font-bold tracking-wide text-[22px]"
+            style={{ color: "blue" }}
+          >
+            OMEGA BIOLOGICAL LABORATORY, INC.
+          </div>
+          <div className="text-[16px]" style={{ color: "blue" }}>
+            (FDA REG.)
+          </div>
           <div className="text-[12px]">
-            Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
+            56 PARK AVENUE, LYNDHURST, NJ 07071 <br></br>
+            Tel: (201) 883 1222 • Fax: (201) 883 0449
           </div>
-          {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
-        </div>
-        <div
-          className="text-[18px] font-bold mt-1"
-          style={{ textDecoration: "underline" }}
-        >
-          Report
-        </div>
-      </div>
-
-      {/* Top meta block */}
-      <div className="w-full border border-black text-[15px]">
-        {/* CLIENT / DATE SENT */}
-        <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="whitespace-nowrap font-medium">CLIENT:</div>
-            {lock("client") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="px-2 flex items-center gap-1">
-            <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-            {lock("dateSent") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={dateSent}
-                onChange={(e) => setDateSent(e.target.value)}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
-        <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
-            {lock("typeOfTest") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={typeOfTest}
-                onChange={(e) => setTypeOfTest(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
-            {lock("sampleType") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={sampleType}
-                onChange={(e) => setSampleType(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="px-2 flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">FORMULA #:</div>
-            {lock("formulaNo") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={formulaNo}
-                onChange={(e) => setFormulaNo(e.target.value)}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* DESCRIPTION (full row) */}
-        <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug">
-          <div className="w-28 font-medium">DESCRIPTION:</div>
-          {lock("description") ? (
-            <div className="flex-1 border-b border-black min-h-[14px]"></div>
-          ) : (
-            <input
-              className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          )}
-        </div>
-
-        {/* LOT # / MANUFACTURE DATE */}
-        <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">LOT #:</div>
-            {lock("lotNo") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={lotNo}
-                onChange={(e) => setLotNo(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="px-2 flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">
-              MANUFACTURE DATE:
+          <div>
+            <div className="text-[12px]">
+              Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
             </div>
-            {lock("manufactureDate") ? (
+            {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
+          </div>
+          <div
+            className="text-[18px] font-bold mt-1"
+            style={{ textDecoration: "underline" }}
+          >
+            Report
+          </div>
+        </div>
+
+        {/* Top meta block */}
+        <div className="w-full border border-black text-[15px]">
+          {/* CLIENT / DATE SENT */}
+          <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="whitespace-nowrap font-medium">CLIENT:</div>
+              {lock("client") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={client}
+                  onChange={(e) => {
+                    setClient(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
+            </div>
+            <div className="px-2 flex items-center gap-1">
+              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
+              {lock("dateSent") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  type="date"
+                  value={dateSent}
+                  onChange={(e) => {
+                    setDateSent(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
+          <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
+              {lock("typeOfTest") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={typeOfTest}
+                  onChange={(e) => setTypeOfTest(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
+              {lock("sampleType") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={sampleType}
+                  onChange={(e) => setSampleType(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="px-2 flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+              {lock("formulaNo") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={formulaNo}
+                  onChange={(e) => setFormulaNo(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* DESCRIPTION (full row) */}
+          <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug">
+            <div className="w-28 font-medium">DESCRIPTION:</div>
+            {lock("description") ? (
               <div className="flex-1 border-b border-black min-h-[14px]"></div>
             ) : (
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={manufactureDate}
-                onChange={(e) => setManufactureDate(e.target.value)}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            )}
+          </div>
+
+          {/* LOT # / MANUFACTURE DATE */}
+          <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">LOT #:</div>
+              {lock("lotNo") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={lotNo}
+                  onChange={(e) => setLotNo(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="px-2 flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">
+                MANUFACTURE DATE:
+              </div>
+              {lock("manufactureDate") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={manufactureDate}
+                  onChange={(e) => setManufactureDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* TEST SOP # / DATE TESTED */}
+          <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
+              {lock("testSopNo") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={testSopNo}
+                  onChange={(e) => setTestSopNo(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="px-2 flex items-center gap-1">
+              <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
+              {lock("dateTested") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={dateTested}
+                  onChange={(e) => setDateTested(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
+          <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
+            <div className="px-2 border-r border-black flex items-center gap-1">
+              <div className="font-medium">PRELIMINARY RESULTS:</div>
+              {lock("preliminaryResults") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={preliminaryResults}
+                  onChange={(e) => setPreliminaryResults(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="px-2 flex items-center gap-1">
+              <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
+              {lock("preliminaryResultsDate") ? (
+                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              ) : (
+                <input
+                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  value={preliminaryResultsDate}
+                  onChange={(e) => setPreliminaryResultsDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* DATE COMPLETED (full row, label + input) */}
+          <div className=" flex items-center gap-2 px-2 text-[12px] leading-snug">
+            <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
+            {lock("dateCompleted") ? (
+              <div className="border-b border-black min-h-[14px] flex-1"></div>
+            ) : (
+              <input
+                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                value={dateCompleted}
+                onChange={(e) => setDateCompleted(e.target.value)}
               />
             )}
           </div>
         </div>
 
-        {/* TEST SOP # / DATE TESTED */}
-        <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
-            {lock("testSopNo") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={testSopNo}
-                onChange={(e) => setTestSopNo(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="px-2 flex items-center gap-1">
-            <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
-            {lock("dateTested") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={dateTested}
-                onChange={(e) => setDateTested(e.target.value)}
-              />
-            )}
-          </div>
-        </div>
+        <div className="p-2 font-bold">TBC / TFC RESULTS:</div>
 
-        {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
-        <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
-          <div className="px-2 border-r border-black flex items-center gap-1">
-            <div className="font-medium">PRELIMINARY RESULTS:</div>
-            {lock("preliminaryResults") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={preliminaryResults}
-                onChange={(e) => setPreliminaryResults(e.target.value)}
-              />
-            )}
+        {/* TBC/TFC table */}
+        <div className="mt-2 border border-black">
+          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] text-center items-center font-semibold border-b border-black">
+            <div className="p-2  border-r border-black">TYPE OF TEST</div>
+            <div className="p-2 border-r border-black">DILUTION</div>
+            <div className="p-2 border-r border-black">GRAM STAIN</div>
+            <div className="p-2 border-r border-black">RESULT</div>
+            <div className="p-2">SPECIFICATION</div>
           </div>
-          <div className="px-2 flex items-center gap-1">
-            <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
-            {lock("preliminaryResultsDate") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
-            ) : (
-              <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={preliminaryResultsDate}
-                onChange={(e) => setPreliminaryResultsDate(e.target.value)}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* DATE COMPLETED (full row, label + input) */}
-        <div className=" flex items-center gap-2 px-2 text-[12px] leading-snug">
-          <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
-          {lock("dateCompleted") ? (
-            <div className="border-b border-black min-h-[14px] flex-1"></div>
-          ) : (
-            <input
-              className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={dateCompleted}
-              onChange={(e) => setDateCompleted(e.target.value)}
-            />
-          )}
-        </div>
-      </div>
-
-      <div className="p-2 font-bold">TBC / TFC RESULTS:</div>
-
-      {/* TBC/TFC table */}
-      <div className="mt-2 border border-black">
-        <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] text-center items-center font-semibold border-b border-black">
-          <div className="p-2  border-r border-black">TYPE OF TEST</div>
-          <div className="p-2 border-r border-black">DILUTION</div>
-          <div className="p-2 border-r border-black">GRAM STAIN</div>
-          <div className="p-2 border-r border-black">RESULT</div>
-          <div className="p-2">SPECIFICATION</div>
-        </div>
-        {/* Row 1: Total Bacterial Count */}
-        <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
-          <div className=" py-1 px-2 font-bold border-r border-black">
-            Total Bacterial Count:
-          </div>
-          <div className="py-1 px-2 border-r border-black">
-            <div className="py-1 px-2 text-center"> x 10^0</div>
-            {/* <input
+          {/* Row 1: Total Bacterial Count */}
+          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
+            <div className=" py-1 px-2 font-bold border-r border-black">
+              Total Bacterial Count:
+            </div>
+            <div className="py-1 px-2 border-r border-black">
+              <div className="py-1 px-2 text-center"> x 10^0</div>
+              {/* <input
               className="w-full border border-black/70 px-1"
               value={tbc_dilution}
               onChange={(e) => set_tbc_dilution(e.target.value)}
               readOnly={lock("tbc_dilution")}
             /> */}
+            </div>
+            <div className="py-1 px-2 border-r border-black flex">
+              <input
+                className="w-full input-editable  px-1"
+                value={tbc_gram}
+                onChange={(e) => set_tbc_gram(e.target.value)}
+                readOnly={lock("tbc_gram")}
+              />
+            </div>
+            <div className="py-1 px-2 border-r border-black flex">
+              <input
+                className="w-1/2 input-editable  px-1"
+                value={tbc_result}
+                onChange={(e) => set_tbc_result(e.target.value)}
+                readOnly={lock("tbc_result")}
+                placeholder="CFU/ml"
+              />
+              <div className="py-1 px-2 text-center">CFU/ml</div>
+            </div>
+            <div className="py-1 px-2 flex">
+              <input
+                className="w-full input-editable  px-1"
+                value={tbc_spec}
+                onChange={(e) => set_tbc_spec(e.target.value)}
+                readOnly={lock("tbc_spec")}
+              />
+            </div>
           </div>
-          <div className="py-1 px-2 border-r border-black flex">
-            <input
-              className="w-full input-editable  px-1"
-              value={tbc_gram}
-              onChange={(e) => set_tbc_gram(e.target.value)}
-              readOnly={lock("tbc_gram")}
-            />
-          </div>
-          <div className="py-1 px-2 border-r border-black flex">
-            <input
-              className="w-1/2 input-editable  px-1"
-              value={tbc_result}
-              onChange={(e) => set_tbc_result(e.target.value)}
-              readOnly={lock("tbc_result")}
-              placeholder="CFU/ml"
-            />
-            <div className="py-1 px-2 text-center">CFU/ml</div>
-          </div>
-          <div className="py-1 px-2 flex">
-            <input
-              className="w-full input-editable  px-1"
-              value={tbc_spec}
-              onChange={(e) => set_tbc_spec(e.target.value)}
-              readOnly={lock("tbc_spec")}
-            />
-          </div>
-        </div>
-        {/* Row 2: Total Mold & Yeast Count */}
-        <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-          <div className="py-1 px-2 font-bold border-r border-black">
-            Total Mold & Yeast Count:
-          </div>
-          <div className="py-1 px-2 border-r border-black">
-            <div className="py-1 px-2 text-center"> x 10^0</div>
-            {/* <input
+          {/* Row 2: Total Mold & Yeast Count */}
+          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+            <div className="py-1 px-2 font-bold border-r border-black">
+              Total Mold & Yeast Count:
+            </div>
+            <div className="py-1 px-2 border-r border-black">
+              <div className="py-1 px-2 text-center"> x 10^0</div>
+              {/* <input
               className="w-full border border-black/70 px-1"
               value={tmy_dilution}
               onChange={(e) => set_tmy_dilution(e.target.value)}
               readOnly={lock("tmy_dilution")}
             /> */}
-          </div>
-          <div className="py-1 px-2 border-r border-black flex">
-            <input
-              className="w-full input-editable  px-1 "
-              value={tmy_gram}
-              onChange={(e) => set_tmy_gram(e.target.value)}
-              readOnly={lock("tmy_gram")}
-            />
-          </div>
-          <div className="py-1 px-2 border-r border-black flex">
-            <input
-              className="w-1/2 input-editable  px-1"
-              value={tmy_result}
-              onChange={(e) => set_tmy_result(e.target.value)}
-              readOnly={lock("tmy_result")}
-              placeholder="CFU/ml"
-            />
-            <div className="py-1 px-2 text-center">CFU/ml</div>
-          </div>
-          <div className="py-1 px-2 flex">
-            <input
-              className="w-full input-editable  px-1"
-              value={tmy_spec}
-              onChange={(e) => set_tmy_spec(e.target.value)}
-              readOnly={lock("tmy_spec")}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="p-2 font-bold">
-        PATHOGEN SCREENING (Please check the organism to be tested)
-      </div>
-
-      {/* Pathogen screening */}
-      <div className="mt-3 border border-black">
-        {/* Header */}
-        <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
-          <div className="p-2 border-r border-black"></div>
-          <div className="p-2 border-r border-black">RESULT</div>
-          <div className="p-2">SPECIFICATION</div>
-        </div>
-
-        {/* Rows */}
-        {pathogens.map((p, idx) => (
-          <div
-            key={p.key}
-            className="grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black"
-          >
-            {/* First column */}
-            <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
+            </div>
+            <div className="py-1 px-2 border-r border-black flex">
               <input
-                type="checkbox"
-                className="form-checkbox rounded-full border-black h-3 w-3"
-                checked={p.checked || false}
-                onChange={(e) => {
-                  const copy = [...pathogens];
-                  copy[idx] = { ...p, checked: e.target.checked };
-                  setPathogens(copy);
-                }}
-                disabled={
-                  role === "ADMIN" ||
-                  role === "FRONTDESK" ||
-                  role === "MICRO" ||
-                  role === "QA" ||
-                  role === "SYSTEMADMIN"
-                }
+                className="w-full input-editable  px-1 "
+                value={tmy_gram}
+                onChange={(e) => set_tmy_gram(e.target.value)}
+                readOnly={lock("tmy_gram")}
               />
-              <span className="font-bold">{p.label}</span>
-              {p.key === "OTHER" && (
-                <input
-                  className="input-editable leading-tight"
-                  placeholder="(specify)"
-                  readOnly
-                />
-              )}
             </div>
+            <div className="py-1 px-2 border-r border-black flex">
+              <input
+                className="w-1/2 input-editable  px-1"
+                value={tmy_result}
+                onChange={(e) => set_tmy_result(e.target.value)}
+                readOnly={lock("tmy_result")}
+                placeholder="CFU/ml"
+              />
+              <div className="py-1 px-2 text-center">CFU/ml</div>
+            </div>
+            <div className="py-1 px-2 flex">
+              <input
+                className="w-full input-editable  px-1"
+                value={tmy_spec}
+                onChange={(e) => set_tmy_spec(e.target.value)}
+                readOnly={lock("tmy_spec")}
+              />
+            </div>
+          </div>
+        </div>
 
-            {/* Second column */}
-            <div className="py-[2px] px-2 border-r border-black flex text-center gap-2 items-center">
-              <label className="flex items-center gap-1">
+        <div className="p-2 font-bold">
+          PATHOGEN SCREENING (Please check the organism to be tested)
+        </div>
+
+        {/* Pathogen screening */}
+        <div className="mt-3 border border-black">
+          {/* Header */}
+          <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
+            <div className="p-2 border-r border-black"></div>
+            <div className="p-2 border-r border-black">RESULT</div>
+            <div className="p-2">SPECIFICATION</div>
+          </div>
+
+          {/* Rows */}
+          {pathogens.map((p, idx) => (
+            <div
+              key={p.key}
+              className="grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black"
+            >
+              {/* First column */}
+              <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
                 <input
                   type="checkbox"
                   className="form-checkbox rounded-full border-black h-3 w-3"
-                  checked={p.result === "Absent"}
-                  onChange={() => {
+                  checked={p.checked || false}
+                  onChange={(e) => {
                     const copy = [...pathogens];
-                    copy[idx] = { ...p, result: "Absent" };
+                    copy[idx] = { ...p, checked: e.target.checked };
                     setPathogens(copy);
                   }}
                   disabled={
                     role === "ADMIN" ||
                     role === "FRONTDESK" ||
-                    role === "CLIENT" ||
+                    role === "MICRO" ||
                     role === "QA" ||
                     role === "SYSTEMADMIN"
                   }
                 />
-                Absent
-              </label>
-              <span>/</span>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  className="form-checkbox rounded-full border-black h-3 w-3"
-                  checked={p.result === "Present"}
-                  onChange={() => {
-                    const copy = [...pathogens];
-                    copy[idx] = { ...p, result: "Present" };
-                    setPathogens(copy);
-                  }}
-                  disabled={
-                    role === "ADMIN" ||
-                    role === "FRONTDESK" ||
-                    role === "CLIENT" ||
-                    role === "QA" ||
-                    role === "SYSTEMADMIN"
-                  }
-                />
-                Present
-              </label>
-              <span className="ml-1">in 11g of sample</span>
+                <span className="font-bold">{p.label}</span>
+                {p.key === "OTHER" && (
+                  <input
+                    className="input-editable leading-tight"
+                    placeholder="(specify)"
+                    readOnly
+                  />
+                )}
+              </div>
+
+              {/* Second column */}
+              <div className="py-[2px] px-2 border-r border-black flex text-center gap-2 items-center">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="form-checkbox rounded-full border-black h-3 w-3"
+                    checked={p.result === "Absent"}
+                    onChange={() => {
+                      const copy = [...pathogens];
+                      copy[idx] = { ...p, result: "Absent" };
+                      setPathogens(copy);
+                    }}
+                    disabled={
+                      role === "ADMIN" ||
+                      role === "FRONTDESK" ||
+                      role === "CLIENT" ||
+                      role === "QA" ||
+                      role === "SYSTEMADMIN"
+                    }
+                  />
+                  Absent
+                </label>
+                <span>/</span>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="form-checkbox rounded-full border-black h-3 w-3"
+                    checked={p.result === "Present"}
+                    onChange={() => {
+                      const copy = [...pathogens];
+                      copy[idx] = { ...p, result: "Present" };
+                      setPathogens(copy);
+                    }}
+                    disabled={
+                      role === "ADMIN" ||
+                      role === "FRONTDESK" ||
+                      role === "CLIENT" ||
+                      role === "QA" ||
+                      role === "SYSTEMADMIN"
+                    }
+                  />
+                  Present
+                </label>
+                <span className="ml-1">in 11g of sample</span>
+              </div>
+
+              {/* Third column */}
+              <div className="py-[2px] px-2 text-center">Absent</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Legends / Comments */}
+        <div className="mt-2 text-[11px]">
+          <div
+            className=" font-bold border-black p-2"
+            style={{ textDecoration: "underline" }}
+          >
+            DENOTES: NA (Not Applicable) / N.G. (No Growth) / GM.(+)B Gram (+)
+            Bacilli / GM.(+)C Gram (+) Cocci / GM.NEG Gram Negative / NT (Not
+            Tested) / TNTC (Too Numerous To Count)
+          </div>
+        </div>
+
+        {/* Comments + Signatures */}
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
+          <div className="p2 col-span-2 flex">
+            <div className="mb-1 font-medium">Comments:</div>
+            <input
+              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              readOnly={lock("comments")}
+              placeholder="Comments"
+            />
+          </div>
+
+          {/* TESTED BY */}
+
+          <div className="p-2">
+            <div className="font-medium mb-2 flex items-center gap-2">
+              TESTED BY:
+              <input
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                value={testedBy}
+                onChange={(e) => setTestedBy(e.target.value)}
+                readOnly={lock("testedBy")}
+                placeholder="Name"
+              />
             </div>
 
-            {/* Third column */}
-            <div className="py-[2px] px-2 text-center">Absent</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Legends / Comments */}
-      <div className="mt-2 text-[11px]">
-        <div
-          className=" font-bold border-black p-2"
-          style={{ textDecoration: "underline" }}
-        >
-          DENOTES: NA (Not Applicable) / N.G. (No Growth) / GM.(+)B Gram (+)
-          Bacilli / GM.(+)C Gram (+) Cocci / GM.NEG Gram Negative / NT (Not
-          Tested) / TNTC (Too Numerous To Count)
-        </div>
-      </div>
-
-      {/* Comments + Signatures */}
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-        <div className="p2 col-span-2 flex">
-          <div className="mb-1 font-medium">Comments:</div>
-          <input
-            className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            readOnly={lock("comments")}
-            placeholder="Comments"
-          />
-        </div>
-
-        {/* TESTED BY */}
-
-        <div className="p-2">
-          <div className="font-medium mb-2 flex items-center gap-2">
-            TESTED BY:
-            <input
-              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={testedBy}
-              onChange={(e) => setTestedBy(e.target.value)}
-              readOnly={lock("testedBy")}
-              placeholder="Name"
-            />
+            <div className="font-medium mt-2 flex items-center gap-2">
+              DATE:
+              <input
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                value={testedDate}
+                onChange={(e) => setTestedDate(e.target.value)}
+                readOnly={lock("testedDate")}
+                placeholder="MM/DD/YYYY"
+              />
+            </div>
           </div>
 
-          <div className="font-medium mt-2 flex items-center gap-2">
-            DATE:
-            <input
-              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={testedDate}
-              onChange={(e) => setTestedDate(e.target.value)}
-              readOnly={lock("testedDate")}
-              placeholder="MM/DD/YYYY"
-            />
-          </div>
-        </div>
+          {/* REVIEWED BY */}
+          <div className="p-2">
+            <div className="font-medium mb-2 flex items-center gap-2">
+              REVIEWED BY:
+              <input
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                value={reviewedBy}
+                onChange={(e) => setReviewedBy(e.target.value)}
+                readOnly={lock("testedBy")}
+                placeholder="Name"
+              />
+            </div>
 
-        {/* REVIEWED BY */}
-        <div className="p-2">
-          <div className="font-medium mb-2 flex items-center gap-2">
-            REVIEWED BY:
-            <input
-              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={reviewedBy}
-              onChange={(e) => setReviewedBy(e.target.value)}
-              readOnly={lock("testedBy")}
-              placeholder="Name"
-            />
-          </div>
-
-          <div className="font-medium mt-2 flex items-center gap-2">
-            DATE:
-            <input
-              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={reviewedDate}
-              onChange={(e) => setReviewedDate(e.target.value)}
-              readOnly={lock("testedDate")}
-              placeholder="MM/DD/YYYY"
-            />
+            <div className="font-medium mt-2 flex items-center gap-2">
+              DATE:
+              <input
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                value={reviewedDate}
+                onChange={(e) => setReviewedDate(e.target.value)}
+                readOnly={lock("testedDate")}
+                placeholder="MM/DD/YYYY"
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      {/* Role-based actions */}
+      {/* Role-based actions OUTSIDE the report */}
+      {/* Role-based actions OUTSIDE the report */}
+      {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+        (targetStatus: ReportStatus) => {
+          if (
+            STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(role!) &&
+            statusButtons[targetStatus]
+          ) {
+            const { label, color } = statusButtons[targetStatus];
+            return (
+              <button
+                key={targetStatus}
+                className={`px-4 py-2 rounded-md border text-white ${color}`}
+                onClick={() => handleStatusChange(targetStatus)}
+                // 👇 disable submit until report is saved
+                disabled={isDirty || !reportId}
+              >
+                {label}
+              </button>
+            );
+          }
+          return null;
+        }
+      )}
+    </>
   );
 }
