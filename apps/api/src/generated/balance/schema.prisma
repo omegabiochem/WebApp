@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/balance" // keep separate client
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BalanceReading {
+  id         String   @id @default(uuid())
+  instrument String
+  command    String
+  result     String
+  createdAt  DateTime @default(now())
+  userId     String?
+}
+
+model AuditTrail {
+  id        String   @id @default(uuid())
+  action    String
+  details   String
+  userId    String?
+  createdAt DateTime @default(now())
+}

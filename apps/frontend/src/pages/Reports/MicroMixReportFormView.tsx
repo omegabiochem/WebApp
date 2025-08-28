@@ -129,10 +129,9 @@ export default function MicroMixReportFormView({
           </div>
           <div className="px-2 flex items-center gap-1">
             <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.dateSent}
+              value={report?.dateSent|| ""}
               readOnly
               disabled
             />
@@ -146,7 +145,7 @@ export default function MicroMixReportFormView({
 
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.typeOfTest}
+              value={report?.typeOfTest|| ""}
               readOnly
               disabled
             />
@@ -156,14 +155,18 @@ export default function MicroMixReportFormView({
 
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.sampleType}
+              value={report?.sampleType|| ""}
+              readOnly
+              disabled
             />
           </div>
           <div className="px-2 flex items-center gap-1">
             <div className="font-medium whitespace-nowrap">FORMULA #:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.formulaNo}
+              value={report?.formulaNo|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -174,7 +177,9 @@ export default function MicroMixReportFormView({
 
           <input
             className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-            value={report?.description}
+            value={report?.description|| ""}
+            readOnly
+            disabled
           />
         </div>
 
@@ -184,7 +189,9 @@ export default function MicroMixReportFormView({
             <div className="font-medium whitespace-nowrap">LOT #:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.lotNo}
+              value={report?.lotNo|| ""}
+              readOnly
+              disabled
             />
           </div>
           <div className="px-2 flex items-center gap-1">
@@ -193,7 +200,9 @@ export default function MicroMixReportFormView({
             </div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.manufactureDate}
+              value={report?.manufactureDate|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -204,14 +213,18 @@ export default function MicroMixReportFormView({
             <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.testSopNo}
+              value={report?.testSopNo|| ""}
+              readOnly
+              disabled
             />
           </div>
           <div className="px-2 flex items-center gap-1">
             <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.dateTested}
+              value={report?.dateTested|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -222,14 +235,18 @@ export default function MicroMixReportFormView({
             <div className="font-medium">PRELIMINARY RESULTS:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.preliminaryResults}
+              value={report?.preliminaryResults|| ""}
+              readOnly
+              disabled
             />
           </div>
           <div className="px-2 flex items-center gap-1">
             <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.preliminaryResultsDate}
+              value={report?.preliminaryResultsDate|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -239,7 +256,9 @@ export default function MicroMixReportFormView({
           <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
           <input
             className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-            value={report?.dateCompleted}
+            value={report?.dateCompleted|| ""}
+            readOnly
+            disabled
           />
         </div>
       </div>
@@ -272,21 +291,26 @@ export default function MicroMixReportFormView({
           <div className="py-1 px-2 border-r border-black flex">
             <input
               className="w-full input-editable  px-1"
-              value={report?.tbc_gram}
+              value={report?.tbc_gram|| ""}
               readOnly
+              disabled
             />
           </div>
           <div className="py-1 px-2 border-r border-black flex">
             <input
               className="w-1/2 input-editable  px-1"
-              value={report?.tbc_result}
+              value={report?.tbc_result|| ""}
+              readOnly
+              disabled
             />
             <div className="py-1 px-2 text-center">CFU/ml</div>
           </div>
           <div className="py-1 px-2 flex">
             <input
               className="w-full input-editable  px-1"
-              value={report?.tbc_spec}
+              value={report?.tbc_spec|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -307,20 +331,26 @@ export default function MicroMixReportFormView({
           <div className="py-1 px-2 border-r border-black flex">
             <input
               className="w-full input-editable  px-1 "
-              value={report?.tmy_gram}
+              value={report?.tmy_gram|| ""}
+              readOnly
+              disabled
             />
           </div>
           <div className="py-1 px-2 border-r border-black flex">
             <input
               className="w-1/2 input-editable  px-1"
-              value={report?.tmy_result}
+              value={report?.tmy_result|| ""}
+              readOnly
+              disabled
             />
             <div className="py-1 px-2 text-center">CFU/ml</div>
           </div>
           <div className="py-1 px-2 flex">
             <input
               className="w-full input-editable  px-1"
-              value={report?.tmy_spec}
+              value={report?.tmy_spec|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -395,7 +425,9 @@ export default function MicroMixReportFormView({
           <div className="mb-1 font-medium">Comments:</div>
           <input
             className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-            value={report?.comments}
+            value={report?.comments|| ""}
+            readOnly
+            disabled
           />
         </div>
 
@@ -406,7 +438,9 @@ export default function MicroMixReportFormView({
             TESTED BY:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.testedBy}
+              value={report?.testedBy|| ""}
+              readOnly
+              disabled
             />
           </div>
 
@@ -414,7 +448,9 @@ export default function MicroMixReportFormView({
             DATE:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.testedDate}
+              value={report?.testedDate|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -425,7 +461,9 @@ export default function MicroMixReportFormView({
             REVIEWED BY:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.reviewedBy}
+              value={report?.reviewedBy|| ""}
+              readOnly
+              disabled
             />
           </div>
 
@@ -433,7 +471,9 @@ export default function MicroMixReportFormView({
             DATE:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.reviewedDate}
+              value={report?.reviewedDate|| ""}
+              readOnly
+              disabled
             />
           </div>
         </div>

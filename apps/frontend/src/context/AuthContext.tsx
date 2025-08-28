@@ -64,6 +64,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("user", JSON.stringify(u)); // ✅ persist user
       setUser(u);
     } // store user info
+    else {
+      // fallback: fetch from backend
+      fetch("http://localhost:3000/auth/me", {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setUser(data);
+          localStorage.setItem("user", JSON.stringify(data));
+        });
+    }
   };
 
   const logout = () => {

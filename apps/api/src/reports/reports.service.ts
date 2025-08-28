@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaClient, ReportStatus, UserRole } from '@prisma/client';
+import { ReportsGateway } from './reports.gateway';
 
 const prisma = new PrismaClient();
 
@@ -78,92 +79,114 @@ const EDIT_MAP: Record<UserRole, string[]> = {
 // ----------------------------
 const STATUS_TRANSITIONS: Record<
   ReportStatus,
-  { next: ReportStatus[]; canSet: UserRole[]; nextEditableBy: UserRole[] }
+  {
+    next: ReportStatus[];
+    canSet: UserRole[];
+    nextEditableBy: UserRole[];
+    canEdit: ReportStatus[];
+  }
 > = {
   DRAFT: {
     canSet: ['CLIENT', 'FRONTDESK', 'ADMIN', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT', 'CLIENT_NEEDS_CORRECTION'],
     nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canEdit: ['DRAFT'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'FRONTDESK'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK'],
+    canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK','ADMIN'],
     next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
+    canEdit: ['RECEIVED_BY_FRONTDESK'],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK','ADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK'],
+    canEdit: ['FRONTDESK_ON_HOLD'],
   },
   FRONTDESK_REJECTED: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK','ADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION'],
     nextEditableBy: ['CLIENT'],
+    canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT','ADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT'],
+    canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['MICRO', 'CHEMISTRY'],
+    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
+    canEdit: [],
   },
   TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'CHEMISTRY'],
+    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
+    canEdit: [],
   },
   TESTING_REJECTED: {
-    canSet: ['MICRO', 'CHEMISTRY'],
+    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
     next: ['FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
     nextEditableBy: ['FRONTDESK'],
+    canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA','ADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'QA_REJECTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA'],
+    canEdit: [],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA'],
+    canSet: ['QA','ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
+    canEdit: [],
   },
   QA_REJECTED: {
-    canSet: ['QA'],
+    canSet: ['QA','ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
+    canEdit: [],
   },
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'APPROVED'],
     nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
+    canEdit: [],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA'],
+    canEdit: [],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA'],
+    canEdit: [],
   },
   APPROVED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['LOCKED'],
     nextEditableBy: [],
+    canEdit: [],
   },
   LOCKED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: [],
     nextEditableBy: [],
+    canEdit: [],
   },
 };
 
@@ -181,6 +204,7 @@ function allowedForRole(role: UserRole, fields: string[]) {
 // ----------------------------
 @Injectable()
 export class ReportsService {
+  constructor(private readonly reportsGateway: ReportsGateway) {}
   async createDraft(user: { userId: string; role: UserRole }, body: any) {
     if (
       !['FRONTDESK', 'ADMIN', 'SYSTEMADMIN', 'MICRO', 'CLIENT'].includes(
@@ -197,7 +221,7 @@ export class ReportsService {
     });
     const nextNumber = (last?.reportNumber ?? 0) + 1;
 
-    return prisma.microMixReport.create({
+    const created = await prisma.microMixReport.create({
       data: {
         ...this._coerce(body),
         status: 'DRAFT',
@@ -207,6 +231,11 @@ export class ReportsService {
         reportNumber: nextNumber,
       },
     });
+
+    // 🔥 notify in real-time
+    this.reportsGateway.notifyReportCreated(created);
+
+    return created;
   }
 
   async get(id: string) {
@@ -238,7 +267,23 @@ export class ReportsService {
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
       }
     }
-    
+
+    // 🚨 New status-based editing check
+    // 🚨 New status-based editing check (only for fields)
+    if (fields.length > 0) {
+      const transition = STATUS_TRANSITIONS[current.status];
+      if (!transition) {
+        throw new BadRequestException(
+          `Invalid current status: ${current.status}`,
+        );
+      }
+
+      if (!transition.canEdit.includes(current.status)) {
+        throw new ForbiddenException(
+          `Reports with status ${current.status} cannot be edited`,
+        );
+      }
+    }
 
     // handle status transitions
     if (patch.status) {
@@ -268,10 +313,18 @@ export class ReportsService {
       }
     }
 
-    return prisma.microMixReport.update({
+    const updated = await prisma.microMixReport.update({
       where: { id },
       data: { ...this._coerce(patch), updatedBy: user.userId },
     });
+    // 🔥 notify in real-time
+    if (patch.status) {
+      this.reportsGateway.notifyStatusChange(id, patch.status);
+    } else {
+      this.reportsGateway.notifyReportUpdate(updated);
+    }
+
+    return updated;
   }
 
   async updateStatus(

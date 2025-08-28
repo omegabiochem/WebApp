@@ -3,8 +3,6 @@
 // // @Controller('auth')
 // // export class AuthController {}
 
-
-
 // import { Body, Controller, Post } from '@nestjs/common';
 // import { AuthService } from './auth.service';
 
@@ -16,7 +14,15 @@
 //     return this.auth.login(body.email, body.password);
 //   }
 // }
-import { Body, Controller, Post, UseGuards, Req, BadRequestException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+  Req,
+  BadRequestException,
+  Get,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import * as bcrypt from 'bcrypt';
@@ -35,12 +41,19 @@ export class AuthController {
     return this.auth.login(body.email, body.password);
   }
 
+  @UseGuards(JwtAuthGuard) // ✅ require a valid JWT
+  @Get('me') // ✅ maps to GET /auth/me
+  getMe(@Req() req) {
+    // ✅ NestJS injects request
+    return req.user; // ✅ return the user payload decoded from the JWT
+  }
+
   // Authenticated user changes their own password (first login flow)
   // @UseGuards(JwtAuthGuard)
   @Post('change-password')
   async changePassword(
     @Req() req: any,
-    @Body() body: { currentPassword: string; newPassword: string }
+    @Body() body: { currentPassword: string; newPassword: string },
   ) {
     const userId = req.user?.userId as string;
     if (!userId) throw new BadRequestException('Unauthenticated');
@@ -52,7 +65,9 @@ export class AuthController {
     if (!ok) throw new BadRequestException('Current password is incorrect');
 
     if (!body.newPassword || body.newPassword.length < 8) {
-      throw new BadRequestException('New password must be at least 8 characters');
+      throw new BadRequestException(
+        'New password must be at least 8 characters',
+      );
     }
 
     const passwordHash = await bcrypt.hash(body.newPassword, 10);

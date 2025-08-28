@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,6 +7,95 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model MicroMixReport {
+  id                     String       @id @default(cuid())
+  reportNumber           Int          @unique
+  prefix                 String       @default("M")
+  client                 String?
+  dateSent               DateTime?
+  typeOfTest             String?
+  sampleType             String?
+  formulaNo              String?
+  description            String?
+  lotNo                  String?
+  manufactureDate        DateTime?
+  testSopNo              String?
+  dateTested             DateTime?
+  preliminaryResults     String?
+  preliminaryResultsDate DateTime?
+  dateCompleted          DateTime?
+  tbc_dilution           String?
+  tbc_gram               String?
+  tbc_result             String?
+  tbc_spec               String?
+  tmy_dilution           String?
+  tmy_gram               String?
+  tmy_result             String?
+  tmy_spec               String?
+  pathogens              Json?
+  comments               String?
+  testedBy               String?
+  testedDate             DateTime?
+  reviewedBy             String?
+  reviewedDate           DateTime?
+  status                 ReportStatus @default(DRAFT)
+  lockedAt               DateTime?
+  createdBy              String?
+  updatedBy              String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+}
+
+model Sample {
+  id         String   @id @default(cuid())
+  clientId   String
+  sampleCode String   @unique
+  sampleType String
+  receivedAt DateTime @default(now())
+  status     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model User {
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  name               String?
+  role               UserRole          @default(CLIENT)
+  passwordHash       String
+  mustChangePassword Boolean           @default(false)
+  active             Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  // 👇 relation: one user can have many balance readings
+  readings           BalanceReading[]
+  // 👇 relation: one user can have many audit trails
+  auditTrails        AuditTrail[]
+}
+
+model BalanceReading {
+  id         String   @id @default(cuid())
+  instrument String
+  command    String
+  result     String
+  createdAt  DateTime @default(now())
+
+  // foreign key
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+}
+
+model AuditTrail {
+  id        String   @id @default(cuid())
+  action    String
+  details   String
+  createdAt DateTime @default(now())
+
+  // foreign key
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
 
 enum ReportStatus {
   DRAFT
@@ -30,58 +117,6 @@ enum ReportStatus {
   LOCKED
 }
 
-
-model MicroMixReport {
-  id                       String       @id @default(cuid())
-  reportNumber             Int          @unique
-  prefix                   String       @default("M")
-  // Header/meta
-  client                   String?
-  dateSent                 DateTime?
-  typeOfTest               String?
-  sampleType               String?
-  formulaNo                String?
-  description              String?
-  lotNo                    String?
-  manufactureDate          DateTime?
-  testSopNo                String?
-  dateTested               DateTime?
-  preliminaryResults       String?
-  preliminaryResultsDate   DateTime?
-  dateCompleted            DateTime?
-
-  // TBC/TFC blocks (use String to keep exact printed format e.g., "x 10^1", "CFU/ml")
-  tbc_dilution             String?      // e.g., "x 10^1"
-  tbc_gram                 String?
-  tbc_result               String?
-  tbc_spec                 String?
-  tmy_dilution             String?
-  tmy_gram                 String?
-  tmy_result               String?
-  tmy_spec                 String?
-
-  // Pathogens as JSON [{ key, label, grams, result, spec }]
-  pathogens                Json?
-
-  comments                 String?
-
-  // Sign-off
-  testedBy                 String?
-  testedDate               DateTime?
-  reviewedBy               String?
-  reviewedDate             DateTime?
-
-  // Part 11 / control
-  status                   ReportStatus @default(DRAFT)
-  lockedAt                 DateTime?
-  createdBy                String?
-  updatedBy                String?
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
-}
-
-
-
 enum UserRole {
   SYSTEMADMIN
   ADMIN
@@ -91,31 +126,3 @@ enum UserRole {
   QA
   CLIENT
 }
-
-model User {
-  id                 String   @id @default(cuid())
-  email              String   @unique
-  name               String?
-  role               UserRole @default(CLIENT)
-  passwordHash       String
-  mustChangePassword Boolean  @default(false)
-  active             Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-
-
-}
-
-model Sample {
-  id         String   @id @default(cuid())
-  clientId   String
-  sampleCode String   @unique
-  sampleType String
-  receivedAt DateTime @default(now())
-  status     String // received|in_progress|review|reported|archived
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
-

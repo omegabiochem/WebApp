@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import { useNavigate } from "react-router-dom";
 
 type Report = {
   id: string;
@@ -6,43 +8,61 @@ type Report = {
   dateSent: string | null;
   status: string;
   reportNumber: number;
+  prefix?: string;
 };
 
-const FRONTDESK_STATUSES = [
+const CLIENT_STATUSES = [
+  "ALL", // 👈 added ALL option
+  "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "RECEIVED_BY_FRONTDESK",
-  "FRONTDESK_ON_HOLD",
-  "FRONTDESK_REJECTED",
+  "CLIENT_NEEDS_CORRECTION",
 ];
 
 export default function ClientDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [filter, setFilter] = useState("SUBMITTED_BY_CLIENT");
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchReports() {
       const token = localStorage.getItem("token");
+      if (!token) return;
+
       const res = await fetch("http://localhost:3000/reports/micro-mix", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const all = await res.json();
-      // filter by allowed statuses
-      setReports(
-        all.filter((r: Report) => FRONTDESK_STATUSES.includes(r.status))
-      );
+
+      if (res.ok) {
+        const all = await res.json();
+        // Only keep reports in the 3 statuses (ignore others from backend)
+        setReports(
+          all.filter((r: Report) =>
+            [
+              "SUBMITTED_BY_CLIENT",
+              "DRAFT",
+              "CLIENT_NEEDS_CORRECTION",
+            ].includes(r.status)
+          )
+        );
+      } else {
+        console.error("Failed to fetch reports", res.status);
+      }
     }
     fetchReports();
   }, []);
 
-  const filtered = reports.filter((r) => r.status === filter);
+  // 👇 filtering logic with ALL option
+  const filtered =
+    filter === "ALL" ? reports : reports.filter((r) => r.status === filter);
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">FrontDesk Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-4">Client Dashboard</h1>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4">
-        {FRONTDESK_STATUSES.map((s) => (
+        {CLIENT_STATUSES.map((s) => (
           <button
             key={s}
             onClick={() => setFilter(s)}
@@ -82,13 +102,13 @@ export default function ClientDashboard() {
                 <td className="p-2 flex gap-2">
                   <button
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-                    onClick={() => console.log("View", r.id)}
+                    onClick={() => setSelectedReport(r)}
                   >
                     View
                   </button>
                   <button
                     className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-                    onClick={() => console.log("Edit", r.id)}
+                    onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
                   >
                     Update
                   </button>
@@ -105,6 +125,32 @@ export default function ClientDashboard() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal with full form in read-only */}
+      {selectedReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
+            <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
+              Report {selectedReport.prefix}
+              {selectedReport.reportNumber}
+            </h2>
+
+            <MicroMixReportFormView
+              report={selectedReport}
+              onClose={() => setSelectedReport(null)}
+            />
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setSelectedReport(null)}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

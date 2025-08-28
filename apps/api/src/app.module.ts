@@ -20,6 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './common/roles.guard';
 import { ReportsModule } from './reports/reports.module';
 import { JwtAuthGuard } from './common/jwt-auth.guard';
+import { BalanceModule } from './balancer/balance.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { JwtAuthGuard } from './common/jwt-auth.guard';
     SamplesModule,
     UsersModule,
     ReportsModule,
+    BalanceModule
   ],
   providers: [
     JwtStrategy,

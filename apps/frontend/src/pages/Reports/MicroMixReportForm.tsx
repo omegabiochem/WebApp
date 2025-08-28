@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { useBeforeUnload, useBlocker } from "react-router-dom";
+import { useBlocker } from "react-router-dom";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -43,92 +43,114 @@ export type ReportStatus =
 // ---- Mirror of backend STATUS_TRANSITIONS ----
 const STATUS_TRANSITIONS: Record<
   ReportStatus,
-  { canSet: Role[]; next: ReportStatus[]; nextEditableBy: Role[] }
+  {
+    canSet: Role[];
+    next: ReportStatus[];
+    nextEditableBy: Role[];
+    canEdit: ReportStatus[];
+  }
 > = {
   DRAFT: {
     canSet: ["CLIENT", "FRONTDESK", "ADMIN", "SYSTEMADMIN"],
     next: ["SUBMITTED_BY_CLIENT", "CLIENT_NEEDS_CORRECTION"],
     nextEditableBy: ["CLIENT", "FRONTDESK"],
+    canEdit: ["DRAFT"],
   },
   SUBMITTED_BY_CLIENT: {
     canSet: ["CLIENT"],
     next: ["RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["FRONTDESK"],
+    canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_TESTING_REVIEW", "FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
     nextEditableBy: ["MICRO"],
+    canEdit: ["RECEIVED_BY_FRONTDESK"],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ["FRONTDESK"],
     next: ["RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["FRONTDESK"],
+    canEdit: [],
   },
   FRONTDESK_REJECTED: {
     canSet: ["FRONTDESK"],
     next: ["CLIENT_NEEDS_CORRECTION"],
     nextEditableBy: ["CLIENT"],
+    canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["SUBMITTED_BY_CLIENT"],
     nextEditableBy: ["CLIENT"],
+    canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
     canSet: ["MICRO"],
     next: ["TESTING_ON_HOLD", "TESTING_REJECTED", "UNDER_QA_REVIEW"],
     nextEditableBy: ["MICRO"],
+    canEdit: [],
   },
   TESTING_ON_HOLD: {
     canSet: ["MICRO"],
     next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
+    canEdit: [],
   },
   TESTING_REJECTED: {
     canSet: ["MICRO"],
     next: ["FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
     nextEditableBy: ["FRONTDESK"],
+    canEdit: [],
   },
   UNDER_QA_REVIEW: {
     canSet: ["QA"],
     next: ["QA_NEEDS_CORRECTION", "QA_REJECTED", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["QA"],
+    canEdit: [],
   },
   QA_NEEDS_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
+    canEdit: [],
   },
   QA_REJECTED: {
     canSet: ["QA"],
     next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
+    canEdit: [],
   },
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
     nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
+    canEdit: [],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_QA_REVIEW"],
     nextEditableBy: ["QA"],
+    canEdit: [],
   },
   ADMIN_REJECTED: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_QA_REVIEW"],
     nextEditableBy: ["QA"],
+    canEdit: [],
   },
   APPROVED: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["LOCKED"],
     nextEditableBy: [],
+    canEdit: [],
   },
   LOCKED: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: [],
     nextEditableBy: [],
+    canEdit: [],
   },
 };
 
@@ -152,6 +174,11 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
 function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
+  if (!role || !status) return false;
+  const transition = STATUS_TRANSITIONS[status]; // ✅ safe now
+  if (!transition || !transition.canEdit?.includes(status)) {
+    return false;
+  }
   const map: Record<Role, string[]> = {
     SYSTEMADMIN: [],
     ADMIN: ["*"],
@@ -198,9 +225,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   };
   if (!role) return false;
   // special rule: client can edit anything in DRAFT
-  if (role === "CLIENT" && status === "DRAFT") {
-    return true;
-  }
+  // if (role === "CLIENT" && status === "DRAFT") {
+  //   return true;
+  // }
+
   if (map[role]?.includes("*")) return true;
   return map[role]?.includes(field) ?? false;
 }
@@ -393,7 +421,53 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
     const token = localStorage.getItem("token");
     const API_BASE = "http://localhost:3000";
 
-    const payload: any = {
+    const ALLOWED_FIELDS: Record<Role, string[]> = {
+      ADMIN: ["*"],
+      SYSTEMADMIN: [],
+      FRONTDESK: [
+        "client",
+        "dateSent",
+        "typeOfTest",
+        "sampleType",
+        "formulaNo",
+        "description",
+        "lotNo",
+        "manufactureDate",
+        "testSopNo",
+      ],
+      MICRO: [
+        "tbc_dilution",
+        "tbc_gram",
+        "tbc_result",
+        "tbc_spec",
+        "tmy_dilution",
+        "tmy_gram",
+        "tmy_result",
+        "tmy_spec",
+        "pathogens",
+        "dateTested",
+        "preliminaryResults",
+        "preliminaryResultsDate",
+        "testedBy",
+        "testedDate",
+        "comments",
+      ],
+      QA: ["dateCompleted", "reviewedBy", "reviewedDate", "comments", "status"],
+      CLIENT: [
+        "client",
+        "dateSent",
+        "typeOfTest",
+        "sampleType",
+        "formulaNo",
+        "description",
+        "lotNo",
+        "manufactureDate",
+        "testSopNo",
+      ],
+    };
+
+    // Build full payload
+    const fullPayload: any = {
       client,
       dateSent,
       typeOfTest,
@@ -420,6 +494,15 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       testedDate,
       reviewedDate,
     };
+    // Filter fields based on role
+    const allowed = ALLOWED_FIELDS[role || "CLIENT"] || [];
+    const payload = allowed.includes("*")
+      ? fullPayload
+      : Object.fromEntries(
+          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+        );
+
+    // New reports always start as DRAFT
     if (!reportId) {
       payload.status = "DRAFT";
     }
@@ -472,6 +555,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       if (!reportId) {
         await handleSave();
       }
+      console.log(reportId);
 
       const url = `${API_BASE}/reports/micro-mix/${reportId}/status`;
       const res = await fetch(url, {
@@ -682,6 +766,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  type="date"
                   value={manufactureDate}
                   onChange={(e) => setManufactureDate(e.target.value)}
                 />
@@ -710,6 +795,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  type="date"
                   value={dateTested}
                   onChange={(e) => setDateTested(e.target.value)}
                 />
@@ -738,6 +824,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  type="date"
                   value={preliminaryResultsDate}
                   onChange={(e) => setPreliminaryResultsDate(e.target.value)}
                 />
@@ -753,6 +840,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             ) : (
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                type="date"
                 value={dateCompleted}
                 onChange={(e) => setDateCompleted(e.target.value)}
               />
@@ -998,6 +1086,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               DATE:
               <input
                 className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                type="date"
                 value={testedDate}
                 onChange={(e) => setTestedDate(e.target.value)}
                 readOnly={lock("testedDate")}
@@ -1023,6 +1112,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               DATE:
               <input
                 className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                type="date"
                 value={reviewedDate}
                 onChange={(e) => setReviewedDate(e.target.value)}
                 readOnly={lock("testedDate")}
