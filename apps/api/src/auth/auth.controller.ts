@@ -1,19 +1,4 @@
-// // import { Controller } from '@nestjs/common';
 
-// // @Controller('auth')
-// // export class AuthController {}
-
-// import { Body, Controller, Post } from '@nestjs/common';
-// import { AuthService } from './auth.service';
-
-// @Controller('auth')
-// export class AuthController {
-//   constructor(private auth: AuthService) {}
-//   @Post('login')
-//   login(@Body() body: { email: string; password: string }) {
-//     return this.auth.login(body.email, body.password);
-//   }
-// }
 import {
   Body,
   Controller,
@@ -35,11 +20,21 @@ const prisma = new PrismaClient();
 export class AuthController {
   constructor(private auth: AuthService) {}
 
+  // // ✅ Login with userId + password
+  // @Public()
+  // @Post('login')
+  // login(@Body() body: { userId: string; password: string }) {
+  //   return this.auth.loginWithUserId(body.userId, body.password);
+  // }
+
+
   @Public()
   @Post('login')
   login(@Body() body: { email: string; password: string }) {
     return this.auth.login(body.email, body.password);
   }
+
+   // ✅ Who am I?
 
   @UseGuards(JwtAuthGuard) // ✅ require a valid JWT
   @Get('me') // ✅ maps to GET /auth/me
@@ -47,6 +42,37 @@ export class AuthController {
     // ✅ NestJS injects request
     return req.user; // ✅ return the user payload decoded from the JWT
   }
+
+  
+  // // ✅ Admin invite (creates/updates user with temp password & invite token)
+  // @UseGuards(JwtAuthGuard)
+  // @Post('admin/invite')
+  // adminInvite(@Req() req, @Body() body: { email: string; role?: string }) {
+  //   // You can also role-guard here; assuming your JwtAuthGuard attaches role:
+  //   // if (!['ADMIN','SYSTEMADMIN'].includes(req.user.role)) throw new ForbiddenException();
+  //   return this.auth.adminInvite(body.email, body.role);
+  // }
+
+  // // ✅ First login: set userId + new password by invite token
+  // @Public()
+  // @Post('first-set-credentials')
+  // firstSetCredentials(
+  //   @Body() body: { inviteToken: string; userId: string; newPassword: string },
+  // ) {
+  //   return this.auth.firstSetCredentials(body);
+  // }
+
+  // // ✅ Regular authenticated password change (not the first-login)
+  // @UseGuards(JwtAuthGuard)
+  // @Post('change-password')
+  // async changePassword(
+  //   @Req() req: any,
+  //   @Body() body: { currentPassword: string; newPassword: string },
+  // ) {
+  //   const userId = req.user?.sub as string; // <-- payload.sub is our DB id
+  //   if (!userId) throw new BadRequestException('Unauthenticated');
+  //   return this.auth.changeOwnPassword(userId, body.currentPassword, body.newPassword);
+  // }
 
   // Authenticated user changes their own password (first login flow)
   // @UseGuards(JwtAuthGuard)

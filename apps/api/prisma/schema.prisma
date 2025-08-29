@@ -63,7 +63,21 @@ model User {
   name               String?
   role               UserRole          @default(CLIENT)
   passwordHash       String
+
+  // userId login + lifecycle
+  userId             String            @unique
+  userIdSetAt        DateTime?      
+  passwordUpdatedAt  DateTime?
+  passwordVersion    Int
+
+  // flag that set it in the first-login flow
   mustChangePassword Boolean           @default(false)
+
+  // admin invite / temporary credentials
+  inviteToken        String            @unique
+  inviteTokenExpiresAt DateTime?
+  tempPasswordExpiresAt DateTime?
+
   active             Boolean           @default(true)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
