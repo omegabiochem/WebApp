@@ -20,6 +20,7 @@ import SamplesPage from "./pages/Samples/SamplesPage";
 import MicroMixReportFormWrapper from "./pages/Reports/MicroMixReportFormWrapper";
 import AdminDashboard from "./pages/Dashboard/AdminDashboard";
 import BalancePage from "./balancer/pages/BalancePage";
+import FirstLogin from "./pages/Auth/FirstLogin";
 
 export const router = createBrowserRouter([
   {
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
         element: <MicroMixReportFormWrapper />,
       },
       { path: "balancer", element: <BalancePage /> },
+
       // { path: "reports/:id", element: <MicroMixReportForm /> },
       { path: "*", element: <div style={{ padding: 16 }}>Not Found</div> }, // helpful catch-all
     ],

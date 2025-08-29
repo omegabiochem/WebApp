@@ -3,8 +3,6 @@ import { PrismaClient, type UserRole } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
-
-// Type-safely bind the string value you want
 const ADMIN: UserRole = "ADMIN";
 
 async function main() {
@@ -12,20 +10,25 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: "admin@lab.test" },
-    update: { role: ADMIN },
+    update: {
+      role: ADMIN,
+      userId: "admin", // ensure lower-case
+    },
     create: {
       email: "admin@lab.test",
+      userId: "admin", // 👈 add this
       name: "Admin",
       role: ADMIN,
       passwordHash,
       active: true,
       mustChangePassword: false,
+      passwordVersion: 1,
+      // inviteToken: omit (it's optional)
     },
   });
 
-  console.log("Seeded/updated admin: admin@lab.test / Admin@123");
+  console.log('Seeded/updated admin: userId="admin" / password="Admin@123"');
 }
 
-main()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+main().catch((e) => { console.error(e); process.exit(1); })
+       .finally(() => prisma.$disconnect());

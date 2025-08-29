@@ -13,7 +13,7 @@ export class UsersController {
   // Only SYSTEMADMIN or ADMIN can create accounts
   @Roles('SYSTEMADMIN','ADMIN')
   @Post()
-  create(@Body() body: { email: string; name?: string; role: 'SYSTEMADMIN'|'ADMIN'|'FRONTDESK'|'MICRO'|'CHEMISTRY'|'QA'|'CLIENT' }) {
+  create(@Body() body: { email: string; name?: string; role: 'SYSTEMADMIN'|'ADMIN'|'FRONTDESK'|'MICRO'|'CHEMISTRY'|'QA'|'CLIENT';userId: string; }) {
     return this.svc.createByAdmin(body as any);
   }
 

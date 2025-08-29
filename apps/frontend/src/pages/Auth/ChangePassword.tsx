@@ -8,6 +8,19 @@ import { changeUserPassword } from "../../services/usersService";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
+
+type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "CHEMISTRY" | "QA" | "CLIENT";
+
+const roleHomePath: Record<Role, string> = {
+  ADMIN: "/adminDashboard",
+  CLIENT: "/clientDashboard",
+  SYSTEMADMIN: "/systemAdminDashboard",
+  MICRO: "/microDashboard",
+  CHEMISTRY: "/chemistryDashboard",
+  QA: "/qaDashboard",
+  FRONTDESK: "/frontdeskDashboard",
+};
+
 const schema = z.object({
   currentPassword: z.string().min(1, "Required"),
   newPassword: z.string().min(8, "Minimum 8 characters"),
@@ -49,7 +62,9 @@ export default function ChangePassword() {
     });
     reset();
     alert("Password changed. You can continue.");
-    nav("/");
+    // Use the current user's role for navigation
+    nav(roleHomePath[user.role as Role] ?? "/home", { replace: true });
+
   };
 
   const fieldClass =

@@ -65,16 +65,16 @@ model User {
   passwordHash       String
 
   // userId login + lifecycle
-  userId             String            @unique
+  userId             String?            @unique
   userIdSetAt        DateTime?      
   passwordUpdatedAt  DateTime?
-  passwordVersion    Int
+  passwordVersion       Int       @default(1)
 
   // flag that set it in the first-login flow
   mustChangePassword Boolean           @default(false)
 
   // admin invite / temporary credentials
-  inviteToken        String            @unique
+  inviteToken        String?            @unique
   inviteTokenExpiresAt DateTime?
   tempPasswordExpiresAt DateTime?
 
