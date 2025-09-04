@@ -99,61 +99,61 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK','ADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN'],
     next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: ['RECEIVED_BY_FRONTDESK'],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK','ADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK'],
     canEdit: ['FRONTDESK_ON_HOLD'],
   },
   FRONTDESK_REJECTED: {
-    canSet: ['FRONTDESK','ADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CLIENT','ADMIN'],
+    canSet: ['CLIENT', 'ADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
+    canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: [],
   },
   TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
+    canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: [],
   },
   TESTING_REJECTED: {
-    canSet: ['MICRO', 'CHEMISTRY','ADMIN'],
+    canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
     next: ['FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
     nextEditableBy: ['FRONTDESK'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA','ADMIN'],
+    canSet: ['QA', 'ADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'QA_REJECTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA'],
     canEdit: [],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA','ADMIN'],
+    canSet: ['QA', 'ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: [],
   },
   QA_REJECTED: {
-    canSet: ['QA','ADMIN'],
+    canSet: ['QA', 'ADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: [],
@@ -204,8 +204,8 @@ function allowedForRole(role: UserRole, fields: string[]) {
 // ----------------------------
 @Injectable()
 export class ReportsService {
-  constructor(private readonly reportsGateway: ReportsGateway) {}
-  async createDraft(user: { userId: string; role: UserRole }, body: any) {
+  constructor(private readonly reportsGateway: ReportsGateway) { }
+  async createDraft(user: { userId: string; role: UserRole; clientCode?: string }, body: any) {
     if (
       !['FRONTDESK', 'ADMIN', 'SYSTEMADMIN', 'MICRO', 'CLIENT'].includes(
         user.role,
@@ -214,21 +214,38 @@ export class ReportsService {
       throw new ForbiddenException('Not allowed to create report');
     }
 
-    const prefix = 'M';
-    const last = await prisma.microMixReport.findFirst({
-      where: { prefix },
-      orderBy: { reportNumber: 'desc' },
-    });
-    const nextNumber = (last?.reportNumber ?? 0) + 1;
+    // ✅ get clientCode (must exist if CLIENT)
+    const clientCode = user.clientCode ?? body.clientCode;
+    if (!clientCode) {
+      throw new BadRequestException('Client code is required to create a report');
+    }
+
+
+    // increment per-client sequence atomically
+  const seq = await prisma.clientSequence.upsert({
+    where: { clientCode },
+    update: { lastNumber: { increment: 1 } },
+    create: { clientCode, lastNumber: 1 },
+  });
+
+  const nextNumber = seq.lastNumber;
+  const formNumber = `${clientCode}-${nextNumber.toString().padStart(4, '0')}`;
+
+
+    // const prefix = 'M';
+    // const last = await prisma.microMixReport.findFirst({
+    //   where: { prefix },
+    //   orderBy: { reportNumber: 'desc' },
+    // });
+    // const nextNumber = (last?.reportNumber ?? 0) + 1;
 
     const created = await prisma.microMixReport.create({
       data: {
         ...this._coerce(body),
         status: 'DRAFT',
+        formNumber,
         createdBy: user.userId,
         updatedBy: user.userId,
-        prefix,
-        reportNumber: nextNumber,
       },
     });
 
@@ -367,7 +384,7 @@ export class ReportsService {
     if (copy.pathogens && typeof copy.pathogens !== 'object') {
       try {
         copy.pathogens = JSON.parse(copy.pathogens);
-      } catch {}
+      } catch { }
     }
     return copy;
   }

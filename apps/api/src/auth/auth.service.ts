@@ -141,7 +141,7 @@ export class AuthService {
     where: { userId },
     select: {
       id: true, email: true, role: true, name: true,
-      active: true, mustChangePassword: true, passwordHash: true, userId: true,
+      active: true, mustChangePassword: true, passwordHash: true, userId: true,clientCode:true
     },
   });
 
@@ -162,9 +162,8 @@ export class AuthService {
   }
 
   // First-login flow
- // auth.service.ts
 if (user.mustChangePassword) {
-  const payload = { sub: user.id, role: user.role, uid: user.userId ?? null, mcp: true }; // mcp = must change password
+  const payload = { sub: user.id, role: user.role, uid: user.userId ?? null, mcp: true ,clientCode: user.clientCode ?? null,}; // mcp = must change password
   const accessToken = this.jwt.sign(payload, { expiresIn: '15m' }); // short-lived
   return {
     requiresPasswordReset: true,
@@ -175,13 +174,14 @@ if (user.mustChangePassword) {
       role: user.role,
       name: user.name ?? undefined,
       mustChangePassword: true,
+      clientCode: user.clientCode ?? null,
     },
   };
 }
 
 
   // Issue JWT
-  const payload = { sub: user.id, role: user.role, uid: user.userId ?? null };
+  const payload = { sub: user.id, role: user.role, uid: user.userId ?? null,clientCode: user.clientCode ?? null, };
   const accessToken = this.jwt.sign(payload);
 
   return {
@@ -192,6 +192,7 @@ if (user.mustChangePassword) {
       role: user.role,
       name: user.name ?? undefined,
       mustChangePassword: user.mustChangePassword,
+      clientCode: user.clientCode ?? null,
     },
   };
 }
@@ -244,43 +245,3 @@ function throwIfInvalidUser(user: any): asserts user is any {
 
 
 
-// // import { Injectable } from '@nestjs/common';
-
-// // @Injectable()
-// // export class AuthService {}
-
-// import { Injectable, UnauthorizedException } from '@nestjs/common';
-// import { PrismaClient } from '@prisma/client';
-// import * as bcrypt from 'bcrypt';
-// import { JwtService } from '@nestjs/jwt';
-
-// const prisma = new PrismaClient();
-
-// @Injectable()
-// export class AuthService {
-//   constructor(private jwt: JwtService) {}
-
-//   async validate(email: string, password: string) {
-//     const user = await prisma.user.findUnique({ where: { email } });
-//     if (!user || !user.active)
-//       throw new UnauthorizedException('Invalid credentials');
-//     const ok = await bcrypt.compare(password, user.passwordHash);
-//     if (!ok) throw new UnauthorizedException('Invalid credentials');
-//     return user;
-//   }
-
-//   async login(email: string, password: string) {
-//     const user = await this.validate(email, password);
-//     const payload = { sub: user.id, role:user.role, email: user.email };
-//     return {
-//       accessToken: this.jwt.sign(payload),
-//       user: {
-//         id: user.id,
-//         email: user.email,
-//         role: user.role,
-//         name: user.name,
-//         mustChangePassword: user.mustChangePassword,
-//       },
-//     };
-//   }
-// }

@@ -281,15 +281,18 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
-  const initialData = JSON.stringify(report || {});
+  // const initialData = JSON.stringify(report || {});
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
 
+  //To set clientCode automatically when creating a new report
+  const initialClientValue = report?.client ||(role === "CLIENT" ? user?.clientCode || "" : "");
+
   // ---- local state (prefill from report if editing) ----
-  const [client, setClient] = useState(report?.client || "");
+  const [client, setClient] = useState(initialClientValue);
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
@@ -658,8 +661,8 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
-              {lock("client") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              {lock("client") || role === "CLIENT"? (
+                <div className="flex-1  min-h-[14px]">{client}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"

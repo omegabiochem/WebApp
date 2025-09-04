@@ -14,7 +14,7 @@ const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 @Injectable()
 export class UsersService {
   // ✅ Admin must provide userId
-  async createByAdmin(input: { email: string; name?: string; role: UserRole; userId: string }) {
+  async createByAdmin(input: { email: string; name?: string; role: UserRole; userId: string; clientCode?: string }) {
     const email = input.email.trim().toLowerCase();
     const desiredUserId = (input.userId ?? '').trim().toLowerCase();
 
@@ -23,6 +23,12 @@ export class UsersService {
     if (!USERID_RE.test(desiredUserId)) {
       throw new BadRequestException('Invalid User ID (4–20 chars, lowercase a–z, 0–9, dot, underscore, hyphen)');
     }
+
+    if (input.role === 'CLIENT') {
+    if (!input.clientCode || !/^[A-Z]{3}$/.test(input.clientCode)) {
+      throw new BadRequestException('Client Code must be exactly 3 uppercase letters');
+    }
+  }
 
     // Check email uniqueness
     const emailExists = await prisma.user.findUnique({ where: { email } });
@@ -47,8 +53,9 @@ export class UsersService {
         mustChangePassword: true,
         active: true,
         passwordVersion: 1,
+        clientCode: input.role === 'CLIENT' ? input.clientCode : null, 
       },
-      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, userId: true },
+      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, userId: true, clientCode: true },
     });
 
     return {

@@ -14,6 +14,7 @@ type User = {
   role: Role;
   name?: string;
   mustChangePassword?: boolean;
+  clientCode?: string;
 } | null;
 
 type AuthContextType = {

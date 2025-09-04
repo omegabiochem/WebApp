@@ -9,7 +9,8 @@ datasource db {
 
 model MicroMixReport {
   id                     String       @id @default(cuid())
-  reportNumber           Int          @unique
+  formNumber             String       @unique
+  reportNumber           Int?         @unique
   prefix                 String       @default("M")
   client                 String?
   dateSent               DateTime?
@@ -64,6 +65,9 @@ model User {
   role               UserRole          @default(CLIENT)
   passwordHash       String
 
+  // client
+  clientCode         String?
+
   // userId login + lifecycle
   userId             String?            @unique
   userIdSetAt        DateTime?      
@@ -86,6 +90,13 @@ model User {
   readings           BalanceReading[]
   // 👇 relation: one user can have many audit trails
   auditTrails        AuditTrail[]
+}
+
+
+
+model ClientSequence{
+  clientCode   String @id
+  lastNumber   Int     @default(0)
 }
 
 model BalanceReading {

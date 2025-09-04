@@ -33,7 +33,7 @@ export default function SamplesPage() {
       <table className="w-full border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="border px-2 py-1">#</th>
+            <th className="border px-2 py-1">FORM #</th>
             <th className="border px-2 py-1">Client</th>
             <th className="border px-2 py-1">Date Sent</th>
             <th className="border px-2 py-1">Status</th>
@@ -44,8 +44,7 @@ export default function SamplesPage() {
           {reports.map((r) => (
             <tr key={r.id}>
               <td className="border px-2 py-1">
-                {r.prefix}
-                {r.reportNumber}
+                {r.formNumber}
               </td>
               <td className="border px-2 py-1">{r.client}</td>
               <td className="border px-2 py-1">
@@ -70,8 +69,7 @@ export default function SamplesPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-              Report {selectedReport.prefix}
-              {selectedReport.reportNumber}
+              {selectedReport.formNumber}
             </h2>
 
             <MicroMixReportFormView
