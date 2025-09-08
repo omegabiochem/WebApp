@@ -47,50 +47,50 @@ const STATUS_TRANSITIONS: Record<
     canSet: Role[];
     next: ReportStatus[];
     nextEditableBy: Role[];
-    canEdit: ReportStatus[];
+    canEdit: Role[];
   }
 > = {
   DRAFT: {
     canSet: ["CLIENT", "FRONTDESK", "ADMIN", "SYSTEMADMIN"],
     next: ["SUBMITTED_BY_CLIENT", "CLIENT_NEEDS_CORRECTION"],
     nextEditableBy: ["CLIENT", "FRONTDESK"],
-    canEdit: ["DRAFT"],
+    canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["CLIENT"],
-    next: ["RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["FRONTDESK"],
+    canSet: ['FRONTDESK', 'MICRO'],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["FRONTDESK", "MICRO"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_TESTING_REVIEW", "FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
     nextEditableBy: ["MICRO"],
-    canEdit: ["RECEIVED_BY_FRONTDESK"],
+    canEdit: ["FRONTDESK"],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ["FRONTDESK"],
-    next: ["RECEIVED_BY_FRONTDESK"],
+    next: ["RECEIVED_BY_FRONTDESK", "FRONTDESK_REJECTED"],
     nextEditableBy: ["FRONTDESK"],
     canEdit: [],
   },
   FRONTDESK_REJECTED: {
     canSet: ["FRONTDESK"],
     next: ["CLIENT_NEEDS_CORRECTION"],
-    nextEditableBy: ["CLIENT"],
+    nextEditableBy: ["CLIENT", "FRONTDESK"],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["SUBMITTED_BY_CLIENT"],
-    nextEditableBy: ["CLIENT"],
-    canEdit: [],
+    nextEditableBy: ["FRONTDESK"],
+    canEdit: ['CLIENT'],
   },
   UNDER_TESTING_REVIEW: {
     canSet: ["MICRO"],
     next: ["TESTING_ON_HOLD", "TESTING_REJECTED", "UNDER_QA_REVIEW"],
     nextEditableBy: ["MICRO"],
-    canEdit: [],
+    canEdit: ['MICRO'],
   },
   TESTING_ON_HOLD: {
     canSet: ["MICRO"],
@@ -108,7 +108,7 @@ const STATUS_TRANSITIONS: Record<
     canSet: ["QA"],
     next: ["QA_NEEDS_CORRECTION", "QA_REJECTED", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["QA"],
-    canEdit: [],
+    canEdit: ['QA'],
   },
   QA_NEEDS_CORRECTION: {
     canSet: ["QA"],
@@ -125,7 +125,7 @@ const STATUS_TRANSITIONS: Record<
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
-    nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
+    nextEditableBy: ["QA","ADMIN", "SYSTEMADMIN"],
     canEdit: [],
   },
   ADMIN_NEEDS_CORRECTION: {
@@ -158,6 +158,7 @@ const STATUS_TRANSITIONS: Record<
 
 const statusButtons: Record<string, { label: string; color: string }> = {
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
+  CLIENT_NEEDS_CORRECTION: { label: "Reject", color: "bg-red-600" },
   RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
   FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-yellow-500" },
   FRONTDESK_REJECTED: { label: "Reject", color: "bg-red-600" },
@@ -167,6 +168,7 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
   QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
   QA_REJECTED: { label: "Reject", color: "bg-red-600" },
+  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
   APPROVED: { label: "Approve", color: "bg-green-700" },
@@ -176,7 +178,7 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   if (!role || !status) return false;
   const transition = STATUS_TRANSITIONS[status]; // ✅ safe now
-  if (!transition || !transition.canEdit?.includes(status)) {
+  if (!transition || !transition.canEdit?.includes(role)) {
     return false;
   }
   const map: Record<Role, string[]> = {
@@ -197,7 +199,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateTested",
       "preliminaryResults",
       "preliminaryResultsDate",
-      "dateCompleted",
       // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
@@ -211,7 +212,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "testedBy",
       "testedDate",
     ],
-    QA: ["reviewedBy", "reviewedDate"],
+    QA: ["dateCompleted","reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
       "dateSent",
@@ -288,11 +289,14 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
 
-  //To set clientCode automatically when creating a new report
-  const initialClientValue = report?.client ||(role === "CLIENT" ? user?.clientCode || "" : "");
+  // //To set clientCode automatically when creating a new report
+  // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
 
   // ---- local state (prefill from report if editing) ----
-  const [client, setClient] = useState(initialClientValue);
+  // const [client, setClient] = useState(initialClientValue);
+  const [client, setClient] = useState(
+    report?.client ?? (!report?.id && role === "CLIENT" ? user?.clientCode ?? "" : "")
+  );
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
@@ -436,9 +440,9 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         "description",
         "lotNo",
         "manufactureDate",
-        "testSopNo",
       ],
       MICRO: [
+         "testSopNo",
         "tbc_dilution",
         "tbc_gram",
         "tbc_result",
@@ -465,7 +469,6 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         "description",
         "lotNo",
         "manufactureDate",
-        "testSopNo",
       ],
     };
 
@@ -502,8 +505,8 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
     const payload = allowed.includes("*")
       ? fullPayload
       : Object.fromEntries(
-          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
-        );
+        Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+      );
 
     // New reports always start as DRAFT
     if (!reportId) {
@@ -583,6 +586,13 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
     if (!isDirty) setIsDirty(true);
   }
 
+  function formatDateForInput(value: string | null) {
+    if (!value) return "";
+    // Convert ISO to yyyy-MM-dd
+    return new Date(value).toISOString().split("T")[0];
+  }
+
+
   // Block tab close / refresh
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -661,7 +671,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
-              {lock("client") || role === "CLIENT"? (
+              {lock("client") || role === "CLIENT" ? (
                 <div className="flex-1  min-h-[14px]">{client}</div>
               ) : (
                 <input
@@ -677,12 +687,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
               {lock("dateSent") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                   type="date"
-                  value={dateSent}
+                  value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
                     markDirty();
@@ -697,7 +707,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
               {lock("typeOfTest") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{typeOfTest}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -709,7 +719,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
               {lock("sampleType") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{sampleType}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -721,7 +731,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">FORMULA #:</div>
               {lock("formulaNo") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1 min-h-[14px]">{formulaNo}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -736,7 +746,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
           <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug">
             <div className="w-28 font-medium">DESCRIPTION:</div>
             {lock("description") ? (
-              <div className="flex-1 border-b border-black min-h-[14px]"></div>
+              <div className="flex-1  min-h-[14px]">{description}</div>
             ) : (
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -751,7 +761,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">LOT #:</div>
               {lock("lotNo") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{lotNo}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -765,12 +775,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 MANUFACTURE DATE:
               </div>
               {lock("manufactureDate") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{formatDateForInput(manufactureDate)}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                   type="date"
-                  value={manufactureDate}
+                  value={formatDateForInput(manufactureDate)}
                   onChange={(e) => setManufactureDate(e.target.value)}
                 />
               )}
@@ -782,7 +792,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
               {lock("testSopNo") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{testSopNo}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -794,12 +804,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 flex items-center gap-1">
               <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
               {lock("dateTested") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{formatDateForInput(dateTested)}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                   type="date"
-                  value={dateTested}
+                  value={formatDateForInput(dateTested)}
                   onChange={(e) => setDateTested(e.target.value)}
                 />
               )}
@@ -811,7 +821,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="font-medium">PRELIMINARY RESULTS:</div>
               {lock("preliminaryResults") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{preliminaryResults}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -823,12 +833,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             <div className="px-2 flex items-center gap-1">
               <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
               {lock("preliminaryResultsDate") ? (
-                <div className="flex-1 border-b border-black min-h-[14px]"></div>
+                <div className="flex-1  min-h-[14px]">{preliminaryResultsDate}</div>
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                   type="date"
-                  value={preliminaryResultsDate}
+                  value={formatDateForInput(preliminaryResultsDate)}
                   onChange={(e) => setPreliminaryResultsDate(e.target.value)}
                 />
               )}
@@ -839,12 +849,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
           <div className=" flex items-center gap-2 px-2 text-[12px] leading-snug">
             <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
             {lock("dateCompleted") ? (
-              <div className="border-b border-black min-h-[14px] flex-1"></div>
+              <div className=" min-h-[14px] flex-1">{formatDateForInput(dateCompleted)}</div>
             ) : (
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                 type="date"
-                value={dateCompleted}
+                value={formatDateForInput(dateCompleted)}
                 onChange={(e) => setDateCompleted(e.target.value)}
               />
             )}
@@ -1090,7 +1100,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               <input
                 className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
                 type="date"
-                value={testedDate}
+                value={formatDateForInput(testedDate)}
                 onChange={(e) => setTestedDate(e.target.value)}
                 readOnly={lock("testedDate")}
                 placeholder="MM/DD/YYYY"
@@ -1106,7 +1116,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
                 value={reviewedBy}
                 onChange={(e) => setReviewedBy(e.target.value)}
-                readOnly={lock("testedBy")}
+                readOnly={lock("reviewedBy")}
                 placeholder="Name"
               />
             </div>
@@ -1116,9 +1126,9 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               <input
                 className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
                 type="date"
-                value={reviewedDate}
+                value={formatDateForInput(reviewedDate)}
                 onChange={(e) => setReviewedDate(e.target.value)}
-                readOnly={lock("testedDate")}
+                readOnly={lock("reviewedDate")}
                 placeholder="MM/DD/YYYY"
               />
             </div>

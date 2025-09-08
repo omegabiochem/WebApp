@@ -24,9 +24,9 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'description',
     'lotNo',
     'manufactureDate',
-    'testSopNo',
   ],
   MICRO: [
+    'testSopNo',
     'tbc_dilution',
     'tbc_gram',
     'tbc_result',
@@ -44,6 +44,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'comments',
   ],
   CHEMISTRY: [
+    'testSopNo',
     'tbc_dilution',
     'tbc_gram',
     'tbc_result',
@@ -60,7 +61,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedDate',
     'comments',
   ],
-  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate', 'comments', 'status'],
+  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate'],
   CLIENT: [
     'client',
     'dateSent',
@@ -70,7 +71,6 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'description',
     'lotNo',
     'manufactureDate',
-    'testSopNo',
   ],
 };
 
@@ -83,32 +83,32 @@ const STATUS_TRANSITIONS: Record<
     next: ReportStatus[];
     canSet: UserRole[];
     nextEditableBy: UserRole[];
-    canEdit: ReportStatus[];
+    canEdit: UserRole[];
   }
 > = {
   DRAFT: {
     canSet: ['CLIENT', 'FRONTDESK', 'ADMIN', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT', 'CLIENT_NEEDS_CORRECTION'],
     nextEditableBy: ['CLIENT', 'FRONTDESK'],
-    canEdit: ['DRAFT'],
+    canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['CLIENT', 'FRONTDESK'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK'],
+    canSet: ['FRONTDESK','MICRO'],
+    next: ['RECEIVED_BY_FRONTDESK','UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['FRONTDESK', 'MICRO'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'ADMIN'],
-    next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
+    next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED','SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
-    canEdit: ['RECEIVED_BY_FRONTDESK'],
+    canEdit: ['FRONTDESK'],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ['FRONTDESK', 'ADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK'],
-    canEdit: ['FRONTDESK_ON_HOLD'],
+    canEdit: ['FRONTDESK'],
   },
   FRONTDESK_REJECTED: {
     canSet: ['FRONTDESK', 'ADMIN'],
@@ -124,9 +124,9 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW','SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
-    canEdit: [],
+    canEdit: ['MICRO', 'CHEMISTRY'],
   },
   TESTING_ON_HOLD: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
@@ -144,7 +144,7 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['QA', 'ADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'QA_REJECTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA'],
-    canEdit: [],
+    canEdit: ['QA'],
   },
   QA_NEEDS_CORRECTION: {
     canSet: ['QA', 'ADMIN'],
@@ -199,6 +199,19 @@ function allowedForRole(role: UserRole, fields: string[]) {
   return disallowed;
 }
 
+
+
+function getDepartmentLetter(role: string): string {
+  switch (role) {
+    case "MICRO":
+      return "M";
+    case "CHEMISTRY":
+      return "C";
+    default:
+      return ""; // roles like ADMIN, QA, CLIENT don’t get lab letters
+  }
+}
+
 // ----------------------------
 // Reports Service
 // ----------------------------
@@ -207,7 +220,7 @@ export class ReportsService {
   constructor(private readonly reportsGateway: ReportsGateway) { }
   async createDraft(user: { userId: string; role: UserRole; clientCode?: string }, body: any) {
     if (
-      !['FRONTDESK', 'ADMIN', 'SYSTEMADMIN', 'MICRO', 'CLIENT'].includes(
+      ![ 'ADMIN', 'SYSTEMADMIN',  'CLIENT'].includes(
         user.role,
       )
     ) {
@@ -222,14 +235,14 @@ export class ReportsService {
 
 
     // increment per-client sequence atomically
-  const seq = await prisma.clientSequence.upsert({
-    where: { clientCode },
-    update: { lastNumber: { increment: 1 } },
-    create: { clientCode, lastNumber: 1 },
-  });
+    const seq = await prisma.clientSequence.upsert({
+      where: { clientCode },
+      update: { lastNumber: { increment: 1 } },
+      create: { clientCode, lastNumber: 1 },
+    });
 
-  const nextNumber = seq.lastNumber;
-  const formNumber = `${clientCode}-${nextNumber.toString().padStart(4, '0')}`;
+    const nextNumber = seq.lastNumber;
+    const formNumber = `${clientCode}-${nextNumber.toString().padStart(4, '0')}`;
 
 
     // const prefix = 'M';
@@ -295,10 +308,9 @@ export class ReportsService {
         );
       }
 
-      if (!transition.canEdit.includes(current.status)) {
+      if (!transition.canEdit.includes(user.role)) {
         throw new ForbiddenException(
-          `Reports with status ${current.status} cannot be edited`,
-        );
+         `Role ${user.role} cannot edit report in status ${current.status}`,       );
       }
     }
 
@@ -321,6 +333,29 @@ export class ReportsService {
         throw new BadRequestException(
           `Invalid transition: ${current.status} → ${patch.status}`,
         );
+      }
+
+
+      if (patch.status === 'UNDER_TESTING_REVIEW') {
+        const deptLetter = getDepartmentLetter(user.role);
+        console.log('User role:', user.role);
+        console.log('Department letter:', deptLetter);
+
+        if (deptLetter) {
+          // increment sequence per department
+          const seq = await prisma.labReportSequence.upsert({
+            where: { department: deptLetter },
+            update: { lastNumber: { increment: 1 } },
+            create: { department: deptLetter, lastNumber: 1 },
+          });
+          console.log('Sequence after upsert:', seq);
+
+          // assign report number with prefix
+
+          patch.reportNumber = `${deptLetter}-${seq.lastNumber
+            .toString()
+            .padStart(4, '0')}`;
+        }
       }
 
       // patch.nextEditableBy = STATUS_TRANSITIONS[patch.status].nextEditableBy;
@@ -355,7 +390,7 @@ export class ReportsService {
 
   async findAll() {
     return prisma.microMixReport.findMany({
-      orderBy: { reportNumber: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -374,7 +409,9 @@ export class ReportsService {
       'reviewedDate',
     ];
     for (const k of dateKeys) {
-      if (copy[k] === '' || copy[k] === undefined) {
+      if (!(k in copy)) continue;
+
+      if (copy[k] === '' || copy[k] === null) {
         copy[k] = null;
       } else if (typeof copy[k] === 'string') {
         const d = new Date(copy[k]);

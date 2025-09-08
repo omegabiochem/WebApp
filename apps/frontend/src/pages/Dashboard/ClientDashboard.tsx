@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 type Report = {
   id: string;
   client: string;
   dateSent: string | null;
   status: string;
-  reportNumber: number;
-  prefix?: string;
+  formNumber: string;
 };
 
 const CLIENT_STATUSES = [
@@ -23,6 +23,7 @@ export default function ClientDashboard() {
   const [filter, setFilter] = useState("SUBMITTED_BY_CLIENT");
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
     async function fetchReports() {
@@ -36,15 +37,21 @@ export default function ClientDashboard() {
       if (res.ok) {
         const all = await res.json();
         // Only keep reports in the 3 statuses (ignore others from backend)
-        setReports(
-          all.filter((r: Report) =>
-            [
-              "SUBMITTED_BY_CLIENT",
-              "DRAFT",
-              "CLIENT_NEEDS_CORRECTION",
-            ].includes(r.status)
-          )
+        // setReports(
+        //   all.filter((r: Report) =>
+        //     [
+        //       "SUBMITTED_BY_CLIENT",
+        //       "DRAFT",
+        //       "CLIENT_NEEDS_CORRECTION",
+        //     ].includes(r.status) && r.client === user?.clientCode
+        //   )
+        // );
+
+        const clientReports = all.filter(
+          (r: Report) => r.client === user?.clientCode
         );
+
+        setReports(clientReports);
       } else {
         console.error("Failed to fetch reports", res.status);
       }
@@ -66,9 +73,8 @@ export default function ClientDashboard() {
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-4 py-2 rounded-md border ${
-              filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
-            }`}
+            className={`px-4 py-2 rounded-md border ${filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
+              }`}
           >
             {s.replace(/_/g, " ")}
           </button>
@@ -80,7 +86,7 @@ export default function ClientDashboard() {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-gray-100 border-b">
-              <th className="p-2 text-left">Report #</th>
+              <th className="p-2 text-left">Form #</th>
               <th className="p-2 text-left">Client</th>
               <th className="p-2 text-left">Date Sent</th>
               <th className="p-2 text-left">Status</th>
@@ -91,8 +97,7 @@ export default function ClientDashboard() {
             {filtered.map((r) => (
               <tr key={r.id} className="border-b hover:bg-gray-50">
                 <td className="p-2">
-                  {r.prefix}
-                  {r.reportNumber}
+                  {r.formNumber}
                 </td>
                 <td className="p-2">{r.client}</td>
                 <td className="p-2">
@@ -131,8 +136,8 @@ export default function ClientDashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-              Report {selectedReport.prefix}
-              {selectedReport.reportNumber}
+              Report
+              {selectedReport.formNumber}
             </h2>
 
             <MicroMixReportFormView

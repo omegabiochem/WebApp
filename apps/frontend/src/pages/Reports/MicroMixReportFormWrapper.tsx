@@ -1,20 +1,22 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import MicroMixReportForm from "./MicroMixReportForm";
+import type {MicroMixReportDTO} from "../../../../SharedTypes/Reports/MicroMixReport";
+
 
 type Report = {
   id: string;
   client: string;
   dateSent: string | null;
   status: string;
-  reportNumber: number;
-  prefix?: string;
+  // reportNumber: number;
+  // prefix?: string;
   // add other fields if needed
 };
 
 export default function MicroMixReportFormWrapper() {
   const { id } = useParams<{ id: string }>();
-  const [report, setReport] = useState<Report | null>(null);
+  const [report, setReport] = useState<MicroMixReportDTO | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function MicroMixReportFormWrapper() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error(`Failed with status ${res.status}`);
-        const data: Report = await res.json();
+        const data: MicroMixReportDTO = await res.json();
         setReport(data);
       } catch (err) {
         console.error("Error fetching report:", err);

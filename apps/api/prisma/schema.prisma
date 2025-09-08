@@ -10,7 +10,7 @@ datasource db {
 model MicroMixReport {
   id                     String       @id @default(cuid())
   formNumber             String       @unique
-  reportNumber           Int?         @unique
+  reportNumber           String?      @unique
   prefix                 String       @default("M")
   client                 String?
   dateSent               DateTime?
@@ -97,6 +97,11 @@ model User {
 model ClientSequence{
   clientCode   String @id
   lastNumber   Int     @default(0)
+}
+
+model LabReportSequence{
+  department   String @id
+  lastNumber   Int    @default(0)
 }
 
 model BalanceReading {

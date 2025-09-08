@@ -2,7 +2,7 @@
 import { createBrowserRouter } from "react-router-dom";
 import App from "./App";
 import Results from "./pages/Results";
-import Reports from "./pages/Reports";
+// import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
 import Login from "./pages/Auth/Login";
 import Home from "./pages/Home"; // ✅ fixed path
@@ -11,7 +11,6 @@ import ChangePassword from "./pages/Auth/ChangePassword";
 import Root from "./Routes/Root";
 import SystemAdminDashboard from "./pages/Dashboard/SystemAdminDashboard";
 import ClientDashboard from "./pages/Dashboard/ClientDashboard";
-import QaDashboard from "./pages/Dashboard/QaDashboard";
 import MicroDashboard from "./pages/Dashboard/MicroDashboard";
 import ChemistryDashboard from "./pages/Dashboard/ChemistryDashboard";
 import FrontdeskDashboard from "./pages/Dashboard/FrontdeskDashboard";
@@ -20,7 +19,7 @@ import SamplesPage from "./pages/Samples/SamplesPage";
 import MicroMixReportFormWrapper from "./pages/Reports/MicroMixReportFormWrapper";
 import AdminDashboard from "./pages/Dashboard/AdminDashboard";
 import BalancePage from "./balancer/pages/BalancePage";
-import FirstLogin from "./pages/Auth/FirstLogin";
+import QADashboard from "./pages/Dashboard/QaDashboard";
 
 export const router = createBrowserRouter([
   {
@@ -32,7 +31,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <Login /> },
       { path: "samples", element: <SamplesPage /> },
       { path: "results", element: <Results /> },
-      { path: "reports", element: <Reports /> },
+      // { path: "reports", element: <Reports /> },
       { path: "audit", element: <Audit /> },
       { path: "admin", element: <CreateCredentials /> }, // ✅ admin route
       { path: "auth/change-password", element: <ChangePassword /> },
@@ -40,7 +39,7 @@ export const router = createBrowserRouter([
       { path: "systemAdminDashboard", element: <SystemAdminDashboard /> },
       { path: "chemistryDashboard", element: <ChemistryDashboard /> },
       { path: "microDashboard", element: <MicroDashboard /> },
-      { path: "qaDashboard", element: <QaDashboard /> },
+      { path: "qaDashboard", element: <QADashboard /> },
       { path: "clientDashboard", element: <ClientDashboard /> },
       { path: "frontdeskDashboard", element: <FrontdeskDashboard /> },
       { path: "reports/new", element: <MicroMixReportForm /> },

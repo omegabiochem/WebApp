@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import { useAuth } from "../../context/AuthContext";
 
 export default function SamplesPage() {
+  const { user } = useAuth();
   const [reports, setReports] = useState<any[]>([]);
   const [selectedReport, setSelectedReport] = useState<any | null>(null);
   const token = localStorage.getItem("token");
@@ -17,13 +19,18 @@ export default function SamplesPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setReports(data);
+        // 👇 Filter only client’s reports
+        if (user?.role === "CLIENT" && user?.clientCode) {
+          setReports(data.filter((r: any) => r.clientCode === user.clientCode));
+        } else {
+          setReports(data); // admins/frontdesk see all
+        }
       } else {
         console.error("Failed to fetch reports", res.status);
       }
     }
     fetchReports();
-  }, [token]);
+  }, [token, user]);
 
   return (
     <div className="p-4">

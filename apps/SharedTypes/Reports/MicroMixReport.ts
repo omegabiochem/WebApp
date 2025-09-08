@@ -1,0 +1,35 @@
+// Shared DTO for frontend <-> backend
+export type MicroMixReportDTO = {
+  id: string;
+  client: string | null;
+  dateSent: string | null;
+  status: string;
+  formNumber: string;
+  reportNumber?: string | null;
+  prefix?: string | null;
+  sampleType?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+  testSopNo?: string | null;
+  dateTested?: string | null;
+  preliminaryResults?: string | null;
+  preliminaryResultsDate?: string | null;
+  dateCompleted?: string | null;
+  tbc_gram?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_gram?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+  pathogens?: any;
+  comments?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+  testedDate?: string | null;
+  reviewedDate?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
