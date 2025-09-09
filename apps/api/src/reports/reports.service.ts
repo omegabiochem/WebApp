@@ -71,6 +71,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'description',
     'lotNo',
     'manufactureDate',
+    'pathogens'
   ],
 };
 
@@ -120,7 +121,7 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['CLIENT', 'ADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT'],
-    canEdit: [],
+    canEdit: ['CLIENT'],
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],

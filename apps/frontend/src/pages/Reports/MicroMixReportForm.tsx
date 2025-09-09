@@ -125,7 +125,7 @@ const STATUS_TRANSITIONS: Record<
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
-    nextEditableBy: ["QA","ADMIN", "SYSTEMADMIN"],
+    nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: [],
   },
   ADMIN_NEEDS_CORRECTION: {
@@ -212,7 +212,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "testedBy",
       "testedDate",
     ],
-    QA: ["dateCompleted","reviewedBy", "reviewedDate"],
+    QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
       "dateSent",
@@ -442,7 +442,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         "manufactureDate",
       ],
       MICRO: [
-         "testSopNo",
+        "testSopNo",
         "tbc_dilution",
         "tbc_gram",
         "tbc_result",
@@ -459,7 +459,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         "testedDate",
         "comments",
       ],
-      QA: ["dateCompleted", "reviewedBy", "reviewedDate", "comments", "status"],
+      QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
       CLIENT: [
         "client",
         "dateSent",
@@ -469,6 +469,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
         "description",
         "lotNo",
         "manufactureDate",
+        "pathogens",
       ],
     };
 
@@ -517,6 +518,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       let res;
 
       if (reportId) {
+        console.log("Updating report", reportId);
         // update
         res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}`, {
           method: "PATCH",
@@ -543,7 +545,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       setIsDirty(false);
 
       setReportId(saved.id); // 👈 keep the new id
-      setStatus("DRAFT");
+      setStatus(saved.status); // in case backend changed it
       alert("✅ Report saved as draft");
     } catch (err: any) {
       console.error(err);
@@ -979,13 +981,14 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
                 <input
                   type="checkbox"
-                  className="form-checkbox rounded-full border-black h-3 w-3"
+                  className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
                   checked={p.checked || false}
                   onChange={(e) => {
                     const copy = [...pathogens];
                     copy[idx] = { ...p, checked: e.target.checked };
                     setPathogens(copy);
                   }}
+                  // disabled={lock('pathogens')}
                   disabled={
                     role === "ADMIN" ||
                     role === "FRONTDESK" ||
@@ -1009,7 +1012,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 <label className="flex items-center gap-1">
                   <input
                     type="checkbox"
-                    className="form-checkbox rounded-full border-black h-3 w-3"
+                    className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
                     checked={p.result === "Absent"}
                     onChange={() => {
                       const copy = [...pathogens];
@@ -1030,7 +1033,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 <label className="flex items-center gap-1">
                   <input
                     type="checkbox"
-                    className="form-checkbox rounded-full border-black h-3 w-3"
+                    className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
                     checked={p.result === "Present"}
                     onChange={() => {
                       const copy = [...pathogens];

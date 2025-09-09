@@ -13,6 +13,28 @@
              focus:border-blue-500 
              focus:ring-1 focus:ring-blue-400;
     }
+     /* ✅ Thick black custom checkbox/radio */
+  .thick-box {
+    @apply appearance-none inline-grid place-content-center 
+           h-3 w-3 rounded-full border-2 border-black cursor-pointer;
+  }
+
+  .thick-box::after {
+    content: "";
+    @apply rounded-full bg-black;
+    width: 8px;
+    height: 8px;
+    transform: scale(0);
+    transition: transform 120ms ease-in-out;
+  }
+
+  .thick-box:checked::after {
+    transform: scale(1);
+  }
+
+  .thick-box:disabled {
+    opacity: 1; /* keeps them black instead of greyed */
+  }
 }
 
 @media print {

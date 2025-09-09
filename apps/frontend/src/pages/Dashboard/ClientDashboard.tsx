@@ -13,6 +13,7 @@ type Report = {
 
 const CLIENT_STATUSES = [
   "ALL", // 👈 added ALL option
+  "APPROVED",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
