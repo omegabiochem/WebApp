@@ -105,11 +105,12 @@ export default function MicroMixReportFormView({
           </div>
           {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
         </div>
-        <div
-          className="text-[18px] font-bold mt-1"
-          style={{ textDecoration: "underline" }}
-        >
-          Report
+        <div className="mt-1 grid grid-cols-3 items-center">
+          <div /> {/* left spacer */}
+          <div className="text-[18px] font-bold text-center underline">Report</div>
+          <div className="text-right text-[12px] font-bold font-medium">
+            {report.reportNumber ? <> {report.reportNumber}</> : null}
+          </div>
         </div>
       </div>
 

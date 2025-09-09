@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { useBlocker } from "react-router-dom";
+import { useBlocker, useNavigate } from "react-router-dom";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -278,9 +278,11 @@ const PrintStyles = () => (
 `}</style>
 );
 
-export default function MicroMixReportForm({ report }: { report?: any }) {
+export default function MicroMixReportForm({ report, onClose }: { report?: any; onClose?: () => void }) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
+
+  const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
   const [isDirty, setIsDirty] = useState(false);
@@ -288,6 +290,9 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
   const [status, setStatus] = useState(report?.status || "DRAFT");
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
+
+  const [reportNumber, setReportNumber] = useState<string>(report?.reportNumber || "");
+
 
   // //To set clientCode automatically when creating a new report
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
@@ -546,7 +551,8 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
 
       setReportId(saved.id); // 👈 keep the new id
       setStatus(saved.status); // in case backend changed it
-      alert("✅ Report saved as draft");
+      setReportNumber(saved.reportNumber || "");
+      alert("✅ Report saved as '" + saved.status + "'");
     } catch (err: any) {
       console.error(err);
       alert("❌ Error saving draft: " + err.message);
@@ -561,6 +567,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
 
       // if report not saved → save first
       if (!reportId) {
+        alert("Please save the report before changing status");
         await handleSave();
       }
       console.log(reportId);
@@ -576,7 +583,10 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       });
 
       if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-      setStatus(newStatus);
+      const updated: { status?: ReportStatus; reportNumber?: string } = await res.json();
+      setStatus(updated.status ?? newStatus);
+      setReportNumber(updated.reportNumber || reportNumber); // capture when backend assigns it
+
       alert(`✅ Status changed to ${newStatus}`);
     } catch (err: any) {
       console.error(err);
@@ -615,6 +625,13 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
   //   event.preventDefault();
   // });
 
+
+  const handleClose = () => {
+    // Your useBlocker(isDirty) hook will intercept this navigation if there are unsaved changes.
+    if (onClose) onClose();
+    else navigate(-1);
+  };
+
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -622,6 +639,12 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
 
         {/* Header + print controls */}
         <div className="no-print mb-4 flex justify-end gap-2">
+          <button
+            className="px-3 py-1 rounded-md border bg-gray-600 text-white"
+            onClick={handleClose}
+          >
+            Close
+          </button>
           <button
             className="px-3 py-1 rounded-md border"
             onClick={() => window.print()}
@@ -637,6 +660,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             {reportId ? "Update Report" : "Save Report"}
           </button>
         </div>
+
 
         {/* Letterhead */}
         <div className="mb-2 text-center">
@@ -659,12 +683,21 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
             </div>
             {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
           </div>
-          <div
+          {/* <div
             className="text-[18px] font-bold mt-1"
             style={{ textDecoration: "underline" }}
           >
             Report
+          </div> */}
+          {/* Report title + number */}
+          <div className="mt-1 grid grid-cols-3 items-center">
+            <div /> {/* left spacer */}
+            <div className="text-[18px] font-bold text-center underline">Report</div>
+            <div className="text-right text-[12px] font-bold font-medium">
+              {reportNumber ? <> {reportNumber}</> : null}
+            </div>
           </div>
+
         </div>
 
         {/* Top meta block */}
@@ -981,7 +1014,8 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
                 <input
                   type="checkbox"
-                  className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
+                  // className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
+                  className="thick-box"
                   checked={p.checked || false}
                   onChange={(e) => {
                     const copy = [...pathogens];
@@ -1012,7 +1046,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 <label className="flex items-center gap-1">
                   <input
                     type="checkbox"
-                    className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
+                    className="thick-box"
                     checked={p.result === "Absent"}
                     onChange={() => {
                       const copy = [...pathogens];
@@ -1033,7 +1067,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
                 <label className="flex items-center gap-1">
                   <input
                     type="checkbox"
-                    className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
+                    className="thick-box"
                     checked={p.result === "Present"}
                     onChange={() => {
                       const copy = [...pathogens];
@@ -1141,7 +1175,7 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
       {/* Role-based actions */}
       {/* Role-based actions OUTSIDE the report */}
       {/* Role-based actions OUTSIDE the report */}
-      {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+      {/* {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
         (targetStatus: ReportStatus) => {
           if (
             STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(role!) &&
@@ -1158,11 +1192,48 @@ export default function MicroMixReportForm({ report }: { report?: any }) {
               >
                 {label}
               </button>
+
             );
           }
           return null;
         }
-      )}
+      )} */}
+      {/* Actions row: submit/reject on left, close on right */}
+      <div className="no-print mt-4 flex items-center justify-between">
+        {/* Left: status action buttons */}
+        <div className="flex flex-wrap gap-2">
+          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+            (targetStatus: ReportStatus) => {
+              if (
+                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(role!) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color}`}
+                    onClick={() => handleStatusChange(targetStatus)}
+                    disabled={isDirty || !reportId}
+                  >
+                    {label}
+                  </button>
+                );
+              }
+              return null;
+            }
+          )}
+        </div>
+
+        {/* Right: only Close */}
+        {/* <button
+          onClick={handleClose}
+          className="px-4 py-2 rounded-md border bg-gray-700 text-white hover:bg-gray-800"
+        >
+          Close
+        </button> */}
+      </div>
+
     </>
   );
 }

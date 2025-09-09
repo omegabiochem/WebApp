@@ -9,9 +9,6 @@ type Report = {
   client: string;
   dateSent: string | null;
   status: string;
-  // reportNumber: number;
-  // prefix?: string;
-  // add other fields if needed
 };
 
 export default function MicroMixReportFormWrapper() {

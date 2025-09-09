@@ -120,9 +120,9 @@ export default function MicroDashboard() {
                   <button
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded"
                     onClick={async () => {
-                      if (r.status === "SUBMITTED_BY_CLIENT") {
-                        await markAsReceived(r.id);
-                      }
+                      // if (r.status === "SUBMITTED_BY_CLIENT") {
+                      //   await markAsReceived(r.id);
+                      // }
                       setSelectedReport(r);
                     }}
                   >

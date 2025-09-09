@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import type { Role, ReportStatus } from "../../utils/microMixReportFormWorkflow";
+import { canShowUpdateButton } from "../../utils/microMixReportFormWorkflow";
 
 type Report = {
   id: string;
@@ -18,6 +20,33 @@ const CLIENT_STATUSES = [
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
 ];
+
+
+function canUpdateThisReport(r: Report, user?: any) {
+  // If non-clients see this dashboard later, you can loosen this check.
+  if (user?.role !== "CLIENT") return false;
+  if (r.client !== user?.clientCode) return false;
+
+  // List the fields that the Update screen actually edits for CLIENTS.
+  // (This makes the check stricter than just "can edit something in this status".)
+  const fieldsUsedOnForm = [
+    "client",
+    "dateSent",
+    "typeOfTest",
+    "sampleType",
+    "formulaNo",
+    "description",
+    "lotNo",
+    "manufactureDate",
+    "pathogens",
+  ];
+
+  return canShowUpdateButton(
+    user?.role as Role,
+    r.status as ReportStatus,
+    fieldsUsedOnForm
+  );
+}
 
 export default function ClientDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -112,12 +141,14 @@ export default function ClientDashboard() {
                   >
                     View
                   </button>
-                  <button
-                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-                    onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
-                  >
-                    Update
-                  </button>
+                  {canUpdateThisReport(r, user) && (
+                    <button
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
+                      onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
+                    >
+                      Update
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
