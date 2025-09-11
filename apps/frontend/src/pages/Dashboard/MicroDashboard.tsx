@@ -16,7 +16,7 @@ const CLIENT_STATUSES = [
   'SUBMITTED_BY_CLIENT',
   "UNDER_TESTING_REVIEW",
   'TESTING_ON_HOLD',
-  'TESTING_REJECTED'
+  'TESTING_REJECTED',
 ];
 
 export default function MicroDashboard() {
