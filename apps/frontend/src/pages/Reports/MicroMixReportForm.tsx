@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
+import { canEditBy, useReportValidation, FieldErrorBadge, type ReportFormValues } from "../../utils/reportValidation";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -16,6 +17,7 @@ function useConfirmOnLeave(isDirty: boolean) {
     }
   }, [blocker]);
 }
+
 
 // ----- Roles (keep in sync with backend) -----
 type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "QA" | "CLIENT";
@@ -412,10 +414,117 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
     ],
     []
   );
+
+
+
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(
     report?.pathogens || pathogenDefaults
   );
+
+
+  // --- Row-level errors for pathogens ---
+  type PathogenRowError = { result?: string };
+  const [pathogenRowErrors, setPathogenRowErrors] = useState<PathogenRowError[]>(
+    []
+  );
+
+  const [pathogensTableError, setPathogensTableError] = useState<string | null>(null);
+
+
+
+
+
+  function organismDisabled() {
+    // Only CLIENT decides which organisms to test
+    return role !== "CLIENT";
+  }
+
+  function resultDisabled(p: PathRow) {
+    // Only MICRO can set results, and only if the organism is checked
+    return !p.checked || role !== "MICRO";
+  }
+
+
+
+  // replace your validatePathogenRows with this:
+  function validatePathogenRows(rows: PathRow[], who: Role | undefined = role) {
+    const rowErrs: PathogenRowError[] = rows.map(() => ({}));
+    let tableErr: string | null = null;
+
+    if (who === "CLIENT") {
+      if (!rows.some(r => r.checked)) {
+        tableErr = "Select at least one organism.";
+      }
+    }
+
+    if (who === "MICRO") {
+      rows.forEach((r, i) => {
+        if (r.checked && !r.result) rowErrs[i].result = "Select Absent or Present";
+      });
+    }
+
+    setPathogenRowErrors(rowErrs);
+    setPathogensTableError(tableErr);
+    return !tableErr && rowErrs.every(e => !e.result);
+  }
+
+
+  function setPathogenChecked(idx: number, checked: boolean) {
+    setPathogens((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
+      validatePathogenRows(copy, role);
+      return copy;
+    });
+    // Clear the row error if we unchecked (no result required anymore)
+    setPathogenRowErrors((prev) => {
+      const copy = [...prev];
+      copy[idx] = {};
+      return copy;
+    });
+    markDirty();
+  }
+
+  function setPathogenResult(idx: number, value: "Absent" | "Present") {
+    setPathogens(prev => {
+      const row = prev[idx];
+      if (!row.checked) return prev; // ignore if organism not selected
+      const copy = [...prev];
+      copy[idx] = { ...row, result: value };
+      validatePathogenRows(copy, role);
+      return copy;
+    });
+    // Clear the row error once result is set
+    setPathogenRowErrors((prev) => {
+      const copy = [...prev];
+      copy[idx] = {};
+      return copy;
+    });
+    clearError("pathogens"); // optional if you still keep a table-level error elsewhere
+    markDirty();
+  }
+
+  function clearPathogenResult(idx: number) {
+    setPathogens((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...prev[idx], result: "" };
+      validatePathogenRows(copy, role);
+      return copy;
+    });
+    // Keep/restore the row error because a checked row without result is invalid
+    setPathogenRowErrors((prev) => {
+      const copy = [...prev];
+      // if the row is still checked, show the error again
+      copy[idx] = pathogens[idx]?.checked ? { result: "Select Absent or Present" } : {};
+      return copy;
+    });
+    markDirty();
+  }
+
+
+
+
 
   const [comments, setComments] = useState(report?.comments || "");
   const [testedBy, setTestedBy] = useState(report?.testedBy || "");
@@ -423,13 +532,31 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
   const [testedDate, setTestedDate] = useState(report?.testedDate || "");
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
 
+
   // const lock = (f: string) => !canEdit(role, f);
   // use:
   const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
 
+  const { errors, clearError, validateAndSetErrors } = useReportValidation(role);
+
+  // Current values snapshot (use inside handlers)
+  const makeValues = (): ReportFormValues => ({
+    client, dateSent, typeOfTest, sampleType, formulaNo, description, lotNo, manufactureDate,
+    testSopNo, dateTested, preliminaryResults, preliminaryResultsDate,
+    tbc_gram, tbc_result, tbc_spec, tmy_gram, tmy_result, tmy_spec,
+    comments, testedBy, testedDate, dateCompleted, reviewedBy, reviewedDate,
+    pathogens,
+  });
+
+
   // ----------- Save handler -----------
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
+    const values = makeValues();
+
+    validateAndSetErrors(values);
+    validatePathogenRows(values.pathogens, role);
+
     const token = localStorage.getItem("token");
     const API_BASE = "http://localhost:3000";
 
@@ -553,25 +680,49 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
       setStatus(saved.status); // in case backend changed it
       setReportNumber(saved.reportNumber || "");
       alert("✅ Report saved as '" + saved.status + "'");
+      return true;
     } catch (err: any) {
       console.error(err);
       alert("❌ Error saving draft: " + err.message);
+      return false;
     }
   };
 
   const handleStatusChange = async (newStatus: string) => {
     const token = localStorage.getItem("token");
 
+
+    const API_BASE = "http://localhost:3000";
+
+    const values = makeValues();
+    const okFields = validateAndSetErrors(values);
+    const okRows = validatePathogenRows(values.pathogens, role);
+    if (!okFields) {
+      alert("⚠️ Please fix the highlighted fields before changing status.");
+      return;
+    }
+
+    if (!okRows) {
+      alert("⚠️ Please fix the highlighted rows before changing status.");
+      return;
+    }
+
+    // 1) Always validate (role-based). Block status change if invalid.
+    const ok = validateAndSetErrors(makeValues());
+    if (!ok) {
+      alert("⚠️ Please fix the highlighted fields before changing status.");
+      return;
+    }
+
+    // 2) Ensure latest data is saved before status change.
+    //    If the report is new or has unsaved edits, save first.
+    if (!reportId || isDirty) {
+      const saved = await handleSave(); // this also paints errors if any
+      if (!saved) return;               // stop if save failed
+    }
+
+
     try {
-      const API_BASE = "http://localhost:3000";
-
-      // if report not saved → save first
-      if (!reportId) {
-        alert("Please save the report before changing status");
-        await handleSave();
-      }
-      console.log(reportId);
-
       const url = `${API_BASE}/reports/micro-mix/${reportId}/status`;
       const res = await fetch(url, {
         method: "PATCH",
@@ -706,7 +857,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
-              {lock("client") || role === "CLIENT" ? (
+              {lock("client") ? (
                 <div className="flex-1  min-h-[14px]">{client}</div>
               ) : (
                 <input
@@ -719,9 +870,10 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            {/* <div id="f-dateSent" className="px-2 flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-              {lock("dateSent") ? (
+               <FieldError name="dateSent"  errors={errors}/>
+              {lock("dateSent") || role === "CLIENT" ? (
                 <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
               ) : (
                 <input
@@ -734,89 +886,141 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
                   }}
                 />
               )}
+            </div> */}
+
+            <div id="f-dateSent" className="px-2 flex items-center gap-1 relative">
+              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
+
+              {/* tiny floating badge; does not affect layout */}
+              <FieldErrorBadge name="dateSent" errors={errors} />
+
+              {lock("dateSent") ? (
+                <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
+              ) : (
+                <input
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.dateSent ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    }`}
+                  type="date"
+                  value={formatDateForInput(dateSent)}
+                  onChange={(e) => {
+                    setDateSent(e.target.value);
+                    clearError("dateSent");
+                    markDirty();
+                  }}
+                  aria-invalid={!!errors.dateSent}
+                />
+              )}
             </div>
+
+
           </div>
 
           {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
           <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div id="f-typeOfTest" className="px-2 border-r border-black flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
+              {/* tiny floating badge; does not affect layout */}
+              <FieldErrorBadge name="typeOfTest" errors={errors} />
               {lock("typeOfTest") ? (
                 <div className="flex-1  min-h-[14px]">{typeOfTest}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.typeOfTest ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    }`}
                   value={typeOfTest}
-                  onChange={(e) => setTypeOfTest(e.target.value)}
+                  onChange={(e) => { setTypeOfTest(e.target.value); clearError("typeOfTest"); markDirty(); }}
+                  aria-invalid={!!errors.typeOfTest}
                 />
               )}
             </div>
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div id="f-sampleType" className="px-2 border-r border-black flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
+              <FieldErrorBadge name="sampleType" errors={errors} />
               {lock("sampleType") ? (
                 <div className="flex-1  min-h-[14px]">{sampleType}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.sampleType ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   value={sampleType}
-                  onChange={(e) => setSampleType(e.target.value)}
+                  onChange={(e) => { setSampleType(e.target.value); markDirty(); clearError("sampleType"); }}
+                  aria-invalid={!!errors.sampleType}
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            <div id="f-formulaNo" className="px-2 flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+              <FieldErrorBadge name="formulaNo" errors={errors} />
               {lock("formulaNo") ? (
                 <div className="flex-1 min-h-[14px]">{formulaNo}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.formulaNo ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   value={formulaNo}
-                  onChange={(e) => setFormulaNo(e.target.value)}
+                  onChange={(e) => { setFormulaNo(e.target.value); clearError("formulaNo"); markDirty(); }}
+                  aria-invalid={!!errors.formulaNo}
                 />
               )}
             </div>
           </div>
 
           {/* DESCRIPTION (full row) */}
-          <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug">
+          <div id="f-description" className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative">
             <div className="w-28 font-medium">DESCRIPTION:</div>
+            <FieldErrorBadge name="description" errors={errors} />
             {lock("description") ? (
               <div className="flex-1  min-h-[14px]">{description}</div>
             ) : (
               <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.description ?
+                  "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                  } `}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => { setDescription(e.target.value); markDirty(); clearError("description"); }}
+                aria-invalid={!!errors.description}
               />
             )}
           </div>
 
           {/* LOT # / MANUFACTURE DATE */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div id="f-lotNo" className="px-2 border-r border-black flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">LOT #:</div>
+              <FieldErrorBadge name="lotNo" errors={errors} />
               {lock("lotNo") ? (
                 <div className="flex-1  min-h-[14px]">{lotNo}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.lotNo ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   value={lotNo}
-                  onChange={(e) => setLotNo(e.target.value)}
+                  onChange={(e) => { setLotNo(e.target.value); markDirty(); clearError("lotNo"); }}
+                  aria-invalid={!!errors.lotNo}
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            <div id="f-manufactureDate" className="px-2 flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">
                 MANUFACTURE DATE:
               </div>
+              <FieldErrorBadge name="manufactureDate" errors={errors} />
               {lock("manufactureDate") ? (
                 <div className="flex-1  min-h-[14px]">{formatDateForInput(manufactureDate)}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.manufactureDate ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   type="date"
                   value={formatDateForInput(manufactureDate)}
-                  onChange={(e) => setManufactureDate(e.target.value)}
+                  onChange={(e) => { setManufactureDate(e.target.value); markDirty(); clearError("manufactureDate"); }}
+                  aria-invalid={!!errors.manufactureDate}
                 />
               )}
             </div>
@@ -824,28 +1028,36 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
           {/* TEST SOP # / DATE TESTED */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div id="f-testSopNo" className="px-2 border-r border-black flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
+              <FieldErrorBadge name="testSopNo" errors={errors} />
               {lock("testSopNo") ? (
                 <div className="flex-1  min-h-[14px]">{testSopNo}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug  border ${errors.testSopNo ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   value={testSopNo}
-                  onChange={(e) => setTestSopNo(e.target.value)}
+                  onChange={(e) => { setTestSopNo(e.target.value); clearError("testSopNo"); markDirty(); }}
+                  aria-invalid={!!errors.testSopNo}
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            <div id="f-dateTested" className="px-2 flex items-center gap-1 relative">
               <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
+              <FieldErrorBadge name="dateTested" errors={errors} />
               {lock("dateTested") ? (
                 <div className="flex-1  min-h-[14px]">{formatDateForInput(dateTested)}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.dateTested ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   type="date"
                   value={formatDateForInput(dateTested)}
-                  onChange={(e) => setDateTested(e.target.value)}
+                  onChange={(e) => { setDateTested(e.target.value); clearError("dateTested"); markDirty(); }}
+                  aria-invalid={!!errors.dateTested}
                 />
               )}
             </div>
@@ -853,50 +1065,64 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
           {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
           <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div id="f-preliminaryResults" className="px-2 border-r border-black flex items-center gap-1 relative">
               <div className="font-medium">PRELIMINARY RESULTS:</div>
+              <FieldErrorBadge name="preliminaryResults" errors={errors} />
               {lock("preliminaryResults") ? (
                 <div className="flex-1  min-h-[14px]">{preliminaryResults}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.preliminaryResults ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   value={preliminaryResults}
-                  onChange={(e) => setPreliminaryResults(e.target.value)}
+                  onChange={(e) => { setPreliminaryResults(e.target.value); clearError("preliminaryResults"); markDirty(); }}
+                  aria-invalid={!!errors.preliminaryResults}
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            <div id="f-preliminaryResultsDate" className="px-2 flex items-center gap-1 relative">
               <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
+              <FieldErrorBadge name="preliminaryResultsDate" errors={errors} />
               {lock("preliminaryResultsDate") ? (
                 <div className="flex-1  min-h-[14px]">{preliminaryResultsDate}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.preliminaryResultsDate ?
+                    "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                    } `}
                   type="date"
                   value={formatDateForInput(preliminaryResultsDate)}
-                  onChange={(e) => setPreliminaryResultsDate(e.target.value)}
+                  onChange={(e) => { setPreliminaryResultsDate(e.target.value); clearError("preliminaryResultsDate"); markDirty(); }}
+                  aria-invalid={!!errors.preliminaryResultsDate}
                 />
               )}
             </div>
           </div>
 
           {/* DATE COMPLETED (full row, label + input) */}
-          <div className=" flex items-center gap-2 px-2 text-[12px] leading-snug">
+          <div id="f-dateCompleted" className=" flex items-center gap-2 px-2 text-[12px] leading-snug relative">
             <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
+            <FieldErrorBadge name="dateCompleted" errors={errors} />
             {lock("dateCompleted") ? (
               <div className=" min-h-[14px] flex-1">{formatDateForInput(dateCompleted)}</div>
             ) : (
               <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.dateCompleted ?
+                  "border-red-500 ring-1 ring-red-500" : "border-black/70"
+                  } `}
                 type="date"
                 value={formatDateForInput(dateCompleted)}
-                onChange={(e) => setDateCompleted(e.target.value)}
+                onChange={(e) => { setDateCompleted(e.target.value); clearError("dateCompleted"); markDirty(); }}
+                aria-invalid={!!errors.dateCompleted}
               />
             )}
           </div>
         </div>
 
         <div className="p-2 font-bold">TBC / TFC RESULTS:</div>
+
+
 
         {/* TBC/TFC table */}
         <div className="mt-2 border border-black">
@@ -907,96 +1133,142 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
             <div className="p-2 border-r border-black">RESULT</div>
             <div className="p-2">SPECIFICATION</div>
           </div>
+
           {/* Row 1: Total Bacterial Count */}
           <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
-            <div className=" py-1 px-2 font-bold border-r border-black">
+            <div className="py-1 px-2 font-bold border-r border-black">
               Total Bacterial Count:
             </div>
+
+            {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
               <div className="py-1 px-2 text-center"> x 10^0</div>
-              {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tbc_dilution}
-              onChange={(e) => set_tbc_dilution(e.target.value)}
-              readOnly={lock("tbc_dilution")}
-            /> */}
             </div>
-            <div className="py-1 px-2 border-r border-black flex">
+
+            {/* GRAM STAIN */}
+            <div id="f-tbc_gram" className="py-1 px-2 border-r border-black flex relative">
+              <FieldErrorBadge name="tbc_gram" errors={errors} />
               <input
-                className="w-full input-editable  px-1"
+                className={`w-full input-editable px-1 border ${!lock("tbc_gram") && errors.tbc_gram ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tbc_gram}
-                onChange={(e) => set_tbc_gram(e.target.value)}
+                onChange={(e) => {
+                  set_tbc_gram(e.target.value);
+                  clearError("tbc_gram");
+                }}
                 readOnly={lock("tbc_gram")}
+                aria-invalid={!!errors.tbc_gram}
               />
             </div>
-            <div className="py-1 px-2 border-r border-black flex">
+
+            {/* RESULT */}
+            <div id="f-tbc_result" className="py-1 px-2 border-r border-black flex relative">
+              <FieldErrorBadge name="tbc_result" errors={errors} />
               <input
-                className="w-1/2 input-editable  px-1"
+                className={`w-1/2 input-editable px-1 border ${!lock("tbc_result") && errors.tbc_result ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tbc_result}
-                onChange={(e) => set_tbc_result(e.target.value)}
+                onChange={(e) => {
+                  set_tbc_result(e.target.value);
+                  clearError("tbc_result");
+                }}
                 readOnly={lock("tbc_result")}
                 placeholder="CFU/ml"
+                aria-invalid={!!errors.tbc_result}
               />
               <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
-            <div className="py-1 px-2 flex">
+
+            {/* SPECIFICATION */}
+            <div id="f-tbc_spec" className="py-1 px-2 flex relative">
+              <FieldErrorBadge name="tbc_spec" errors={errors} />
               <input
-                className="w-full input-editable  px-1"
+                className={`w-full input-editable px-1 border ${!lock("tbc_spec") && errors.tbc_spec ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tbc_spec}
-                onChange={(e) => set_tbc_spec(e.target.value)}
+                onChange={(e) => {
+                  set_tbc_spec(e.target.value);
+                  clearError("tbc_spec");
+                }}
                 readOnly={lock("tbc_spec")}
+                aria-invalid={!!errors.tbc_spec}
               />
             </div>
           </div>
+
           {/* Row 2: Total Mold & Yeast Count */}
           <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
             <div className="py-1 px-2 font-bold border-r border-black">
               Total Mold & Yeast Count:
             </div>
+
+            {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
               <div className="py-1 px-2 text-center"> x 10^0</div>
-              {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tmy_dilution}
-              onChange={(e) => set_tmy_dilution(e.target.value)}
-              readOnly={lock("tmy_dilution")}
-            /> */}
             </div>
-            <div className="py-1 px-2 border-r border-black flex">
+
+            {/* GRAM STAIN */}
+            <div id="f-tmy_gram" className="py-1 px-2 border-r border-black flex relative">
+              <FieldErrorBadge name="tmy_gram" errors={errors} />
               <input
-                className="w-full input-editable  px-1 "
+                className={`w-full input-editable px-1 border ${!lock("tmy_gram") && errors.tmy_gram ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tmy_gram}
-                onChange={(e) => set_tmy_gram(e.target.value)}
+                onChange={(e) => {
+                  set_tmy_gram(e.target.value);
+                  clearError("tmy_gram");
+                }}
                 readOnly={lock("tmy_gram")}
+                aria-invalid={!!errors.tmy_gram}
               />
             </div>
-            <div className="py-1 px-2 border-r border-black flex">
+
+            {/* RESULT */}
+            <div id="f-tmy_result" className="py-1 px-2 border-r border-black flex relative">
+              <FieldErrorBadge name="tmy_result" errors={errors} />
               <input
-                className="w-1/2 input-editable  px-1"
+                className={`w-1/2 input-editable px-1 border ${!lock("tmy_result") && errors.tmy_result ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tmy_result}
-                onChange={(e) => set_tmy_result(e.target.value)}
+                onChange={(e) => {
+                  set_tmy_result(e.target.value);
+                  clearError("tmy_result");
+                }}
                 readOnly={lock("tmy_result")}
                 placeholder="CFU/ml"
+                aria-invalid={!!errors.tmy_result}
               />
               <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
-            <div className="py-1 px-2 flex">
+
+            {/* SPECIFICATION */}
+            <div id="f-tmy_spec" className="py-1 px-2 flex relative">
+              <FieldErrorBadge name="tmy_spec" errors={errors} />
               <input
-                className="w-full input-editable  px-1"
+                className={`w-full input-editable px-1 border ${!lock("tmy_spec") && errors.tmy_spec ? "border-red-500 ring-1 ring-red-500" : "border-black/70"}`}
                 value={tmy_spec}
-                onChange={(e) => set_tmy_spec(e.target.value)}
+                onChange={(e) => {
+                  set_tmy_spec(e.target.value);
+                  clearError("tmy_spec");
+                }}
                 readOnly={lock("tmy_spec")}
+                aria-invalid={!!errors.tmy_spec}
               />
             </div>
           </div>
         </div>
+
+
 
         <div className="p-2 font-bold">
           PATHOGEN SCREENING (Please check the organism to be tested)
         </div>
 
         {/* Pathogen screening */}
-        <div className="mt-3 border border-black">
+        {/* Pathogen screening */}
+        <div
+          id="f-pathogens"
+          className={`mt-3 relative border ${pathogensTableError} ? "border-red-500 ring-1 ring-red-500" : "border-black"}`}
+          aria-invalid={!!errors.pathogens}
+        >
+          {/* floating badge; doesn't affect layout */}
+          {/* <FieldErrorBadge name="pathogens" errors={errors} /> */}
+
           {/* Header */}
           <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
             <div className="p-2 border-r border-black"></div>
@@ -1004,94 +1276,95 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
             <div className="p-2">SPECIFICATION</div>
           </div>
 
+          {pathogensTableError && (
+            <div className="px-2 py-1 text-[11px] text-red-600">{pathogensTableError}</div>
+          )}
+
           {/* Rows */}
-          {pathogens.map((p, idx) => (
-            <div
-              key={p.key}
-              className="grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black"
-            >
-              {/* First column */}
-              <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  // className="h-3 w-3 rounded-full border-2 border-black accent-black focus:ring-0 focus:outline-none"
-                  className="thick-box"
-                  checked={p.checked || false}
-                  onChange={(e) => {
-                    const copy = [...pathogens];
-                    copy[idx] = { ...p, checked: e.target.checked };
-                    setPathogens(copy);
-                  }}
-                  // disabled={lock('pathogens')}
-                  disabled={
-                    role === "ADMIN" ||
-                    role === "FRONTDESK" ||
-                    role === "MICRO" ||
-                    role === "QA" ||
-                    role === "SYSTEMADMIN"
-                  }
-                />
-                <span className="font-bold">{p.label}</span>
-                {p.key === "OTHER" && (
-                  <input
-                    className="input-editable leading-tight"
-                    placeholder="(specify)"
-                    readOnly
-                  />
-                )}
-              </div>
 
-              {/* Second column */}
-              <div className="py-[2px] px-2 border-r border-black flex text-center gap-2 items-center">
-                <label className="flex items-center gap-1">
+
+
+          {pathogens.map((p, idx) => {
+            const rowErr = pathogenRowErrors[idx]?.result;
+            return (
+              <div
+                key={p.key}
+                className={`grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black ${rowErr ? "ring-1 ring-red-500" : ""
+                  }`}
+              >
+                {/* First column: checkbox + label (unchanged except using setPathogenChecked) */}
+                <div className="py-[2px] px-2 border-r border-black flex items-center gap-2">
                   <input
                     type="checkbox"
                     className="thick-box"
-                    checked={p.result === "Absent"}
-                    onChange={() => {
-                      const copy = [...pathogens];
-                      copy[idx] = { ...p, result: "Absent" };
-                      setPathogens(copy);
-                    }}
-                    disabled={
-                      role === "ADMIN" ||
-                      role === "FRONTDESK" ||
-                      role === "CLIENT" ||
-                      role === "QA" ||
-                      role === "SYSTEMADMIN"
+                    checked={!!p.checked}
+                    onChange={(e) => setPathogenChecked(idx, e.target.checked)}
+                    disabled={organismDisabled()
                     }
                   />
-                  Absent
-                </label>
-                <span>/</span>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    className="thick-box"
-                    checked={p.result === "Present"}
-                    onChange={() => {
-                      const copy = [...pathogens];
-                      copy[idx] = { ...p, result: "Present" };
-                      setPathogens(copy);
-                    }}
-                    disabled={
-                      role === "ADMIN" ||
-                      role === "FRONTDESK" ||
-                      role === "CLIENT" ||
-                      role === "QA" ||
-                      role === "SYSTEMADMIN"
-                    }
-                  />
-                  Present
-                </label>
-                <span className="ml-1">in 11g of sample</span>
-              </div>
+                  <span className="font-bold">{p.label}</span>
+                  {p.key === "OTHER" && (
+                    <input className="input-editable leading-tight" placeholder="(specify)" readOnly />
+                  )}
+                </div>
 
-              {/* Third column */}
-              <div className="py-[2px] px-2 text-center">Absent</div>
-            </div>
-          ))}
+                {/* Second column: Result + per-row error */}
+                <div className="py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box"
+                      checked={p.result === "Absent"}
+                      onChange={() => setPathogenResult(idx, "Absent")}
+                      onDoubleClick={() => clearPathogenResult(idx)}
+                      title="Click to set Absent. Double-click to clear."
+                      disabled={resultDisabled(p)}
+                    // disabled={
+                    //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
+                    //   role === "QA" || role === "SYSTEMADMIN"
+                    // }
+                    />
+                    Absent
+                  </label>
+
+                  <span className="mx-1">/</span>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box"
+                      checked={p.result === "Present"}
+                      onChange={() => setPathogenResult(idx, "Present")}
+                      onDoubleClick={() => clearPathogenResult(idx)}
+                      disabled={resultDisabled(p)}
+                      title={resultDisabled(p) ? "Check the organism first" : "Click to set Present. Double-click to clear."}
+                    // disabled={
+                    //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
+                    //   role === "QA" || role === "SYSTEMADMIN"
+                    // }
+                    />
+                    Present
+                  </label>
+
+                  {/* inline note, no huge gap */}
+                  <span className="ml-2">in 11g of sample</span>
+
+                  {/* optional row error */}
+                  {pathogenRowErrors[idx]?.result && (
+                    <span className="ml-2 text-[11px] text-red-600">{pathogenRowErrors[idx].result}</span>
+                  )}
+                </div>
+
+
+                {/* Third column (spec) */}
+                <div className="py-[2px] px-2 text-center">Absent</div>
+              </div>
+            );
+          })}
+
+
         </div>
+
 
         {/* Legends / Comments */}
         <div className="mt-2 text-[11px]">
@@ -1106,71 +1379,101 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         </div>
 
         {/* Comments + Signatures */}
+        {/* Comments + Signatures */}
         <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-          <div className="p2 col-span-2 flex">
+          <div id="f-comments" className="p2 col-span-2 flex relative">
             <div className="mb-1 font-medium">Comments:</div>
+            <FieldErrorBadge name="testedBy" errors={errors} />
             <input
-              className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.testedBy ? "border-b-red-500" : "border-b-black/70"
+                }`}
               value={comments}
-              onChange={(e) => setComments(e.target.value)}
+              onChange={(e) => { setComments(e.target.value); clearError("comments"); markDirty(); }}
+              aria-invalid={!!errors.comments}
               readOnly={lock("comments")}
               placeholder="Comments"
             />
           </div>
 
           {/* TESTED BY */}
-
-          <div className="p-2">
+          <div id="f-testedBy" className="p-2 relative">
             <div className="font-medium mb-2 flex items-center gap-2">
               TESTED BY:
+              {/* floating badge; doesn't affect layout */}
+              <FieldErrorBadge name="testedBy" errors={errors} />
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.testedBy ? "border-b-red-500" : "border-b-black/70"
+                  }`}
                 value={testedBy}
-                onChange={(e) => setTestedBy(e.target.value)}
+                onChange={(e) => {
+                  setTestedBy(e.target.value);
+                  clearError("testedBy");
+                  markDirty();
+                }}
                 readOnly={lock("testedBy")}
                 placeholder="Name"
+                aria-invalid={!!errors.testedBy}
               />
             </div>
 
-            <div className="font-medium mt-2 flex items-center gap-2">
+            <div id="f-testedDate" className="font-medium mt-2 flex items-center gap-2 relative">
               DATE:
+              <FieldErrorBadge name="testedDate" errors={errors} />
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.testedDate ? "border-b-red-500" : "border-b-black/70"
+                  }`}
                 type="date"
                 value={formatDateForInput(testedDate)}
-                onChange={(e) => setTestedDate(e.target.value)}
+                onChange={(e) => {
+                  setTestedDate(e.target.value);
+                  clearError("testedDate");
+                }}
                 readOnly={lock("testedDate")}
                 placeholder="MM/DD/YYYY"
+                aria-invalid={!!errors.testedDate}
               />
             </div>
           </div>
 
           {/* REVIEWED BY */}
-          <div className="p-2">
+          <div id="f-reviewedBy" className="p-2 relative">
             <div className="font-medium mb-2 flex items-center gap-2">
               REVIEWED BY:
+              <FieldErrorBadge name="reviewedBy" errors={errors} />
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.reviewedBy ? "border-b-red-500" : "border-b-black/70"
+                  }`}
                 value={reviewedBy}
-                onChange={(e) => setReviewedBy(e.target.value)}
+                onChange={(e) => {
+                  setReviewedBy(e.target.value);
+                  clearError("reviewedBy");
+                }}
                 readOnly={lock("reviewedBy")}
                 placeholder="Name"
+                aria-invalid={!!errors.reviewedBy}
               />
             </div>
 
-            <div className="font-medium mt-2 flex items-center gap-2">
+            <div id="f-reviewedDate" className="font-medium mt-2 flex items-center gap-2 relative">
               DATE:
+              <FieldErrorBadge name="reviewedDate" errors={errors} />
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.reviewedDate ? "border-b-red-500" : "border-b-black/70"
+                  }`}
                 type="date"
                 value={formatDateForInput(reviewedDate)}
-                onChange={(e) => setReviewedDate(e.target.value)}
+                onChange={(e) => {
+                  setReviewedDate(e.target.value);
+                  clearError("reviewedDate");
+                }}
                 readOnly={lock("reviewedDate")}
                 placeholder="MM/DD/YYYY"
+                aria-invalid={!!errors.reviewedDate}
               />
             </div>
           </div>
         </div>
+
       </div>
       {/* Role-based actions */}
       {/* Role-based actions OUTSIDE the report */}
@@ -1214,7 +1517,8 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
                     key={targetStatus}
                     className={`px-4 py-2 rounded-md border text-white ${color}`}
                     onClick={() => handleStatusChange(targetStatus)}
-                    disabled={isDirty || !reportId}
+                    // disabled={isDirty || !reportId}
+                    disabled={role === "SYSTEMADMIN"}
                   >
                     {label}
                   </button>
