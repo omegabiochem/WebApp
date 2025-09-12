@@ -29,9 +29,11 @@ export type ReportStatus =
   | "CLIENT_NEEDS_CORRECTION"
   | "RECEIVED_BY_FRONTDESK"
   | "FRONTDESK_ON_HOLD"
+  | "FRONTDESK_NEEDS_CORRECTION"
   | "FRONTDESK_REJECTED"
   | "UNDER_TESTING_REVIEW"
   | "TESTING_ON_HOLD"
+  | "TESTING_NEEDS_CORRECTION"
   | "TESTING_REJECTED"
   | "UNDER_QA_REVIEW"
   | "QA_NEEDS_CORRECTION"
@@ -76,6 +78,12 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ["FRONTDESK"],
     canEdit: [],
   },
+  FRONTDESK_NEEDS_CORRECTION: {
+    canSet: ['FRONTDESK', 'ADMIN'],
+    next: ['SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: [],
+  },
   FRONTDESK_REJECTED: {
     canSet: ["FRONTDESK"],
     next: ["CLIENT_NEEDS_CORRECTION"],
@@ -90,7 +98,7 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ["MICRO"],
-    next: ["TESTING_ON_HOLD", "TESTING_REJECTED", "UNDER_QA_REVIEW"],
+    next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: ['MICRO'],
   },
@@ -99,6 +107,12 @@ const STATUS_TRANSITIONS: Record<
     next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: [],
+  },
+  TESTING_NEEDS_CORRECTION: {
+    canSet: ['MICRO', 'ADMIN'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['CLIENT'],
   },
   TESTING_REJECTED: {
     canSet: ["MICRO"],
@@ -163,10 +177,12 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   CLIENT_NEEDS_CORRECTION: { label: "Reject", color: "bg-red-600" },
   RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
   FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-yellow-500" },
+  FRONTDESK_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-red-600" },
   FRONTDESK_REJECTED: { label: "Reject", color: "bg-red-600" },
   UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
   TESTING_ON_HOLD: { label: "Hold", color: "bg-yellow-500" },
-  TESTING_REJECTED: { label: "Reject", color: "bg-red-600" },
+  TESTING_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-red-600" },
+  // TESTING_REJECTED: { label: "Reject", color: "bg-red-600" },
   UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
   QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
   QA_REJECTED: { label: "Reject", color: "bg-red-600" },
@@ -715,22 +731,27 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
     const values = makeValues();
     const okFields = validateAndSetErrors(values);
     const okRows = validatePathogenRows(values.pathogens, role);
-    if (!okFields) {
-      alert("⚠️ Please fix the highlighted fields before changing status.");
-      return;
-    }
+    if (newStatus === "SUBMITTED_BY_CLIENT" || newStatus === "RECEIVED_BY_FRONTDESK" ||
+      newStatus === "UNDER_TESTING_REVIEW" || newStatus === "UNDER_QA_REVIEW" || newStatus === "UNDER_ADMIN_REVIEW" ||
+      newStatus === "APPROVED") {
 
-    if (!okRows) {
-      alert("⚠️ Please fix the highlighted rows before changing status.");
-      return;
+      if (!okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
+        return;
+      }
+
+      if (!okRows) {
+        alert("⚠️ Please fix the highlighted rows before changing status.");
+        return;
+      }
     }
 
     // 1) Always validate (role-based). Block status change if invalid.
-    const ok = validateAndSetErrors(makeValues());
-    if (!ok) {
-      alert("⚠️ Please fix the highlighted fields before changing status.");
-      return;
-    }
+    // const ok = validateAndSetErrors(makeValues());
+    // if (!ok) {
+    //   alert("⚠️ Please fix the highlighted fields before changing status.");
+    //   return;
+    // }
 
     // 2) Ensure latest data is saved before status change.
     //    If the report is new or has unsaved edits, save first.

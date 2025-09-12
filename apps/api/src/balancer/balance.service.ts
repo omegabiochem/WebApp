@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SerialPort } from 'serialport';
 import { ReadlineParser } from '@serialport/parser-readline';
 import { PrismaService } from 'src/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class BalanceService {
@@ -94,24 +95,42 @@ export class BalanceService {
     this.parser = null;
   }
 
+  // private async log(cmd: string, result: string, userId?: string) {
+  //   console.log('📥 Logging balance command:');
+  //   console.log('   Command   =', cmd);
+  //   console.log('   Result    =', result);
+  //   console.log('   UserId    =', userId);
+
+  //   await this.prisma.balanceReading.create({
+  //     data: { instrument: 'GR-202', command: cmd, result, userId },
+  //   });
+
+  //   await this.prisma.auditTrail.create({
+  //     data: {
+  //       action: 'BALANCE_COMMAND',
+  //       details: `Cmd: ${cmd}, Result: ${result}`,
+  //        ...(userId ? { user: { connect: { id: userId } } } : {}),
+  //     },
+  //   });
+  // }
+
+
+
   private async log(cmd: string, result: string, userId?: string) {
-    console.log('📥 Logging balance command:');
-    console.log('   Command   =', cmd);
-    console.log('   Result    =', result);
-    console.log('   UserId    =', userId);
+  const reading = await this.prisma.balanceReading.create({
+    data: { instrument: 'GR-202', command: cmd, result, userId },
+  });
 
-    await this.prisma.balanceReading.create({
-      data: { instrument: 'GR-202', command: cmd, result, userId },
-    });
+  const data: Prisma.AuditTrailCreateInput = {
+    action: 'BALANCE_COMMAND',
+    entity: 'BalanceReading',         // <-- REQUIRED
+    entityId: reading.id,             // <-- optional but useful
+    details: `Cmd: ${cmd}, Result: ${result}`,
+    ...(userId ? { user: { connect: { id: userId } } } : {}),
+  };
 
-    await this.prisma.auditTrail.create({
-      data: {
-        action: 'BALANCE_COMMAND',
-        details: `Cmd: ${cmd}, Result: ${result}`,
-        userId,
-      },
-    });
-  }
+  await this.prisma.auditTrail.create({ data });
+}
 
   async sendCommand(cmd: string, userId?: string): Promise<string> {
     return new Promise((resolve, reject) => {

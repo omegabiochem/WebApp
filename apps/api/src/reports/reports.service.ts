@@ -109,6 +109,12 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['FRONTDESK'],
     canEdit: ['FRONTDESK'],
   },
+  FRONTDESK_NEEDS_CORRECTION: {
+    canSet: ['FRONTDESK', 'ADMIN'],
+    next: ['SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: [],
+  },
   FRONTDESK_REJECTED: {
     canSet: ['FRONTDESK', 'ADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION'],
@@ -123,7 +129,7 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW', 'SUBMITTED_BY_CLIENT'],
+    next: ['TESTING_ON_HOLD', "TESTING_NEEDS_CORRECTION", 'UNDER_QA_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: ['MICRO', 'CHEMISTRY'],
   },
@@ -132,6 +138,12 @@ const STATUS_TRANSITIONS: Record<
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: [],
+  },
+  TESTING_NEEDS_CORRECTION: {
+    canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['CLIENT'],
   },
   TESTING_REJECTED: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],

@@ -123,7 +123,6 @@ model AuditTrail {
   entityId  String?
   changes   Json?
   details   String
-
   role      UserRole?
   ipAddress String?
   createdAt DateTime @default(now())
@@ -131,6 +130,9 @@ model AuditTrail {
   // foreign key
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId, createdAt])
+  @@index([userId, createdAt])
 }
 
 enum ReportStatus {
@@ -139,10 +141,12 @@ enum ReportStatus {
   CLIENT_NEEDS_CORRECTION
   RECEIVED_BY_FRONTDESK
   FRONTDESK_ON_HOLD
+  FRONTDESK_NEEDS_CORRECTION
   FRONTDESK_REJECTED
   UNDER_TESTING_REVIEW
   TESTING_ON_HOLD
   TESTING_REJECTED
+  TESTING_NEEDS_CORRECTION
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
   QA_REJECTED
