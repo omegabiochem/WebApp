@@ -1,7 +1,24 @@
+import { useEffect } from "react";
+
 type MicroReportFormProps = {
   report: any;
   onClose: () => void;
 };
+
+
+const PrintStyles = () => (
+  <style>{`
+    @media print {
+      @page { size: A4 portrait; margin: 14mm; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+      .sheet { box-shadow: none !important; border: none !important; }
+    }
+  `}</style>
+);
+
+
+
 export default function MicroMixReportFormView({
   report,
   onClose,
@@ -75,14 +92,42 @@ export default function MicroMixReportFormView({
       spec: "Absent",
     },
   ];
+
+
+  function formatDateForInput(value: string | null) {
+    if (!value) return "";
+    // Convert ISO to yyyy-MM-dd
+    return new Date(value).toISOString().split("T")[0];
+  }
+
+
+
+  // ...
+  useEffect(() => {
+    const onAfterPrint = () => onClose?.();
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => window.removeEventListener("afterprint", onAfterPrint);
+  }, [onClose]);
   return (
-    <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
-      <button
-        onClick={onClose}
-        className="absolute top-2 right-2 px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-      >
-        ✕
-      </button>
+
+    <div className="sheet relative mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+      <PrintStyles />
+
+      {/* Controls (hidden on print) */}
+      <div className="no-print absolute top-2 right-2 flex gap-2">
+        <button
+          onClick={() => window.print()}
+          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Print
+        </button>
+        <button
+          onClick={onClose}
+          className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800"
+        >
+          Close
+        </button>
+      </div>
 
       {/* Letterhead */}
       <div className="mb-2 text-center">
@@ -132,7 +177,7 @@ export default function MicroMixReportFormView({
             <div className="whitespace-nowrap font-medium">DATE SENT:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.dateSent || ""}
+              value={formatDateForInput(report?.dateSent) || ""}
               readOnly
               disabled
             />
@@ -201,7 +246,7 @@ export default function MicroMixReportFormView({
             </div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.manufactureDate || ""}
+              value={formatDateForInput(report?.manufactureDate) || ""}
               readOnly
               disabled
             />
@@ -223,7 +268,7 @@ export default function MicroMixReportFormView({
             <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.dateTested || ""}
+              value={formatDateForInput(report?.dateTested) || ""}
               readOnly
               disabled
             />
@@ -245,7 +290,7 @@ export default function MicroMixReportFormView({
             <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
             <input
               className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-              value={report?.preliminaryResultsDate || ""}
+              value={formatDateForInput(report?.preliminaryResultsDate) || ""}
               readOnly
               disabled
             />
@@ -257,7 +302,7 @@ export default function MicroMixReportFormView({
           <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
           <input
             className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-            value={report?.dateCompleted || ""}
+            value={formatDateForInput(report?.dateCompleted) || ""}
             readOnly
             disabled
           />
@@ -454,7 +499,7 @@ export default function MicroMixReportFormView({
             DATE:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.testedDate || ""}
+              value={formatDateForInput(report?.testedDate) || ""}
               readOnly
               disabled
             />
@@ -477,7 +522,7 @@ export default function MicroMixReportFormView({
             DATE:
             <input
               className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
-              value={report?.reviewedDate || ""}
+              value={formatDateForInput(report?.reviewedDate) || ""}
               readOnly
               disabled
             />

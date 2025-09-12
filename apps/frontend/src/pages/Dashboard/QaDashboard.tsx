@@ -145,12 +145,12 @@ export default function QADashboard() {
             />
 
             <div className="flex justify-end mt-6">
-              <button
+              {/* <button
                 onClick={() => setSelectedReport(null)}
                 className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
               >
                 Close
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

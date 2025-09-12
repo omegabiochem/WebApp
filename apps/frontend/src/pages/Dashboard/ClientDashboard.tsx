@@ -66,16 +66,6 @@ export default function ClientDashboard() {
 
       if (res.ok) {
         const all = await res.json();
-        // Only keep reports in the 3 statuses (ignore others from backend)
-        // setReports(
-        //   all.filter((r: Report) =>
-        //     [
-        //       "SUBMITTED_BY_CLIENT",
-        //       "DRAFT",
-        //       "CLIENT_NEEDS_CORRECTION",
-        //     ].includes(r.status) && r.client === user?.clientCode
-        //   )
-        // );
 
         const clientReports = all.filter(
           (r: Report) => r.client === user?.clientCode
@@ -168,8 +158,8 @@ export default function ClientDashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-              Report
-              {selectedReport.formNumber}
+              Report-
+              ({selectedReport.formNumber})
             </h2>
 
             <MicroMixReportFormView
@@ -178,12 +168,12 @@ export default function ClientDashboard() {
             />
 
             <div className="flex justify-end mt-6">
-              <button
+              {/* <button
                 onClick={() => setSelectedReport(null)}
                 className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
               >
                 Close
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

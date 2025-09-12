@@ -119,7 +119,13 @@ model BalanceReading {
 model AuditTrail {
   id        String   @id @default(cuid())
   action    String
+  entity    String
+  entityId  String?
+  changes   Json?
   details   String
+
+  role      UserRole?
+  ipAddress String?
   createdAt DateTime @default(now())
 
   // foreign key

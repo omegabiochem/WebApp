@@ -34,7 +34,7 @@ export type PathRow = {
     key: string;
     label: string;
     result: "Absent" | "Present" | "";
-    spec: "Absent" | "";
+    spec: "Absent" |"Present" | "";
 };
 export type ReportFormValues = {
     client: string;
@@ -73,7 +73,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     SYSTEMADMIN: [],
     ADMIN: ["*"],
     FRONTDESK: [
-        "client", "dateSent", "typeOfTest", "sampleType",
+         "dateSent", "typeOfTest", "sampleType",
         "formulaNo", "description", "lotNo", "manufactureDate",
     ],
     MICRO: [
@@ -84,8 +84,8 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     ],
     QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
     CLIENT: [
-        "client", "dateSent", "typeOfTest", "sampleType",
-        "formulaNo", "description", "lotNo", "manufactureDate"
+         "dateSent", "typeOfTest", "sampleType",
+        "formulaNo", "description", "lotNo", "manufactureDate","tmy_spec","tbc_spec"
     ],
 };
 
@@ -145,7 +145,7 @@ export function useReportValidation(role?: Role) {
     // How to check emptiness using provided values
     const isEmpty = useCallback((field: string, v: ReportFormValues): boolean => {
         switch (field) {
-            case "client": return !v.client?.trim();
+            // case "client": return !v.client?.trim();
             case "dateSent": return !v.dateSent;
             case "typeOfTest": return !v.typeOfTest?.trim();
             case "sampleType": return !v.sampleType?.trim();

@@ -30,11 +30,9 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tbc_dilution',
     'tbc_gram',
     'tbc_result',
-    'tbc_spec',
     'tmy_dilution',
     'tmy_gram',
     'tmy_result',
-    'tmy_spec',
     'pathogens',
     'dateTested',
     'preliminaryResults',
@@ -48,11 +46,9 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tbc_dilution',
     'tbc_gram',
     'tbc_result',
-    'tbc_spec',
     'tmy_dilution',
     'tmy_gram',
     'tmy_result',
-    'tmy_spec',
     'pathogens',
     'dateTested',
     'preliminaryResults',
@@ -71,6 +67,8 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'description',
     'lotNo',
     'manufactureDate',
+    'tbc_spec',
+    'tmy_spec',
     'pathogens'
   ],
 };
@@ -94,14 +92,14 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['FRONTDESK','MICRO'],
-    next: ['RECEIVED_BY_FRONTDESK','UNDER_TESTING_REVIEW'],
+    canSet: ['FRONTDESK', 'MICRO'],
+    next: ['RECEIVED_BY_FRONTDESK', 'UNDER_TESTING_REVIEW'],
     nextEditableBy: ['FRONTDESK', 'MICRO'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'ADMIN'],
-    next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED','SUBMITTED_BY_CLIENT'],
+    next: ['UNDER_TESTING_REVIEW', 'FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: ['FRONTDESK'],
   },
@@ -125,7 +123,7 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW','SUBMITTED_BY_CLIENT'],
+    next: ['TESTING_ON_HOLD', 'TESTING_REJECTED', 'UNDER_QA_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['MICRO', 'CHEMISTRY'],
     canEdit: ['MICRO', 'CHEMISTRY'],
   },
@@ -221,7 +219,7 @@ export class ReportsService {
   constructor(private readonly reportsGateway: ReportsGateway) { }
   async createDraft(user: { userId: string; role: UserRole; clientCode?: string }, body: any) {
     if (
-      ![ 'ADMIN', 'SYSTEMADMIN',  'CLIENT'].includes(
+      !['ADMIN', 'SYSTEMADMIN', 'CLIENT'].includes(
         user.role,
       )
     ) {
@@ -311,7 +309,7 @@ export class ReportsService {
 
       if (!transition.canEdit.includes(user.role)) {
         throw new ForbiddenException(
-         `Role ${user.role} cannot edit report in status ${current.status}`,       );
+          `Role ${user.role} cannot edit report in status ${current.status}`,);
       }
     }
 

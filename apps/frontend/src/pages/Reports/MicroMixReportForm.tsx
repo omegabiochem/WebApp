@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
-import { canEditBy, useReportValidation, FieldErrorBadge, type ReportFormValues } from "../../utils/reportValidation";
+import { useReportValidation, FieldErrorBadge, type ReportFormValues } from "../../utils/reportValidation";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -204,11 +204,9 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
-      "tbc_spec",
       // "tmy_dilution",
       "tmy_gram",
       "tmy_result",
-      "tmy_spec",
       "pathogens",
       "comments",
       "testedBy",
@@ -224,6 +222,9 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "description",
       "lotNo",
       "manufactureDate",
+      "tbc_spec",
+      "tmy_spec",
+      "pathogens",
     ], // read-only
   };
   if (!role) return false;
@@ -236,37 +237,37 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-// Simple input wrapper that locks by role
-function Field({
-  label,
-  value,
-  onChange,
-  readOnly,
-  className = "",
-  inputClass = "",
-  placeholder = " ", // placeholder space keeps boxes visible when empty
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  readOnly?: boolean;
-  className?: string;
-  inputClass?: string;
-  placeholder?: string;
-}) {
-  return (
-    <div className={`flex gap-2 items-center ${className}`}>
-      <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-      <input
-        className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        readOnly={readOnly}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
+// // Simple input wrapper that locks by role
+// function Field({
+//   label,
+//   value,
+//   onChange,
+//   readOnly,
+//   className = "",
+//   inputClass = "",
+//   placeholder = " ", // placeholder space keeps boxes visible when empty
+// }: {
+//   label: string;
+//   value: string;
+//   onChange: (v: string) => void;
+//   readOnly?: boolean;
+//   className?: string;
+//   inputClass?: string;
+//   placeholder?: string;
+// }) {
+//   return (
+//     <div className={`flex gap-2 items-center ${className}`}>
+//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
+//       <input
+//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
+//         value={value}
+//         onChange={(e) => onChange(e.target.value)}
+//         readOnly={readOnly}
+//         placeholder={placeholder}
+//       />
+//     </div>
+//   );
+// }
 
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
@@ -336,6 +337,9 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
   const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
   const [tmy_spec, set_tmy_spec] = useState(report?.tmy_spec || "");
 
+
+  type PathogenSpec = "Absent" | "Present" | "";
+
   // Pathogens (Absent/Present + sample grams)
   type PathRow = {
     checked: boolean;
@@ -343,7 +347,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
     label: string;
     // grams: string;
     result: "Absent" | "Present" | "";
-    spec: "Absent" | "";
+    spec: PathogenSpec;
   };
   const pathogenDefaults: PathRow[] = useMemo(
     () => [
@@ -353,7 +357,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "E.coli",
         //grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -361,7 +365,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "P.aeruginosa",
         //grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -369,7 +373,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "S.aureus",
         //grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -377,7 +381,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "Salmonella",
         //grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -385,7 +389,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "Clostridia species",
         grams: "3g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -393,7 +397,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "C.albicans",
         ////grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -401,7 +405,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "B.cepacia",
         //grams: "11g",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
       {
         checked: false,
@@ -409,7 +413,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         label: "Other",
         grams: "",
         result: "",
-        spec: "Absent",
+        spec: ""
       },
     ],
     []
@@ -424,7 +428,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
 
   // --- Row-level errors for pathogens ---
-  type PathogenRowError = { result?: string };
+  type PathogenRowError = { result?: string, spec?: string };
   const [pathogenRowErrors, setPathogenRowErrors] = useState<PathogenRowError[]>(
     []
   );
@@ -456,6 +460,11 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
       if (!rows.some(r => r.checked)) {
         tableErr = "Select at least one organism.";
       }
+      rows.forEach((r, i) => {
+        if (r.checked && (r.spec !== "Absent" && r.spec !== "Present")) {
+          rowErrs[i].spec = "Choose Absent or Present";
+        }
+      });
     }
 
     if (who === "MICRO") {
@@ -466,7 +475,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
     setPathogenRowErrors(rowErrs);
     setPathogensTableError(tableErr);
-    return !tableErr && rowErrs.every(e => !e.result);
+    return !tableErr && rowErrs.every(e => !e.result && !e.spec);
   }
 
 
@@ -478,11 +487,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
       return copy;
     });
     // Clear the row error if we unchecked (no result required anymore)
-    setPathogenRowErrors((prev) => {
-      const copy = [...prev];
-      copy[idx] = {};
-      return copy;
-    });
+    setPathogenRowErrors(prev => { const c = [...prev]; c[idx] = {}; return c; });
     markDirty();
   }
 
@@ -523,6 +528,16 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
   }
 
 
+  function setPathogenSpec(idx: number, value: PathogenSpec) {
+    setPathogens(prev => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], spec: value };
+      return copy;
+    });
+    markDirty();
+  }
+
+
 
 
 
@@ -531,6 +546,9 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
   const [reviewedBy, setReviewedBy] = useState(report?.reviewedBy || "");
   const [testedDate, setTestedDate] = useState(report?.testedDate || "");
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
+
+
+
 
 
   // const lock = (f: string) => !canEdit(role, f);
@@ -578,11 +596,9 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         "tbc_dilution",
         "tbc_gram",
         "tbc_result",
-        "tbc_spec",
         "tmy_dilution",
         "tmy_gram",
         "tmy_result",
-        "tmy_spec",
         "pathogens",
         "dateTested",
         "preliminaryResults",
@@ -601,6 +617,8 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
         "description",
         "lotNo",
         "manufactureDate",
+        "tbc_spec",
+        "tmy_spec",
         "pathogens",
       ],
     };
@@ -756,6 +774,8 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
   }
 
 
+
+
   // Block tab close / refresh
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -783,6 +803,11 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
     else navigate(-1);
   };
 
+
+
+
+
+
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -796,13 +821,13 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
           >
             Close
           </button>
-          <button
+          {/* <button
             className="px-3 py-1 rounded-md border"
             onClick={() => window.print()}
             disabled={role === "SYSTEMADMIN"}
           >
             Print
-          </button>
+          </button> */}
           <button
             className="px-3 py-1 rounded-md border bg-blue-600 text-white"
             onClick={handleSave}
@@ -867,6 +892,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
                     setClient(e.target.value);
                     markDirty();
                   }}
+                  disabled={role === "CLIENT"}
                 />
               )}
             </div>
@@ -1085,7 +1111,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
               <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
               <FieldErrorBadge name="preliminaryResultsDate" errors={errors} />
               {lock("preliminaryResultsDate") ? (
-                <div className="flex-1  min-h-[14px]">{preliminaryResultsDate}</div>
+                <div className="flex-1  min-h-[14px]">{formatDateForInput(preliminaryResultsDate)}</div>
               ) : (
                 <input
                   className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${errors.preliminaryResultsDate ?
@@ -1357,7 +1383,27 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
 
                 {/* Third column (spec) */}
-                <div className="py-[2px] px-2 text-center">Absent</div>
+                {/* Third column (spec) */}
+                {/* Third column (spec) */}
+                <div className={`py-[2px] px-2 text-center ${pathogenRowErrors[idx]?.spec ? "ring-1 ring-red-500" : ""}`}>
+                  <select
+                    className={`input-editable border text-[11px] px-1 py-[1px] ${pathogenRowErrors[idx]?.spec ? "border-red-500" : "border-black/70"
+                      }`}
+                    value={p.spec}
+                    onChange={(e) => setPathogenSpec(idx, e.target.value as PathogenSpec)}
+                    disabled={!p.checked || lock("pathogens") || role !== "CLIENT"}
+                    aria-invalid={!!pathogenRowErrors[idx]?.spec}
+                  >
+                    <option value="">{/* placeholder */}-- Select --</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Present">Present</option>
+                  </select>
+                  {pathogenRowErrors[idx]?.spec && (
+                    <div className="mt-1 text-[11px] text-red-600">{pathogenRowErrors[idx]?.spec}</div>
+                  )}
+                </div>
+
+
               </div>
             );
           })}
@@ -1404,7 +1450,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
               <input
                 className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.testedBy ? "border-b-red-500" : "border-b-black/70"
                   }`}
-                value={testedBy}
+                value={(testedBy).toUpperCase()}
                 onChange={(e) => {
                   setTestedBy(e.target.value);
                   clearError("testedBy");
@@ -1443,7 +1489,8 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
               <input
                 className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${errors.reviewedBy ? "border-b-red-500" : "border-b-black/70"
                   }`}
-                value={reviewedBy}
+                value={
+                  (reviewedBy).toUpperCase()}
                 onChange={(e) => {
                   setReviewedBy(e.target.value);
                   clearError("reviewedBy");
@@ -1528,14 +1575,6 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
             }
           )}
         </div>
-
-        {/* Right: only Close */}
-        {/* <button
-          onClick={handleClose}
-          className="px-4 py-2 rounded-md border bg-gray-700 text-white hover:bg-gray-800"
-        >
-          Close
-        </button> */}
       </div>
 
     </>
