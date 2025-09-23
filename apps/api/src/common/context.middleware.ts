@@ -1,20 +1,42 @@
-// src/common/context.middleware.ts
 import { Injectable, NestMiddleware } from '@nestjs/common';
-import { requestContext } from './request-context';
-import type { Request, Response, NextFunction } from 'express';
+import { withRequestContext } from './request-context';
+
+function firstHeaderValue(v: unknown): string | undefined {
+  if (Array.isArray(v)) return v[0];
+  if (typeof v === 'string') return v;
+  return undefined;
+}
 
 @Injectable()
-export class ContextMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction) {
-    const user = (req as any).user; // assuming your auth guard puts user on req
-    const ip =
-      (req.headers['x-forwarded-for'] as string) ??
-      req.socket.remoteAddress ??
-      null;
+export class RequestContextMiddleware implements NestMiddleware {
+  use(req: any, res: any, next: () => void) {
+    const user = req.user || {};
 
-    requestContext.run(
-      { userId: user?.id ?? null, role: user?.role ?? null, ip },
-      () => next(),
+    const fwd = firstHeaderValue(req.headers['x-forwarded-for']);
+    const ip =
+      fwd?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      '';
+
+    const reason =
+      firstHeaderValue(req.headers['x-change-reason']) ||
+      req.body?.reason ||
+      req.query?.reason ||
+      undefined;
+
+    const eSignPassword =
+      firstHeaderValue(req.headers['x-esign-password']) ||
+      req.body?.eSignPassword ||
+      req.body?.esignPassword ||
+      undefined;
+
+    // Prefer human userId if present; fall back to JWT sub/uid conventions
+    const userId = user.userId ?? user.sub ?? user.uid ??  undefined;
+    // console.log("CTX USER ID:", userId);
+
+    withRequestContext(
+      { userId, role: user.role, ip, reason, eSignPassword },
+      next,
     );
   }
 }

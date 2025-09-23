@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
-import { canShowUpdateButton, type ReportStatus, type Role } from "../../utils/microMixReportFormWorkflow";
+import {
+  canShowUpdateButton,
+  type ReportStatus,
+  type Role,
+} from "../../utils/microMixReportFormWorkflow";
 import { useAuth } from "../../context/AuthContext";
+import { io } from "socket.io-client";
 
 type Report = {
   id: string;
@@ -34,6 +39,8 @@ const ALL_STATUSES = [
   "LOCKED",
 ];
 
+const socket = io("http://localhost:3000");
+
 export default function AdminDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [filterStatus, setFilterStatus] = useState("ALL");
@@ -46,6 +53,17 @@ export default function AdminDashboard() {
     null
   );
   const [newStatus, setNewStatus] = useState("");
+  const [reason, setReason] = useState("");
+  const [esignPassword, setEsignPassword] = useState("");
+  <input
+    type="password"
+    placeholder="Enter password for e-signature"
+    value={esignPassword}
+    onChange={(e) => setEsignPassword(e.target.value)}
+    className="border rounded px-3 py-2 w-full mb-4"
+    required={newStatus === "APPROVED" || newStatus === "LOCKED"}
+  />;
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -103,17 +121,24 @@ export default function AdminDashboard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ status: newStatus }),
+          body: JSON.stringify({
+            status: newStatus,
+            reason: reason || "Admin changed status",
+            eSignPassword: esignPassword || "",
+          }),
         }
       );
 
       if (!res.ok) throw new Error("Failed to update status");
       alert("Status updated successfully");
+
+      setChangeStatusReport(null); // close modal
+      setReason("");
     } catch (err) {
       console.error("Failed to update status", err);
+      alert(err instanceof Error ? err.message : "Failed to update status");
     }
   }
-
 
   function canUpdateThisReport(r: Report, user?: any) {
     // If non-clients see this dashboard later, you can loosen this check.
@@ -140,7 +165,6 @@ export default function AdminDashboard() {
       fieldsUsedOnForm
     );
   }
-
 
   return (
     <div className="p-6">
@@ -223,7 +247,7 @@ export default function AdminDashboard() {
                   >
                     View
                   </button>
-                  {(canUpdateThisReport(r, user)) && (
+                  {canUpdateThisReport(r, user) && (
                     <button
                       className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
                       onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
@@ -260,8 +284,8 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
               Report-
-              {/* Report {selectedReport.prefix} */}
-             ({selectedReport.reportNumber})
+              {/* Report {selectedReport.prefix} */}(
+              {selectedReport.reportNumber})
             </h2>
 
             <MicroMixReportFormView
@@ -301,6 +325,22 @@ export default function AdminDashboard() {
                 </option>
               ))}
             </select>
+            <input
+              type="text"
+              placeholder="Reason for change"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="border rounded px-3 py-2 w-full mb-4"
+            />
+            <input
+              type="password"
+              placeholder="Enter password for e-signature"
+              value={esignPassword}
+              onChange={(e) => setEsignPassword(e.target.value)}
+              className="border rounded px-3 py-2 w-full mb-4"
+              required={newStatus === "APPROVED" || newStatus === "LOCKED"}
+            />
+
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setChangeStatusReport(null)}

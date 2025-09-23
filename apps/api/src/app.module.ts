@@ -21,6 +21,9 @@ import { RolesGuard } from './common/roles.guard';
 import { ReportsModule } from './reports/reports.module';
 import { JwtAuthGuard } from './common/jwt-auth.guard';
 import { BalanceModule } from './balancer/balance.module';
+import { PrismaService } from 'prisma/prisma.service';
+import { ESignService } from './auth/esign.service';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -29,12 +32,13 @@ import { BalanceModule } from './balancer/balance.module';
     SamplesModule,
     UsersModule,
     ReportsModule,
-    BalanceModule
+    BalanceModule,
+    AuditModule
   ],
   providers: [
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: RolesGuard }, PrismaService, ESignService
   ],
 })
-export class AppModule {}
+export class AppModule { }

@@ -6,31 +6,35 @@
 :root { --brand:#0057A3; }
 
 @layer components {
-    .input-editable {
-      @apply border border-transparent outline-none 
-             py-[2px] text-[10px] leading-tight
-             hover:border-black 
-             focus:border-blue-500 
-             focus:ring-1 focus:ring-blue-400;
-    }
-     /* ✅ Thick black custom checkbox/radio */
-  .thick-box {
-    @apply appearance-none inline-grid place-content-center 
-           h-3 w-3 rounded-full border-2 border-black cursor-pointer;
+  .input-editable {
+    @apply border border-transparent outline-none 
+           py-[2px] text-[10px] leading-tight
+           hover:border-black 
+           focus:border-blue-500 
+           focus:ring-1 focus:ring-blue-400;
   }
 
-  .thick-box::after {
-    content: "";
-    @apply rounded-full bg-black;
-    width: 8px;
-    height: 8px;
-    transform: scale(0);
-    transition: transform 120ms ease-in-out;
-  }
+  /* ✅ Thick black square checkbox with tick mark */
+ .thick-box {
+  @apply appearance-none inline-grid place-content-center 
+         h-4 w-4 border-2 border-black cursor-pointer;
+}
 
-  .thick-box:checked::after {
-    transform: scale(1);
-  }
+.thick-box::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 12px;
+  border-right: 4px solid black; /* ← thicker */
+  border-bottom: 4px solid black; /* ← thicker */
+  transform: scale(0) rotate(45deg);
+  transition: transform 150ms ease-in-out;
+}
+
+.thick-box:checked::after {
+  transform: scale(1) rotate(45deg);
+}
+
 
   .thick-box:disabled {
     opacity: 1; /* keeps them black instead of greyed */
@@ -38,17 +42,16 @@
 }
 
 @media print {
-    body * {
-      visibility: hidden;
-    }
-    .sheet, .sheet * {
-      visibility: visible;
-    }
-    .sheet {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-    }
+  body * {
+    visibility: hidden;
   }
-  
+  .sheet, .sheet * {
+    visibility: visible;
+  }
+  .sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

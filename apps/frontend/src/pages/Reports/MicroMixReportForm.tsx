@@ -109,7 +109,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'ADMIN'],
+    canSet: ['MICRO', 'ADMIN', 'CLIENT'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['CLIENT'],
     canEdit: ['CLIENT'],
@@ -142,13 +142,13 @@ const STATUS_TRANSITIONS: Record<
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["ADMIN"],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_QA_REVIEW"],
     nextEditableBy: ["QA"],
-    canEdit: [],
+    canEdit: ["ADMIN"],
   },
   ADMIN_REJECTED: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
@@ -201,7 +201,11 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   }
   const map: Record<Role, string[]> = {
     SYSTEMADMIN: [],
-    ADMIN: ["*"],
+    ADMIN: ["testSopNo", "dateTested", "preliminaryResults", "preliminaryResultsDate",
+      "tbc_gram", "tbc_result", "tbc_spec",
+      "tmy_gram", "tmy_result", "tmy_spec",
+      "pathogens", "comments", "testedBy", "testedDate",
+      "dateCompleted", "reviewedBy", "reviewedDate"],
     FRONTDESK: [
       "client",
       "dateSent",
@@ -462,7 +466,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
 
   function resultDisabled(p: PathRow) {
     // Only MICRO can set results, and only if the organism is checked
-    return !p.checked || role !== "MICRO";
+    return !p.checked || (role !== "MICRO" && role !== "ADMIN");
   }
 
 
@@ -483,7 +487,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
       });
     }
 
-    if (who === "MICRO") {
+    if (who === "MICRO" ||who === "ADMIN") {
       rows.forEach((r, i) => {
         if (r.checked && !r.result) rowErrs[i].result = "Select Absent or Present";
       });
@@ -692,7 +696,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({...payload,reason:"Saving"}),
         });
       } else {
         // create
@@ -769,7 +773,7 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({reason:"Changing Status",status: newStatus }),
       });
 
       if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
@@ -1601,3 +1605,5 @@ export default function MicroMixReportForm({ report, onClose }: { report?: any; 
     </>
   );
 }
+
+

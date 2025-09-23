@@ -37,14 +37,25 @@ export class ReportsController {
     return this.svc.findAll();
   }
 
-  // ✅ Correct path + correct service reference
-  @Patch(':id/status')
+//   // ✅ Correct path + correct service reference
+//   @Patch(':id/status')
+// async updateStatus(
+//   @Req() req: any,
+//   @Param('id') id: string,
+//   @Body('status') status: ReportStatus,
+// ) {
+//   return this.svc.updateStatus(req.user, id, status);
+// }
+
+
+@Patch(':id/status')
 async updateStatus(
   @Req() req: any,
   @Param('id') id: string,
-  @Body('status') status: ReportStatus,
+  @Body() body: { status: ReportStatus; reason?: string },
 ) {
-  return this.svc.updateStatus(req.user, id, status);
+  return this.svc.update(req.user, id, body); // send full body including reason
 }
+
 
 }

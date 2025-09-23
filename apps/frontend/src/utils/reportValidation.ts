@@ -34,7 +34,7 @@ export type PathRow = {
     key: string;
     label: string;
     result: "Absent" | "Present" | "";
-    spec: "Absent" |"Present" | "";
+    spec: "Absent" | "Present" | "";
 };
 export type ReportFormValues = {
     client: string;
@@ -71,9 +71,13 @@ export type ReportFormValues = {
 // Centralized field requirements per role (no layout impact)
 export const ROLE_FIELDS: Record<Role, string[]> = {
     SYSTEMADMIN: [],
-    ADMIN: ["*"],
+    ADMIN: ["testSopNo", "dateTested", "preliminaryResults", "preliminaryResultsDate",
+        "tbc_gram", "tbc_result", "tbc_spec",
+        "tmy_gram", "tmy_result", "tmy_spec",
+        "pathogens", "comments", "testedBy", "testedDate",
+        "dateCompleted", "reviewedBy", "reviewedDate"],
     FRONTDESK: [
-         "dateSent", "typeOfTest", "sampleType",
+        "dateSent", "typeOfTest", "sampleType",
         "formulaNo", "description", "lotNo", "manufactureDate",
     ],
     MICRO: [
@@ -84,8 +88,8 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     ],
     QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
     CLIENT: [
-         "dateSent", "typeOfTest", "sampleType",
-        "formulaNo", "description", "lotNo", "manufactureDate","tmy_spec","tbc_spec"
+        "dateSent", "typeOfTest", "sampleType",
+        "formulaNo", "description", "lotNo", "manufactureDate", "tmy_spec", "tbc_spec"
     ],
 };
 

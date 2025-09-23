@@ -13,8 +13,7 @@ export type ReportStatus =
     | "CLIENT_NEEDS_CORRECTION"
     | "RECEIVED_BY_FRONTDESK"
     | "FRONTDESK_ON_HOLD"
-    |
-    "FRONTDESK_NEEDS_CORRECTION"
+    |"FRONTDESK_NEEDS_CORRECTION"
     | "FRONTDESK_REJECTED"
     | "UNDER_TESTING_REVIEW"
     | "TESTING_ON_HOLD"
@@ -40,7 +39,7 @@ export const STATUS_TRANSITIONS: Record<
     }
 > = {
     DRAFT: {
-        canSet: ["CLIENT", "FRONTDESK", "ADMIN", "SYSTEMADMIN"],
+        canSet: ["CLIENT", "SYSTEMADMIN"],
         next: ["SUBMITTED_BY_CLIENT", "CLIENT_NEEDS_CORRECTION"],
         nextEditableBy: ["CLIENT", "FRONTDESK"],
         canEdit: ["CLIENT"],
@@ -52,106 +51,106 @@ export const STATUS_TRANSITIONS: Record<
         canEdit: [],
     },
     RECEIVED_BY_FRONTDESK: {
-        canSet: ["FRONTDESK"],
+        canSet: ["FRONTDESK", 'ADMIN'],
         next: ["UNDER_TESTING_REVIEW", "FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
         nextEditableBy: ["MICRO"],
-        canEdit: ["FRONTDESK"],
+        canEdit: ["FRONTDESK","ADMIN"],
     },
     FRONTDESK_ON_HOLD: {
-        canSet: ["FRONTDESK"],
+        canSet: ["FRONTDESK", 'ADMIN'],
         next: ["RECEIVED_BY_FRONTDESK", "FRONTDESK_REJECTED"],
         nextEditableBy: ["FRONTDESK"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
-     FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: [],
-  },
+    FRONTDESK_NEEDS_CORRECTION: {
+        canSet: ['FRONTDESK', 'ADMIN'],
+        next: ['SUBMITTED_BY_CLIENT'],
+        nextEditableBy: ['CLIENT'],
+        canEdit: ["ADMIN"],
+    },
     FRONTDESK_REJECTED: {
-        canSet: ["FRONTDESK"],
+        canSet: ["FRONTDESK", 'ADMIN'],
         next: ["CLIENT_NEEDS_CORRECTION"],
         nextEditableBy: ["CLIENT", "FRONTDESK"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     CLIENT_NEEDS_CORRECTION: {
-        canSet: ["CLIENT"],
+        canSet: ["CLIENT", 'ADMIN'],
         next: ["SUBMITTED_BY_CLIENT"],
         nextEditableBy: ["FRONTDESK"],
         canEdit: ["CLIENT"],
     },
     UNDER_TESTING_REVIEW: {
-        canSet: ["MICRO"],
+        canSet: ["MICRO", 'ADMIN'],
         next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
         nextEditableBy: ["MICRO"],
-        canEdit: ["MICRO"],
+        canEdit: ["MICRO","ADMIN"],
     },
     TESTING_ON_HOLD: {
-        canSet: ["MICRO"],
+        canSet: ["MICRO", 'ADMIN'],
         next: ["UNDER_TESTING_REVIEW"],
         nextEditableBy: ["MICRO"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
-     TESTING_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'ADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['CLIENT'],
-  },
+    TESTING_NEEDS_CORRECTION: {
+        canSet: ['MICRO', 'ADMIN', 'CLIENT'],
+        next: ['UNDER_TESTING_REVIEW'],
+        nextEditableBy: ['CLIENT'],
+        canEdit: ['CLIENT',"ADMIN"],
+    },
     TESTING_REJECTED: {
-        canSet: ["MICRO"],
+        canSet: ["MICRO", 'ADMIN'],
         next: ["FRONTDESK_ON_HOLD", "FRONTDESK_REJECTED"],
         nextEditableBy: ["FRONTDESK"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     UNDER_QA_REVIEW: {
-        canSet: ["QA"],
+        canSet: ["QA", 'ADMIN'],
         next: ["QA_NEEDS_CORRECTION", "QA_REJECTED", "UNDER_ADMIN_REVIEW"],
         nextEditableBy: ["QA"],
-        canEdit: ["QA"],
+        canEdit: ["QA","ADMIN"],
     },
     QA_NEEDS_CORRECTION: {
-        canSet: ["QA"],
+        canSet: ["QA", 'ADMIN'],
         next: ["UNDER_TESTING_REVIEW"],
         nextEditableBy: ["MICRO"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     QA_REJECTED: {
-        canSet: ["QA"],
+        canSet: ["QA", 'ADMIN'],
         next: ["UNDER_TESTING_REVIEW"],
         nextEditableBy: ["MICRO"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     UNDER_ADMIN_REVIEW: {
         canSet: ["ADMIN", "SYSTEMADMIN"],
         next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "APPROVED"],
         nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     ADMIN_NEEDS_CORRECTION: {
         canSet: ["ADMIN", "SYSTEMADMIN"],
         next: ["UNDER_QA_REVIEW"],
         nextEditableBy: ["QA"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     ADMIN_REJECTED: {
         canSet: ["ADMIN", "SYSTEMADMIN"],
         next: ["UNDER_QA_REVIEW"],
         nextEditableBy: ["QA"],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     APPROVED: {
         canSet: ["ADMIN", "SYSTEMADMIN"],
         next: ["LOCKED"],
         nextEditableBy: [],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
     LOCKED: {
         canSet: ["ADMIN", "SYSTEMADMIN"],
         next: [],
         nextEditableBy: [],
-        canEdit: [],
+        canEdit: ["ADMIN"],
     },
 };
 
