@@ -5,7 +5,7 @@ import {
   type ReactNode,
   useEffect,
 } from "react";
-import { setToken, clearToken, getToken } from "../lib/api"; // add getToken helper
+import { setToken, clearToken, getToken, api } from "../lib/api"; // add getToken helper
 import type { Role } from "../utils/roles";
 
 type User = {
@@ -78,7 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+    await api("/auth/logout", { method: "POST" });
+  } catch (e) {
+    // ignore network errors on logout
+     console.debug("logout audit failed", e);
+  }
     clearToken(); // removes token
     localStorage.removeItem("user"); // remove persisted user
     setTokenState(null);
