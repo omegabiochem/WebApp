@@ -61,6 +61,28 @@ export class AuthService {
     });
   }
 
+
+  //  // ⬇️ ADD THIS
+  // async getMe(dbId: string) {
+  //   const u = await this.prisma.user.findUnique({
+  //     where: { id: dbId },
+  //     select: {
+  //       id: true,
+  //       email: true,
+  //       role: true,
+  //       name: true,
+  //       mustChangePassword: true,
+  //       clientCode: true,
+  //     },
+  //   });
+  //   if (!u) {
+  //     // user no longer exists or was deactivated/removed
+  //     // you can throw Unauthorized here; 400 also fine.
+  //     throw new UnauthorizedException('Invalid session');
+  //   }
+  //   return u;
+  // }
+
   private generateTempPassword() {
     // 12 random base64url chars ~ 72 bits entropy
     return randomBytes(9).toString('base64url');

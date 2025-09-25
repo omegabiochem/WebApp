@@ -59,49 +59,47 @@ model Sample {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  email              String            @unique
-  name               String?
-  role               UserRole          @default(CLIENT)
-  passwordHash       String
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  role         UserRole @default(CLIENT)
+  passwordHash String
 
   // client
-  clientCode         String?
+  clientCode String?
 
   // userId login + lifecycle
-  userId             String?            @unique
-  userIdSetAt        DateTime?      
-  passwordUpdatedAt  DateTime?
-  passwordVersion       Int       @default(1)
+  userId            String?   @unique
+  userIdSetAt       DateTime?
+  passwordUpdatedAt DateTime?
+  passwordVersion   Int       @default(1)
 
   // flag that set it in the first-login flow
-  mustChangePassword Boolean           @default(false)
+  mustChangePassword Boolean @default(false)
 
   // admin invite / temporary credentials
-  inviteToken        String?            @unique
-  inviteTokenExpiresAt DateTime?
+  inviteToken           String?   @unique
+  inviteTokenExpiresAt  DateTime?
   tempPasswordExpiresAt DateTime?
 
-  active             Boolean           @default(true)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // 👇 relation: one user can have many balance readings
-  readings           BalanceReading[]
+  readings    BalanceReading[]
   // 👇 relation: one user can have many audit trails
-  auditTrails        AuditTrail[]
+  auditTrails AuditTrail[]
 }
 
-
-
-model ClientSequence{
-  clientCode   String @id
-  lastNumber   Int     @default(0)
+model ClientSequence {
+  clientCode String @id
+  lastNumber Int    @default(0)
 }
 
-model LabReportSequence{
-  department   String @id
-  lastNumber   Int    @default(0)
+model LabReportSequence {
+  department String @id
+  lastNumber Int    @default(0)
 }
 
 model BalanceReading {
@@ -112,12 +110,12 @@ model BalanceReading {
   createdAt  DateTime @default(now())
 
   // foreign key
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 }
 
 model AuditTrail {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   action    String
   entity    String
   entityId  String?
@@ -125,35 +123,62 @@ model AuditTrail {
   details   String
   role      UserRole?
   ipAddress String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   // foreign key
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId, createdAt])
   @@index([userId, createdAt])
 }
 
 enum ReportStatus {
+  // ----- Client -----
   DRAFT
-  SUBMITTED_BY_CLIENT
-  CLIENT_NEEDS_CORRECTION
+  SUBMITTED_BY_CLIENT // old (keep for backward compat if needed)
+  CLIENT_NEEDS_PRELIMINARY_CORRECTION // new
+  CLIENT_NEEDS_FINAL_CORRECTION // new
+  UNDER_CLIENT_PRELIMINARY_CORRECTION // new
+  UNDER_CLIENT_FINAL_CORRECTION // new
+  PRELIMINARY_RESUBMITTION_BY_CLIENT // new
+  FINAL_RESUBMITTION_BY_CLIENT // new
+  UNDER_CLIENT_PRELIMINARY_REVIEW // new
+  UNDER_CLIENT_FINAL_REVIEW // new
+
+  // ----- Frontdesk (optional branch) -----
   RECEIVED_BY_FRONTDESK
   FRONTDESK_ON_HOLD
   FRONTDESK_NEEDS_CORRECTION
-  FRONTDESK_REJECTED
-  UNDER_TESTING_REVIEW
-  TESTING_ON_HOLD
-  TESTING_REJECTED
-  TESTING_NEEDS_CORRECTION
+
+  // ----- Preliminary Testing (Micro round 1) -----
+  UNDER_PRELIMINARY_TESTING_REVIEW // new
+  PRELIMINARY_TESTING_ON_HOLD // new
+  PRELIMINARY_TESTING_NEEDS_CORRECTION // new
+  PRELIMINARY_RESUBMITTION_BY_TESTING // new
+  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW // new
+  PRELIMINARY_APPROVED // new
+
+  // ----- Final Testing (Micro round 2) -----
+  UNDER_FINAL_TESTING_REVIEW // new
+  FINAL_TESTING_ON_HOLD // new
+  FINAL_TESTING_NEEDS_CORRECTION // new
+  FINAL_RESUBMITTION_BY_TESTING // new
+  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW // new
+
+  // ----- QA -----
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
-  QA_REJECTED
+
+
+  // ----- Admin -----
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
   ADMIN_REJECTED
-  APPROVED
+  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW // new
+
+  // ----- Final -----
+  FINAL_APPROVED // new
   LOCKED
 }
 

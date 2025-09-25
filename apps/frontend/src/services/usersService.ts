@@ -27,5 +27,8 @@ export async function changeUserPassword(input: {
   return api("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(input),
+    //  headers: {
+    //   Authorization: `Bearer ${token}`,
+    // },
   });
 }
