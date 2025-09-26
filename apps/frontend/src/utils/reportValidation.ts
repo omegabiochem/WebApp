@@ -2,213 +2,382 @@
 import { useCallback, useMemo, useState } from "react";
 
 export type Role =
-    | "SYSTEMADMIN"
-    | "ADMIN"
-    | "FRONTDESK"
-    | "MICRO"
-    | "QA"
-    | "CLIENT";
+  | "SYSTEMADMIN"
+  | "ADMIN"
+  | "FRONTDESK"
+  | "MICRO"
+  | "QA"
+  | "CLIENT";
 
 export type ReportStatus =
-    | "DRAFT"
-    | "SUBMITTED_BY_CLIENT"
-    | "CLIENT_NEEDS_CORRECTION"
-    | "RECEIVED_BY_FRONTDESK"
-    | "FRONTDESK_ON_HOLD"
-    | "FRONTDESK_REJECTED"
-    | "UNDER_TESTING_REVIEW"
-    | "TESTING_ON_HOLD"
-    | "TESTING_REJECTED"
-    | "UNDER_QA_REVIEW"
-    | "QA_NEEDS_CORRECTION"
-    | "QA_REJECTED"
-    | "UNDER_ADMIN_REVIEW"
-    | "ADMIN_NEEDS_CORRECTION"
-    | "ADMIN_REJECTED"
-    | "APPROVED"
-    | "LOCKED";
+  | "DRAFT"
+  | "SUBMITTED_BY_CLIENT"
+  | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
+  | "CLIENT_NEEDS_FINAL_CORRECTION"
+  | "UNDER_CLIENT_PRELIMINARY_CORRECTION"
+  | "UNDER_CLIENT_FINAL_CORRECTION"
+  | "PRELIMINARY_RESUBMITTION_BY_CLIENT"
+  | "FINAL_RESUBMITTION_BY_CLIENT"
+  | "UNDER_CLIENT_PRELIMINARY_REVIEW"
+  | "UNDER_CLIENT_FINAL_REVIEW"
+  | "RECEIVED_BY_FRONTDESK"
+  | "FRONTDESK_ON_HOLD"
+  | "FRONTDESK_NEEDS_CORRECTION"
+  | "UNDER_PRELIMINARY_TESTING_REVIEW"
+  | "PRELIMINARY_TESTING_ON_HOLD"
+  | "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+  | "PRELIMINARY_RESUBMITTION_BY_TESTING"
+  | "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"
+  | "FINAL_RESUBMITTION_BY_TESTING"
+  | "PRELIMINARY_APPROVED"
+  | "UNDER_FINAL_TESTING_REVIEW"
+  | "FINAL_TESTING_ON_HOLD"
+  | "FINAL_TESTING_NEEDS_CORRECTION"
+  | "FINAL_RESUBMITTION_BY_TESTING"
+  | "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"
+  | "UNDER_QA_REVIEW"
+  | "QA_NEEDS_CORRECTION"
+  | "UNDER_ADMIN_REVIEW"
+  | "ADMIN_NEEDS_CORRECTION"
+  | "ADMIN_REJECTED"
+  | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
+  | "FINAL_APPROVED"
+  | "LOCKED";
 
 // The values your form passes into validation
 export type PathRow = {
-    checked: boolean;
-    key: string;
-    label: string;
-    result: "Absent" | "Present" | "";
-    spec: "Absent" | "Present" | "";
+  checked: boolean;
+  key: string;
+  label: string;
+  result: "Absent" | "Present" | "";
+  spec: "Absent" | "Present" | "";
 };
 export type ReportFormValues = {
-    client: string;
-    dateSent: string;
-    typeOfTest: string;
-    sampleType: string;
-    formulaNo: string;
-    description: string;
-    lotNo: string;
-    manufactureDate: string;
+  client: string;
+  dateSent: string;
+  typeOfTest: string;
+  sampleType: string;
+  formulaNo: string;
+  description: string;
+  lotNo: string;
+  manufactureDate: string;
 
-    testSopNo: string;
-    dateTested: string;
-    preliminaryResults: string;
-    preliminaryResultsDate: string;
+  testSopNo: string;
+  dateTested: string;
+  preliminaryResults: string;
+  preliminaryResultsDate: string;
 
-    tbc_gram: string;
-    tbc_result: string;
-    tbc_spec: string;
-    tmy_gram: string;
-    tmy_result: string;
-    tmy_spec: string;
+  tbc_gram: string;
+  tbc_result: string;
+  tbc_spec: string;
+  tmy_gram: string;
+  tmy_result: string;
+  tmy_spec: string;
 
-    comments: string;
-    testedBy: string;
-    testedDate: string;
-    dateCompleted: string;
-    reviewedBy: string;
-    reviewedDate: string;
+  comments: string;
+  testedBy: string;
+  testedDate: string;
+  dateCompleted: string;
+  reviewedBy: string;
+  reviewedDate: string;
 
-    pathogens: PathRow[];
+  pathogens: PathRow[];
 };
 
 // Centralized field requirements per role (no layout impact)
 export const ROLE_FIELDS: Record<Role, string[]> = {
-    SYSTEMADMIN: [],
-    ADMIN: ["testSopNo", "dateTested", "preliminaryResults", "preliminaryResultsDate",
-        "tbc_gram", "tbc_result", "tbc_spec",
-        "tmy_gram", "tmy_result", "tmy_spec",
-        "pathogens", "comments", "testedBy", "testedDate",
-        "dateCompleted", "reviewedBy", "reviewedDate"],
-    FRONTDESK: [
-        "dateSent", "typeOfTest", "sampleType",
-        "formulaNo", "description", "lotNo", "manufactureDate",
-    ],
-    MICRO: [
-        "testSopNo", "dateTested", "preliminaryResults", "preliminaryResultsDate",
-        "tbc_gram", "tbc_result", "tbc_spec",
-        "tmy_gram", "tmy_result", "tmy_spec",
-        "pathogens", "comments", "testedBy", "testedDate",
-    ],
-    QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-    CLIENT: [
-        "dateSent", "typeOfTest", "sampleType",
-        "formulaNo", "description", "lotNo", "manufactureDate", "tmy_spec", "tbc_spec"
-    ],
+  SYSTEMADMIN: [],
+  ADMIN: [
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+    "tbc_spec",
+    "tmy_gram",
+    "tmy_result",
+    "tmy_spec",
+    "pathogens",
+    "comments",
+    "testedBy",
+    "testedDate",
+    "dateCompleted",
+    "reviewedBy",
+    "reviewedDate",
+  ],
+  FRONTDESK: [
+    "dateSent",
+    "typeOfTest",
+    "sampleType",
+    "formulaNo",
+    "description",
+    "lotNo",
+    "manufactureDate",
+  ],
+  MICRO: [
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+    "tbc_spec",
+    "tmy_gram",
+    "tmy_result",
+    "tmy_spec",
+    "pathogens",
+    "comments",
+    "testedBy",
+    "testedDate",
+  ],
+  QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+  CLIENT: [
+    "dateSent",
+    "typeOfTest",
+    "sampleType",
+    "formulaNo",
+    "description",
+    "lotNo",
+    "manufactureDate",
+    "tmy_spec",
+    "tbc_spec",
+  ],
 };
+
+/* =======================
+ * MICRO: Phase logic & status buckets
+ * ======================= */
+
+export type MicroPhase = "PRELIM" | "FINAL";
+
+/** Fine-grained MICRO required fields by phase */
+export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
+  PRELIM: [
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+  ],
+  FINAL: [
+    "tmy_gram",
+    "tmy_result",
+    "pathogens",
+    "comments",
+    "testedBy",
+    "testedDate",
+  ],
+};
+
+/** Statuses that should validate the MICRO "Preliminary" subset */
+export const PRELIM_STATUSES: ReportStatus[] = [
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_ON_HOLD",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMITTION_BY_TESTING",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "PRELIMINARY_APPROVED", // up to this point it's still the preliminary pass
+];
+
+/** Statuses that should validate the MICRO "Final" subset */
+export const FINAL_STATUSES: ReportStatus[] = [
+  "UNDER_FINAL_TESTING_REVIEW",
+  "FINAL_TESTING_ON_HOLD",
+  "FINAL_TESTING_NEEDS_CORRECTION",
+  "FINAL_RESUBMITTION_BY_TESTING",
+  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+];
+
+/** Helper: derive MICRO phase from a status */
+export function deriveMicroPhaseFromStatus(
+  status?: ReportStatus
+): MicroPhase | undefined {
+  if (!status) return undefined;
+  if (PRELIM_STATUSES.includes(status)) return "PRELIM";
+  if (FINAL_STATUSES.includes(status)) return "FINAL";
+  return undefined;
+}
 
 // Small helper you can use instead of a local canEdit()
 export function canEditBy(
-    role: Role | undefined,
-    status: ReportStatus | undefined,
-    statusTransitions: Record<
-        ReportStatus,
-        { canSet: Role[]; next: ReportStatus[]; nextEditableBy: Role[]; canEdit: Role[] }
-    >,
-    field: string
+  role: Role | undefined,
+  status: ReportStatus | undefined,
+  statusTransitions: Record<
+    ReportStatus,
+    {
+      canSet: Role[];
+      next: ReportStatus[];
+      nextEditableBy: Role[];
+      canEdit: Role[];
+    }
+  >,
+  field: string
 ) {
-    if (!role || !status) return false;
-    const t = statusTransitions[status];
-    if (!t || !t.canEdit?.includes(role)) return false;
-    const list = ROLE_FIELDS[role] ?? [];
-    return list.includes("*") || list.includes(field);
+  if (!role || !status) return false;
+  const t = statusTransitions[status];
+  if (!t || !t.canEdit?.includes(role)) return false;
+  const list = ROLE_FIELDS[role] ?? [];
+  return list.includes("*") || list.includes(field);
 }
 
 // Non-layout error badge (absolute positioned)
 import React from "react";
 
 export function FieldErrorBadge({
-    name,
-    errors,
+  name,
+  errors,
 }: {
-    name: string;
-    errors: Record<string, string>;
+  name: string;
+  errors: Record<string, string>;
 }): React.ReactElement | null {
-    const msg = errors[name];
-    if (!msg) return null;
-    return React.createElement(
-        "span",
-        {
-            className:
-                "absolute -top-2 right-1 text-[10px] leading-none text-red-600 bg-white px-1 rounded no-print pointer-events-none",
-            title: msg,
-        },
-        msg
-    );
+  const msg = errors[name];
+  if (!msg) return null;
+  return React.createElement(
+    "span",
+    {
+      className:
+        "absolute -top-2 right-1 text-[10px] leading-none text-red-600 bg-white px-1 rounded no-print pointer-events-none",
+      title: msg,
+    },
+    msg
+  );
 }
 
+/* =======================
+ * Main validation hook
+ * ======================= */
+
+type ValidationOpts = {
+  /** If provided, this replaces the required list (wins over phase/status). */
+  requiredOverride?: string[];
+  /** Force a MICRO phase (wins over status). */
+  phase?: MicroPhase;
+  /** Current status to infer MICRO phase. */
+  status?: ReportStatus;
+};
 
 // Hook that validates based on ROLE_FIELDS and returns boolean
-export function useReportValidation(role?: Role) {
-    const [errors, setErrors] = useState<Record<string, string>>({});
+export function useReportValidation(role?: Role, opts?: ValidationOpts) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-    const clearError = useCallback((name: string) => {
-        setErrors(prev => {
-            if (!(name in prev)) return prev;
-            const { [name]: _omit, ...rest } = prev;
-            return rest;
-        });
-    }, []);
+  const clearError = useCallback((name: string) => {
+    setErrors((prev) => {
+      if (!(name in prev)) return prev;
+      const { [name]: _omit, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
-    // How to check emptiness using provided values
-    const isEmpty = useCallback((field: string, v: ReportFormValues): boolean => {
-        switch (field) {
-            // case "client": return !v.client?.trim();
-            case "dateSent": return !v.dateSent;
-            case "typeOfTest": return !v.typeOfTest?.trim();
-            case "sampleType": return !v.sampleType?.trim();
-            case "formulaNo": return !v.formulaNo?.trim();
-            case "description": return !v.description?.trim();
-            case "lotNo": return !v.lotNo?.trim();
-            case "manufactureDate": return !v.manufactureDate;
+  // How to check emptiness using provided values
+  const isEmpty = useCallback((field: string, v: ReportFormValues): boolean => {
+    switch (field) {
+      // case "client": return !v.client?.trim();
+      case "dateSent":
+        return !v.dateSent;
+      case "typeOfTest":
+        return !v.typeOfTest?.trim();
+      case "sampleType":
+        return !v.sampleType?.trim();
+      case "formulaNo":
+        return !v.formulaNo?.trim();
+      case "description":
+        return !v.description?.trim();
+      case "lotNo":
+        return !v.lotNo?.trim();
+      case "manufactureDate":
+        return !v.manufactureDate;
 
-            case "testSopNo": return !v.testSopNo?.trim();
-            case "dateTested": return !v.dateTested;
-            case "preliminaryResults": return !v.preliminaryResults?.trim();
-            case "preliminaryResultsDate": return !v.preliminaryResultsDate;
-            case "tbc_gram": return !v.tbc_gram?.trim();
-            case "tbc_result": return !v.tbc_result?.trim();
-            case "tbc_spec": return !v.tbc_spec?.trim();
-            case "tmy_gram": return !v.tmy_gram?.trim();
-            case "tmy_result": return !v.tmy_result?.trim();
-            case "tmy_spec": return !v.tmy_spec?.trim();
-            case "comments": return !v.comments?.trim();
-            case "testedBy": return !v.testedBy?.trim();
-            case "testedDate": return !v.testedDate;
+      case "testSopNo":
+        return !v.testSopNo?.trim();
+      case "dateTested":
+        return !v.dateTested;
+      case "preliminaryResults":
+        return !v.preliminaryResults?.trim();
+      case "preliminaryResultsDate":
+        return !v.preliminaryResultsDate;
+      case "tbc_gram":
+        return !v.tbc_gram?.trim();
+      case "tbc_result":
+        return !v.tbc_result?.trim();
+      case "tbc_spec":
+        return !v.tbc_spec?.trim();
+      case "tmy_gram":
+        return !v.tmy_gram?.trim();
+      case "tmy_result":
+        return !v.tmy_result?.trim();
+      case "tmy_spec":
+        return !v.tmy_spec?.trim();
+      case "comments":
+        return !v.comments?.trim();
+      case "testedBy":
+        return !v.testedBy?.trim();
+      case "testedDate":
+        return !v.testedDate;
 
-            case "dateCompleted": return !v.dateCompleted;
-            case "reviewedBy": return !v.reviewedBy?.trim();
-            case "reviewedDate": return !v.reviewedDate;
+      case "dateCompleted":
+        return !v.dateCompleted;
+      case "reviewedBy":
+        return !v.reviewedBy?.trim();
+      case "reviewedDate":
+        return !v.reviewedDate;
 
-            case "pathogens":
-                return !v.pathogens?.some(p => p.result === "Absent" || p.result === "Present");
-            default:
-                return false;
-        }
-    }, []);
+      case "pathogens":
+        return !v.pathogens?.some(
+          (p) => p.result === "Absent" || p.result === "Present"
+        );
+      default:
+        return false;
+    }
+  }, []);
 
-    const requiredList = useMemo(
-        () => (ROLE_FIELDS[(role as Role) || "CLIENT"] ?? []).filter(f => f !== "*"),
-        [role]
+  const requiredList = useMemo(() => {
+    // Base role requireds (fallback)
+    const base = (ROLE_FIELDS[(role as Role) || "CLIENT"] ?? []).filter(
+      (f) => f !== "*"
     );
 
-    /** returns true when valid; sets errors + scrolls to first error */
-    const validateAndSetErrors = useCallback((values: ReportFormValues): boolean => {
-        const next: Record<string, string> = {};
-        requiredList.forEach(f => {
-            if (isEmpty(f, values)) next[f] = "Required";
-        });
-        setErrors(next);
+    // 1) Absolute override wins
+    if (opts?.requiredOverride) return opts.requiredOverride;
 
-        const firstKey = Object.keys(next)[0];
-        if (firstKey) {
-            // try to scroll to the field if it exists
-            const el = document.getElementById("f-" + firstKey);
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-        return Object.keys(next).length === 0;
-    }, [isEmpty, requiredList]);
+    // 2) If MICRO and explicit phase was provided, use phase lists
+    if (role === "MICRO" && opts?.phase) {
+      return MICRO_PHASE_FIELDS[opts.phase];
+    }
 
-    return { errors, clearError, validateAndSetErrors };
+    // 3) If MICRO and status provided, infer phase from status
+    if (role === "MICRO" && opts?.status) {
+      const phase = deriveMicroPhaseFromStatus(opts.status);
+      if (phase) return MICRO_PHASE_FIELDS[phase];
+    }
+
+    // 4) Fallback to role defaults
+    return base;
+  }, [role, opts?.requiredOverride, opts?.phase, opts?.status]);
+
+  /** returns true when valid; sets errors + scrolls to first error */
+  const validateAndSetErrors = useCallback(
+    (values: ReportFormValues): boolean => {
+      const next: Record<string, string> = {};
+      requiredList.forEach((f) => {
+        if (isEmpty(f, values)) next[f] = "Required";
+      });
+      setErrors(next);
+
+      const firstKey = Object.keys(next)[0];
+      if (firstKey) {
+        // try to scroll to the field if it exists
+        const el = document.getElementById("f-" + firstKey);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return Object.keys(next).length === 0;
+    },
+    [isEmpty, requiredList]
+  );
+
+  return { errors, clearError, validateAndSetErrors };
 }
-
-
 
 // import React, { useState } from "react";
 // import {
@@ -380,4 +549,3 @@ export function useReportValidation(role?: Role) {
 //         </span>
 //     ) : null;
 // }
-

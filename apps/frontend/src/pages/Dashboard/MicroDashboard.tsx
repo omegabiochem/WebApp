@@ -13,15 +13,15 @@ type Report = {
 
 const CLIENT_STATUSES = [
   "ALL", // 👈 added ALL option
-  'SUBMITTED_BY_CLIENT',
-  "UNDER_TESTING_REVIEW",
-  'TESTING_ON_HOLD',
-  'TESTING_NEEDS_CORRECTION',
+  "SUBMITTED_BY_CLIENT",
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_APPROVED",
+  "UNDER_FINAL_TESTING_REVIEW"
 ];
 
 export default function MicroDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
-  const [filter, setFilter] = useState("UNDER_TESTING_REVIEW");
+  const [filter, setFilter] = useState("UNDER_PRELIMINARY_TESTING_REVIEW");
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const navigate = useNavigate();
 
@@ -41,9 +41,9 @@ export default function MicroDashboard() {
           all.filter((r: Report) =>
             [
               "SUBMITTED_BY_CLIENT",
-              "UNDER_TESTING_REVIEW",
-              'TESTING_ON_HOLD',
-              'TESTING_NEEDS_CORRECTION',
+              "UNDER_PRELIMINARY_TESTING_REVIEW",
+              "PRELIMINARY_APPROVED",
+              "UNDER_FINAL_TESTING_REVIEW"
             ].includes(r.status)
           )
         );
@@ -58,22 +58,54 @@ export default function MicroDashboard() {
   const filtered =
     filter === "ALL" ? reports : reports.filter((r) => r.status === filter);
 
-
-  async function markAsReceived(reportId: string) {
+  // replace your markAsReceived() with a generic helper:
+  async function setStatus(
+    reportId: string,
+    newStatus: string,
+    reason = "Common Status Change"
+  ) {
     const token = localStorage.getItem("token");
     if (!token) return;
-    console.log(reportId);
 
-    await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ status: "UNDER_TESTING_REVIEW" }),
-    });
+    const res = await fetch(
+      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason, status: newStatus }),
+      }
+    );
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(
+        msg || `Failed to set status to ${newStatus} (${res.status})`
+      );
+    }
+
+    // optional: keep the table UI in sync right away
+    setReports((prev) =>
+      prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
+    );
   }
 
+  // async function markAsReceived(reportId: string) {
+  //   const token = localStorage.getItem("token");
+  //   if (!token) return;
+  //   console.log(reportId);
+
+  //   await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
+  //     method: "PATCH",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${token}`,
+  //     },
+  //     body: JSON.stringify({ reason: "Common Status Change",status: "UNDER_PRELIMINARY_TESTING_REVIEW" }),
+  //   });
+  // }
 
   return (
     <div className="p-6">
@@ -85,8 +117,9 @@ export default function MicroDashboard() {
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-4 py-2 rounded-md border ${filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
-              }`}
+            className={`px-4 py-2 rounded-md border ${
+              filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
+            }`}
           >
             {s.replace(/_/g, " ")}
           </button>
@@ -108,9 +141,7 @@ export default function MicroDashboard() {
           <tbody>
             {filtered.map((r) => (
               <tr key={r.id} className="border-b hover:bg-gray-50">
-                <td className="p-2">
-                  {r.reportNumber}
-                </td>
+                <td className="p-2">{r.reportNumber}</td>
                 <td className="p-2">{r.client}</td>
                 <td className="p-2">
                   {r.dateSent ? new Date(r.dateSent).toLocaleDateString() : "-"}
@@ -131,13 +162,39 @@ export default function MicroDashboard() {
                   <button
                     className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
                     onClick={async () => {
+                      try {
+                        if (r.status === "SUBMITTED_BY_CLIENT") {
+                          await setStatus(
+                            r.id,
+                            "UNDER_PRELIMINARY_TESTING_REVIEW",
+                            "Move to prelim testing"
+                          );
+                        } else if (r.status === "PRELIMINARY_APPROVED") {
+                          await setStatus(
+                            r.id,
+                            "UNDER_FINAL_TESTING_REVIEW",
+                            "Move to final testing"
+                          );
+                        }
+                        navigate(`/reports/micro-mix/${r.id}`);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
+                    }}
+                  >
+                    Update
+                  </button>
+
+                  {/* <button
+                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
+                    onClick={async () => {
                       if (r.status === "SUBMITTED_BY_CLIENT") {
                         await markAsReceived(r.id);
                       }
                       navigate(`/reports/micro-mix/${r.id}`);
                     }} >
                     Update
-                  </button>
+                  </button> */}
                 </td>
               </tr>
             ))}

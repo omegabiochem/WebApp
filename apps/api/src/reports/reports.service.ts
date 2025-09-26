@@ -212,13 +212,13 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["CLIENT"],
+    canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
-    canSet: ["MICRO", "ADMIN"],
+    canSet: ["CLIENT"],
     next: ["PRELIMINARY_APPROVED", "CLIENT_NEEDS_PRELIMINARY_CORRECTION"],
     nextEditableBy: ["CLIENT"],
     canEdit: ["CLIENT"],
@@ -266,7 +266,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
-    canSet: ["CLIENT"],
+    canSet: ["MICRO"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: [],
@@ -324,7 +324,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
-    canSet: ["CLIENT"],
+    canSet: ["MICRO"],
     next: [
       "FINAL_TESTING_NEEDS_CORRECTION",
       "FINAL_TESTING_NEEDS_CORRECTION",
