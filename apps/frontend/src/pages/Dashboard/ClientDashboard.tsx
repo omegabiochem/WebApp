@@ -97,7 +97,7 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<("ALL" | ReportStatus)>("SUBMITTED_BY_CLIENT");
+  const [statusFilter, setStatusFilter] = useState<("ALL" | ReportStatus)>("ALL");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");

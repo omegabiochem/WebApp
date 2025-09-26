@@ -169,7 +169,7 @@ export const router = createBrowserRouter([
         path: "reports/micro-mix/:id", // ← no leading slash
         element: (
           <RequireAuth>
-            <RequireRole roles={["MICRO", "QA", "ADMIN", "SYSTEMADMIN"]}>
+            <RequireRole roles={["FRONTDESK", "MICRO", "CHEMISTRY", "QA", "ADMIN", "SYSTEMADMIN", "CLIENT"]}>
               <MicroMixReportFormWrapper />
             </RequireRole>
           </RequireAuth>

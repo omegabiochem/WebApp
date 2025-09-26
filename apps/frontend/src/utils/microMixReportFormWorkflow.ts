@@ -52,21 +52,21 @@ export const STATUS_TRANSITIONS: Record<
         canEdit: Role[];
     }
 > = {
-    DRAFT: {
+     DRAFT: {
     canSet: ["CLIENT"],
     next: ["SUBMITTED_BY_CLIENT"],
     nextEditableBy: ["CLIENT", "FRONTDESK"],
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["CLIENT","MICRO"],
+    canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
-    canSet: ["MICRO", "ADMIN"],
-    next: ["PRELIMINARY_APPROVED", "CLIENT_NEEDS_PRELIMINARY_CORRECTION"],
+    canSet: ["CLIENT"],
+    next: ["CLIENT_NEEDS_PRELIMINARY_CORRECTION", "PRELIMINARY_APPROVED"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
   },
@@ -113,7 +113,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
-    canSet: ["CLIENT"],
+    canSet: [],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["MICRO"],
     canEdit: [],
@@ -171,9 +171,9 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
-    canSet: ["CLIENT"],
+    canSet: ["MICRO"],
     next: [
-      "FINAL_TESTING_NEEDS_CORRECTION",
+      "FINAL_TESTING_ON_HOLD",
       "FINAL_TESTING_NEEDS_CORRECTION",
       "UNDER_ADMIN_REVIEW",
     ],
@@ -307,7 +307,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 export function canRoleEditInStatus(role?: Role, status?: ReportStatus): boolean {
     if (!role || !status) return false;
     const t = STATUS_TRANSITIONS[status];
-    return !!t?.canEdit?.includes(role);
+    return !!t?.canSet?.includes(role);
 }
 
 export function canRoleEditField(

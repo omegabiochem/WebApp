@@ -626,10 +626,10 @@ export default function MicroMixReportForm({
     null
   );
 
-  function organismDisabled() {
-    // Only CLIENT decides which organisms to test
-    return role !== "CLIENT";
-  }
+  // function organismDisabled() {
+  //   // Only CLIENT decides which organisms to test
+  //   return role !== "CLIENT";
+  // }
 
   // function resultDisabled(p: PathRow) {
   //   // Only MICRO can set results, and only if the organism is checked
@@ -870,7 +870,6 @@ export default function MicroMixReportForm({
       testedDate,
       reviewedDate,
     };
-
 
     // added to control overwrite of fields based on phase
     // MicroPhase-based field guard
@@ -1770,7 +1769,10 @@ export default function MicroMixReportForm({
                     className="thick-box"
                     checked={!!p.checked}
                     onChange={(e) => setPathogenChecked(idx, e.target.checked)}
-                    disabled={organismDisabled()}
+                    // disabled={organismDisabled()}
+                    disabled={
+                       lock("pathogens") || role !== "CLIENT"
+                    }
                   />
                   <span className="font-bold">{p.label}</span>
                   {p.key === "OTHER" && (
