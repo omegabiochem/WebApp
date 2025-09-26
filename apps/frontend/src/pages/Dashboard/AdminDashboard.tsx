@@ -27,7 +27,6 @@ type Report = {
 // ---------------------------------
 
 const BASE_URL = "http://localhost:3000";
-const ESIGN_VERIFY_PATH = "/auth/esign/verify"; // <- backend route to verify e-sign passwords
 
 const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
@@ -156,29 +155,6 @@ const ADMIN_FIELDS_ON_FORM = [
 // ---------------------------------
 // API helpers
 // ---------------------------------
-
-async function verifyESign(password: string): Promise<string> {
-  const token = localStorage.getItem("token");
-  if (!token) throw new Error("Missing auth token");
-
-  const res = await fetch(`${BASE_URL}${ESIGN_VERIFY_PATH}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ password }),
-  });
-
-  if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(msg || "Invalid e-signature password");
-  }
-
-  const data = (await res.json()) as { token?: string };
-  if (!data?.token) throw new Error("Invalid e-signature response");
-  return data.token; // short‑lived token the server will verify on status change
-}
 
 // ---------------------------------
 // Component
@@ -326,10 +302,10 @@ export default function AdminDashboard() {
     );
   }
 
-  // Require e‑sign for ALL status changes (incl. UNDER_CLIENT_FINAL_REVIEW)
+  // Require e-sign for ALL status changes (incl. UNDER_CLIENT_FINAL_REVIEW)
   const needsESign = (_s: string) => true;
 
-  // Save status change with e‑sign verification
+  // Save status change – send reason + eSignPassword directly to backend
   async function handleChangeStatus(report: Report, nextStatus: string) {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -341,14 +317,17 @@ export default function AdminDashboard() {
     setESignError("");
 
     try {
-      let eSignToken: string | undefined;
-      if (needsESign(nextStatus)) {
-        if (!eSignPassword) {
-          setESignError("E‑signature password is required.");
-          setSaving(false);
-          return;
-        }
-        eSignToken = await verifyESign(eSignPassword);
+      // Frontend rule: reason and e-sign password are mandatory for all changes
+      if (!reason.trim()) {
+        setSaving(false);
+        setESignError("");
+        alert("Reason for change is required.");
+        return;
+      }
+      if (needsESign(nextStatus) && !eSignPassword) {
+        setSaving(false);
+        setESignError("E-signature password is required.");
+        return;
       }
 
       const res = await fetch(
@@ -361,8 +340,8 @@ export default function AdminDashboard() {
           },
           body: JSON.stringify({
             status: nextStatus,
-            reason: reason || "Admin changed status",
-            eSignToken, // server verifies this short‑lived token instead of the raw password
+            reason, // ← always provide a reason (backend requires for critical fields)
+            eSignPassword, // ← send raw password; backend verifies against current user
           }),
         }
       );
@@ -381,15 +360,15 @@ export default function AdminDashboard() {
       setESignPassword("");
       alert("Status updated successfully");
     } catch (err: any) {
+      const msg = String(err?.message || "");
       if (
-        String(err?.message || "")
-          .toLowerCase()
-          .includes("sign")
+        msg.toLowerCase().includes("electronic") ||
+        msg.toLowerCase().includes("sign")
       ) {
-        setESignError(err.message);
+        setESignError(msg); // e.g., "Electronic signature failed"
       } else {
         console.error("Failed to update status", err);
-        alert(err?.message || "Failed to update status");
+        alert(msg || "Failed to update status");
       }
     } finally {
       setSaving(false);
@@ -751,7 +730,11 @@ export default function AdminDashboard() {
                 onClick={() =>
                   handleChangeStatus(changeStatusReport, newStatus)
                 }
-                disabled={saving || (needsESign(newStatus) && !eSignPassword)}
+                disabled={
+                  saving ||
+                  !reason.trim() ||
+                  (needsESign(newStatus) && !eSignPassword)
+                }
               >
                 {saving ? "Saving…" : "Save"}
               </button>

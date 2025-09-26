@@ -637,6 +637,33 @@ export default function MicroMixReportForm({
   // }
   const phase = deriveMicroPhaseFromStatus(status);
 
+  // --- E-Sign modal state (Admin-only) ---
+  // Admin E-sign modal state
+const [showESign, setShowESign] = useState(false);
+const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
+const [changeReason, setChangeReason] = useState("");
+const [eSignPassword, setESignPassword] = useState("");
+
+// UI policy: only when server will enforce
+const uiNeedsESign = (s: string) =>
+  (role === "ADMIN" || role === "SYSTEMADMIN") &&
+  (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+
+
+
+  // trigger from buttons; Admin must provide e-sign first
+function requestStatusChange(target: ReportStatus) {
+  if (uiNeedsESign(target)) {
+    setPendingStatus(target);
+    setChangeReason("");
+    setESignPassword("");
+    setShowESign(true);
+  } else {
+    handleStatusChange(target); // fall through to your existing flow
+  }
+}
+
+
   function resultDisabled(p: PathRow) {
     if (!p.checked) return true;
 
@@ -1010,14 +1037,109 @@ export default function MicroMixReportForm({
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
-    const token = localStorage.getItem("token");
+  // const handleStatusChange = async (newStatus: string) => {
+  //   const token = localStorage.getItem("token");
 
+  //   const API_BASE = "http://localhost:3000";
+
+  //   const values = makeValues();
+  //   const okFields = validateAndSetErrors(values);
+  //   const okRows = validatePathogenRows(values.pathogens, role);
+  //   if (
+  //     newStatus === "SUBMITTED_BY_CLIENT" ||
+  //     newStatus === "RECEIVED_BY_FRONTDESK" ||
+  //     newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
+  //     newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
+  //     newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
+  //     newStatus === "PRELIMINARY_RESUBMITTION_BY_CLIENT" ||
+  //     newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
+  //     newStatus === "UNDER_QA_REVIEW" ||
+  //     newStatus === "UNDER_ADMIN_REVIEW" ||
+  //     newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
+  //     newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
+  //     newStatus === "FINAL_RESUBMITTION_BY_CLIENT" ||
+  //     newStatus === "PRELIMINARY_APPROVED" ||
+  //     newStatus === "FINAL_TESTING_ON_HOLD" ||
+  //     newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+  //     newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
+  //     newStatus === "QA_NEEDS_CORRECTION" ||
+  //     newStatus === "ADMIN_NEEDS_CORRECTION" ||
+  //     newStatus === "ADMIN_REJECTED" ||
+  //     newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+  //     newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
+  //     newStatus === "FINAL_RESUBMITTION_BY_TESTING" ||
+  //     newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
+  //     newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+  //     newStatus === "FRONTDESK_ON_HOLD" ||
+  //     newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+  //     newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
+  //     newStatus === "UNDER_PRELIMINARY_CORRECTION" ||
+  //     newStatus === "UNDER_FINAL_CORRECTION" ||
+  //     newStatus === "LOCKED" ||
+  //     newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+  //     newStatus === "PRELIMINARY_APPROVED" ||
+  //     newStatus === "FINAL_APPROVED"
+  //   ) {
+  //     if (!okFields) {
+  //       alert("⚠️ Please fix the highlighted fields before changing status.");
+  //       return;
+  //     }
+
+  //     if (!okRows) {
+  //       alert("⚠️ Please fix the highlighted rows before changing status.");
+  //       return;
+  //     }
+  //   }
+
+  //   // 1) Always validate (role-based). Block status change if invalid.
+  //   // const ok = validateAndSetErrors(makeValues());
+  //   // if (!ok) {
+  //   //   alert("⚠️ Please fix the highlighted fields before changing status.");
+  //   //   return;
+  //   // }
+
+  //   // 2) Ensure latest data is saved before status change.
+  //   //    If the report is new or has unsaved edits, save first.
+  //   if (!reportId || isDirty) {
+  //     const saved = await handleSave(); // this also paints errors if any
+  //     if (!saved) return; // stop if save failed
+  //   }
+
+  //   try {
+  //     const url = `${API_BASE}/reports/micro-mix/${reportId}/status`;
+  //     const res = await fetch(url, {
+  //       method: "PATCH",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify({ reason: "Changing Status", status: newStatus }),
+  //     });
+
+  //     if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
+  //     const updated: { status?: ReportStatus; reportNumber?: string } =
+  //       await res.json();
+  //     setStatus(updated.status ?? newStatus);
+  //     setReportNumber(updated.reportNumber || reportNumber); // capture when backend assigns it
+
+  //     alert(`✅ Status changed to ${newStatus}`);
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert("❌ Error changing status: " + err.message);
+  //   }
+  // };
+
+  async function handleStatusChange(
+    newStatus: ReportStatus,
+    opts?: { reason?: string; eSignPassword?: string }
+  ) {
+    const token = localStorage.getItem("token");
     const API_BASE = "http://localhost:3000";
 
     const values = makeValues();
     const okFields = validateAndSetErrors(values);
     const okRows = validatePathogenRows(values.pathogens, role);
+
     if (
       newStatus === "SUBMITTED_BY_CLIENT" ||
       newStatus === "RECEIVED_BY_FRONTDESK" ||
@@ -1036,71 +1158,66 @@ export default function MicroMixReportForm({
       newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
       newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
       newStatus === "QA_NEEDS_CORRECTION" ||
-      newStatus === "ADMIN_NEEDS_CORRECTION" || 
+      newStatus === "ADMIN_NEEDS_CORRECTION" ||
       newStatus === "ADMIN_REJECTED" ||
       newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-      newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||  
+      newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
       newStatus === "FINAL_RESUBMITTION_BY_TESTING" ||
       newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
       newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
       newStatus === "FRONTDESK_ON_HOLD" ||
-      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||   
+      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
       newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
-      newStatus === "UNDER_PRELIMINARY_CORRECTION" ||
-      newStatus === "UNDER_FINAL_CORRECTION" ||
       newStatus === "LOCKED" ||
-      newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-      newStatus === "PRELIMINARY_APPROVED" ||
       newStatus === "FINAL_APPROVED"
     ) {
       if (!okFields) {
         alert("⚠️ Please fix the highlighted fields before changing status.");
         return;
       }
-
       if (!okRows) {
         alert("⚠️ Please fix the highlighted rows before changing status.");
         return;
       }
     }
 
-    // 1) Always validate (role-based). Block status change if invalid.
-    // const ok = validateAndSetErrors(makeValues());
-    // if (!ok) {
-    //   alert("⚠️ Please fix the highlighted fields before changing status.");
-    //   return;
-    // }
-
-    // 2) Ensure latest data is saved before status change.
-    //    If the report is new or has unsaved edits, save first.
+    // ensure latest edits are saved
     if (!reportId || isDirty) {
-      const saved = await handleSave(); // this also paints errors if any
-      if (!saved) return; // stop if save failed
+      const saved = await handleSave();
+      if (!saved) return;
     }
 
     try {
-      const url = `${API_BASE}/reports/micro-mix/${reportId}/status`;
-      const res = await fetch(url, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reason: "Changing Status", status: newStatus }),
-      });
+      const res = await fetch(
+        `${API_BASE}/reports/micro-mix/${reportId}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          // Server expects: status (always), reason (required for critical fields incl. status),
+          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
+          body: JSON.stringify({
+            status: newStatus,
+            reason: opts?.reason ?? "Changing Status",
+            eSignPassword: opts?.eSignPassword ?? undefined,
+          }),
+        }
+      );
 
       if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
       const updated: { status?: ReportStatus; reportNumber?: string } =
         await res.json();
-      setStatus(updated.status ?? newStatus);
-      setReportNumber(updated.reportNumber || reportNumber); // capture when backend assigns it
 
+      setStatus(updated.status ?? newStatus);
+      setReportNumber(updated.reportNumber || reportNumber);
       alert(`✅ Status changed to ${newStatus}`);
     } catch (err: any) {
       console.error(err);
       alert("❌ Error changing status: " + err.message);
     }
-  };
+  }
 
   function markDirty() {
     if (!isDirty) setIsDirty(true);
@@ -2074,7 +2191,7 @@ export default function MicroMixReportForm({
                   <button
                     key={targetStatus}
                     className={`px-4 py-2 rounded-md border text-white ${color}`}
-                    onClick={() => handleStatusChange(targetStatus)}
+                    onClick={() => requestStatusChange(targetStatus)}
                     // disabled={isDirty || !reportId}
                     disabled={role === "SYSTEMADMIN"}
                   >
@@ -2087,6 +2204,67 @@ export default function MicroMixReportForm({
           )}
         </div>
       </div>
+     {showESign && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="E-signature"
+  >
+    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <h2 className="text-lg font-semibold mb-2">Confirm Status Change</h2>
+      <p className="text-sm text-slate-600 mb-3">
+        Change status to <span className="font-medium">{pendingStatus}</span>.
+        Provide a reason and your e-signature password.
+      </p>
+
+      <input
+        type="text"
+        placeholder="Reason for change"
+        value={changeReason}
+        onChange={(e) => setChangeReason(e.target.value)}
+        className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+      />
+
+      <input
+        type="password"
+        placeholder="E-signature password"
+        value={eSignPassword}
+        onChange={(e) => setESignPassword(e.target.value)}
+        className="mb-4 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+      />
+
+      <div className="flex justify-end gap-2">
+        <button
+          className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+          onClick={() => {
+            setShowESign(false);
+            setPendingStatus(null);
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          disabled={!pendingStatus || !changeReason.trim() || !eSignPassword.trim()}
+          onClick={() => {
+            if (!pendingStatus) return;
+            const statusToApply = pendingStatus;
+            setShowESign(false);
+            setPendingStatus(null);
+            handleStatusChange(statusToApply, {
+              reason: changeReason.trim(),
+              eSignPassword,
+            });
+          }}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </>
   );
 }
