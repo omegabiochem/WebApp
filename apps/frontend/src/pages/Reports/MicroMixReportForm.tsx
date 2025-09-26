@@ -200,7 +200,7 @@ const STATUS_TRANSITIONS: Record<
       "UNDER_ADMIN_REVIEW",
     ],
     nextEditableBy: ["QA", "ADMIN"],
-    canEdit: [],
+    canEdit: ["MICRO"],
   },
   FINAL_TESTING_ON_HOLD: {
     canSet: ["MICRO"],
@@ -638,9 +638,20 @@ export default function MicroMixReportForm({
   const phase = deriveMicroPhaseFromStatus(status);
 
   function resultDisabled(p: PathRow) {
-    const isMicroOrAdmin = role === "MICRO" || role === "ADMIN";
-    const isFinal = phase === "FINAL";
-    return !p.checked || !isMicroOrAdmin || !isFinal;
+    if (!p.checked) return true;
+
+    if (role === "MICRO") {
+      // MICRO can edit only in FINAL phase
+      return phase !== "FINAL";
+    }
+
+    if (role === "ADMIN") {
+      // ADMIN can always edit
+      return false;
+    }
+
+    // everyone else disabled
+    return true;
   }
 
   // replace your validatePathogenRows with this:
@@ -883,9 +894,9 @@ export default function MicroMixReportForm({
           return fields.filter((f) => !MICRO_PHASE_FIELDS.FINAL.includes(f));
         }
         // (Optional) once in FINAL, drop PRELIM-only fields:
-        // if (phase === "FINAL") {
-        //   return fields.filter(f => !MICRO_PHASE_FIELDS.PRELIM.includes(f));
-        // }
+        if (phase === "FINAL") {
+          return fields.filter((f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f));
+        }
       }
       return fields;
     };
@@ -970,6 +981,7 @@ export default function MicroMixReportForm({
           },
           body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
+        console.log(res);
       } else {
         // create
         res = await fetch(`${API_BASE}/reports/micro-mix`, {
@@ -1016,6 +1028,29 @@ export default function MicroMixReportForm({
       newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
       newStatus === "UNDER_QA_REVIEW" ||
       newStatus === "UNDER_ADMIN_REVIEW" ||
+      newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
+      newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
+      newStatus === "FINAL_RESUBMITTION_BY_CLIENT" ||
+      newStatus === "PRELIMINARY_APPROVED" ||
+      newStatus === "FINAL_TESTING_ON_HOLD" ||
+      newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+      newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
+      newStatus === "QA_NEEDS_CORRECTION" ||
+      newStatus === "ADMIN_NEEDS_CORRECTION" || 
+      newStatus === "ADMIN_REJECTED" ||
+      newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+      newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||  
+      newStatus === "FINAL_RESUBMITTION_BY_TESTING" ||
+      newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
+      newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+      newStatus === "FRONTDESK_ON_HOLD" ||
+      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||   
+      newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
+      newStatus === "UNDER_PRELIMINARY_CORRECTION" ||
+      newStatus === "UNDER_FINAL_CORRECTION" ||
+      newStatus === "LOCKED" ||
+      newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+      newStatus === "PRELIMINARY_APPROVED" ||
       newStatus === "FINAL_APPROVED"
     ) {
       if (!okFields) {
@@ -1770,9 +1805,7 @@ export default function MicroMixReportForm({
                     checked={!!p.checked}
                     onChange={(e) => setPathogenChecked(idx, e.target.checked)}
                     // disabled={organismDisabled()}
-                    disabled={
-                       lock("pathogens") || role !== "CLIENT"
-                    }
+                    disabled={lock("pathogens") || role !== "CLIENT"}
                   />
                   <span className="font-bold">{p.label}</span>
                   {p.key === "OTHER" && (

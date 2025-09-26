@@ -86,125 +86,6 @@ const STATUS_TRANSITIONS: Record<
     canEdit: UserRole[];
   }
 > = {
-  // DRAFT: {
-  //   canSet: ['CLIENT', 'FRONTDESK', 'ADMIN', 'SYSTEMADMIN'],
-  //   next: ['SUBMITTED_BY_CLIENT', 'CLIENT_NEEDS_CORRECTION'],
-  //   nextEditableBy: ['CLIENT', 'FRONTDESK'],
-  //   canEdit: ['CLIENT'],
-  // },
-  // SUBMITTED_BY_CLIENT: {
-  //   canSet: ['FRONTDESK', 'MICRO'],
-  //   next: ['RECEIVED_BY_FRONTDESK', 'UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['FRONTDESK', 'MICRO'],
-  //   canEdit: [],
-  // },
-  // RECEIVED_BY_FRONTDESK: {
-  //   canSet: ['FRONTDESK', 'ADMIN'],
-  //   next: [
-  //     'UNDER_TESTING_REVIEW',
-  //     'FRONTDESK_ON_HOLD',
-  //     'FRONTDESK_REJECTED',
-  //     'SUBMITTED_BY_CLIENT',
-  //   ],
-  //   nextEditableBy: ['MICRO', 'CHEMISTRY'],
-  //   canEdit: ['FRONTDESK'],
-  // },
-  // FRONTDESK_ON_HOLD: {
-  //   canSet: ['FRONTDESK', 'ADMIN'],
-  //   next: ['RECEIVED_BY_FRONTDESK'],
-  //   nextEditableBy: ['FRONTDESK'],
-  //   canEdit: ['FRONTDESK'],
-  // },
-  // FRONTDESK_NEEDS_CORRECTION: {
-  //   canSet: ['FRONTDESK', 'ADMIN'],
-  //   next: ['SUBMITTED_BY_CLIENT'],
-  //   nextEditableBy: ['CLIENT'],
-  //   canEdit: [],
-  // },
-  // FRONTDESK_REJECTED: {
-  //   canSet: ['FRONTDESK', 'ADMIN'],
-  //   next: ['CLIENT_NEEDS_CORRECTION'],
-  //   nextEditableBy: ['CLIENT'],
-  //   canEdit: [],
-  // },
-  // CLIENT_NEEDS_CORRECTION: {
-  //   canSet: ['CLIENT', 'ADMIN'],
-  //   next: ['SUBMITTED_BY_CLIENT'],
-  //   nextEditableBy: ['CLIENT'],
-  //   canEdit: ['CLIENT'],
-  // },
-  // UNDER_TESTING_REVIEW: {
-  //   canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-  //   next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-  //   nextEditableBy: ['MICRO', 'CHEMISTRY'],
-  //   canEdit: ['MICRO', 'CHEMISTRY'],
-  // },
-  // TESTING_ON_HOLD: {
-  //   canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['MICRO', 'CHEMISTRY'],
-  //   canEdit: [],
-  // },
-  // TESTING_NEEDS_CORRECTION: {
-  //   canSet: ['MICRO', 'CHEMISTRY', 'ADMIN', 'CLIENT'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['CLIENT'],
-  //   canEdit: ['CLIENT'],
-  // },
-  // TESTING_REJECTED: {
-  //   canSet: ['MICRO', 'CHEMISTRY', 'ADMIN'],
-  //   next: ['FRONTDESK_ON_HOLD', 'FRONTDESK_REJECTED'],
-  //   nextEditableBy: ['FRONTDESK'],
-  //   canEdit: [],
-  // },
-  // UNDER_QA_REVIEW: {
-  //   canSet: ['QA', 'ADMIN'],
-  //   next: ['QA_NEEDS_CORRECTION', 'QA_REJECTED', 'UNDER_ADMIN_REVIEW'],
-  //   nextEditableBy: ['QA'],
-  //   canEdit: ['QA'],
-  // },
-  // QA_NEEDS_CORRECTION: {
-  //   canSet: ['QA', 'ADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['MICRO', 'CHEMISTRY'],
-  //   canEdit: [],
-  // },
-  // QA_REJECTED: {
-  //   canSet: ['QA', 'ADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['MICRO', 'CHEMISTRY'],
-  //   canEdit: [],
-  // },
-  // UNDER_ADMIN_REVIEW: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'APPROVED'],
-  //   nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
-  //   canEdit: ['ADMIN'],
-  // },
-  // ADMIN_NEEDS_CORRECTION: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['UNDER_QA_REVIEW'],
-  //   nextEditableBy: ['QA'],
-  //   canEdit: ['ADMIN'],
-  // },
-  // ADMIN_REJECTED: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['UNDER_QA_REVIEW'],
-  //   nextEditableBy: ['QA'],
-  //   canEdit: [],
-  // },
-  // APPROVED: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['LOCKED'],
-  //   nextEditableBy: [],
-  //   canEdit: [],
-  // },
-  // LOCKED: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: [],
-  //   nextEditableBy: [],
-  //   canEdit: [],
-  // },
   DRAFT: {
     canSet: ["CLIENT"],
     next: ["SUBMITTED_BY_CLIENT"],
@@ -331,7 +212,7 @@ const STATUS_TRANSITIONS: Record<
       "UNDER_ADMIN_REVIEW",
     ],
     nextEditableBy: ["QA", "ADMIN"],
-    canEdit: [],
+    canEdit: ["MICRO"],
   },
   FINAL_TESTING_ON_HOLD: {
     canSet: ["MICRO"],
