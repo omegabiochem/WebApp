@@ -27,15 +27,22 @@ const MICRO_STATUSES = [
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_APPROVED",
   "UNDER_FINAL_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
 ] as const;
 
 // Map statuses → badge styles (fallback provided below for unknown keys)
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-  UNDER_PRELIMINARY_TESTING_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  PRELIMINARY_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-  UNDER_FINAL_TESTING_REVIEW: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+  UNDER_PRELIMINARY_TESTING_REVIEW:
+    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  PRELIMINARY_APPROVED:
+    "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  UNDER_FINAL_TESTING_REVIEW:
+    "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+  PRELIMINARY_RESUBMISSION_BY_CLIENT:
+    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
 };
 
 // -----------------------------
@@ -70,22 +77,31 @@ function displayReportNo(r: Report) {
 // API helpers
 // -----------------------------
 
-async function setStatus(reportId: string, newStatus: string, reason = "Common Status Change") {
+async function setStatus(
+  reportId: string,
+  newStatus: string,
+  reason = "Common Status Change"
+) {
   const token = localStorage.getItem("token");
   if (!token) throw new Error("Missing auth token");
 
-  const res = await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ reason, status: newStatus }),
-  });
+  const res = await fetch(
+    `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason, status: newStatus }),
+    }
+  );
 
   if (!res.ok) {
     const msg = await res.text().catch(() => "");
-    throw new Error(msg || `Failed to set status to ${newStatus} (${res.status})`);
+    throw new Error(
+      msg || `Failed to set status to ${newStatus} (${res.status})`
+    );
   }
 }
 
@@ -98,7 +114,8 @@ export default function MicroDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<(typeof MICRO_STATUSES)[number]>("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<(typeof MICRO_STATUSES)[number]>("ALL");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -151,7 +168,9 @@ export default function MicroDashboard() {
   // Derived table data (filter → search → sort)
   const processed = useMemo(() => {
     const byStatus =
-      statusFilter === "ALL" ? reports : reports.filter((r) => r.status === statusFilter);
+      statusFilter === "ALL"
+        ? reports
+        : reports.filter((r) => r.status === statusFilter);
 
     const q = search.trim().toLowerCase();
     const bySearch = q
@@ -200,7 +219,9 @@ export default function MicroDashboard() {
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Micro Dashboard</h1>
-          <p className="text-sm text-slate-500">Queue of Micro Mix reports for preliminary/final testing.</p>
+          <p className="text-sm text-slate-500">
+            Queue of Micro Mix reports for preliminary/final testing.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -257,7 +278,9 @@ export default function MicroDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="sortBy">Sort by</label>
+            <label className="sr-only" htmlFor="sortBy">
+              Sort by
+            </label>
             <select
               id="sortBy"
               value={sortBy}
@@ -280,7 +303,9 @@ export default function MicroDashboard() {
           </div>
 
           <div className="flex items-center gap-2 md:justify-end">
-            <label htmlFor="perPage" className="text-sm text-slate-600">Rows:</label>
+            <label htmlFor="perPage" className="text-sm text-slate-600">
+              Rows:
+            </label>
             <select
               id="perPage"
               value={perPage}
@@ -288,7 +313,9 @@ export default function MicroDashboard() {
               className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n} value={n}>
+                  {n}
+                </option>
               ))}
             </select>
           </div>
@@ -299,7 +326,9 @@ export default function MicroDashboard() {
       <div className="rounded-2xl border bg-white shadow-sm">
         {/* States */}
         {error && (
-          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
+          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
         {/* Table */}
@@ -315,79 +344,137 @@ export default function MicroDashboard() {
               </tr>
             </thead>
             <tbody>
-              {loading && (
+              {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-5 w-56 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-8 w-28 animate-pulse rounded bg-slate-200" /></td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
                   </tr>
-                ))
-              )}
+                ))}
 
-              {!loading && pageRows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium">{displayReportNo(r)}</td>
-                  <td className="px-4 py-3">{r.client}</td>
-                  <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={classNames(
-                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                        STATUS_STYLES[String(r.status)] || "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                      )}
-                    >
-                      {niceStatus(String(r.status))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                        onClick={() => setSelectedReport(r)}
+              {!loading &&
+                pageRows.map((r) => (
+                  <tr key={r.id} className="border-t hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium">
+                      {displayReportNo(r)}
+                    </td>
+                    <td className="px-4 py-3">{r.client}</td>
+                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={classNames(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                          STATUS_STYLES[String(r.status)] ||
+                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                        )}
                       >
-                        View
-                      </button>
-
-                      {canUpdate && (
+                        {niceStatus(String(r.status))}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
                         <button
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                          onClick={async () => {
-                            try {
-                              if (r.status === "SUBMITTED_BY_CLIENT") {
-                                await setStatus(r.id, "UNDER_PRELIMINARY_TESTING_REVIEW", "Move to prelim testing");
-                              } else if (r.status === "PRELIMINARY_APPROVED") {
-                                await setStatus(r.id, "UNDER_FINAL_TESTING_REVIEW", "Move to final testing");
-                              }
-                              // optimistic UI
-                              setReports((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: r.status === "SUBMITTED_BY_CLIENT" ? "UNDER_PRELIMINARY_TESTING_REVIEW" : r.status === "PRELIMINARY_APPROVED" ? "UNDER_FINAL_TESTING_REVIEW" : x.status } : x)));
-                              navigate(`/reports/micro-mix/${r.id}`);
-                            } catch (e: any) {
-                              alert(e?.message || "Failed to update status");
-                            }
-                          }}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                          onClick={() => setSelectedReport(r)}
                         >
-                          Update
+                          View
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+
+                        {canUpdate && (
+                          <button
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                            onClick={async () => {
+                              try {
+                                if (r.status === "SUBMITTED_BY_CLIENT") {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_PRELIMINARY_TESTING_REVIEW",
+                                    "Move to prelim testing"
+                                  );
+                                } else if (
+                                  r.status === "PRELIMINARY_APPROVED"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_FINAL_TESTING_REVIEW",
+                                    "Move to final testing"
+                                  );
+                                } else if (
+                                  r.status ===
+                                  "PRELIMINARY_RESUBMISSION_BY_CLIENT"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_PRELIMINARY_TESTING_REVIEW",
+                                    "Resubmitted by client"
+                                  );
+                                }
+                                // optimistic UI
+                                setReports((prev) =>
+                                  prev.map((x) =>
+                                    x.id === r.id
+                                      ? {
+                                          ...x,
+                                          status:
+                                            r.status === "SUBMITTED_BY_CLIENT"
+                                              ? "UNDER_PRELIMINARY_TESTING_REVIEW"
+                                              : r.status ===
+                                                "PRELIMINARY_APPROVED"
+                                              ? "UNDER_FINAL_TESTING_REVIEW"
+                                              : r.status ===
+                                                "PRELIMINARY_RESUBMISSION_BY_CLIENT"
+                                              ? "UNDER_PRELIMINARY_TESTING_REVIEW"
+                                              : x.status,
+                                        }
+                                      : x
+                                  )
+                                );
+                                navigate(`/reports/micro-mix/${r.id}`);
+                              } catch (e: any) {
+                                alert(e?.message || "Failed to update status");
+                              }
+                            }}
+                          >
+                            Update
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                    No reports found for <span className="font-medium">{niceStatus(String(statusFilter))}</span>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-12 text-center text-slate-500"
+                  >
+                    No reports found for{" "}
+                    <span className="font-medium">
+                      {niceStatus(String(statusFilter))}
+                    </span>
                     {search ? (
                       <>
-                        {" "}matching <span className="font-medium">“{search}”</span>.
+                        {" "}
+                        matching <span className="font-medium">“{search}”</span>
+                        .
                       </>
-                    ) : 
+                    ) : (
                       "."
-                    }
+                    )}
                   </td>
                 </tr>
               )}
@@ -411,7 +498,9 @@ export default function MicroDashboard() {
               >
                 Prev
               </button>
-              <span className="tabular-nums">{pageClamped} / {totalPages}</span>
+              <span className="tabular-nums">
+                {pageClamped} / {totalPages}
+              </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -437,7 +526,9 @@ export default function MicroDashboard() {
         >
           <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold">Report ({displayReportNo(selectedReport)})</h2>
+              <h2 className="text-lg font-semibold">
+                Report ({displayReportNo(selectedReport)})
+              </h2>
               <div className="flex items-center gap-2">
                 {canUpdate && (
                   <button
@@ -460,7 +551,10 @@ export default function MicroDashboard() {
               </div>
             </div>
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView report={selectedReport} onClose={() => setSelectedReport(null)} />
+              <MicroMixReportFormView
+                report={selectedReport}
+                onClose={() => setSelectedReport(null)}
+              />
             </div>
           </div>
         </div>
@@ -468,9 +562,6 @@ export default function MicroDashboard() {
     </div>
   );
 }
-
-
-
 
 // import { useEffect, useState } from "react";
 // import MicroMixReportFormView from "../Reports/MicroMixReportFormView";

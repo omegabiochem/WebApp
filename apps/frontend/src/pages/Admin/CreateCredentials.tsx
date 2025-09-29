@@ -121,6 +121,9 @@ export default function CreateCredentials() {
         </form>
       </div>
 
+
+      // ACCOUNT DETAILS 
+
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Account Created">
         <p className="mb-2 text-sm text-gray-700">Give these credentials to the user securely:</p>
         <div className="bg-gray-50 border rounded-md p-3 text-sm">

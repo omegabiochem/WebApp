@@ -16,8 +16,8 @@ export type ReportStatus =
   | "CLIENT_NEEDS_FINAL_CORRECTION"
   | "UNDER_CLIENT_PRELIMINARY_CORRECTION"
   | "UNDER_CLIENT_FINAL_CORRECTION"
-  | "PRELIMINARY_RESUBMITTION_BY_CLIENT"
-  | "FINAL_RESUBMITTION_BY_CLIENT"
+  | "PRELIMINARY_RESUBMISSION_BY_CLIENT"
+  | "FINAL_RESUBMISSION_BY_CLIENT"
   | "UNDER_CLIENT_PRELIMINARY_REVIEW"
   | "UNDER_CLIENT_FINAL_REVIEW"
   | "RECEIVED_BY_FRONTDESK"
@@ -26,14 +26,14 @@ export type ReportStatus =
   | "UNDER_PRELIMINARY_TESTING_REVIEW"
   | "PRELIMINARY_TESTING_ON_HOLD"
   | "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-  | "PRELIMINARY_RESUBMITTION_BY_TESTING"
+  | "PRELIMINARY_RESUBMISSION_BY_TESTING"
   | "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"
-  | "FINAL_RESUBMITTION_BY_TESTING"
+  | "FINAL_RESUBMISSION_BY_TESTING"
   | "PRELIMINARY_APPROVED"
   | "UNDER_FINAL_TESTING_REVIEW"
   | "FINAL_TESTING_ON_HOLD"
   | "FINAL_TESTING_NEEDS_CORRECTION"
-  | "FINAL_RESUBMITTION_BY_TESTING"
+  | "FINAL_RESUBMISSION_BY_TESTING"
   | "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"
   | "UNDER_QA_REVIEW"
   | "QA_NEEDS_CORRECTION"
@@ -176,7 +176,7 @@ export const PRELIM_STATUSES: ReportStatus[] = [
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_TESTING_ON_HOLD",
   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMITTION_BY_TESTING",
+  "PRELIMINARY_RESUBMISSION_BY_TESTING",
   "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
   "PRELIMINARY_APPROVED", // up to this point it's still the preliminary pass
 ];
@@ -186,7 +186,7 @@ export const FINAL_STATUSES: ReportStatus[] = [
   "UNDER_FINAL_TESTING_REVIEW",
   "FINAL_TESTING_ON_HOLD",
   "FINAL_TESTING_NEEDS_CORRECTION",
-  "FINAL_RESUBMITTION_BY_TESTING",
+  "FINAL_RESUBMISSION_BY_TESTING",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
 ];
 
@@ -244,6 +244,66 @@ export function FieldErrorBadge({
     msg
   );
 }
+
+
+
+const API_BASE = "http://localhost:3000";
+
+export type CorrectionItem = {
+  id: string;
+  fieldKey: string;
+  message: 'OPEN' | 'RESOLVED' extends never ? never : string; // (keep)
+  status: 'OPEN'|'RESOLVED';
+  requestedByRole: Role;
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedByUserId?: string;
+};
+
+export async function getCorrections(reportId: string, token: string) {
+  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch corrections');
+  return (await res.json()) as CorrectionItem[];
+}
+
+export async function createCorrections(
+  reportId: string,
+  token: string,
+  items: { fieldKey: string; message: string }[],
+  targetStatus?: string,
+  reason?: string,
+) {
+  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections`, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ items, targetStatus, reason }),
+  });
+  if (!res.ok) throw new Error('Failed to create corrections');
+  return res.json();
+}
+
+export async function resolveCorrection(
+  reportId: string,
+  cid: string,
+  token: string,
+  resolutionNote?: string,
+) {
+  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ resolutionNote }),
+  });
+  if (!res.ok) throw new Error('Failed to resolve correction');
+  return res.json();
+}
+
+
+
+
+
+
 
 /* =======================
  * Main validation hook

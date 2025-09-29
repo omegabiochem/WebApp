@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import type { Role, ReportStatus } from "../../utils/microMixReportFormWorkflow";
+import type {
+  Role,
+  ReportStatus,
+} from "../../utils/microMixReportFormWorkflow";
 import { canShowUpdateButton } from "../../utils/microMixReportFormWorkflow";
 
 // -----------------------------
@@ -29,8 +32,8 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
   "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMITTION_BY_CLIENT",
-  "FINAL_RESUBMITTION_BY_CLIENT",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
   "LOCKED",
 ];
 
@@ -38,14 +41,22 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-  UNDER_CLIENT_PRELIMINARY_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  UNDER_CLIENT_FINAL_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  CLIENT_NEEDS_FINAL_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_CLIENT_PRELIMINARY_CORRECTION: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  UNDER_CLIENT_FINAL_CORRECTION: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  PRELIMINARY_RESUBMITTION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  FINAL_RESUBMITTION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+  UNDER_CLIENT_PRELIMINARY_REVIEW:
+    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CLIENT_FINAL_REVIEW:
+    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  CLIENT_NEEDS_PRELIMINARY_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  CLIENT_NEEDS_FINAL_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  UNDER_CLIENT_PRELIMINARY_CORRECTION:
+    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+  UNDER_CLIENT_FINAL_CORRECTION:
+    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+  PRELIMINARY_RESUBMISSION_BY_CLIENT:
+    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+  FINAL_RESUBMISSION_BY_CLIENT:
+    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
 };
@@ -66,7 +77,11 @@ function formatDate(iso: string | null) {
   if (!iso) return "-";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
@@ -85,7 +100,11 @@ function canUpdateThisReport(r: Report, user?: any) {
     "pathogens",
   ];
 
-  return canShowUpdateButton(user?.role as Role, r.status as ReportStatus, fieldsUsedOnForm);
+  return canShowUpdateButton(
+    user?.role as Role,
+    r.status as ReportStatus,
+    fieldsUsedOnForm
+  );
 }
 
 // -----------------------------
@@ -97,7 +116,7 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<("ALL" | ReportStatus)>("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -147,7 +166,10 @@ export default function ClientDashboard() {
 
   // Derived table data
   const processed = useMemo(() => {
-    const byStatus = statusFilter === "ALL" ? reports : reports.filter((r) => r.status === statusFilter);
+    const byStatus =
+      statusFilter === "ALL"
+        ? reports
+        : reports.filter((r) => r.status === statusFilter);
 
     const bySearch = search.trim()
       ? byStatus.filter((r) => {
@@ -188,13 +210,50 @@ export default function ClientDashboard() {
     setPage(1);
   }, [statusFilter, search, perPage]);
 
+  async function setStatus(
+    reportId: string,
+    newStatus: string,
+    reason = "Client correction update"
+  ) {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const res = await fetch(
+      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason, status: newStatus }),
+      }
+    );
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(
+        msg || `Failed to set status to ${newStatus} (${res.status})`
+      );
+    }
+
+    // Update local state immediately so the UI stays in sync
+    setReports((prev) =>
+      prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
+    );
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Client Dashboard</h1>
-          <p className="text-sm text-slate-500">View and manage your Micro Mix reports</p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Client Dashboard
+          </h1>
+          <p className="text-sm text-slate-500">
+            View and manage your Micro Mix reports
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -251,7 +310,9 @@ export default function ClientDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="sortBy">Sort by</label>
+            <label className="sr-only" htmlFor="sortBy">
+              Sort by
+            </label>
             <select
               id="sortBy"
               value={sortBy}
@@ -274,7 +335,9 @@ export default function ClientDashboard() {
           </div>
 
           <div className="flex items-center gap-2 md:justify-end">
-            <label htmlFor="perPage" className="text-sm text-slate-600">Rows:</label>
+            <label htmlFor="perPage" className="text-sm text-slate-600">
+              Rows:
+            </label>
             <select
               id="perPage"
               value={perPage}
@@ -282,7 +345,9 @@ export default function ClientDashboard() {
               className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n} value={n}>
+                  {n}
+                </option>
               ))}
             </select>
           </div>
@@ -293,7 +358,9 @@ export default function ClientDashboard() {
       <div className="rounded-2xl border bg-white shadow-sm">
         {/* States */}
         {error && (
-          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
+          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
         {/* Table */}
@@ -309,66 +376,104 @@ export default function ClientDashboard() {
               </tr>
             </thead>
             <tbody>
-              {loading && (
+              {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-5 w-56 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-3"><div className="h-8 w-28 animate-pulse rounded bg-slate-200" /></td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
                   </tr>
-                ))
-              )}
+                ))}
 
-              {!loading && pageRows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium">{r.formNumber}</td>
-                  <td className="px-4 py-3">{r.client}</td>
-                  <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={classNames(
-                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                        STATUS_STYLES[String(r.status)] || "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                      )}
-                    >
-                      {niceStatus(String(r.status))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                        onClick={() => setSelectedReport(r)}
+              {!loading &&
+                pageRows.map((r) => (
+                  <tr key={r.id} className="border-t hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium">{r.formNumber}</td>
+                    <td className="px-4 py-3">{r.client}</td>
+                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={classNames(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                          STATUS_STYLES[String(r.status)] ||
+                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                        )}
                       >
-                        View
-                      </button>
-
-                      {canUpdateThisReport(r, user) && (
+                        {niceStatus(String(r.status))}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
                         <button
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                          onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                          onClick={() => setSelectedReport(r)}
                         >
-                          Update
+                          View
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+
+                        {canUpdateThisReport(r, user) && (
+                          <button
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                            // onClick={() =>
+                            //   navigate(`/reports/micro-mix/${r.id}`)
+                            // }
+                            onClick={async () => {
+                              try {
+                                if (
+                                  r.status ===
+                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                    "Sent back to client for correction"
+                                  );
+                                }
+                                navigate(`/reports/micro-mix/${r.id}`);
+                              } catch (e: any) {
+                                alert(e?.message || "Failed to update status");
+                              }
+                            }}
+                          >
+                            Update
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                    No reports found for <span className="font-medium">{niceStatus(String(statusFilter))}</span>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-12 text-center text-slate-500"
+                  >
+                    No reports found for{" "}
+                    <span className="font-medium">
+                      {niceStatus(String(statusFilter))}
+                    </span>
                     {search ? (
                       <>
-                        {" "}matching <span className="font-medium">“{search}”</span>.
+                        {" "}
+                        matching <span className="font-medium">“{search}”</span>
+                        .
                       </>
-                    ) : 
+                    ) : (
                       "."
-                    }
+                    )}
                   </td>
                 </tr>
               )}
@@ -392,7 +497,9 @@ export default function ClientDashboard() {
               >
                 Prev
               </button>
-              <span className="tabular-nums">{pageClamped} / {totalPages}</span>
+              <span className="tabular-nums">
+                {pageClamped} / {totalPages}
+              </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -419,20 +526,41 @@ export default function ClientDashboard() {
         >
           <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold">Report ({selectedReport.formNumber})</h2>
+              <h2 className="text-lg font-semibold">
+                Report ({selectedReport.formNumber})
+              </h2>
               <div className="flex items-center gap-2">
                 {canUpdateThisReport(selectedReport, user) && (
                   <button
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                    onClick={() => {
-                      const id = selectedReport.id;
-                      setSelectedReport(null);
-                      navigate(`/reports/micro-mix/${id}`);
+                    // onClick={() => {
+                    //   const id = selectedReport.id;
+                    //   setSelectedReport(null);
+                    //   navigate(`/reports/micro-mix/${id}`);
+                    // }}
+                    onClick={async () => {
+                      try {
+                        const id = selectedReport.id;
+                        if (
+                          selectedReport.status ===
+                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                        ) {
+                          await setStatus(
+                            id,
+                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                            "Sent back to client for correction"
+                          );
+                        }
+                        setSelectedReport(null);
+                        navigate(`/reports/micro-mix/${id}`);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
                     }}
                   >
                     Update
                   </button>
-                 )} 
+                )}
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
                   onClick={() => setSelectedReport(null)}
@@ -442,7 +570,10 @@ export default function ClientDashboard() {
               </div>
             </div>
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView report={selectedReport} onClose={() => setSelectedReport(null)} />
+              <MicroMixReportFormView
+                report={selectedReport}
+                onClose={() => setSelectedReport(null)}
+              />
             </div>
           </div>
         </div>
@@ -450,7 +581,6 @@ export default function ClientDashboard() {
     </div>
   );
 }
-
 
 // import { useEffect, useState } from "react";
 // import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
@@ -478,11 +608,10 @@ export default function ClientDashboard() {
 //   "CLIENT_NEEDS_FINAL_CORRECTION",
 //   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
 //   "UNDER_CLIENT_FINAL_CORRECTION",
-//   "PRELIMINARY_RESUBMITTION_BY_CLIENT",
+//   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
 //   "FINAL_RESUBMITTION_BY_CLIENT",
 //   "LOCKED",
 // ];
-
 
 // function canUpdateThisReport(r: Report, user?: any) {
 //   // If non-clients see this dashboard later, you can loosen this check.

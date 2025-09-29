@@ -12,6 +12,16 @@ import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { ReportStatus } from '@prisma/client';
 
+type CreateCorrectionsDto = {
+  items: { fieldKey: string; message: string }[];
+  targetStatus?: ReportStatus;   // optional: move to *_NEEDS_CORRECTION in same call
+  reason?: string;               // optional audit reason
+};
+
+type ResolveCorrectionDto = {
+  resolutionNote?: string;       // optional
+};
+
 @UseGuards(JwtAuthGuard)
 @Controller('reports/micro-mix')
 export class ReportsController {
@@ -56,6 +66,32 @@ async updateStatus(
 ) {
   return this.svc.update(req.user, id, body); // send full body including reason
 }
+
+ // ✅ Corrections API
+  @Post(':id/corrections')
+  createCorrections(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: CreateCorrectionsDto,
+  ) {
+    return this.svc.createCorrections(req.user, id, body);
+  }
+
+  @Get(':id/corrections')
+  listCorrections(@Param('id') id: string) {
+    return this.svc.listCorrections(id);
+  }
+
+  @Patch(':id/corrections/:cid')
+  resolveCorrection(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('cid') cid: string,
+    @Body() body: ResolveCorrectionDto,
+  ) {
+    return this.svc.resolveCorrection(req.user, id, cid, body);
+  }
+
 
 
 }
