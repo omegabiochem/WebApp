@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
+import { STATUS_COLORS, type ReportStatus } from "../../utils/microMixReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -32,18 +33,18 @@ const MICRO_STATUSES = [
 ] as const;
 
 // Map statuses → badge styles (fallback provided below for unknown keys)
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-  SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-  UNDER_PRELIMINARY_TESTING_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  PRELIMINARY_APPROVED:
-    "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-  UNDER_FINAL_TESTING_REVIEW:
-    "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
-  PRELIMINARY_RESUBMISSION_BY_CLIENT:
-    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-};
+// const STATUS_STYLES: Record<string, string> = {
+//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+//   UNDER_PRELIMINARY_TESTING_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   PRELIMINARY_APPROVED:
+//     "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+//   UNDER_FINAL_TESTING_REVIEW:
+//     "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
+//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+// };
 
 // -----------------------------
 // Utilities
@@ -377,7 +378,7 @@ export default function MicroDashboard() {
                       <span
                         className={classNames(
                           "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_STYLES[String(r.status)] ||
+                          STATUS_COLORS[r.status as ReportStatus] ||
                             "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
                         )}
                       >

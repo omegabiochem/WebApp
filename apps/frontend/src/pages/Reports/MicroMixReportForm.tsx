@@ -2078,6 +2078,7 @@ export default function MicroMixReportForm({
               >
                 {/* <ResolveOverlay field={`pathogens.${p.key}`} /> */}
                 {/* First column: checkbox + label (unchanged except using setPathogenChecked) */}
+                 <ResolveOverlay field={`pathogens.${p.key}:checked`} />
                 <div
                 id="f-pathogens-checked"
                   onClick={() => {
@@ -2093,7 +2094,7 @@ export default function MicroMixReportForm({
                     `pathogens:${p.key}:checked`
                   )}`}
                 >
-                   <ResolveOverlay field={`pathogens.${p.key}.checked`} />
+                   <ResolveOverlay field={`pathogens.${p.key}:checked`} />
                   <input
                     type="checkbox"
                     className="thick-box" 

@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { io } from "socket.io-client";
 import {
   canShowUpdateButton,
+  STATUS_COLORS,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
@@ -64,55 +65,55 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "LOCKED",
 ];
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-  SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-  RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
-  FRONTDESK_ON_HOLD: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
-  FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_CLIENT_PRELIMINARY_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  UNDER_CLIENT_FINAL_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  CLIENT_NEEDS_FINAL_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_CLIENT_PRELIMINARY_CORRECTION:
-    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  UNDER_CLIENT_FINAL_CORRECTION:
-    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  PRELIMINARY_RESUBMISSION_BY_CLIENT:
-    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  FINAL_RESUBMISSION_BY_CLIENT:
-    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  UNDER_PRELIMINARY_TESTING_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  PRELIMINARY_TESTING_ON_HOLD:
-    "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
-  PRELIMINARY_TESTING_NEEDS_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  PRELIMINARY_APPROVED:
-    "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-  UNDER_FINAL_TESTING_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  FINAL_TESTING_ON_HOLD: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
-  FINAL_TESTING_NEEDS_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  UNDER_QA_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
-  QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
-  ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  ADMIN_REJECTED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-  LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-};
+// const STATUS_STYLES: Record<string, string> = {
+//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+//   RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+//   FRONTDESK_ON_HOLD: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
+//   FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_CLIENT_PRELIMINARY_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   UNDER_CLIENT_FINAL_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   CLIENT_NEEDS_PRELIMINARY_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   CLIENT_NEEDS_FINAL_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_CLIENT_PRELIMINARY_CORRECTION:
+//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+//   UNDER_CLIENT_FINAL_CORRECTION:
+//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
+//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+//   FINAL_RESUBMISSION_BY_CLIENT:
+//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+//   UNDER_PRELIMINARY_TESTING_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   PRELIMINARY_TESTING_ON_HOLD:
+//     "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+//   PRELIMINARY_TESTING_NEEDS_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   PRELIMINARY_APPROVED:
+//     "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+//   UNDER_FINAL_TESTING_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   FINAL_TESTING_ON_HOLD: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+//   FINAL_TESTING_NEEDS_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   UNDER_QA_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+//   QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
+//   ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   ADMIN_REJECTED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+//   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+//   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+// };
 
 // ---------------------------------
 // Utilities
@@ -504,7 +505,7 @@ export default function AdminDashboard() {
                       <span
                         className={classNames(
                           "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_STYLES[String(r.status)] ||
+                          STATUS_COLORS[r.status as ReportStatus] ||
                             "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
                         )}
                       >

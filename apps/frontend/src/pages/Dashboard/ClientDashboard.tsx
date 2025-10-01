@@ -6,7 +6,7 @@ import type {
   Role,
   ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
-import { canShowUpdateButton } from "../../utils/microMixReportFormWorkflow";
+import { canShowUpdateButton, STATUS_COLORS } from "../../utils/microMixReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -38,28 +38,28 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 ];
 
 // Map statuses → badge styles
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-  SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-  UNDER_CLIENT_PRELIMINARY_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  UNDER_CLIENT_FINAL_REVIEW:
-    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  CLIENT_NEEDS_FINAL_CORRECTION:
-    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_CLIENT_PRELIMINARY_CORRECTION:
-    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  UNDER_CLIENT_FINAL_CORRECTION:
-    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  PRELIMINARY_RESUBMISSION_BY_CLIENT:
-    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  FINAL_RESUBMISSION_BY_CLIENT:
-    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-  LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-};
+// const STATUS_STYLES: Record<string, string> = {
+//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+//   UNDER_CLIENT_PRELIMINARY_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   UNDER_CLIENT_FINAL_REVIEW:
+//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   CLIENT_NEEDS_PRELIMINARY_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   CLIENT_NEEDS_FINAL_CORRECTION:
+//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   UNDER_CLIENT_PRELIMINARY_CORRECTION:
+//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+//   UNDER_CLIENT_FINAL_CORRECTION:
+//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
+//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+//   FINAL_RESUBMISSION_BY_CLIENT:
+//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+//   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+//   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+// };
 
 // -----------------------------
 // Utilities
@@ -407,7 +407,7 @@ export default function ClientDashboard() {
                       <span
                         className={classNames(
                           "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_STYLES[String(r.status)] ||
+                          STATUS_COLORS[r.status as ReportStatus] ||
                             "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
                         )}
                       >
