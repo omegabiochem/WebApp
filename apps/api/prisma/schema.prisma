@@ -46,6 +46,7 @@ model MicroMixReport {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
   corrections            Json?
+  attachments            Attachment[]
 }
 
 model Sample {
@@ -190,4 +191,27 @@ enum UserRole {
   CHEMISTRY
   QA
   CLIENT
+}
+
+
+model Attachment {
+  id         String   @id @default(cuid())
+  reportId   String
+  kind       AttachmentKind
+  filename   String
+  storageKey String
+  checksum   String
+  pages      Int?
+  source     String      // "scan-smb" | "scan-email" | "manual"
+  meta       Json?
+  createdAt  DateTime  @default(now())
+  createdBy  String?     // user id or "ingestor"
+
+  MicroMixReport     MicroMixReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+enum AttachmentKind {
+  SIGNED_FORM
+  RAW_SCAN
+  OTHER
 }
