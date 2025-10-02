@@ -24,6 +24,9 @@ import { BalanceModule } from './balancer/balance.module';
 import { PrismaService } from 'prisma/prisma.service';
 import { ESignService } from './auth/esign.service';
 import { AuditModule } from './audit/audit.module';
+import { AttachmentsModule } from './attachments/attachments.module';
+
+
 
 @Module({
   imports: [
@@ -33,7 +36,8 @@ import { AuditModule } from './audit/audit.module';
     UsersModule,
     ReportsModule,
     BalanceModule,
-    AuditModule
+    AuditModule,
+    AttachmentsModule,
   ],
   providers: [
     JwtStrategy,

@@ -24,7 +24,7 @@ type Report = {
 };
 
 // Include an "ALL" pseudo-status for filtering
-const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
+const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
@@ -77,11 +77,55 @@ function canUpdateThisReport(r: Report, user?: any) {
   );
 }
 
+// ---- API helpers ----
+const API_BASE =
+  import.meta.env?.VITE_API_BASE?.replace(/\/$/, "") || "http://localhost:3000";
+
+async function uploadSignedPdf(reportId: string, file: File, token: string) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", "SIGNED_FORM");
+  form.append("source", "manual"); // the watcher uses "scan-smb"
+  const res = await fetch(`${API_BASE}/reports/${reportId}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(msg || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function openSignPackInNewTab(reportId: string) {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Missing auth token");
+    return;
+  }
+  const url = `${API_BASE}/reports/${reportId}/sign-pack.pdf`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    alert(await res.text().catch(() => "Failed to fetch PDF"));
+    return;
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, "_blank", "noopener");
+}
+
+// function signPackUrl(reportId: string) {
+//   return `${API_BASE}/reports/${reportId}/sign-pack.pdf`;
+// }
+
 // -----------------------------
 // Component
 // -----------------------------
 
-export default function ClientDashboard() {
+export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,10 +138,12 @@ export default function ClientDashboard() {
   const [perPage, setPerPage] = useState(10);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [uploadBusyId, setUploadBusyId] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Fetch all Micro mix reports (no per-client filter for this role)
   useEffect(() => {
     let abort = false;
     async function fetchReports() {
@@ -110,17 +156,18 @@ export default function ClientDashboard() {
           setError("Missing auth token. Please log in again.");
           return;
         }
+
         const res = await fetch("http://localhost:3000/reports/micro-mix", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         const all: Report[] = await res.json();
-
         if (abort) return;
 
-        const clientReports = all.filter((r) => r.client === user?.clientCode);
-        setReports(clientReports);
+        // Keep only statuses Micro cares about (plus whatever backend sends that matches)
+        const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+        setReports(all.filter((r) => keep.has(r.status as any)));
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -132,7 +179,7 @@ export default function ClientDashboard() {
     return () => {
       abort = true;
     };
-  }, [user?.clientCode]);
+  }, []);
 
   // Derived table data
   const processed = useMemo(() => {
@@ -213,6 +260,26 @@ export default function ClientDashboard() {
     );
   }
 
+  async function handleUploadSigned(reportId: string, file: File) {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Missing auth token. Please log in again.");
+      return;
+    }
+    setUploadBusyId(reportId);
+    try {
+      await uploadSignedPdf(reportId, file, token);
+      alert("Signed copy uploaded and attached ✅");
+
+      // optional: flip a status right after successful upload
+      // await setStatus(reportId, "RECEIVED_BY_FRONTDESK", "Signed scan received");
+    } catch (e: any) {
+      alert(e?.message || "Upload failed");
+    } finally {
+      setUploadBusyId(null);
+    }
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -241,7 +308,7 @@ export default function ClientDashboard() {
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         {/* Status filter chips (scrollable) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {CLIENT_STATUSES.map((s) => (
+          {FRONTDESK_STATUSES.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -385,7 +452,7 @@ export default function ClientDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                           onClick={() => setSelectedReport(r)}
@@ -393,12 +460,35 @@ export default function ClientDashboard() {
                           View
                         </button>
 
+                        {/* Print Sign Pack (QR-stamped PDF) */}
+                        <button
+                          className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-900"
+                          onClick={() => openSignPackInNewTab(r.id)}
+                        >
+                          Print for Signature
+                        </button>
+
+                        {/* NEW: Upload Signed PDF (manual fallback if watcher isn’t used) */}
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-slate-50">
+                          <input
+                            type="file"
+                            accept="application/pdf,image/png,image/jpeg"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.currentTarget.files?.[0];
+                              if (f) handleUploadSigned(r.id, f);
+                              e.currentTarget.value = ""; // allow re-upload same file name
+                            }}
+                            disabled={uploadBusyId === r.id}
+                          />
+                          {uploadBusyId === r.id
+                            ? "Uploading…"
+                            : "Upload Signed PDF"}
+                        </label>
+
                         {canUpdateThisReport(r, user) && (
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            // onClick={() =>
-                            //   navigate(`/reports/micro-mix/${r.id}`)
-                            // }
                             onClick={async () => {
                               try {
                                 if (

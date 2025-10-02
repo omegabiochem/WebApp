@@ -129,7 +129,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
-    next: ["UNDER_PRELIMINARY_TESTING_REVIEW", "FRONTDESK_ON_HOLD"],
+    next: ["UNDER_ADMIN_REVIEW", "FRONTDESK_ON_HOLD",],
     nextEditableBy: ["MICRO"],
     canEdit: ["FRONTDESK"],
   },
@@ -231,7 +231,7 @@ export const STATUS_TRANSITIONS: Record<
     next: [
       "ADMIN_NEEDS_CORRECTION",
       "ADMIN_REJECTED",
-      "UNDER_CLIENT_FINAL_REVIEW",
+      "RECEIVED_BY_FRONTDESK",
     ],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN"],

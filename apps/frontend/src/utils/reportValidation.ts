@@ -106,15 +106,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "reviewedBy",
     "reviewedDate",
   ],
-  FRONTDESK: [
-    "dateSent",
-    "typeOfTest",
-    "sampleType",
-    "formulaNo",
-    "description",
-    "lotNo",
-    "manufactureDate",
-  ],
+  FRONTDESK: [],
   MICRO: [
     "testSopNo",
     "dateTested",
@@ -245,15 +237,13 @@ export function FieldErrorBadge({
   );
 }
 
-
-
 const API_BASE = "http://localhost:3000";
 
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
-  message: 'OPEN' | 'RESOLVED' extends never ? never : string; // (keep)
-  status: 'OPEN'|'RESOLVED';
+  message: "OPEN" | "RESOLVED" extends never ? never : string; // (keep)
+  status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
   resolvedAt?: string;
@@ -261,10 +251,13 @@ export type CorrectionItem = {
 };
 
 export async function getCorrections(reportId: string, token: string) {
-  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error('Failed to fetch corrections');
+  const res = await fetch(
+    `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (!res.ok) throw new Error("Failed to fetch corrections");
   return (await res.json()) as CorrectionItem[];
 }
 
@@ -273,14 +266,20 @@ export async function createCorrections(
   token: string,
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
-  reason?: string,
+  reason?: string
 ) {
-  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections`, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ items, targetStatus, reason }),
-  });
-  if (!res.ok) throw new Error('Failed to create corrections');
+  const res = await fetch(
+    `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ items, targetStatus, reason }),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to create corrections");
   return res.json();
 }
 
@@ -288,22 +287,22 @@ export async function resolveCorrection(
   reportId: string,
   cid: string,
   token: string,
-  resolutionNote?: string,
+  resolutionNote?: string
 ) {
-  const res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ resolutionNote }),
-  });
-  if (!res.ok) throw new Error('Failed to resolve correction');
+  const res = await fetch(
+    `${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ resolutionNote }),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to resolve correction");
   return res.json();
 }
-
-
-
-
-
-
 
 /* =======================
  * Main validation hook

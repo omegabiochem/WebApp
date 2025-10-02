@@ -149,7 +149,16 @@ export const router = createBrowserRouter([
         path: "samples",
         element: (
           <RequireAuth>
-            <RequireRole roles={["FRONTDESK", "MICRO", "CHEMISTRY", "QA", "ADMIN", "SYSTEMADMIN"]}>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+              ]}
+            >
               <SamplesPage />
             </RequireRole>
           </RequireAuth>
@@ -159,7 +168,7 @@ export const router = createBrowserRouter([
         path: "reports/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT" ,"SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
               <MicroMixReportForm />
             </RequireRole>
           </RequireAuth>
@@ -169,7 +178,17 @@ export const router = createBrowserRouter([
         path: "reports/micro-mix/:id", // ← no leading slash
         element: (
           <RequireAuth>
-            <RequireRole roles={["FRONTDESK", "MICRO", "CHEMISTRY", "QA", "ADMIN", "SYSTEMADMIN", "CLIENT"]}>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
               <MicroMixReportFormWrapper />
             </RequireRole>
           </RequireAuth>
@@ -181,7 +200,9 @@ export const router = createBrowserRouter([
         path: "balancer",
         element: (
           <RequireAuth>
-            <RequireRole roles={["MICRO", "FRONTDESK", "QA", "ADMIN", "SYSTEMADMIN"]}>
+            <RequireRole
+              roles={["MICRO", "FRONTDESK", "QA", "ADMIN", "SYSTEMADMIN"]}
+            >
               <BalancePage />
             </RequireRole>
           </RequireAuth>
@@ -200,8 +221,10 @@ export const router = createBrowserRouter([
         ),
       },
 
-      // 403 helper
-      { path: "not-authorized", element: <div style={{ padding: 16 }}>Not authorized</div> },
+      {
+        path: "not-authorized",
+        element: <div style={{ padding: 16 }}>Not authorized</div>,
+      },
 
       // 404
       { path: "*", element: <div style={{ padding: 16 }}>Not Found</div> },
