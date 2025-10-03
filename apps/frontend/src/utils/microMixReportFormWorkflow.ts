@@ -98,7 +98,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
-    canSet: ["CLIENT"],
+    canSet: [ "CLIENT"],
     next: ["FINAL_APPROVED", "CLIENT_NEEDS_FINAL_CORRECTION"],
     nextEditableBy: ["ADMIN"],
     canEdit: [],
@@ -129,9 +129,9 @@ export const STATUS_TRANSITIONS: Record<
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
-    next: ["UNDER_ADMIN_REVIEW", "FRONTDESK_ON_HOLD",],
+    next: ["UNDER_CLIENT_FINAL_REVIEW", "FRONTDESK_ON_HOLD"],
     nextEditableBy: ["MICRO"],
-    canEdit: ["FRONTDESK"],
+    canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ["FRONTDESK"],
@@ -227,12 +227,8 @@ export const STATUS_TRANSITIONS: Record<
   },
 
   UNDER_ADMIN_REVIEW: {
-    canSet: [ "ADMIN", "SYSTEMADMIN"],
-    next: [
-      "ADMIN_NEEDS_CORRECTION",
-      "ADMIN_REJECTED",
-      "RECEIVED_BY_FRONTDESK",
-    ],
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN"],
   },
@@ -268,44 +264,60 @@ export const STATUS_TRANSITIONS: Record<
   },
 };
 
-
 //  these are designed for readable badges on white UI
 export const STATUS_COLORS: Record<ReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
 
-  UNDER_CLIENT_PRELIMINARY_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-  UNDER_CLIENT_FINAL_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CLIENT_PRELIMINARY_REVIEW:
+    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CLIENT_FINAL_REVIEW:
+    "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
 
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  CLIENT_NEEDS_FINAL_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  CLIENT_NEEDS_PRELIMINARY_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  CLIENT_NEEDS_FINAL_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
 
-  UNDER_CLIENT_PRELIMINARY_CORRECTION: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-  UNDER_CLIENT_FINAL_CORRECTION: "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+  UNDER_CLIENT_PRELIMINARY_CORRECTION:
+    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+  UNDER_CLIENT_FINAL_CORRECTION:
+    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
 
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-  FINAL_RESUBMISSION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+  PRELIMINARY_RESUBMISSION_BY_CLIENT:
+    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+  FINAL_RESUBMISSION_BY_CLIENT:
+    "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
 
   RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
   FRONTDESK_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
   FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
 
-  UNDER_PRELIMINARY_TESTING_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
-  PRELIMINARY_TESTING_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  UNDER_PRELIMINARY_TESTING_REVIEW:
+    "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  PRELIMINARY_TESTING_ON_HOLD:
+    "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
+  PRELIMINARY_TESTING_NEEDS_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
 
-  PRELIMINARY_RESUBMISSION_BY_TESTING: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+  PRELIMINARY_RESUBMISSION_BY_TESTING:
+    "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
+  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW:
+    "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
 
-  FINAL_RESUBMISSION_BY_TESTING: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
+  FINAL_RESUBMISSION_BY_TESTING:
+    "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
 
-  PRELIMINARY_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  PRELIMINARY_APPROVED:
+    "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
 
   UNDER_FINAL_TESTING_REVIEW: "bg-sky-100 text-sky-900 ring-1 ring-sky-200",
   FINAL_TESTING_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
-  FINAL_TESTING_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+  FINAL_TESTING_NEEDS_CORRECTION:
+    "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW:
+    "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
 
   UNDER_QA_REVIEW: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
   QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
@@ -313,27 +325,18 @@ export const STATUS_COLORS: Record<ReportStatus, string> = {
   UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
   ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
   ADMIN_REJECTED: "bg-red-100 text-red-800 ring-1 ring-red-200",
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
+  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW:
+    "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
 
   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
 };
 
-
 // Field-level permissions (frontend hint; backend is source of truth)
 export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   SYSTEMADMIN: [],
   ADMIN: ["*"],
-  FRONTDESK: [
-    "client",
-    "dateSent",
-    "typeOfTest",
-    "sampleType",
-    "formulaNo",
-    "description",
-    "lotNo",
-    "manufactureDate",
-  ],
+  FRONTDESK: [],
   MICRO: [
     "testSopNo",
     "dateTested",

@@ -127,7 +127,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
-    canSet: ['CLIENT'],
+    canSet: ['FRONTDESK', 'CLIENT'],
     next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
     nextEditableBy: ['ADMIN'],
     canEdit: [],
@@ -158,9 +158,9 @@ const STATUS_TRANSITIONS: Record<
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK'],
-    next: ['UNDER_ADMIN_REVIEW', 'FRONTDESK_ON_HOLD'],
+    next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
     nextEditableBy: ['MICRO'],
-    canEdit: ['FRONTDESK'],
+    canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ['FRONTDESK'],

@@ -58,68 +58,12 @@ function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
 
-  const fieldsUsedOnForm = [
-    "formNumber",
-    "dateSent",
-    "typeOfTest",
-    "sampleType",
-    "formulaNo",
-    "description",
-    "lotNo",
-    "manufactureDate",
-    "pathogens",
-  ];
+  // const fieldsUsedOnForm = [
+  // ];
 
-  return canShowUpdateButton(
-    user?.role as Role,
-    r.status as ReportStatus,
-    fieldsUsedOnForm
-  );
+  return canShowUpdateButton(user?.role as Role, r.status as ReportStatus);
 }
 
-// ---- API helpers ----
-// const API_BASE =
-//   import.meta.env?.VITE_API_BASE?.replace(/\/$/, "") || "http://localhost:3000";
-
-// async function uploadSignedPdf(reportId: string, file: File, token: string) {
-//   const form = new FormData();
-//   form.append("file", file);
-//   form.append("kind", "SIGNED_FORM");
-//   form.append("source", "manual"); // the watcher uses "scan-smb"
-//   const res = await fetch(`${API_BASE}/reports/${reportId}/attachments`, {
-//     method: "POST",
-//     headers: { Authorization: `Bearer ${token}` },
-//     body: form,
-//   });
-//   if (!res.ok) {
-//     const msg = await res.text().catch(() => "");
-//     throw new Error(msg || `Upload failed (${res.status})`);
-//   }
-//   return res.json();
-// }
-
-// async function openSignPackInNewTab(reportId: string) {
-//   const token = localStorage.getItem("token");
-//   if (!token) {
-//     alert("Missing auth token");
-//     return;
-//   }
-//   const url = `${API_BASE}/reports/${reportId}/sign-pack.pdf`;
-//   const res = await fetch(url, {
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) {
-//     alert(await res.text().catch(() => "Failed to fetch PDF"));
-//     return;
-//   }
-//   const blob = await res.blob();
-//   const blobUrl = URL.createObjectURL(blob);
-//   window.open(blobUrl, "_blank", "noopener");
-// }
-
-// function signPackUrl(reportId: string) {
-//   return `${API_BASE}/reports/${reportId}/sign-pack.pdf`;
-// }
 
 // -----------------------------
 // Component
@@ -480,7 +424,7 @@ export default function FrontDeskDashboard() {
                             : "Upload Signed PDF"}
                         </label> */}
 
-                        {canUpdateThisReport(r, user) && (
+                        {/* {canUpdateThisReport(r, user) && ( */}
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             onClick={async () => {
@@ -503,7 +447,7 @@ export default function FrontDeskDashboard() {
                           >
                             Update
                           </button>
-                        )}
+                        {/* )} */}
                       </div>
                     </td>
                   </tr>

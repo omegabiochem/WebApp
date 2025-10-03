@@ -536,7 +536,7 @@ export default function MicroMixReportForm({
 
   // UI policy: only when server will enforce
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    (role === "ADMIN" || role === "SYSTEMADMIN" ||role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   // trigger from buttons; Admin must provide e-sign first
