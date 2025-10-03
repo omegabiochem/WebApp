@@ -1,4 +1,4 @@
-import { useEffect, useState, type SetStateAction } from "react";
+import { useEffect, useState, } from "react";
 import QRCode from "qrcode";
 
 type MicroReportFormProps = {
