@@ -6,7 +6,10 @@ import type {
   Role,
   ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
-import { canShowUpdateButton, STATUS_COLORS } from "../../utils/microMixReportFormWorkflow";
+import {
+  canShowUpdateButton,
+  STATUS_COLORS,
+} from "../../utils/microMixReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -107,6 +110,10 @@ function canUpdateThisReport(r: Report, user?: any) {
   );
 }
 
+const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
+  status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED"
+    ? "ATTACHMENTS"
+    : "FORM";
 // -----------------------------
 // Component
 // -----------------------------
@@ -574,7 +581,7 @@ export default function ClientDashboard() {
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}
                 showSwitcher={false}
-                pane="FORM"
+                pane={paneFor(String(selectedReport.status))}
               />
             </div>
           </div>
