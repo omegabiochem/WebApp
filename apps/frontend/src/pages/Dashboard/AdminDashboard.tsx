@@ -183,6 +183,8 @@ export default function AdminDashboard() {
   const [eSignError, setESignError] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
 
+   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -211,6 +213,28 @@ export default function AdminDashboard() {
       socketRef.current?.disconnect();
     };
   }, []);
+
+
+   async function setStatus(
+    reportId: string,
+    newStatus: string,
+    reason = "Client correction update"
+  ) {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const res = await fetch(
+      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason, status: newStatus }),
+      }
+    );
+  }
 
   // Fetch
   useEffect(() => {
@@ -610,51 +634,103 @@ export default function AdminDashboard() {
       </div>
 
       {/* Modal: read-only full form */}
-      {selectedReport && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Report details"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedReport(null);
-          }}
-        >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold">
-                Report ({displayReportNo(selectedReport)})
-              </h2>
-              <div className="flex items-center gap-2">
-                {canUpdateThisReport(selectedReport, user) && (
-                  <button
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                    onClick={() => {
-                      const id = selectedReport.id;
-                      setSelectedReport(null);
-                      navigate(`/reports/micro-mix/${id}`);
-                    }}
-                  >
-                    Update
-                  </button>
-                )}
-                <button
-                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
-                >
-                  Close
-                </button>
+       {selectedReport && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Report details"
+                onClick={(e) => {
+                  // close on backdrop click
+                  if (e.target === e.currentTarget) setSelectedReport(null);
+                }}
+              >
+                <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+                  <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
+                    {/* Left: Title */}
+                    <h2 className="text-lg font-semibold">
+                      Report #{displayReportNo(selectedReport)}
+                    </h2>
+      
+                    {/* Middle: Form / Attachments switch */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                      <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setModalPane("FORM")}
+                          className={`px-3 py-1 rounded-full transition ${
+                            modalPane === "FORM"
+                              ? "bg-blue-600 text-white"
+                              : "text-slate-700 hover:bg-white"
+                          }`}
+                          aria-pressed={modalPane === "FORM"}
+                        >
+                          Form
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalPane("ATTACHMENTS")}
+                          className={`px-3 py-1 rounded-full transition ${
+                            modalPane === "ATTACHMENTS"
+                              ? "bg-blue-600 text-white"
+                              : "text-slate-700 hover:bg-white"
+                          }`}
+                          aria-pressed={modalPane === "ATTACHMENTS"}
+                        >
+                          Attachments
+                        </button>
+                      </div>
+                    </div>
+      
+                    {/* Right: Actions */}
+                    <div className="flex items-center gap-2 justify-self-end">
+                      {canUpdateThisReport(selectedReport, user) && (
+                        <button
+                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                          onClick={async () => {
+                            try {
+                              const id = selectedReport.id;
+                              if (
+                                selectedReport.status ===
+                                "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                              ) {
+                                await setStatus(
+                                  id,
+                                  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                  "Sent back to client for correction"
+                                );
+                              }
+                              setSelectedReport(null);
+                              navigate(`/reports/micro-mix/${id}`);
+                            } catch (e: any) {
+                              alert(e?.message || "Failed to update status");
+                            }
+                          }}
+                        >
+                          Update
+                        </button>
+                      )}
+                      <button
+                        className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+                        onClick={() => setSelectedReport(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+      
+                  <div className="overflow-auto px-6 py-4">
+                    <MicroMixReportFormView
+                      report={selectedReport}
+                      onClose={() => setSelectedReport(null)}
+                      pane={modalPane} // 👈 controlled by dashboard header
+                      showSwitcher={false} // 👈 hide internal switcher
+                      onPaneChange={setModalPane} // (optional) keeps them in sync if needed
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView
-                report={selectedReport}
-                onClose={() => setSelectedReport(null)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+            )}
 
       {/* Change Status Dialog */}
       {changeStatusReport && (
@@ -1440,4 +1516,4 @@ export default function AdminDashboard() {
 //       )}
 //     </div>
 //   );
-// }
+

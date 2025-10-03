@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import { STATUS_COLORS, type ReportStatus } from "../../utils/microMixReportFormWorkflow";
+import {
+  STATUS_COLORS,
+  type ReportStatus,
+} from "../../utils/microMixReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -555,6 +558,8 @@ export default function MicroDashboard() {
               <MicroMixReportFormView
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}
+                showSwitcher={false}
+                pane="FORM"
               />
             </div>
           </div>

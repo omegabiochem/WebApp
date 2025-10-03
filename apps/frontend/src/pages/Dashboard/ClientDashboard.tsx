@@ -573,6 +573,8 @@ export default function ClientDashboard() {
               <MicroMixReportFormView
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}
+                showSwitcher={false}
+                pane="FORM"
               />
             </div>
           </div>
