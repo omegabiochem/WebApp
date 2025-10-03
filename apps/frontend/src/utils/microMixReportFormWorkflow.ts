@@ -227,7 +227,7 @@ export const STATUS_TRANSITIONS: Record<
   },
 
   UNDER_ADMIN_REVIEW: {
-    canSet: ["MICRO", "ADMIN", "SYSTEMADMIN"],
+    canSet: [ "ADMIN", "SYSTEMADMIN"],
     next: [
       "ADMIN_NEEDS_CORRECTION",
       "ADMIN_REJECTED",

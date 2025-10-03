@@ -103,8 +103,8 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "testedBy",
     "testedDate",
     "dateCompleted",
-    "reviewedBy",
-    "reviewedDate",
+    // "reviewedBy",
+    // "reviewedDate",
   ],
   FRONTDESK: [],
   MICRO: [
