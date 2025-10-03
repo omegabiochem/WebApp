@@ -17,10 +17,10 @@ import {
 
 type Report = {
   id: string;
-  client: string;
+  formNumber: string;
   dateSent: string | null;
   status: ReportStatus | string; // Some backends may still send raw string
-  formNumber: string;
+  reportNumber: string;
 };
 
 // Include an "ALL" pseudo-status for filtering
@@ -56,10 +56,10 @@ function formatDate(iso: string | null) {
 
 function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
-  if (r.client !== user?.clientCode) return false;
+  if (r.formNumber !== user?.clientCode) return false;
 
   const fieldsUsedOnForm = [
-    "client",
+    "formNumber",
     "dateSent",
     "typeOfTest",
     "sampleType",
@@ -132,7 +132,7 @@ export default function FrontDeskDashboard() {
 
   const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -145,7 +145,7 @@ export default function FrontDeskDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Fetch all Micro mix reports (no per-client filter for this role)
+  // Fetch all Micro mix reports (no per-formNumber filter for this role)
   useEffect(() => {
     let abort = false;
     async function fetchReports() {
@@ -194,17 +194,17 @@ export default function FrontDeskDashboard() {
       ? byStatus.filter((r) => {
           const q = search.toLowerCase();
           return (
+            r.reportNumber.toLowerCase().includes(q) ||
             r.formNumber.toLowerCase().includes(q) ||
-            r.client.toLowerCase().includes(q) ||
             String(r.status).toLowerCase().includes(q)
           );
         })
       : byStatus;
 
     const sorted = [...bySearch].sort((a, b) => {
-      if (sortBy === "formNumber") {
-        const aN = a.formNumber.toLowerCase();
-        const bN = b.formNumber.toLowerCase();
+      if (sortBy === "reportNumber") {
+        const aN = a.reportNumber.toLowerCase();
+        const bN = b.reportNumber.toLowerCase();
         return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
       }
       // dateSent
@@ -333,7 +333,7 @@ export default function FrontDeskDashboard() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search form #, client, or status…"
+              placeholder="Search form #, formNumber, or status…"
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
             {search && (
@@ -359,7 +359,7 @@ export default function FrontDeskDashboard() {
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
-              <option value="formNumber">Form #</option>
+              <option value="reportNumber">Form #</option>
             </select>
 
             <button
@@ -407,8 +407,8 @@ export default function FrontDeskDashboard() {
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
+                <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -439,8 +439,8 @@ export default function FrontDeskDashboard() {
               {!loading &&
                 pageRows.map((r) => (
                   <tr key={r.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">{r.formNumber}</td>
-                    <td className="px-4 py-3">{r.client}</td>
+                    <td className="px-4 py-3 font-medium">{r.reportNumber}</td>
+                    <td className="px-4 py-3">{r.formNumber}</td>
                     <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
                     <td className="px-4 py-3">
                       <span
@@ -492,7 +492,7 @@ export default function FrontDeskDashboard() {
                                   await setStatus(
                                     r.id,
                                     "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                    "Sent back to client for correction"
+                                    "Sent back to formNumber for correction"
                                   );
                                 }
                                 navigate(`/reports/micro-mix/${r.id}`);
@@ -582,7 +582,7 @@ export default function FrontDeskDashboard() {
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               {/* Left: Title */}
               <h2 className="text-lg font-semibold">
-                Report ({selectedReport.formNumber})
+                Report ({selectedReport.reportNumber})
               </h2>
 
               {/* Middle: Form / Attachments switch */}
@@ -630,7 +630,7 @@ export default function FrontDeskDashboard() {
                           await setStatus(
                             id,
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                            "Sent back to client for correction"
+                            "Sent back to formNumber for correction"
                           );
                         }
                         setSelectedReport(null);
