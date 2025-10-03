@@ -97,7 +97,7 @@ export default function MicroMixReportPrintPage() {
   return (
     <div className="p-4">
       <div id="__ready" data-state="ok" />
-      <MicroMixReportFormView report={report} onClose={() => {}} />
+      <MicroMixReportFormView report={report} onClose={() => {}} showSwitcher={false} pane="FORM"/>
     </div>
   );
 }

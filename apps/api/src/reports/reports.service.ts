@@ -4,12 +4,15 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { ReportStatus, UserRole } from '@prisma/client';
+import { AttachmentKind, ReportStatus, UserRole } from '@prisma/client';
 import { ReportsGateway } from './reports.gateway';
 import { PrismaService } from 'prisma/prisma.service';
 import { ESignService } from '../auth/esign.service';
 import { getRequestContext } from '../common/request-context';
 import { randomUUID } from 'node:crypto';
+import * as crypto from 'crypto';
+import * as fsp from 'fs/promises';
+import * as path from 'path';
 
 // ----------------------------
 // Which roles may edit which fields (unchanged)
@@ -684,6 +687,58 @@ export class ReportsService {
 
     this.reportsGateway.notifyReportUpdate({ id });
     return { ok: true };
+  }
+
+
+  private async findReportOrThrow(user: any, id: string) {
+    // add org/tenant scoping here if you have it on MicroMixReport
+    const report = await this.prisma.microMixReport.findUnique({ where: { id } });
+    if (!report) throw new NotFoundException('Report not found');
+    return report;
+  }
+
+  async addAttachment(
+    user: any,
+    id: string,
+    file: Express.Multer.File,
+    body: { pages?: string; checksum?: string; source?: string; createdBy?: string; kind?: string },
+  ) {
+    await this.findReportOrThrow(user, id);
+
+      // read file contents regardless of storage
+ const buf = file.buffer ?? await fsp.readFile((file as any).path);
+  const checksum = body.checksum || crypto.createHash('sha256').update(buf).digest('hex');
+
+
+    // Optional: de-dupe per report + checksum
+    const existing = await this.prisma.attachment.findFirst({
+      where: { reportId: id, checksum },
+      select: { id: true },
+    });
+    if (existing) return { ok: true, id: existing.id, dedup: true };
+
+    // Persist file (adjust to S3/GCS if needed)
+    const dir = path.join(process.cwd(), 'uploads', 'micro-mix', id);
+    await fsp.mkdir(dir, { recursive: true });
+    const safeName = `${Date.now()}_${(file.originalname || 'scan').replace(/[^\w.\-]+/g, '_')}`;
+    const fullPath = path.join(dir, safeName);
+    await fsp.writeFile(fullPath, buf);
+
+    const att = await this.prisma.attachment.create({
+      data: {
+        reportId: id,
+        kind: (body.kind as AttachmentKind) || AttachmentKind.SIGNED_FORM,
+        filename: safeName,
+        storageKey: fullPath,   // or a URL if you serve it
+        checksum,
+        pages: body.pages ? Number(body.pages) : null,
+        source: body.source || 'scan-hotfolder',
+        meta: {},
+        createdBy: body.createdBy || user?.sub || 'ingestor',
+      },
+    });
+
+    return { ok: true, id: att.id };
   }
 }
 

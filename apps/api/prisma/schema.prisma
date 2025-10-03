@@ -208,6 +208,9 @@ model Attachment {
   createdBy  String?     // user id or "ingestor"
 
   MicroMixReport     MicroMixReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@unique([reportId, checksum])
 }
 
 enum AttachmentKind {

@@ -7,10 +7,14 @@ import {
   Post,
   UseGuards,
   Req,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { ReportStatus } from '@prisma/client';
+import { AttachmentKind, ReportStatus } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 type CreateCorrectionsDto = {
   items: { fieldKey: string; message: string }[];
@@ -20,6 +24,14 @@ type CreateCorrectionsDto = {
 
 type ResolveCorrectionDto = {
   resolutionNote?: string;       // optional
+};
+
+type CreateAttachmentDto = {
+  pages?: string;
+  checksum?: string;
+  source?: string;
+  createdBy?: string;
+ kind?: 'SIGNED_FORM' | 'RAW_SCAN' | 'OTHER';
 };
 
 @UseGuards(JwtAuthGuard)
@@ -92,6 +104,22 @@ async updateStatus(
     return this.svc.resolveCorrection(req.user, id, cid, body);
   }
 
+
+
+  @Post(':id/attachments')
+  @UseInterceptors(FileInterceptor('file')) // expects field name "file"
+  async addAttachment(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: CreateAttachmentDto,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    // Throws NotFoundException if report not visible to this user/org
+    return this.svc.addAttachment(req.user, id, file, body);
+  }
+
+  
 
 
 }
