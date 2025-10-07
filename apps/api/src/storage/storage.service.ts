@@ -9,9 +9,10 @@ type PutInput = { filePath: string; filename: string; subdir?: string };
 
 @Injectable()
 export class StorageService {
-  private readonly ROOT = process.env.FS_STORAGE_ROOT
-    ? path.resolve(process.env.FS_STORAGE_ROOT)
-    : path.resolve(process.cwd(), 'storage');
+     private readonly ROOT = process.env.FILES_DIR || path.resolve('dev_uploads');
+//   private readonly ROOT = process.env.FS_STORAGE_ROOT
+//     ? path.resolve(process.env.FS_STORAGE_ROOT)
+//     : path.resolve(process.cwd(), 'storage');
 
   async put({ filePath, filename, subdir }: PutInput): Promise<string> {
     const targetDir = path.join(this.ROOT, subdir ?? 'misc');

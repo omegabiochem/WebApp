@@ -1,0 +1,12 @@
+node_modules
+dist
+.env*
+.git
+.gitignore
+Dockerfile*
+fly.toml
+.vscode
+coverage
+npm-debug.log
+uploads
+tmp

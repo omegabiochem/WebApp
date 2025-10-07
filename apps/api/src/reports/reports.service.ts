@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import * as crypto from 'crypto';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import { AttachmentsService } from 'src/attachments/attachments.service';
 
 // ----------------------------
 // Which roles may edit which fields (unchanged)
@@ -355,6 +356,7 @@ export class ReportsService {
     private readonly reportsGateway: ReportsGateway,
     private readonly prisma: PrismaService,
     private readonly esign: ESignService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   // 👇 add this inside the class
@@ -698,47 +700,64 @@ export class ReportsService {
   }
 
   async addAttachment(
-    user: any,
-    id: string,
-    file: Express.Multer.File,
-    body: { pages?: string; checksum?: string; source?: string; createdBy?: string; kind?: string },
-  ) {
-    await this.findReportOrThrow(user, id);
+  user: any,
+  id: string,
+  file: Express.Multer.File,
+  body: { pages?: string; checksum?: string; source?: string; createdBy?: string; kind?: string },
+) {
+  // delegate; AttachmentsService handles FILES_DIR & DB
+  return this.attachments.create({
+    reportId: id,
+    file,
+    kind: (body.kind as any) ?? 'OTHER',
+    source: body.source ?? 'upload',
+    pages: body.pages ? Number(body.pages) : undefined,
+    createdBy: body.createdBy ?? user?.userId ?? 'web',
+  });
+}
 
-      // read file contents regardless of storage
- const buf = file.buffer ?? await fsp.readFile((file as any).path);
-  const checksum = body.checksum || crypto.createHash('sha256').update(buf).digest('hex');
+//   async addAttachment(
+//     user: any,
+//     id: string,
+//     file: Express.Multer.File,
+//     body: { pages?: string; checksum?: string; source?: string; createdBy?: string; kind?: string },
+//   ) {
+//     await this.findReportOrThrow(user, id);
+
+//       // read file contents regardless of storage
+//  const buf = file.buffer ?? await fsp.readFile((file as any).path);
+//   const checksum = body.checksum || crypto.createHash('sha256').update(buf).digest('hex');
 
 
-    // Optional: de-dupe per report + checksum
-    const existing = await this.prisma.attachment.findFirst({
-      where: { reportId: id, checksum },
-      select: { id: true },
-    });
-    if (existing) return { ok: true, id: existing.id, dedup: true };
+//     // Optional: de-dupe per report + checksum
+//     const existing = await this.prisma.attachment.findFirst({
+//       where: { reportId: id, checksum },
+//       select: { id: true },
+//     });
+//     if (existing) return { ok: true, id: existing.id, dedup: true };
 
-    // Persist file (adjust to S3/GCS if needed)
-    const dir = path.join(process.cwd(), 'uploads', 'micro-mix', id);
-    await fsp.mkdir(dir, { recursive: true });
-    const safeName = `${Date.now()}_${(file.originalname || 'scan').replace(/[^\w.\-]+/g, '_')}`;
-    const fullPath = path.join(dir, safeName);
-    await fsp.writeFile(fullPath, buf);
+//     // Persist file (adjust to S3/GCS if needed)
+//     const dir = path.join(process.cwd(), 'uploads', 'micro-mix', id);
+//     await fsp.mkdir(dir, { recursive: true });
+//     const safeName = `${Date.now()}_${(file.originalname || 'scan').replace(/[^\w.\-]+/g, '_')}`;
+//     const fullPath = path.join(dir, safeName);
+//     await fsp.writeFile(fullPath, buf);
 
-    const att = await this.prisma.attachment.create({
-      data: {
-        reportId: id,
-        kind: (body.kind as AttachmentKind) || AttachmentKind.SIGNED_FORM,
-        filename: safeName,
-        storageKey: fullPath,   // or a URL if you serve it
-        checksum,
-        pages: body.pages ? Number(body.pages) : null,
-        source: body.source || 'scan-hotfolder',
-        meta: {},
-        createdBy: body.createdBy || user?.sub || 'ingestor',
-      },
-    });
+//     const att = await this.prisma.attachment.create({
+//       data: {
+//         reportId: id,
+//         kind: (body.kind as AttachmentKind) || AttachmentKind.SIGNED_FORM,
+//         filename: safeName,
+//         storageKey: fullPath,   // or a URL if you serve it
+//         checksum,
+//         pages: body.pages ? Number(body.pages) : null,
+//         source: body.source || 'scan-hotfolder',
+//         meta: {},
+//         createdBy: body.createdBy || user?.sub || 'ingestor',
+//       },
+//     });
 
-    return { ok: true, id: att.id };
-  }
+//     return { ok: true, id: att.id };
+//   }
 }
 
