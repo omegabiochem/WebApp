@@ -2,7 +2,11 @@
 import { PrismaClient, type UserRole } from "@prisma/client";
 import bcrypt from "bcrypt";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources:{
+    db: { url: process.env.DIRECT_URL?? process.env.DATABASE_URL! }
+  }
+});
 const ADMIN: UserRole = "ADMIN";
 
 async function main() {

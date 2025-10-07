@@ -19,6 +19,7 @@ import {
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
 
+
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
   const blocker = useBlocker(isDirty);
@@ -300,6 +301,8 @@ const DashStyles = () => (
   `}</style>
 );
 
+const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
+
 export default function MicroMixReportForm({
   report,
   onClose,
@@ -536,7 +539,7 @@ export default function MicroMixReportForm({
 
   // UI policy: only when server will enforce
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" || role === "SYSTEMADMIN" ||role === "FRONTDESK") &&
+    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   // trigger from buttons; Admin must provide e-sign first
@@ -1199,13 +1202,23 @@ export default function MicroMixReportForm({
           >
             Print
           </button> */}
-          <button
+          {!HIDE_SAVE_FOR.has(status as ReportStatus) && (
+            <button
+              className="px-3 py-1 rounded-md border bg-blue-600 text-white"
+              onClick={handleSave}
+              disabled={role === "SYSTEMADMIN"}
+            >
+              {reportId ? "Update Report" : "Save Report"}
+            </button>
+          )}
+
+          {/* <button
             className="px-3 py-1 rounded-md border bg-blue-600 text-white"
             onClick={handleSave}
             disabled={role === "SYSTEMADMIN"}
           >
             {reportId ? "Update Report" : "Save Report"}
-          </button>
+          </button> */}
         </div>
 
         {/* Letterhead */}
@@ -2078,9 +2091,9 @@ export default function MicroMixReportForm({
               >
                 {/* <ResolveOverlay field={`pathogens.${p.key}`} /> */}
                 {/* First column: checkbox + label (unchanged except using setPathogenChecked) */}
-                 <ResolveOverlay field={`pathogens.${p.key}:checked`} />
+                <ResolveOverlay field={`pathogens.${p.key}:checked`} />
                 <div
-                id="f-pathogens-checked"
+                  id="f-pathogens-checked"
                   onClick={() => {
                     if (!selectingCorrections) return;
                     setAddForField(`pathogens:${p.key}:checked`);
@@ -2090,14 +2103,12 @@ export default function MicroMixReportForm({
                     hasCorrection(`pathogens.${p.key}`)
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
-                  }${ dashClass(
-                    `pathogens:${p.key}:checked`
-                  )}`}
+                  }${dashClass(`pathogens:${p.key}:checked`)}`}
                 >
-                   <ResolveOverlay field={`pathogens.${p.key}:checked`} />
+                  <ResolveOverlay field={`pathogens.${p.key}:checked`} />
                   <input
                     type="checkbox"
-                    className="thick-box" 
+                    className="thick-box"
                     checked={!!p.checked}
                     onChange={(e) => setPathogenChecked(idx, e.target.checked)}
                     // disabled={organismDisabled()}

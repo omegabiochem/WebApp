@@ -17,3 +17,14 @@ export function withRequestContext<T>(ctx: RequestContext, fn: () => T) {
 export function getRequestContext(): RequestContext | undefined {
   return requestContext.getStore();
 }
+
+
+export function setRequestContext(patch: RequestContext) {
+  const store = requestContext.getStore();
+  if (store) {
+    Object.assign(store, patch);
+  } else {
+    // Node >= 14.8 supports enterWith
+    requestContext.enterWith({ ...patch });
+  }
+}

@@ -5,13 +5,15 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model MicroMixReport {
-  id                     String       @id @default(cuid())
-  formNumber             String       @unique
-  reportNumber           String?      @unique
-  prefix                 String       @default("M")
+  id                     String          @id @default(cuid())
+  formNumber             String          @unique
+  reportNumber           String?         @unique
+  prefix                 String          @default("M")
   client                 String?
   dateSent               DateTime?
   typeOfTest             String?
@@ -39,14 +41,15 @@ model MicroMixReport {
   testedDate             DateTime?
   reviewedBy             String?
   reviewedDate           DateTime?
-  status                 ReportStatus @default(DRAFT)
+  status                 ReportStatus    @default(DRAFT)
   lockedAt               DateTime?
   createdBy              String?
   updatedBy              String?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
   corrections            Json?
   attachments            Attachment[]
+  statusHistory          StatusHistory[]
 }
 
 model Sample {
@@ -193,28 +196,43 @@ enum UserRole {
   CLIENT
 }
 
-
 model Attachment {
-  id         String   @id @default(cuid())
+  id         String         @id @default(cuid())
   reportId   String
   kind       AttachmentKind
   filename   String
   storageKey String
   checksum   String
   pages      Int?
-  source     String      // "scan-smb" | "scan-email" | "manual"
+  source     String // "scan-smb" | "scan-email" | "manual"
   meta       Json?
-  createdAt  DateTime  @default(now())
-  createdBy  String?     // user id or "ingestor"
+  createdAt  DateTime       @default(now())
+  createdBy  String? // user id or "ingestor"
 
-  MicroMixReport     MicroMixReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  MicroMixReport MicroMixReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  @@index([reportId])
   @@unique([reportId, checksum])
+  @@index([reportId])
 }
 
 enum AttachmentKind {
   SIGNED_FORM
   RAW_SCAN
   OTHER
+}
+
+model StatusHistory {
+  id        String       @id @default(cuid())
+  reportId  String
+  from      ReportStatus
+  to        ReportStatus
+  reason    String?
+  createdAt DateTime     @default(now())
+  userId    String?
+  role      UserRole?
+  ipAddress String?
+
+  report MicroMixReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
 }

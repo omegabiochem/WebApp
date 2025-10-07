@@ -15,6 +15,7 @@ import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { AttachmentKind, ReportStatus } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { setRequestContext } from 'src/common/request-context';
 
 type CreateCorrectionsDto = {
   items: { fieldKey: string; message: string }[];
@@ -51,6 +52,16 @@ export class ReportsController {
 
   @Patch(':id')
   patch(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+
+     const reasonFromHeader =
+    req.headers['x-change-reason'] || req.headers['X-Change-Reason'];
+  setRequestContext({
+    userId: req.user?.userId,
+    role: req.user?.role,
+    ip: req.ip,
+    reason: body?.reason ?? (reasonFromHeader as string) ?? null,
+    eSignPassword: req.headers['x-esign-password'] as string | undefined,
+  });
     return this.svc.update(req.user, id, body);
   }
 
@@ -76,6 +87,19 @@ async updateStatus(
   @Param('id') id: string,
   @Body() body: { status: ReportStatus; reason?: string },
 ) {
+
+  const reasonFromHeader =
+    req.headers['x-change-reason'] || req.headers['X-Change-Reason'];
+
+    const eSignFromHeader = req.headers['x-esign-password'];
+
+  setRequestContext({
+    userId: req.user?.userId,     // ✅ fixed
+    role: req.user?.role,
+    ip: req.ip,
+    reason: body?.reason ?? (reasonFromHeader as string) ?? null,
+  });
+  
   return this.svc.update(req.user, id, body); // send full body including reason
 }
 

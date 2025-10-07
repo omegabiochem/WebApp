@@ -23,7 +23,9 @@ function computeDiff(before: Writable, afterPatch: Writable) {
     if (OMIT_FIELDS.has(k)) continue;
     const prev = (beforeP as any)[k];
     const changed =
-      (prev instanceof Date && v instanceof Date && prev.getTime() !== v.getTime()) ||
+      (prev instanceof Date &&
+        v instanceof Date &&
+        prev.getTime() !== v.getTime()) ||
       (!(prev instanceof Date) && JSON.stringify(prev) !== JSON.stringify(v));
     if (changed) {
       diff.before[k] = prev === undefined ? null : prev;
@@ -35,6 +37,7 @@ function computeDiff(before: Writable, afterPatch: Writable) {
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
+  [x: string]: any;
   async onModuleInit() {
     await this.$connect();
 
@@ -49,12 +52,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         // eslint-disable-next-line no-console
         console.error(
           `[PrismaService] PrismaClient.$use is missing (version detected: ${v}). ` +
-          'Audit middleware disabled. Make sure @prisma/client and prisma are the same 5.x version at runtime.'
+            'Audit middleware disabled. Make sure @prisma/client and prisma are the same 5.x version at runtime.',
         );
       } catch {
         // eslint-disable-next-line no-console
         console.error(
-          '[PrismaService] PrismaClient.$use is missing. Audit middleware disabled.'
+          '[PrismaService] PrismaClient.$use is missing. Audit middleware disabled.',
         );
       }
       return;
@@ -62,20 +65,56 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
     // ---------- GLOBAL AUDIT MIDDLEWARE ----------
     (this as any).$use(async (params: any, next: any) => {
-      const result = await next(params);
+      // const result = await next(params);
 
       const entity = params.model as string | undefined;
       const action = params.action as string;
 
       // Skip non-domain models and the audit table itself
-      if (!entity || entity === 'AuditTrail') return result;
-      if (!['create', 'update', 'delete', 'upsert'].includes(action)) return result;
+      if (!entity || entity === 'AuditTrail') {
+        return next(params);
+      }
+
+      // We only audit these actions
+      const AUDIT_ACTIONS = new Set(['create', 'update', 'delete', 'upsert']);
+      if (!AUDIT_ACTIONS.has(action)) {
+        return next(params);
+      }
 
       const ctx = getRequestContext() || {};
-      const entityId =
-        (result && (result as any).id) ||
-        (params.args?.where && (params.args.where as any).id) ||
-        null;
+      const where = params.args?.where || {};
+      let entityId: string | null = where?.id ?? null;
+
+      // ---- PRE-FETCH "before" *BEFORE* the write ----
+      let before: any = null;
+      try {
+        if (action === 'update' || action === 'delete' || action === 'upsert') {
+          if (where && Object.keys(where).length) {
+            // @ts-ignore dynamic access
+            before = await (this as any)[entity].findUnique({ where });
+          }
+        }
+      } catch {
+        // swallow
+      }
+
+      // Execute the actual write
+      const result = await next(params);
+
+      // Infer id from result if needed
+      if (!entityId && result?.id) {
+        entityId = result.id;
+      }
+
+      // // Skip non-domain models and the audit table itself
+      // if (!entity || entity === 'AuditTrail') return result;
+      // if (!['create', 'update', 'delete', 'upsert'].includes(action)) return result;
+
+      // const ctx = getRequestContext() || {};
+      // const entityId =
+      //   (result && (result as any).id) ||
+      //   (params.args?.where && (params.args.where as any).id) ||
+      //   null;
 
       let changes: any = null;
       let details = '';
@@ -90,9 +129,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
           try {
             if (entityId) {
               // @ts-ignore dynamic access
-              before = await (this as any)[entity].findUnique({ where: { id: entityId } });
+              before = await (this as any)[entity].findUnique({
+                where: { id: entityId },
+              });
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
           const diff = computeDiff(before || {}, params.args?.data || {});
           changes = diff || {};
           details = `Updated ${entity} ${entityId ?? ''}`;
@@ -101,9 +144,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
           try {
             if (entityId) {
               // @ts-ignore dynamic access
-              before = await (this as any)[entity].findUnique({ where: { id: entityId } });
+              before = await (this as any)[entity].findUnique({
+                where: { id: entityId },
+              });
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
           changes = { before: prune(before) };
           details = `Deleted ${entity} ${entityId ?? ''}`;
         } else if (action === 'upsert') {
@@ -133,6 +180,59 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             ipAddress: (ctx as any).ip ?? null,
           },
         });
+      } catch {
+        // swallow
+      }
+
+      // ---- SPECIAL: status change trail for MicroMixReport ----
+      // inside the middleware, after you've computed prevStatus/nextStatus:
+
+      try {
+        if (entity === 'MicroMixReport') {
+          const prevStatus = before?.status ?? null;
+          const nextStatus =
+            result?.status ??
+            params.args?.data?.status ??
+            params.args?.update?.status ??
+            null;
+
+          if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+            const reason = (ctx as any).reason ?? null;
+
+            // 1) A concise trail row focused on status
+            await (this as any).auditTrail.create({
+              data: {
+                action: 'STATUS_CHANGE',
+                entity: 'MicroMixReport',
+                entityId,
+                changes: {
+                  field: 'status',
+                  before: prevStatus,
+                  after: nextStatus,
+                },
+                details:
+                  `Status ${prevStatus} → ${nextStatus} for MicroMixReport ${entityId ?? ''}` +
+                  (reason ? ` | reason: ${reason}` : ''),
+                role: (ctx as any).role ?? null,
+                userId: (ctx as any).userId ?? null,
+                ipAddress: (ctx as any).ip ?? null,
+              },
+            });
+
+            // 2) First-class status history row for fast timelines
+            await (this as any).statusHistory.create({
+              data: {
+                reportId: entityId ?? result?.id, // fallback
+                from: prevStatus,
+                to: nextStatus,
+                reason,
+                userId: (ctx as any).userId ?? null,
+                role: (ctx as any).role ?? null,
+                ipAddress: (ctx as any).ip ?? null,
+              },
+            });
+          }
+        }
       } catch {
         // swallow
       }

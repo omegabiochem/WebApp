@@ -251,7 +251,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["ADMIN"],
   },
   FINAL_APPROVED: {
-    canSet: ["CLIENT"],
+    canSet: [],
     next: [],
     nextEditableBy: [],
     canEdit: [],
