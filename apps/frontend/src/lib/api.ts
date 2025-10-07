@@ -1,4 +1,11 @@
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+// const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+// apps/web/src/lib/api.ts
+export const API_URL = import.meta.env.VITE_API_URL as string;
+export const WS_URL  = import.meta.env.VITE_WS_URL as string | undefined;
+
+// usage
+// await fetch(`${API_URL}/auth/login`, { method: 'POST', ... });
+
 let token = "";
 
 export function setToken(t: string) {
@@ -22,7 +29,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const auth = getToken();                            // ✅ always read
   if (auth) headers.set("Authorization", `Bearer ${auth}`);
 
-  const res = await fetch(BASE + path, { ...init, headers });
+  const res = await fetch(API_URL + path, { ...init, headers });
   if (!res.ok) throw new Error((await res.text().catch(()=>'')) || `HTTP ${res.status}`);
 
   const ct = res.headers.get("content-type") || "";

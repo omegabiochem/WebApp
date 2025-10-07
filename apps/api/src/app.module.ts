@@ -25,6 +25,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { ESignService } from './auth/esign.service';
 import { AuditModule } from './audit/audit.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { HealthController } from './health.controller';
 
 
 
@@ -39,6 +40,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
     AuditModule,
     AttachmentsModule,
   ],
+  controllers: [HealthController],
   providers: [
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
