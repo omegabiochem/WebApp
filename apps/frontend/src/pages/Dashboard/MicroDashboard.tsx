@@ -6,6 +6,7 @@ import {
   STATUS_COLORS,
   type ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
+import { api } from "../../lib/api";
 
 // -----------------------------
 // Types
@@ -86,27 +87,31 @@ async function setStatus(
   newStatus: string,
   reason = "Common Status Change"
 ) {
-  const token = localStorage.getItem("token");
-  if (!token) throw new Error("Missing auth token");
+  // const token = localStorage.getItem("token");
+  // if (!token) throw new Error("Missing auth token");
 
-  const res = await fetch(
-    `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ reason, status: newStatus }),
-    }
-  );
+  // const res = await fetch(
+  //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+  //   {
+  //     method: "PATCH",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${token}`,
+  //     },
+  //     body: JSON.stringify({ reason, status: newStatus }),
+  //   }
+  // );
 
-  if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(
-      msg || `Failed to set status to ${newStatus} (${res.status})`
-    );
-  }
+  // if (!res.ok) {
+  //   const msg = await res.text().catch(() => "");
+  //   throw new Error(
+  //     msg || `Failed to set status to ${newStatus} (${res.status})`
+  //   );
+  // }
+  await api(`/reports/micro-mix/${reportId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason, status: newStatus }),
+  });
 }
 
 // -----------------------------
@@ -138,19 +143,20 @@ export default function MicroDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setReports([]);
-          setError("Missing auth token. Please log in again.");
-          return;
-        }
+        // const token = localStorage.getItem("token");
+        // if (!token) {
+        //   setReports([]);
+        //   setError("Missing auth token. Please log in again.");
+        //   return;
+        // }
 
-        const res = await fetch("http://localhost:3000/reports/micro-mix", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        //   headers: { Authorization: `Bearer ${token}` },
+        // });
 
-        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        const all: Report[] = await res.json();
+        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+        // const all: Report[] = await res.json();
+        const all = await api<Report[]>("/reports/micro-mix");
         if (abort) return;
 
         // Keep only statuses Micro cares about (plus whatever backend sends that matches)
