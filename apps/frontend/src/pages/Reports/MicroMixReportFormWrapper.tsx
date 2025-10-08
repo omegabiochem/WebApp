@@ -1,9 +1,8 @@
-
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import MicroMixReportForm from "./MicroMixReportForm";
-import type {MicroMixReportDTO} from "../../../../SharedTypes/Reports/MicroMixReport";
-
+import type { MicroMixReportDTO } from "../../../../SharedTypes/Reports/MicroMixReport";
+import { api } from "../../lib/api";
 
 // type Report = {
 //   id: string;
@@ -21,29 +20,32 @@ export default function MicroMixReportFormWrapper() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let aborted = false;
     async function fetchReport() {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found");
-        setLoading(false);
-        return;
-      }
+      // const token = localStorage.getItem("token");
+      // if (!token) {
+      //   console.error("No token found");
+      //   setLoading(false);
+      //   return;
+      // }
 
       try {
-        const res = await fetch(`http://localhost:3000/reports/micro-mix/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(`Failed with status ${res.status}`);
-        const data: MicroMixReportDTO = await res.json();
-        setReport(data);
+        setLoading(true);
+        const data = await api<MicroMixReportDTO>(`/reports/micro-mix/${id}`);
+        if (!aborted) setReport(data);
       } catch (err) {
-        console.error("Error fetching report:", err);
+        if (!aborted) {
+          console.error("Error fetching report:", err);
+        }
       } finally {
-        setLoading(false);
+        if (!aborted) setLoading(false);
       }
     }
 
     if (id) fetchReport();
+    return () => {
+      aborted = true;
+    };
   }, [id]);
 
   if (loading) return <div className="p-4">Loading...</div>;
