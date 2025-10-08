@@ -9,6 +9,7 @@ import {
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
+import { api, API_URL, getToken } from "../../lib/api";
 
 // ---------------------------------
 // Types
@@ -27,7 +28,7 @@ type Report = {
 // Constants
 // ---------------------------------
 
-const BASE_URL = "http://localhost:3000";
+// const BASE_URL = "http://localhost:3000";
 
 const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
@@ -183,18 +184,50 @@ export default function AdminDashboard() {
   const [eSignError, setESignError] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
 
-   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const navigate = useNavigate();
   const { user } = useAuth();
 
   // Socket (live updates)
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  // useEffect(() => {
+  //   const token = localStorage.getItem("token");
+  //   socketRef.current = io(BASE_URL, {
+  //     transports: ["websocket"],
+  //     auth: { token },
+  //   });
+
+  //   socketRef.current.on("microMix:statusChanged", (payload: Report) => {
+  //     setReports((prev) =>
+  //       prev.map((r) =>
+  //         r.id === payload.id ? { ...r, status: payload.status } : r
+  //       )
+  //     );
+  //   });
+
+  //   socketRef.current.on("microMix:created", (payload: Report) => {
+  //     setReports((prev) => [payload, ...prev]);
+  //   });
+
+  //   return () => {
+  //     socketRef.current?.disconnect();
+  //   };
+  // }, []);
+
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    socketRef.current = io(BASE_URL, {
+    const t = getToken();
+    const url =
+      window.location.protocol === "https:"
+        ? API_URL.replace(/^http:/, "https:")
+        : API_URL;
+    socketRef.current = io(url, {
       transports: ["websocket"],
-      auth: { token },
+      // if your server reads headers:
+      extraHeaders: t ? { Authorization: `Bearer ${t}` } : undefined,
+      // OR if your server reads handshake.auth.token, keep this too:
+      auth: t ? { token: t } : undefined,
+      path: "/socket.io",
     });
 
     socketRef.current.on("microMix:statusChanged", (payload: Report) => {
@@ -214,53 +247,79 @@ export default function AdminDashboard() {
     };
   }, []);
 
-
-   async function setStatus(
+  async function setStatus(
     reportId: string,
     newStatus: string,
     reason = "Client correction update"
   ) {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-     await fetch(
-      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reason, status: newStatus }),
-      }
-    );
+    await api(`/reports/micro-mix/${reportId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ reason, status: newStatus }),
+    });
   }
 
+  // async function setStatus(
+  //   reportId: string,
+  //   newStatus: string,
+  //   reason = "Client correction update"
+  // ) {
+  //   const token = localStorage.getItem("token");
+  //   if (!token) return;
+
+  //   await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
+  //     method: "PATCH",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${token}`,
+  //     },
+  //     body: JSON.stringify({ reason, status: newStatus }),
+  //   });
+  // }
+
   // Fetch
+  // useEffect(() => {
+  //   let abort = false;
+  //   async function fetchReports() {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
+  //       const token = localStorage.getItem("token");
+  //       if (!token) throw new Error("Missing auth token. Please log in again.");
+
+  //       const res = await fetch(`${BASE_URL}/reports/micro-mix`, {
+  //         headers: { Authorization: `Bearer ${token}` },
+  //       });
+  //       if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+  //       const data: Report[] = await res.json();
+  //       if (abort) return;
+  //       setReports(data);
+  //     } catch (e: any) {
+  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
+  //     } finally {
+  //       if (!abort) setLoading(false);
+  //     }
+  //   }
+
+  //   fetchReports();
+  //   return () => {
+  //     abort = true;
+  //   };
+  // }, []);
+
   useEffect(() => {
     let abort = false;
-    async function fetchReports() {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem("token");
-        if (!token) throw new Error("Missing auth token. Please log in again.");
-
-        const res = await fetch(`${BASE_URL}/reports/micro-mix`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        const data: Report[] = await res.json();
-        if (abort) return;
-        setReports(data);
+        const data = await api<Report[]>("/reports/micro-mix");
+        if (!abort) setReports(data);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
         if (!abort) setLoading(false);
       }
-    }
-
-    fetchReports();
+    })();
     return () => {
       abort = true;
     };
@@ -354,26 +413,14 @@ export default function AdminDashboard() {
         return;
       }
 
-      const res = await fetch(
-        `${BASE_URL}/reports/micro-mix/${report.id}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            status: nextStatus,
-            reason, // ← always provide a reason (backend requires for critical fields)
-            eSignPassword, // ← send raw password; backend verifies against current user
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(msg || "Failed to update status");
-      }
+      await api(`/reports/micro-mix/${report.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: nextStatus,
+          reason, // ← always provide a reason (backend requires for critical fields)
+          eSignPassword, // ← send raw password; backend verifies against current user
+        }),
+      });
 
       // Optimistic update
       setReports((prev) =>
@@ -634,103 +681,103 @@ export default function AdminDashboard() {
       </div>
 
       {/* Modal: read-only full form */}
-       {selectedReport && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Report details"
-                onClick={(e) => {
-                  // close on backdrop click
-                  if (e.target === e.currentTarget) setSelectedReport(null);
-                }}
-              >
-                <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-                  <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
-                    {/* Left: Title */}
-                    <h2 className="text-lg font-semibold">
-                      Report #{displayReportNo(selectedReport)}
-                    </h2>
-      
-                    {/* Middle: Form / Attachments switch */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
-                      <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => setModalPane("FORM")}
-                          className={`px-3 py-1 rounded-full transition ${
-                            modalPane === "FORM"
-                              ? "bg-blue-600 text-white"
-                              : "text-slate-700 hover:bg-white"
-                          }`}
-                          aria-pressed={modalPane === "FORM"}
-                        >
-                          Form
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setModalPane("ATTACHMENTS")}
-                          className={`px-3 py-1 rounded-full transition ${
-                            modalPane === "ATTACHMENTS"
-                              ? "bg-blue-600 text-white"
-                              : "text-slate-700 hover:bg-white"
-                          }`}
-                          aria-pressed={modalPane === "ATTACHMENTS"}
-                        >
-                          Attachments
-                        </button>
-                      </div>
-                    </div>
-      
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-2 justify-self-end">
-                      {canUpdateThisReport(selectedReport, user) && (
-                        <button
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                          onClick={async () => {
-                            try {
-                              const id = selectedReport.id;
-                              if (
-                                selectedReport.status ===
-                                "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                              ) {
-                                await setStatus(
-                                  id,
-                                  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                  "Sent back to client for correction"
-                                );
-                              }
-                              setSelectedReport(null);
-                              navigate(`/reports/micro-mix/${id}`);
-                            } catch (e: any) {
-                              alert(e?.message || "Failed to update status");
-                            }
-                          }}
-                        >
-                          Update
-                        </button>
-                      )}
-                      <button
-                        className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                        onClick={() => setSelectedReport(null)}
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-      
-                  <div className="overflow-auto px-6 py-4">
-                    <MicroMixReportFormView
-                      report={selectedReport}
-                      onClose={() => setSelectedReport(null)}
-                      pane={modalPane} // 👈 controlled by dashboard header
-                      showSwitcher={false} // 👈 hide internal switcher
-                      onPaneChange={setModalPane} // (optional) keeps them in sync if needed
-                    />
-                  </div>
+      {selectedReport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Report details"
+          onClick={(e) => {
+            // close on backdrop click
+            if (e.target === e.currentTarget) setSelectedReport(null);
+          }}
+        >
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
+              {/* Left: Title */}
+              <h2 className="text-lg font-semibold">
+                Report #{displayReportNo(selectedReport)}
+              </h2>
+
+              {/* Middle: Form / Attachments switch */}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setModalPane("FORM")}
+                    className={`px-3 py-1 rounded-full transition ${
+                      modalPane === "FORM"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-700 hover:bg-white"
+                    }`}
+                    aria-pressed={modalPane === "FORM"}
+                  >
+                    Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPane("ATTACHMENTS")}
+                    className={`px-3 py-1 rounded-full transition ${
+                      modalPane === "ATTACHMENTS"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-700 hover:bg-white"
+                    }`}
+                    aria-pressed={modalPane === "ATTACHMENTS"}
+                  >
+                    Attachments
+                  </button>
                 </div>
               </div>
-            )}
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2 justify-self-end">
+                {canUpdateThisReport(selectedReport, user) && (
+                  <button
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                    onClick={async () => {
+                      try {
+                        const id = selectedReport.id;
+                        if (
+                          selectedReport.status ===
+                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                        ) {
+                          await setStatus(
+                            id,
+                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                            "Sent back to client for correction"
+                          );
+                        }
+                        setSelectedReport(null);
+                        navigate(`/reports/micro-mix/${id}`);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
+                    }}
+                  >
+                    Update
+                  </button>
+                )}
+                <button
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+                  onClick={() => setSelectedReport(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto px-6 py-4">
+              <MicroMixReportFormView
+                report={selectedReport}
+                onClose={() => setSelectedReport(null)}
+                pane={modalPane} // 👈 controlled by dashboard header
+                showSwitcher={false} // 👈 hide internal switcher
+                onPaneChange={setModalPane} // (optional) keeps them in sync if needed
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Change Status Dialog */}
       {changeStatusReport && (
@@ -1516,4 +1563,3 @@ export default function AdminDashboard() {
 //       )}
 //     </div>
 //   );
-

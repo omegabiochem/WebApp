@@ -9,10 +9,13 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:5173',
-      /\.pages\.dev$/,              // allows Cloudflare Pages previews
+      'https://webapp-aog.pages.dev', 
       'https://app.yourdomain.com', // your production web domain
+  
     ],
-    credentials: true,
+    credentials: false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Content-Disposition'],
   });
 
