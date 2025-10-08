@@ -10,6 +10,7 @@ import {
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
+import { api } from "../../lib/api";
 
 // -----------------------------
 // Types
@@ -64,7 +65,6 @@ function canUpdateThisReport(r: Report, user?: any) {
   return canShowUpdateButton(user?.role as Role, r.status as ReportStatus);
 }
 
-
 // -----------------------------
 // Component
 // -----------------------------
@@ -96,20 +96,21 @@ export default function FrontDeskDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setReports([]);
-          setError("Missing auth token. Please log in again.");
-          return;
-        }
+        // const token = localStorage.getItem("token");
+        // if (!token) {
+        //   setReports([]);
+        //   setError("Missing auth token. Please log in again.");
+        //   return;
+        // }
+        const all = await api<Report[]>("/reports/micro-mix");
 
-        const res = await fetch("http://localhost:3000/reports/micro-mix", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        //   headers: { Authorization: `Bearer ${token}` },
+        // });
 
-        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        const all: Report[] = await res.json();
-        if (abort) return;
+        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+        // const all: Report[] = await res.json();
+        // if (abort) return;
 
         // Keep only statuses Micro cares about (plus whatever backend sends that matches)
         const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
@@ -178,27 +179,32 @@ export default function FrontDeskDashboard() {
     newStatus: string,
     reason = "Client correction update"
   ) {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+    // const token = localStorage.getItem("token");
+    // if (!token) return;
 
-    const res = await fetch(
-      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reason, status: newStatus }),
-      }
-    );
+    // const res = await fetch(
+    //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+    //   {
+    //     method: "PATCH",
+    //     headers: {
+    //       "Content-Type": "application/json",
+    //       Authorization: `Bearer ${token}`,
+    //     },
+    //     body: JSON.stringify({ reason, status: newStatus }),
+    //   }
+    // );
 
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(
-        msg || `Failed to set status to ${newStatus} (${res.status})`
-      );
-    }
+    // if (!res.ok) {
+    //   const msg = await res.text().catch(() => "");
+    //   throw new Error(
+    //     msg || `Failed to set status to ${newStatus} (${res.status})`
+    //   );
+    // }
+
+    await api(`/reports/micro-mix/${reportId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ reason, status: newStatus }),
+    });
 
     // Update local state immediately so the UI stays in sync
     setReports((prev) =>
@@ -425,28 +431,28 @@ export default function FrontDeskDashboard() {
                         </label> */}
 
                         {/* {canUpdateThisReport(r, user) && ( */}
-                          <button
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            onClick={async () => {
-                              try {
-                                if (
-                                  r.status ===
-                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                                ) {
-                                  await setStatus(
-                                    r.id,
-                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                    "Sent back to formNumber for correction"
-                                  );
-                                }
-                                navigate(`/reports/micro-mix/${r.id}`);
-                              } catch (e: any) {
-                                alert(e?.message || "Failed to update status");
+                        <button
+                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                          onClick={async () => {
+                            try {
+                              if (
+                                r.status ===
+                                "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                              ) {
+                                await setStatus(
+                                  r.id,
+                                  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                  "Sent back to formNumber for correction"
+                                );
                               }
-                            }}
-                          >
-                            Update
-                          </button>
+                              navigate(`/reports/micro-mix/${r.id}`);
+                            } catch (e: any) {
+                              alert(e?.message || "Failed to update status");
+                            }
+                          }}
+                        >
+                          Update
+                        </button>
                         {/* )} */}
                       </div>
                     </td>
