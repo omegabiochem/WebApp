@@ -10,6 +10,7 @@ import {
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
+import { api } from "../../lib/api";
 
 // -----------------------------
 // Types
@@ -40,29 +41,7 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
   "LOCKED",
 ];
 
-// Map statuses → badge styles
-// const STATUS_STYLES: Record<string, string> = {
-//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-//   UNDER_CLIENT_PRELIMINARY_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   UNDER_CLIENT_FINAL_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   CLIENT_NEEDS_PRELIMINARY_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   CLIENT_NEEDS_FINAL_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_CLIENT_PRELIMINARY_CORRECTION:
-//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-//   UNDER_CLIENT_FINAL_CORRECTION:
-//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
-//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-//   FINAL_RESUBMISSION_BY_CLIENT:
-//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-//   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-//   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-// };
+
 
 // -----------------------------
 // Utilities
@@ -141,18 +120,20 @@ export default function ClientDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setReports([]);
-          setError("Missing auth token. Please log in again.");
-          return;
-        }
-        const res = await fetch("http://localhost:3000/reports/micro-mix", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // const token = localStorage.getItem("token");
+        // if (!token) {
+        //   setReports([]);
+        //   setError("Missing auth token. Please log in again.");
+        //   return;
+        // }
+        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        //   headers: { Authorization: `Bearer ${token}` },
+        // });
 
-        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        const all: Report[] = await res.json();
+        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+        // const all: Report[] = await res.json();
+
+        const all = await api<Report[]>("/reports/micro-mix");
 
         if (abort) return;
 
@@ -222,32 +203,41 @@ export default function ClientDashboard() {
     newStatus: string,
     reason = "Client correction update"
   ) {
-    const token = localStorage.getItem("token");
-    if (!token) return;
 
-    const res = await fetch(
-      `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reason, status: newStatus }),
-      }
-    );
+     await api(`/reports/micro-mix/${reportId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ reason, status: newStatus }),
+    });
+    // const token = localStorage.getItem("token");
+    // if (!token) return;
 
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(
-        msg || `Failed to set status to ${newStatus} (${res.status})`
-      );
-    }
+    // const res = await fetch(
+    //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
+    //   {
+    //     method: "PATCH",
+    //     headers: {
+    //       "Content-Type": "application/json",
+    //       Authorization: `Bearer ${token}`,
+    //     },
+    //     body: JSON.stringify({ reason, status: newStatus }),
+    //   }
+    // );
+
+
+
+    // if (!res.ok) {
+    //   const msg = await res.text().catch(() => "");
+    //   throw new Error(
+    //     msg || `Failed to set status to ${newStatus} (${res.status})`
+    //   );
+    // }
 
     // Update local state immediately so the UI stays in sync
     setReports((prev) =>
       prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
     );
+    // return res;
+    
   }
 
   return (
