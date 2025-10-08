@@ -1,6 +1,7 @@
 // src/pages/Audit/AuditTrailPage.tsx
 import  { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
+import { api } from "../../lib/api";
 
 type AuditRecord = {
   id: string;
@@ -14,7 +15,7 @@ type AuditRecord = {
   userId: string | null;
 };
 
-const API_BASE = "http://localhost:3000";
+// const API_BASE = "http://localhost:3000";
 
 export default function AuditTrailPage() {
     
@@ -54,14 +55,37 @@ export default function AuditTrailPage() {
     setErr(null);
 
     const ctrl = new AbortController();
-    const t = setTimeout(async () => {
+  //   const t = setTimeout(async () => {
+  //     try {
+  //       const res = await fetch(`${API_BASE}/audit${queryString}`, {
+  //         headers: { Authorization: `Bearer ${token}` },
+  //         signal: ctrl.signal,
+  //       });
+  //       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  //       const data: AuditRecord[] = await res.json();
+  //       setRecords(data);
+  //     } catch (e: any) {
+  //       if (e.name !== "AbortError") {
+  //         console.error("Audit fetch failed", e);
+  //         setErr(e.message || "Failed to fetch audit trail");
+  //       }
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   }, 400); // debounce
+
+  //   return () => {
+  //     clearTimeout(t);
+  //     ctrl.abort();
+  //   };
+  // }, [queryString]);
+
+  const t = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE}/audit${queryString}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const data = await api<AuditRecord[]>(`/audit${queryString}`, {
           signal: ctrl.signal,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: AuditRecord[] = await res.json();
+        
         setRecords(data);
       } catch (e: any) {
         if (e.name !== "AbortError") {
@@ -86,11 +110,11 @@ export default function AuditTrailPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/audit/export.csv${queryString}`, {
+      const res = await api(`/audit/export.csv${queryString}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
+      const response = res as Response;
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

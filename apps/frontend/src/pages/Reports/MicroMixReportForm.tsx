@@ -8,10 +8,10 @@ import {
   deriveMicroPhaseFromStatus,
   type MicroPhase,
   MICRO_PHASE_FIELDS,
-  getCorrections,
-  createCorrections,
   type CorrectionItem,
+  getCorrections,
   resolveCorrection,
+  createCorrections,
 } from "../../utils/reportValidation";
 import {
   STATUS_TRANSITIONS,
@@ -483,9 +483,9 @@ export default function MicroMixReportForm({
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!reportId || !token) return;
-    getCorrections(reportId, token)
+    // const token = localStorage.getItem("token");
+    if (!reportId ) return;
+    getCorrections(reportId)
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
@@ -611,14 +611,14 @@ export default function MicroMixReportForm({
   // Resolve ALL corrections for a field
   async function resolveField(fieldKey: string) {
     if (!reportId) return;
-    const token = localStorage.getItem("token")!;
+    // const token = localStorage.getItem("token")!;
     const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
     if (!items.length) return;
 
     await Promise.all(
-      items.map((c) => resolveCorrection(reportId!, c.id, token, "Fixed"))
+      items.map((c) => resolveCorrection(reportId!, c.id,  "Fixed"))
     );
-    const fresh = await getCorrections(reportId!, token);
+    const fresh = await getCorrections(reportId!);
     setCorrections(fresh);
     flashResolved(fieldKey); // ✅ show green halo briefly
   }
@@ -626,9 +626,9 @@ export default function MicroMixReportForm({
   // Resolve a single correction
   async function resolveOne(c: CorrectionItem) {
     if (!reportId) return;
-    const token = localStorage.getItem("token")!;
-    await resolveCorrection(reportId!, c.id, token, "Fixed");
-    const fresh = await getCorrections(reportId!, token);
+    // const token = localStorage.getItem("token")!;
+    await resolveCorrection(reportId!, c.id, "Fixed");
+    const fresh = await getCorrections(reportId!);
     setCorrections(fresh);
     flashResolved(c.fieldKey); // ✅ show green halo briefly
   }
@@ -2554,10 +2554,9 @@ export default function MicroMixReportForm({
                 !pendingCorrections.length || !pendingStatus || !reportId
               }
               onClick={async () => {
-                const token = localStorage.getItem("token")!;
+                // const token = localStorage.getItem("token")!;
                 await createCorrections(
                   reportId!,
-                  token,
                   pendingCorrections,
                   pendingStatus!, // MOVE status in same call
                   "Corrections requested" // audit reason
@@ -2565,7 +2564,7 @@ export default function MicroMixReportForm({
                 setSelectingCorrections(false);
                 setPendingCorrections([]);
                 // refresh corrections list and status
-                const fresh = await getCorrections(reportId!, token);
+                const fresh = await getCorrections(reportId!);
                 setCorrections(fresh);
                 setStatus(pendingStatus!);
                 setPendingStatus(null);

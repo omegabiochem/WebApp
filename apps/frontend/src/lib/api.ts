@@ -1,4 +1,4 @@
-// const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+
 // apps/web/src/lib/api.ts
 export const API_URL = import.meta.env.VITE_API_URL as string;
 export const WS_URL  = import.meta.env.VITE_WS_URL as string | undefined;

@@ -1,5 +1,6 @@
-import { useEffect, useState} from "react";
+import { useEffect, useState } from "react";
 import * as QRCode from "qrcode";
+import { api, API_URL, getToken } from "../../lib/api";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -19,17 +20,24 @@ type AttachmentItem = {
   createdAt: string;
 };
 
-// one helper, at top of the file
-const getAuthHeaders = (): HeadersInit | undefined => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
+// // one helper, at top of the file
+// const getAuthHeaders = (): HeadersInit | undefined => {
+//   const token = localStorage.getItem("token");
+//   return token ? { Authorization: `Bearer ${token}` } : undefined;
+// };
+
+// const API_BASE =
+//   (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
+
+// const attBase = (id: string) =>
+//   `${API_BASE}/reports/micro-mix/${id}/attachments`;
+
+const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
+
+const authHeaders = (): HeadersInit => {
+  const t = getToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
 };
-
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
-
-const attBase = (id: string) =>
-  `${API_BASE}/reports/micro-mix/${id}/attachments`;
 
 function useAttachments(reportId?: string) {
   const [items, setItems] = useState<AttachmentItem[]>([]);
@@ -42,22 +50,33 @@ function useAttachments(reportId?: string) {
     }
     setLoading(true);
 
-    const url = attBase(reportId);
-    fetch(url, { credentials: "include", headers: getAuthHeaders() })
-      .then(async (r) => {
-        if (!r.ok) {
-          const msg = await r.text().catch(() => r.statusText);
-          throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
-        }
-        return r.json();
-      })
-      .catch((e) => {
+    // const url = attBase(reportId);
+    // fetch(url, { credentials: "include", headers: authHeaders() })
+    //   .then(async (r) => {
+    //     if (!r.ok) {
+    //       const msg = await r.text().catch(() => r.statusText);
+    //       throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
+    //     }
+    //     return r.json();
+    //   })
+    //   .catch((e) => {
+    //     console.error(e);
+    //     setItems([]); // keep current UI behavior
+    //   })
+    //   .then((d) => setItems(Array.isArray(d) ? d : []))
+    //   .catch(() => setItems([]))
+    //   .finally(() => setLoading(false));
+    (async () => {
+      try {
+        const list = await api<AttachmentItem[]>(attBase(reportId));
+        setItems(Array.isArray(list) ? list : []);
+      } catch (e) {
         console.error(e);
-        setItems([]); // keep current UI behavior
-      })
-      .then((d) => setItems(Array.isArray(d) ? d : []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+        setItems([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [reportId]);
 
   return { items, loading };
@@ -83,7 +102,7 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
       <div className="mb-2 text-sm font-semibold">Attachments</div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {items.map((a) => {
-          const fileUrl = `${attBase(reportId ?? "")}/${a.id}/file`;
+          const filePath = `${attBase(reportId ?? "")}/${a.id}/file`;
           const ext = a.filename.split(".").pop()?.toLowerCase() || "";
           const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
           const isPdf = ext === "pdf";
@@ -95,18 +114,14 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
               onClick={() =>
                 isImage || isPdf
                   ? setOpenId(a.id)
-                  : window.open(fileUrl, "_blank")
+                  : window.open(filePath, "_blank")
               }
               className="group text-left border rounded-lg p-3 hover:shadow-sm transition bg-white"
               title="Click to preview"
             >
               <div className="h-28 w-full border rounded flex items-center justify-center overflow-hidden bg-slate-50">
                 {isImage ? (
-                  <img
-                    src={fileUrl}
-                    alt={a.filename}
-                    className="max-h-full max-w-full object-contain"
-                  />
+                  <Thumb path={filePath} alt={a.filename} />
                 ) : isPdf ? (
                   <div className="text-xs text-slate-600">
                     PDF • click to preview
@@ -160,6 +175,37 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
   );
 }
 
+async function apiBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${API_URL}${path}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Blob fetch failed ${res.status}`);
+  return await res.blob();
+}
+
+function Thumb({ path, alt }: { path: string; alt: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let revoke: string | null = null;
+    (async () => {
+      try {
+        const b = await apiBlob(path);
+        const u = URL.createObjectURL(b);
+        revoke = u;
+        setUrl(u);
+      } catch {
+        setUrl(null);
+      }
+    })();
+    return () => {
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [path]);
+  return url ? (
+    <img src={url} alt={alt} className="max-h-full max-w-full object-contain" />
+  ) : (
+    <div className="text-xs text-slate-600">Image • click to preview</div>
+  );
+}
+
 function AttachmentPreview({
   reportId,
   attId,
@@ -175,31 +221,45 @@ function AttachmentPreview({
   useEffect(() => {
     let revoke: string | null = null;
 
-    fetch(`${attBase(reportId)}/${attId}`, {
-      credentials: "include",
-      headers: getAuthHeaders(),
-    })
-      .then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
-      )
-      .then((m) => {
-        setMeta(m);
-        return fetch(`${attBase(reportId)}/${attId}/file`, {
-          credentials: "include",
-          headers: getAuthHeaders(),
-        });
-      })
-      .then((r) =>
-        r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
-      )
-      .then((blob) => {
+    // fetch(`${attBase(reportId)}/${attId}`, {
+    //   credentials: "include",
+    //   headers: getAuthHeaders(),
+    // })
+    //   .then((r) =>
+    //     r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
+    //   )
+    //   .then((m) => {
+    //     setMeta(m);
+    //     return fetch(`${attBase(reportId)}/${attId}/file`, {
+    //       credentials: "include",
+    //       headers: getAuthHeaders(),
+    //     });
+    //   })
+    //   .then((r) =>
+    //     r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
+    //   )
+    //   .then((blob) => {
+    //     const url = URL.createObjectURL(blob);
+    //     revoke = url;
+    //     setObjectUrl(url);
+    //   })
+    //   .catch((e) => setError(e.message))
+    //   .finally(() => {})
+    // .finally(() => setLoadingFile(false));
+    (async () => {
+      try {
+        const metaResp = await api<AttachmentItem>(
+          `${attBase(reportId)}/${attId}`
+        );
+        setMeta(metaResp);
+        const blob = await apiBlob(`${attBase(reportId)}/${attId}/file`);
         const url = URL.createObjectURL(blob);
         revoke = url;
         setObjectUrl(url);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => {})
-      // .finally(() => setLoadingFile(false));
+      } catch (e: any) {
+        setError(e?.message || "Preview failed");
+      }
+    })();
 
     return () => {
       if (revoke) URL.revokeObjectURL(revoke);

@@ -216,6 +216,7 @@ export function canEditBy(
 
 // Non-layout error badge (absolute positioned)
 import React from "react";
+import { api } from "../lib/api";
 
 export function FieldErrorBadge({
   name,
@@ -237,7 +238,7 @@ export function FieldErrorBadge({
   );
 }
 
-const API_BASE = "http://localhost:3000";
+// const API_BASE = "http://localhost:3000";
 
 export type CorrectionItem = {
   id: string;
@@ -250,58 +251,74 @@ export type CorrectionItem = {
   resolvedByUserId?: string;
 };
 
-export async function getCorrections(reportId: string, token: string) {
-  const res = await fetch(
-    `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  if (!res.ok) throw new Error("Failed to fetch corrections");
-  return (await res.json()) as CorrectionItem[];
+export async function getCorrections(reportId: string) {
+  // const res = await fetch(
+  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+  //   {
+  //     headers: { Authorization: `Bearer ${token}` },
+  //   }
+  // );
+  return await api<CorrectionItem[]>(
+    `/reports/micro-mix/${reportId}/corrections`);
+  // if (!res.ok) throw new Error("Failed to fetch corrections");
+  // return (await res.json()) as CorrectionItem[];
 }
 
 export async function createCorrections(
   reportId: string,
-  token: string,
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
   reason?: string
 ) {
-  const res = await fetch(
-    `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+  // const res = await fetch(
+  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+  //   {
+  //     method: "POST",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${token}`,
+  //     },
+  //     body: JSON.stringify({ items, targetStatus, reason }),
+  //   }
+  // );
+  // if (!res.ok) throw new Error("Failed to create corrections");
+  // return res.json();
+  return api<CorrectionItem[]>(
+    `/reports/micro-mix/${reportId}/corrections`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, targetStatus, reason }),
     }
   );
-  if (!res.ok) throw new Error("Failed to create corrections");
-  return res.json();
 }
 
 export async function resolveCorrection(
   reportId: string,
   cid: string,
-  token: string,
   resolutionNote?: string
 ) {
-  const res = await fetch(
-    `${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`,
+  // const res = await fetch(
+  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`,
+  //   {
+  //     method: "PATCH",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${token}`,
+  //     },
+  //     body: JSON.stringify({ resolutionNote }),
+  //   }
+  // );
+  // if (!res.ok) throw new Error("Failed to resolve correction");
+  // return res.json();
+   return api<CorrectionItem>(
+    `/reports/micro-mix/${reportId}/corrections/${cid}`,
     {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resolutionNote }),
     }
   );
-  if (!res.ok) throw new Error("Failed to resolve correction");
-  return res.json();
 }
 
 /* =======================
