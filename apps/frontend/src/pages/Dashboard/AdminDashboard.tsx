@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import { io } from "socket.io-client";
+import io from "socket.io-client";
 import {
   canShowUpdateButton,
   STATUS_COLORS,
@@ -223,9 +223,7 @@ export default function AdminDashboard() {
         : API_URL;
     socketRef.current = io(url, {
       transports: ["websocket"],
-      // if your server reads headers:
-      extraHeaders: t ? { Authorization: `Bearer ${t}` } : undefined,
-      // OR if your server reads handshake.auth.token, keep this too:
+      // Pass token via auth property (recommended for socket.io-client v4+)
       auth: t ? { token: t } : undefined,
       path: "/socket.io",
     });
