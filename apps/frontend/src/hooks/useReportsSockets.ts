@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { io } from "socket.io-client";
+import io from "socket.io-client";
 
 const socket = io("http://localhost:3000");
 
@@ -9,16 +9,19 @@ export function useReportsSocket(
   onReportCreated?: (report: any) => void
 ) {
   useEffect(() => {
-    socket.on("reportStatusChanged", ({ reportId, newStatus }) => {
-      onStatusChange(reportId, newStatus);
-    });
+    socket.on(
+      "reportStatusChanged",
+      ({ reportId, newStatus }: { reportId: string; newStatus: string }) => {
+        onStatusChange(reportId, newStatus);
+      }
+    );
 
     if (onReportUpdate) {
-      socket.on("reportUpdated", (report) => onReportUpdate(report));
+      socket.on("reportUpdated", (report: any) => onReportUpdate(report));
     }
 
     if (onReportCreated) {
-      socket.on("reportCreated", (report) => onReportCreated(report));
+      socket.on("reportCreated", (report: any) => onReportCreated(report));
     }
 
     return () => {
