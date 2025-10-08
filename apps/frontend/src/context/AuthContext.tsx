@@ -5,7 +5,7 @@ import {
   type ReactNode,
   useEffect,
 } from "react";
-import { setToken, clearToken, getToken, api } from "../lib/api"; // add getToken helper
+import { setToken as storeToken, clearToken, getToken, api } from "../lib/api";
 import type { Role } from "../utils/roles";
 
 type User = {
@@ -35,58 +35,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [token, setTokenState] = useState<string | null>(null);
 
+  // On mount: if we have a token, validate it and hydrate user
   useEffect(() => {
-    const storedToken = getToken();
-    const storedUser = localStorage.getItem("user");
-
-    if (storedToken) {
-      fetch("http://localhost:3000/auth/me", {
-        headers: { Authorization: `Bearer ${storedToken}` },
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data) {
-            setTokenState(storedToken);
-            setUser(data);
-          } else {
-            logout(); // 🚨 invalid token → clear everything
-          }
-        });
-    } else if (storedUser) {
-      // no token but old user still in localStorage → clear
-      localStorage.removeItem("user");
-    }
+    const init = async () => {
+      const t = getToken();
+      if (!t) {
+        localStorage.removeItem("user");
+        return;
+      }
+      try {
+        // api() will attach Authorization automatically
+        const me = await api<User>("/auth/me");
+        setTokenState(t);
+        setUser(me);
+        localStorage.setItem("user", JSON.stringify(me));
+      } catch {
+        // token invalid/expired — clear local state
+        clearToken();
+        localStorage.removeItem("user");
+        setTokenState(null);
+        setUser(null);
+      }
+    };
+    init();
   }, []);
 
   const login = (t: string, u: User) => {
-    setToken(t); // store in localStorage/session (your api lib)
-    setTokenState(t); // store in React state
+    // persist token (api() reads it)
+    storeToken(t);
+    setTokenState(t);
+
     if (u) {
-      localStorage.setItem("user", JSON.stringify(u)); // ✅ persist user
       setUser(u);
-    } // store user info
-    else {
-      // fallback: fetch from backend
-      fetch("http://localhost:3000/auth/me", {
-        headers: { Authorization: `Bearer ${t}` },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          setUser(data);
-          localStorage.setItem("user", JSON.stringify(data));
+      localStorage.setItem("user", JSON.stringify(u));
+    } else {
+      // fallback: fetch profile using api() (with Bearer)
+      api<User>("/auth/me")
+        .then((me) => {
+          setUser(me);
+          localStorage.setItem("user", JSON.stringify(me));
+        })
+        .catch(() => {
+          // If this fails, clear everything
+          clearToken();
+          localStorage.removeItem("user");
+          setTokenState(null);
+          setUser(null);
         });
     }
   };
 
   const logout = async () => {
     try {
-    await api("/auth/logout", { method: "POST" });
-  } catch (e) {
-    // ignore network errors on logout
-     console.debug("logout audit failed", e);
-  }
-    clearToken(); // removes token
-    localStorage.removeItem("user"); // remove persisted user
+      await api("/auth/logout", { method: "POST" }); // best-effort audit
+    } catch {
+      // ignore network errors on logout
+    }
+    clearToken();
+    localStorage.removeItem("user");
     setTokenState(null);
     setUser(null);
   };
@@ -99,5 +105,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(Ctx);
-
-
