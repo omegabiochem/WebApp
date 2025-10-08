@@ -502,8 +502,8 @@ export default function MicroMixReportForm({
   }, [openCorrections]);
 
   const hasCorrection = (field: string) => !!corrByField[field];
-  const correctionText = (field: string) =>
-    corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
+  // const correctionText = (field: string) =>
+  //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<
@@ -845,50 +845,50 @@ export default function MicroMixReportForm({
     const token = localStorage.getItem("token");
     const API_BASE = "http://localhost:3000";
 
-    const ALLOWED_FIELDS: Record<Role, string[]> = {
-      ADMIN: ["*"],
-      SYSTEMADMIN: [],
-      FRONTDESK: [
-        "client",
-        "dateSent",
-        "typeOfTest",
-        "sampleType",
-        "formulaNo",
-        "description",
-        "lotNo",
-        "manufactureDate",
-      ],
-      MICRO: [
-        "testSopNo",
-        "tbc_dilution",
-        "tbc_gram",
-        "tbc_result",
-        "tmy_dilution",
-        "tmy_gram",
-        "tmy_result",
-        "pathogens",
-        "dateTested",
-        "preliminaryResults",
-        "preliminaryResultsDate",
-        "testedBy",
-        "testedDate",
-        "comments",
-      ],
-      QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-      CLIENT: [
-        "client",
-        "dateSent",
-        "typeOfTest",
-        "sampleType",
-        "formulaNo",
-        "description",
-        "lotNo",
-        "manufactureDate",
-        "tbc_spec",
-        "tmy_spec",
-        "pathogens",
-      ],
-    };
+    // const ALLOWED_FIELDS: Record<Role, string[]> = {
+    //   ADMIN: ["*"],
+    //   SYSTEMADMIN: [],
+    //   FRONTDESK: [
+    //     "client",
+    //     "dateSent",
+    //     "typeOfTest",
+    //     "sampleType",
+    //     "formulaNo",
+    //     "description",
+    //     "lotNo",
+    //     "manufactureDate",
+    //   ],
+    //   MICRO: [
+    //     "testSopNo",
+    //     "tbc_dilution",
+    //     "tbc_gram",
+    //     "tbc_result",
+    //     "tmy_dilution",
+    //     "tmy_gram",
+    //     "tmy_result",
+    //     "pathogens",
+    //     "dateTested",
+    //     "preliminaryResults",
+    //     "preliminaryResultsDate",
+    //     "testedBy",
+    //     "testedDate",
+    //     "comments",
+    //   ],
+    //   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+    //   CLIENT: [
+    //     "client",
+    //     "dateSent",
+    //     "typeOfTest",
+    //     "sampleType",
+    //     "formulaNo",
+    //     "description",
+    //     "lotNo",
+    //     "manufactureDate",
+    //     "tbc_spec",
+    //     "tmy_spec",
+    //     "pathogens",
+    //   ],
+    // };
 
     // Build full payload
     const fullPayload: any = {

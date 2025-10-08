@@ -223,7 +223,7 @@ export default function AdminDashboard() {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const res = await fetch(
+     await fetch(
       `http://localhost:3000/reports/micro-mix/${reportId}/status`,
       {
         method: "PATCH",

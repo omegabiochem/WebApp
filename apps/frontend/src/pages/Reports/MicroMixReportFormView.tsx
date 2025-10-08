@@ -1,4 +1,4 @@
-import { useEffect, useState, type SetStateAction } from "react";
+import { useEffect, useState} from "react";
 import QRCode from "qrcode";
 
 type Pane = "FORM" | "ATTACHMENTS";
@@ -169,7 +169,7 @@ function AttachmentPreview({
 }) {
   const [meta, setMeta] = useState<AttachmentItem | null>(null);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [loadingFile, setLoadingFile] = useState(false);
+  // const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -198,7 +198,8 @@ function AttachmentPreview({
         setObjectUrl(url);
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoadingFile(false));
+      .finally(() => {})
+      // .finally(() => setLoadingFile(false));
 
     return () => {
       if (revoke) URL.revokeObjectURL(revoke);

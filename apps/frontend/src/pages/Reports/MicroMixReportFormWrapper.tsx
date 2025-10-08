@@ -5,15 +5,15 @@ import MicroMixReportForm from "./MicroMixReportForm";
 import type {MicroMixReportDTO} from "../../../../SharedTypes/Reports/MicroMixReport";
 
 
-type Report = {
-  id: string;
-  client: string;
-  dateSent: string | null;
-  status: string;
-  // reportNumber: number;
-  // prefix?: string;
-  // add other fields if needed
-};
+// type Report = {
+//   id: string;
+//   client: string;
+//   dateSent: string | null;
+//   status: string;
+//   // reportNumber: number;
+//   // prefix?: string;
+//   // add other fields if needed
+// };
 
 export default function MicroMixReportFormWrapper() {
   const { id } = useParams<{ id: string }>();
