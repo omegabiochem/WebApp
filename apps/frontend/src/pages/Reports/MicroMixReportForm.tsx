@@ -18,7 +18,7 @@ import {
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-
+import { api } from "../../lib/api";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -836,59 +836,17 @@ export default function MicroMixReportForm({
 
   // ----------- Save handler -----------
 
+  type SavedReport = {
+    id: string;
+    status: ReportStatus;
+    reportNumber?: number | string;
+  };
+
   const handleSave = async (): Promise<boolean> => {
     const values = makeValues();
 
     validateAndSetErrors(values);
     validatePathogenRows(values.pathogens, role);
-
-    const token = localStorage.getItem("token");
-    const API_BASE = "http://localhost:3000";
-
-    // const ALLOWED_FIELDS: Record<Role, string[]> = {
-    //   ADMIN: ["*"],
-    //   SYSTEMADMIN: [],
-    //   FRONTDESK: [
-    //     "client",
-    //     "dateSent",
-    //     "typeOfTest",
-    //     "sampleType",
-    //     "formulaNo",
-    //     "description",
-    //     "lotNo",
-    //     "manufactureDate",
-    //   ],
-    //   MICRO: [
-    //     "testSopNo",
-    //     "tbc_dilution",
-    //     "tbc_gram",
-    //     "tbc_result",
-    //     "tmy_dilution",
-    //     "tmy_gram",
-    //     "tmy_result",
-    //     "pathogens",
-    //     "dateTested",
-    //     "preliminaryResults",
-    //     "preliminaryResultsDate",
-    //     "testedBy",
-    //     "testedDate",
-    //     "comments",
-    //   ],
-    //   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-    //   CLIENT: [
-    //     "client",
-    //     "dateSent",
-    //     "typeOfTest",
-    //     "sampleType",
-    //     "formulaNo",
-    //     "description",
-    //     "lotNo",
-    //     "manufactureDate",
-    //     "tbc_spec",
-    //     "tmy_spec",
-    //     "pathogens",
-    //   ],
-    // };
 
     // Build full payload
     const fullPayload: any = {
@@ -991,13 +949,6 @@ export default function MicroMixReportForm({
     const payload = Object.fromEntries(
       Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
     );
-    // // Filter fields based on role
-    // const allowed = ALLOWED_FIELDS[role || "CLIENT"] || [];
-    // const payload = allowed.includes("*")
-    //   ? fullPayload
-    //   : Object.fromEntries(
-    //       Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
-    //     );
 
     // New reports always start as DRAFT
     if (!reportId) {
@@ -1005,39 +956,47 @@ export default function MicroMixReportForm({
     }
 
     try {
-      let res;
+      let saved: SavedReport;
 
       if (reportId) {
-        console.log("Updating report", reportId);
+        // console.log("Updating report", reportId);
         // update
-        res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}`, {
+        // res = await fetch(`${API_BASE}/reports/micro-mix/${reportId}`, {
+        //   method: "PATCH",
+        //   headers: {
+        //     "Content-Type": "application/json",
+        //     Authorization: `Bearer ${token}`,
+        //   },
+        //   body: JSON.stringify({ ...payload, reason: "Saving" }),
+        // });
+        // console.log(res);
+        saved = await api<SavedReport>(`/reports/micro-mix/${reportId}`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
-        console.log(res);
       } else {
         // create
-        res = await fetch(`${API_BASE}/reports/micro-mix`, {
+        // res = await fetch(`${API_BASE}/reports/micro-mix`, {
+        //   method: "POST",
+        //   headers: {
+        //     "Content-Type": "application/json",
+        //     Authorization: `Bearer ${token}`,
+        //   },
+        //   body: JSON.stringify(payload),
+        // });
+        saved = await api(`/reports/micro-mix`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify(payload),
         });
       }
 
-      if (!res.ok) throw new Error("Failed to save draft");
-      const saved = await res.json();
-      setIsDirty(false);
+      // if (!res.ok) throw new Error("Failed to save draft");
+      // const saved = await res.json();
+      // setIsDirty(false);
 
       setReportId(saved.id); // 👈 keep the new id
       setStatus(saved.status); // in case backend changed it
-      setReportNumber(saved.reportNumber || "");
+      setReportNumber(String(saved.reportNumber ?? ""));
       alert("✅ Report saved as '" + saved.status + "'");
       return true;
     } catch (err: any) {
@@ -1047,12 +1006,17 @@ export default function MicroMixReportForm({
     }
   };
 
+  type UpdatedReport = {
+    status?: ReportStatus;
+    reportNumber?: string;
+  };
+
   async function handleStatusChange(
     newStatus: ReportStatus,
     opts?: { reason?: string; eSignPassword?: string }
   ) {
-    const token = localStorage.getItem("token");
-    const API_BASE = "http://localhost:3000";
+    // const token = localStorage.getItem("token");
+    // const API_BASE = "http://localhost:3000";
 
     const values = makeValues();
     const okFields = validateAndSetErrors(values);
@@ -1106,14 +1070,11 @@ export default function MicroMixReportForm({
     }
 
     try {
-      const res = await fetch(
-        `${API_BASE}/reports/micro-mix/${reportId}/status`,
+      let updated: UpdatedReport;
+      updated = await api<UpdatedReport>(
+        `/reports/micro-mix/${reportId}/status`,
         {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
           // Server expects: status (always), reason (required for critical fields incl. status),
           // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
           body: JSON.stringify({
@@ -1124,9 +1085,9 @@ export default function MicroMixReportForm({
         }
       );
 
-      if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-      const updated: { status?: ReportStatus; reportNumber?: string } =
-        await res.json();
+      // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
+      // const updated: { status?: ReportStatus; reportNumber?: string } =
+      //   await res.json();
 
       setStatus(updated.status ?? newStatus);
       setReportNumber(updated.reportNumber || reportNumber);

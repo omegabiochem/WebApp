@@ -2,24 +2,8 @@ import { Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Header from "./components/layout/Header";
 import { AuthProvider } from "./context/AuthContext";
-
-// import { useEffect } from "react";
-// import { useLocation, useNavigate } from "react-router-dom";
-// import { useAuth } from "./context/AuthContext";
+import { Toaster } from "react-hot-toast";
 const qc = new QueryClient();
-
-
-
-// const { user } = useAuth();
-// const nav = useNavigate();
-// const loc = useLocation();
-
-
-// useEffect(() => {
-//   if (user?.mustChangePassword && loc.pathname !== "/auth/change-password") {
-//     nav("/auth/change-password", { replace: true });
-//   }
-// }, [user?.mustChangePassword, loc.pathname, nav]);
 
 export default function App() {
   return (
@@ -27,6 +11,8 @@ export default function App() {
       <AuthProvider>
         <div className="min-h-screen bg-gray-50 text-gray-900">
           <Header />
+          {/* global toast host */}
+          <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
           <main className="mx-auto max-w-6xl p-6">
             <Outlet />
           </main>
@@ -35,40 +21,3 @@ export default function App() {
     </QueryClientProvider>
   );
 }
-
-
-// import { useState } from 'react'
-// import reactLogo from './assets/react.svg'
-// import viteLogo from '/vite.svg'
-// import './App.css'
-
-// function App() {
-//   const [count, setCount] = useState(0)
-
-//   return (
-//     <>
-//       <div>
-//         <a href="https://vite.dev" target="_blank">
-//           <img src={viteLogo} className="logo" alt="Vite logo" />
-//         </a>
-//         <a href="https://react.dev" target="_blank">
-//           <img src={reactLogo} className="logo react" alt="React logo" />
-//         </a>
-//       </div>
-//       <h1>Vite + React</h1>
-//       <div className="card">
-//         <button onClick={() => setCount((count) => count + 1)}>
-//           count is {count}
-//         </button>
-//         <p>
-//           Edit <code>src/App.tsx</code> and save to test HMR
-//         </p>
-//       </div>
-//       <p className="read-the-docs">
-//         Click on the Vite and React logos to learn more
-//       </p>
-//     </>
-//   )
-// }
-
-// export default App

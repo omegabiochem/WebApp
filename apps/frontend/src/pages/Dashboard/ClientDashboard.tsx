@@ -11,6 +11,7 @@ import {
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
+import toast from "react-hot-toast";
 
 // -----------------------------
 // Types
@@ -437,10 +438,12 @@ export default function ClientDashboard() {
                                     "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                                     "Sent back to client for correction"
                                   );
+                                  toast.success("Report status updated");
                                 }
                                 navigate(`/reports/micro-mix/${r.id}`);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
+                                toast.error(e?.message || "Failed to update status");
                               }
                             }}
                           >
