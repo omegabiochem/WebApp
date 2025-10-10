@@ -18,7 +18,8 @@
     "db:local": "dotenv -e .env -- npx prisma migrate dev",
     "db:local:create-only": "dotenv -e .env -- npx prisma migrate dev --create-only",
     "db:staging:deploy": "dotenv -e .env.staging -- npx prisma migrate deploy",
-    "db:prod:deploy": "dotenv -e .env.production -- npx prisma migrate deploy"
+    "db:production:deploy": "dotenv -e .env.production -- npx prisma migrate deploy",
+    "start:staging": "dotenv -e .env.staging -- nest start --watch"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -32,6 +33,7 @@
     "@prisma/client": "^5.19.1",
     "@serialport/parser-readline": "^13.0.0",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cors": "^2.8.5",
@@ -56,7 +58,9 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.3",
+    "@types/fs-extra": "^11.0.4",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.3.0",

@@ -13,12 +13,15 @@ import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Public } from 'src/common/public.decorator';
+import { PrismaService } from 'prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private auth: AuthService,
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ✅ Login with userId + password (pass req so we can capture IP/UA for audit)
@@ -79,26 +82,65 @@ export class AuthController {
   }
 
   // src/auth/auth.controller.ts
+  // @Post('m2m/token')
+  // @Public() // ← or protect with basic auth/rate-limit/IP allowlist
+  // async m2mToken(@Body() body: { clientId: string; clientSecret: string }) {
+  //   const ok =
+  //     body.clientId === process.env.M2M_CLIENT_ID &&
+  //     body.clientSecret === process.env.M2M_CLIENT_SECRET;
+  //   if (!ok) throw new UnauthorizedException();
+
+  //   const payload = {
+  //     type: 'service', // distinguish from human tokens
+  //     service: 'scan-watcher',
+  //     scopes: ['reports:read', 'attachments:write'],
+  //     sub: body.clientId,
+  //     role: 'M2M',
+  //   };
+
+  //   const expiresIn = '15m'; // short-lived
+  //   const access_token = await this.jwtService.signAsync(payload, {
+  //     expiresIn,
+  //   });
+  //   return { access_token, token_type: 'Bearer', expires_in: 15 * 60 };
+  // }
+
   @Post('m2m/token')
-  @Public() // ← or protect with basic auth/rate-limit/IP allowlist
+  @Public()
   async m2mToken(@Body() body: { clientId: string; clientSecret: string }) {
-    const ok =
-      body.clientId === process.env.M2M_CLIENT_ID &&
-      body.clientSecret === process.env.M2M_CLIENT_SECRET;
+    const mc = await this.prisma.machineClient.findUnique({
+      where: { clientId: body.clientId },
+    });
+    if (!mc || !mc.isActive) throw new UnauthorizedException();
+
+    const ok = await bcrypt.compare(body.clientSecret, mc.secretHash);
     if (!ok) throw new UnauthorizedException();
 
     const payload = {
-      type: 'service', // distinguish from human tokens
-      service: 'scan-watcher',
-      scopes: ['reports:read', 'attachments:write'],
-      sub: body.clientId,
-      role: 'M2M',
+      sub: `m2m:${mc.clientId}`,
+      typ: 'm2m',
+      role: 'SYSTEMADMIN', // quick: pass your existing role guards
+      scopes: mc.scopes, // keep scopes for later tightening
     };
 
-    const expiresIn = '15m'; // short-lived
     const access_token = await this.jwtService.signAsync(payload, {
-      expiresIn,
+      expiresIn: '12h',
     });
-    return { access_token, token_type: 'Bearer', expires_in: 15 * 60 };
+    await this.prisma.machineClient.update({
+      where: { clientId: mc.clientId },
+      data: { lastUsedAt: new Date() },
+    });
+
+    return { access_token, token_type: 'Bearer', expires_in: 12 * 60 * 60 };
+  }
+
+  // auth.controller.ts
+  @Public()
+  @Get('db-branch')
+  async dbBranch() {
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      "select current_database() as db, current_setting('neon.branch', true) as branch",
+    );
+    return rows?.[0] ?? {};
   }
 }

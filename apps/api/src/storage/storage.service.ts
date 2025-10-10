@@ -1,4 +1,3 @@
-// storage.service.ts
 import { Injectable } from '@nestjs/common';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -9,32 +8,41 @@ type PutInput = { filePath: string; filename: string; subdir?: string };
 
 @Injectable()
 export class StorageService {
-     private readonly ROOT = process.env.FILES_DIR || path.resolve('dev_uploads');
-//   private readonly ROOT = process.env.FS_STORAGE_ROOT
-//     ? path.resolve(process.env.FS_STORAGE_ROOT)
-//     : path.resolve(process.cwd(), 'storage');
+  // Use FILES_DIR as the storage root (as you already do)
+  private readonly ROOT = path.resolve(process.env.FILES_DIR ?? 'dev_uploads');
 
   async put({ filePath, filename, subdir }: PutInput): Promise<string> {
     const targetDir = path.join(this.ROOT, subdir ?? 'misc');
     await fs.mkdir(targetDir, { recursive: true });
+
     const ext = path.extname(filename) || '.bin';
-    const base = path.basename(filename, ext);
+    const base = path.basename(filename, ext).replace(/[^\w.\-]/g, '_');
     const outPath = path.join(targetDir, `${base}.${randomUUID()}${ext}`);
-    await fs.copyFile(filePath, outPath);
-    return path.relative(this.ROOT, outPath).split(path.sep).join('/'); // POSIX-ish
+
+    try {
+      await fs.rename(filePath, outPath); // fast move if same volume/root
+    } catch (e: any) {
+      if (e.code === 'EXDEV') {
+        await fs.copyFile(filePath, outPath);
+        await fs.unlink(filePath).catch(() => {});
+      } else {
+        throw e;
+      }
+    }
+
+    return path.relative(this.ROOT, outPath).split(path.sep).join('/');
   }
 
-  /** Works with relative or absolute storageKey */
   resolvePath(storageKey: string) {
     return path.isAbsolute(storageKey)
       ? storageKey
       : path.join(this.ROOT, storageKey);
   }
 
-createReadStream(storageKey: string): ReadStream {
-  const fullPath = this.resolvePath(storageKey);
-  return createReadStream(fullPath); // Node fs.ReadStream
-}
+  createReadStream(storageKey: string): ReadStream {
+    const fullPath = this.resolvePath(storageKey);
+    return createReadStream(fullPath);
+  }
 
   async stat(storageKey: string) {
     return fs.stat(this.resolvePath(storageKey));
