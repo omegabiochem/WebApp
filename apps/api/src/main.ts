@@ -9,8 +9,6 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:5173',
-      'https://webapp-aog.pages.dev',
-      'https://app.yourdomain.com', // your production web domain
       'https://www.omegabiochemlab.com',
       'https://omega-lims.fly.dev',
       'https://omega-lims-staging.fly.dev',

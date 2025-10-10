@@ -17,8 +17,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:local": "dotenv -e .env -- npx prisma migrate dev",
     "db:local:create-only": "dotenv -e .env -- npx prisma migrate dev --create-only",
-    "db:staging:deploy": "dotenv -e .env.staging -- npx prisma migrate deploy",
-    "db:production:deploy": "dotenv -e .env.production -- npx prisma migrate deploy",
+    "db:staging:deploy": "dotenv -e .env.staging -- npx prisma migrate deploy && npx prisma db seed",
+    "db:production:deploy": "dotenv -e .env.production -- npx prisma migrate deploy && npx prisma db seed",
     "start:staging": "dotenv -e .env.staging -- nest start --watch"
   },
   "dependencies": {
@@ -38,6 +38,7 @@
     "class-validator": "^0.14.2",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
+    "fs-extra": "^11.3.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
@@ -103,6 +104,7 @@
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
-    "seed": "ts-node --transpile-only prisma/seed.ts"
+    "seed": "node prisma/seed.cjs"
+
   }
 }
