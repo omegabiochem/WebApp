@@ -1237,7 +1237,7 @@ export default function MicroMixReportForm({
                     setClient(e.target.value);
                     markDirty();
                   }}
-                  disabled={role === "CLIENT"}
+                  // disabled={role === "CLIENT"}
                 />
               )}
             </div>

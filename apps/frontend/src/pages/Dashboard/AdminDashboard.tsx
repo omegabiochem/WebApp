@@ -411,7 +411,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      await api(`/reports/micro-mix/${report.id}/status`, {
+      await api(`/reports/micro-mix/${report.id}/change-status`, {
         method: "PATCH",
         body: JSON.stringify({
           status: nextStatus,

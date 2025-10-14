@@ -15,7 +15,7 @@ import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { AttachmentKind, ReportStatus } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { setRequestContext } from 'src/common/request-context';
+import { setRequestContext, withRequestContext } from 'src/common/request-context';
 
 type CreateCorrectionsDto = {
   items: { fieldKey: string; message: string }[];
@@ -34,6 +34,15 @@ type CreateAttachmentDto = {
   createdBy?: string;
  kind?: 'SIGNED_FORM' | 'RAW_SCAN' | 'OTHER';
 };
+
+
+export class ChangeStatusDto {
+  status!: ReportStatus;
+  reason?: string;
+  eSignPassword?: string;
+  force?: boolean;
+  deptRoleForSeq?: 'MICRO' | 'CHEMISTRY';
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('reports/micro-mix')
@@ -101,6 +110,29 @@ async updateStatus(
   });
   
   return this.svc.update(req.user, id, body); // send full body including reason
+}
+
+
+
+
+@Patch(':id/change-status')
+async changeStatus(
+  @Req() req: any,
+  @Param('id') id: string,
+  @Body() dto: ChangeStatusDto,
+) {
+  // If you want the reason/e-sign to also appear in your audit middleware,
+  // wrap the service call with request-context so Prisma middleware can read it.
+  return withRequestContext(
+    {
+      userId: req.user.userId,
+      role: req.user.role,
+      ip: req.ip,
+      reason: dto.reason,
+      eSignPassword: dto.eSignPassword,
+    },
+    () => this.svc.changeStatus(req.user, id, dto),
+  );
 }
 
  // ✅ Corrections API
