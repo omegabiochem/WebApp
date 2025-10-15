@@ -10,6 +10,7 @@ import {
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
 import { api, API_URL, getToken } from "../../lib/api";
+import toast from "react-hot-toast";
 
 // ---------------------------------
 // Types
@@ -593,9 +594,26 @@ export default function AdminDashboard() {
                         {canUpdateThisReport(r, user) && (
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            onClick={() =>
-                              navigate(`/reports/micro-mix/${r.id}`)
-                            }
+                            onClick={async () => {
+                              try {
+                                if (
+                                  r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+                                    "set by admin"
+                                  );
+                                  toast.success("Report Status Updated");
+                                }
+                                navigate(`/reports/micro-mix/${r.id}`);
+                              } catch (e: any) {
+                                alert(e?.message || "Failed to update status");
+                                toast.error(
+                                  e?.message || "Failed to update status"
+                                );
+                              }
+                            }}
                           >
                             Update
                           </button>

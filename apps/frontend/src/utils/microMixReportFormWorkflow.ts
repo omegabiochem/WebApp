@@ -80,7 +80,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ["CLIENT"],
+    canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "ADMIN"],
     canEdit: [],
@@ -110,7 +110,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ["CLIENT"],
+    canSet: ["ADMIN"],
     next: ["UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"],
     nextEditableBy: ["ADMIN"],
     canEdit: [],
@@ -174,7 +174,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["MICRO", "ADMIN"],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ["MICRO"],
+    canSet: ["CLIENT"],
     next: ["UNDER_CLIENT_PRELIMINARY_REVIEW"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
@@ -202,7 +202,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO","ADMIN"],
     next: ["UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"],
     nextEditableBy: ["ADMIN"],
     canEdit: ["MICRO", "ADMIN"],
@@ -245,8 +245,8 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ["MICRO"],
-    next: ["UNDER_CLIENT_FINAL_REVIEW"],
+    canSet: ["ADMIN"],
+    next: ["RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["CLIENT"],
     canEdit: ["ADMIN"],
   },

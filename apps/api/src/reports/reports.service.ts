@@ -82,6 +82,223 @@ const EDIT_MAP: Record<UserRole, string[]> = {
 // ----------------------------
 // Workflow transitions (unchanged)
 // ----------------------------
+
+// const STATUS_TRANSITIONS: Record<
+//   ReportStatus,
+//   {
+//     next: ReportStatus[];
+//     canSet: UserRole[];
+//     nextEditableBy: UserRole[];
+//     canEdit: UserRole[];
+//   }
+// > = {
+//   DRAFT: {
+//     canSet: ['CLIENT'],
+//     next: ['SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT', 'FRONTDESK'],
+//     canEdit: ['CLIENT'],
+//   },
+//   SUBMITTED_BY_CLIENT: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO'],
+//     canEdit: [],
+//   },
+// UNDER_CLIENT_PRELIMINARY_REVIEW: {
+//     canSet: ["CLIENT"],
+//     next: ["CLIENT_NEEDS_PRELIMINARY_CORRECTION", "PRELIMINARY_APPROVED"],
+//     nextEditableBy: ["CLIENT"],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
+//     canSet: ["MICRO"],
+//     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "ADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
+//     canSet: ['CLIENT'],
+//     next: ['PRELIMINARY_RESUBMISSION_BY_CLIENT'],
+//     nextEditableBy: ['MICRO', 'ADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_CLIENT_FINAL_CORRECTION: {
+//     canSet: ['CLIENT'],
+//     next: ['FINAL_RESUBMISSION_BY_CLIENT'],
+//     nextEditableBy: ['MICRO', 'ADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_CLIENT_FINAL_REVIEW: {
+//     canSet: ['FRONTDESK', 'CLIENT'],
+//     next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
+//     nextEditableBy: ['ADMIN'],
+//     canEdit: [],
+//   },
+//   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'MICRO'],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_FINAL_CORRECTION: {
+//     canSet: ['CLIENT'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN'],
+//     canEdit: [],
+//   },
+//   FINAL_RESUBMISSION_BY_CLIENT: {
+//     canSet: ['CLIENT'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'MICRO'],
+//     canEdit: [],
+//   },
+//   PRELIMINARY_APPROVED: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO'],
+//     canEdit: [],
+//   },
+//   RECEIVED_BY_FRONTDESK: {
+//     canSet: ['FRONTDESK'],
+//     next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
+//     nextEditableBy: ['MICRO'],
+//     canEdit: [],
+//   },
+//   FRONTDESK_ON_HOLD: {
+//     canSet: ['FRONTDESK'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['FRONTDESK'],
+//     canEdit: [],
+//   },
+//   FRONTDESK_NEEDS_CORRECTION: {
+//     canSet: ['FRONTDESK', 'ADMIN'],
+//     next: ['SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: [],
+//   },
+//   UNDER_PRELIMINARY_TESTING_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: [
+//       'PRELIMINARY_TESTING_ON_HOLD',
+//       'PRELIMINARY_TESTING_NEEDS_CORRECTION',
+//       'UNDER_CLIENT_PRELIMINARY_REVIEW',
+//     ],
+//     nextEditableBy: ['MICRO'],
+//     canEdit: ['MICRO', 'ADMIN'],
+//   },
+//   PRELIMINARY_TESTING_ON_HOLD: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'ADMIN'],
+//     canEdit: [],
+//   },
+//   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
+//     canSet: ['CLIENT', 'ADMIN'],
+//     next: ['UNDER_CLIENT_PRELIMINARY_CORRECTION'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: [],
+//   },
+//   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: ['PRELIMINARY_RESUBMISSION_BY_TESTING'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: ['MICRO', 'ADMIN'],
+//   },
+//   PRELIMINARY_RESUBMISSION_BY_TESTING: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_CLIENT_PRELIMINARY_REVIEW'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_TESTING_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: [
+//       'FINAL_TESTING_NEEDS_CORRECTION',
+//       'FINAL_TESTING_NEEDS_CORRECTION',
+//       'UNDER_ADMIN_REVIEW',
+//     ],
+//     nextEditableBy: ['QA', 'ADMIN'],
+//     canEdit: ['MICRO'],
+//   },
+//   FINAL_TESTING_ON_HOLD: {
+//     canSet: ['MICRO'],
+//     next: ['FINAL_TESTING_NEEDS_CORRECTION', 'UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['CLIENT', 'MICRO'],
+//     canEdit: [],
+//   },
+//   FINAL_TESTING_NEEDS_CORRECTION: {
+//     canSet: ['MICRO', 'ADMIN'],
+//     next: ['UNDER_CLIENT_FINAL_CORRECTION'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW'],
+//     nextEditableBy: ['ADMIN'],
+//     canEdit: ['MICRO', 'ADMIN'],
+//   },
+//   FINAL_RESUBMISSION_BY_TESTING: {
+//     canSet: ['MICRO', 'ADMIN'],
+//     next: ['UNDER_ADMIN_REVIEW'],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   UNDER_QA_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+//     nextEditableBy: ['QA'],
+//     canEdit: ['QA'],
+//   },
+//   QA_NEEDS_CORRECTION: {
+//     canSet: ['QA'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO'],
+//     canEdit: [],
+//   },
+
+//   UNDER_ADMIN_REVIEW: {
+//     canSet: ['MICRO', 'ADMIN', 'SYSTEMADMIN'],
+//     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN'],
+//   },
+//   ADMIN_NEEDS_CORRECTION: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_REVIEW'],
+//     nextEditableBy: ['QA'],
+//     canEdit: ['ADMIN'],
+//   },
+//   ADMIN_REJECTED: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_REVIEW'],
+//     nextEditableBy: ['QA'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
+//     canSet: ['MICRO'],
+//     next: ['UNDER_CLIENT_FINAL_REVIEW'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: ['ADMIN'],
+//   },
+//   FINAL_APPROVED: {
+//     canSet: ['CLIENT'],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   LOCKED: {
+//     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+// };
+
+
+
+
+
 const STATUS_TRANSITIONS: Record<
   ReportStatus,
   {
@@ -103,16 +320,16 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['MICRO'],
     canEdit: [],
   },
-  UNDER_CLIENT_PRELIMINARY_REVIEW: {
-    canSet: ['CLIENT'],
-    next: ['PRELIMINARY_APPROVED', 'CLIENT_NEEDS_PRELIMINARY_CORRECTION'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['CLIENT'],
+UNDER_CLIENT_PRELIMINARY_REVIEW: {
+    canSet: ["CLIENT"],
+    next: ["CLIENT_NEEDS_PRELIMINARY_CORRECTION", "PRELIMINARY_APPROVED"],
+    nextEditableBy: ["CLIENT"],
+    canEdit: [],
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ['CLIENT'],
-    next: ['UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'ADMIN'],
+    canSet: ["MICRO"],
+    next: ["UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "ADMIN"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
@@ -140,7 +357,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['ADMIN'],
     next: ['UNDER_FINAL_RESUBMISSION_TESTING_REVIEW'],
     nextEditableBy: ['ADMIN'],
     canEdit: [],
@@ -204,7 +421,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['MICRO', 'ADMIN'],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ['MICRO'],
+    canSet: ["CLIENT"],
     next: ['UNDER_CLIENT_PRELIMINARY_REVIEW'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
@@ -232,7 +449,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO'],
+    canSet: ['MICRO','ADMIN'],
     next: ['UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW'],
     nextEditableBy: ['ADMIN'],
     canEdit: ['MICRO', 'ADMIN'],
@@ -275,8 +492,8 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['MICRO'],
-    next: ['UNDER_CLIENT_FINAL_REVIEW'],
+    canSet: ['ADMIN'],
+    next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['CLIENT'],
     canEdit: ['ADMIN'],
   },
@@ -687,7 +904,7 @@ export class ReportsService {
       );
 
     const r = await this.get(id);
-    const mayRequest = ['FRONTDESK', 'MICRO', 'QA', 'ADMIN', 'SYSTEMADMIN'];
+    const mayRequest = ['FRONTDESK', 'MICRO', 'QA', 'ADMIN', 'SYSTEMADMIN','CLIENT'];
     if (!mayRequest.includes(user.role))
       throw new ForbiddenException('Not allowed');
 
@@ -744,7 +961,7 @@ export class ReportsService {
     if (idx < 0) throw new NotFoundException('Correction not found');
 
     // who can resolve? (the party asked to fix)
-    const allowedResolvers: UserRole[] = ['CLIENT', 'MICRO', 'FRONTDESK']; // tune per status
+    const allowedResolvers: UserRole[] = ['CLIENT', 'MICRO', 'FRONTDESK','ADMIN']; // tune per status
     if (!allowedResolvers.includes(user.role))
       throw new ForbiddenException('Not allowed to resolve');
 

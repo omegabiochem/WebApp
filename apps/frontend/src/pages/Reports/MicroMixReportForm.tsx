@@ -101,6 +101,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     label: "Needs Correction",
     color: "bg-yellow-500",
   },
+  PRELIMINARY_RESUBMISSION_BY_TESTING: {
+    label: "Resubmit",
+    color: "bg-blue-600",
+  },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
     label: "Resubmit",
     color: "bg-blue-600",
@@ -118,6 +122,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   FINAL_TESTING_NEEDS_CORRECTION: {
     label: "Needs Correction",
     color: "bg-yellow-600",
+  },
+  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
+    label: "Resubmit",
+    color: "bg-blue-600",
   },
   UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
   QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
@@ -484,7 +492,7 @@ export default function MicroMixReportForm({
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
-    if (!reportId ) return;
+    if (!reportId) return;
     getCorrections(reportId)
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
@@ -616,7 +624,7 @@ export default function MicroMixReportForm({
     if (!items.length) return;
 
     await Promise.all(
-      items.map((c) => resolveCorrection(reportId!, c.id,  "Fixed"))
+      items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
     );
     const fresh = await getCorrections(reportId!);
     setCorrections(fresh);

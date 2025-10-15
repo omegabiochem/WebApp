@@ -42,12 +42,15 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
   "LOCKED",
 ];
 
-
-
 // -----------------------------
 // Utilities
 // -----------------------------
 
+function getFormPrefix(formNumber?: string): string | null {
+  if (!formNumber) return null;
+  const m = formNumber.trim().match(/^[A-Za-z]{3}/);
+  return m ? m[0].toUpperCase() : null;
+}
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -69,7 +72,7 @@ function formatDate(iso: string | null) {
 
 function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
-  if (r.client !== user?.clientCode) return false;
+  if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
 
   const fieldsUsedOnForm = [
     "client",
@@ -138,7 +141,9 @@ export default function ClientDashboard() {
 
         if (abort) return;
 
-        const clientReports = all.filter((r) => r.client === user?.clientCode);
+        const clientReports = all.filter(
+          (r) => getFormPrefix(r.formNumber) === user?.clientCode
+        );
         setReports(clientReports);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
@@ -204,8 +209,7 @@ export default function ClientDashboard() {
     newStatus: string,
     reason = "Client correction update"
   ) {
-
-     await api(`/reports/micro-mix/${reportId}/status`, {
+    await api(`/reports/micro-mix/${reportId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ reason, status: newStatus }),
     });
@@ -224,8 +228,6 @@ export default function ClientDashboard() {
     //   }
     // );
 
-
-
     // if (!res.ok) {
     //   const msg = await res.text().catch(() => "");
     //   throw new Error(
@@ -238,7 +240,6 @@ export default function ClientDashboard() {
       prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
     );
     // return res;
-    
   }
 
   return (
@@ -439,11 +440,22 @@ export default function ClientDashboard() {
                                     "Sent back to client for correction"
                                   );
                                   toast.success("Report status updated");
+                                } else if (
+                                  r.status ===
+                                  "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                    "Resubmission under Review"
+                                  );
                                 }
                                 navigate(`/reports/micro-mix/${r.id}`);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
-                                toast.error(e?.message || "Failed to update status");
+                                toast.error(
+                                  e?.message || "Failed to update status"
+                                );
                               }
                             }}
                           >
@@ -550,6 +562,15 @@ export default function ClientDashboard() {
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to client for correction"
                           );
+                        } else if (
+                          selectedReport.status ===
+                          "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                        ) {
+                          await setStatus(
+                            id,
+                            "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                            "Resubmission under Review"
+                          );
                         }
                         setSelectedReport(null);
                         navigate(`/reports/micro-mix/${id}`);
@@ -583,194 +604,3 @@ export default function ClientDashboard() {
     </div>
   );
 }
-
-// import { useEffect, useState } from "react";
-// import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
-// import { useNavigate } from "react-router-dom";
-// import { useAuth } from "../../context/AuthContext";
-// import type { Role, ReportStatus } from "../../utils/microMixReportFormWorkflow";
-// import { canShowUpdateButton } from "../../utils/microMixReportFormWorkflow";
-
-// type Report = {
-//   id: string;
-//   client: string;
-//   dateSent: string | null;
-//   status: string;
-//   formNumber: string;
-// };
-
-// const CLIENT_STATUSES = [
-//   "ALL", // 👈 added ALL option
-//   "FINAL_APPROVED",
-//   "DRAFT",
-//   "SUBMITTED_BY_CLIENT",
-//   "UNDER_CLIENT_PRELIMINARY_REVIEW",
-//   "UNDER_CLIENT_FINAL_REVIEW",
-//   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-//   "CLIENT_NEEDS_FINAL_CORRECTION",
-//   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-//   "UNDER_CLIENT_FINAL_CORRECTION",
-//   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-//   "FINAL_RESUBMITTION_BY_CLIENT",
-//   "LOCKED",
-// ];
-
-// function canUpdateThisReport(r: Report, user?: any) {
-//   // If non-clients see this dashboard later, you can loosen this check.
-//   if (user?.role !== "CLIENT") return false;
-//   if (r.client !== user?.clientCode) return false;
-
-//   // List the fields that the Update screen actually edits for CLIENTS.
-//   // (This makes the check stricter than just "can edit something in this status".)
-//   const fieldsUsedOnForm = [
-//     "client",
-//     "dateSent",
-//     "typeOfTest",
-//     "sampleType",
-//     "formulaNo",
-//     "description",
-//     "lotNo",
-//     "manufactureDate",
-//     "pathogens",
-//   ];
-
-//   return canShowUpdateButton(
-//     user?.role as Role,
-//     r.status as ReportStatus,
-//     fieldsUsedOnForm
-//   );
-// }
-
-// export default function ClientDashboard() {
-//   const [reports, setReports] = useState<Report[]>([]);
-//   const [filter, setFilter] = useState("SUBMITTED_BY_CLIENT");
-//   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-//   const navigate = useNavigate();
-//   const { user } = useAuth();
-
-//   useEffect(() => {
-//     async function fetchReports() {
-//       const token = localStorage.getItem("token");
-//       if (!token) return;
-
-//       const res = await fetch("http://localhost:3000/reports/micro-mix", {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-
-//       if (res.ok) {
-//         const all = await res.json();
-
-//         const clientReports = all.filter(
-//           (r: Report) => r.client === user?.clientCode
-//         );
-
-//         setReports(clientReports);
-//       } else {
-//         console.error("Failed to fetch reports", res.status);
-//       }
-//     }
-//     fetchReports();
-//   }, []);
-
-//   // 👇 filtering logic with ALL option
-//   const filtered =
-//     filter === "ALL" ? reports : reports.filter((r) => r.status === filter);
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-2xl font-bold mb-4">Client Dashboard</h1>
-
-//       {/* Tabs */}
-//       <div className="flex gap-2 mb-4">
-//         {CLIENT_STATUSES.map((s) => (
-//           <button
-//             key={s}
-//             onClick={() => setFilter(s)}
-//             className={`px-4 py-2 rounded-md border ${filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
-//               }`}
-//           >
-//             {s.replace(/_/g, " ")}
-//           </button>
-//         ))}
-//       </div>
-
-//       {/* Table */}
-//       <div className="overflow-x-auto border rounded-lg">
-//         <table className="w-full border-collapse text-sm">
-//           <thead>
-//             <tr className="bg-gray-100 border-b">
-//               <th className="p-2 text-left">Form #</th>
-//               <th className="p-2 text-left">Client</th>
-//               <th className="p-2 text-left">Date Sent</th>
-//               <th className="p-2 text-left">Status</th>
-//               <th className="p-2 text-left">Actions</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {filtered.map((r) => (
-//               <tr key={r.id} className="border-b hover:bg-gray-50">
-//                 <td className="p-2">
-//                   {r.formNumber}
-//                 </td>
-//                 <td className="p-2">{r.client}</td>
-//                 <td className="p-2">
-//                   {r.dateSent ? new Date(r.dateSent).toLocaleDateString() : "-"}
-//                 </td>
-//                 <td className="p-2">{r.status.replace(/_/g, " ")}</td>
-//                 <td className="p-2 flex gap-2">
-//                   <button
-//                     className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-//                     onClick={() => setSelectedReport(r)}
-//                   >
-//                     View
-//                   </button>
-//                   {canUpdateThisReport(r, user) && (
-//                     <button
-//                       className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-//                       onClick={() => navigate(`/reports/micro-mix/${r.id}`)}
-//                     >
-//                       Update
-//                     </button>
-//                   )}
-//                 </td>
-//               </tr>
-//             ))}
-//             {filtered.length === 0 && (
-//               <tr>
-//                 <td colSpan={5} className="p-4 text-center text-gray-500">
-//                   No reports found for {filter.replace(/_/g, " ")}.
-//                 </td>
-//               </tr>
-//             )}
-//           </tbody>
-//         </table>
-//       </div>
-
-//       {/* Modal with full form in read-only */}
-//       {selectedReport && (
-//         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-//           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
-//             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-//               Report-
-//               ({selectedReport.formNumber})
-//             </h2>
-
-//             <MicroMixReportFormView
-//               report={selectedReport}
-//               onClose={() => setSelectedReport(null)}
-//             />
-
-//             <div className="flex justify-end mt-6">
-//               {/* <button
-//                 onClick={() => setSelectedReport(null)}
-//                 className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-//               >
-//                 Close
-//               </button> */}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }

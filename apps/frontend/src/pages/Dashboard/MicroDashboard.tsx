@@ -34,6 +34,10 @@ const MICRO_STATUSES = [
   "UNDER_FINAL_TESTING_REVIEW",
   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "PRELIMINARY_SUBMISSION_NEEDS_CORRECTION",
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
 ] as const;
 
 // Map statuses → badge styles (fallback provided below for unknown keys)
@@ -413,6 +417,15 @@ export default function MicroDashboard() {
                                     r.id,
                                     "UNDER_PRELIMINARY_TESTING_REVIEW",
                                     "Move to prelim testing"
+                                  );
+                                } else if (
+                                  r.status ===
+                                  "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+                                    "Move to RESUBMISSION "
                                   );
                                 } else if (
                                   r.status === "PRELIMINARY_APPROVED"
