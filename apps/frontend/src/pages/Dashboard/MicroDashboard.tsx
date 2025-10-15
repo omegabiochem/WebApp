@@ -7,6 +7,7 @@ import {
   type ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
+import toast from "react-hot-toast";
 
 // -----------------------------
 // Types
@@ -38,6 +39,7 @@ const MICRO_STATUSES = [
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
   "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
 ] as const;
 
 // Map statuses → badge styles (fallback provided below for unknown keys)
@@ -444,6 +446,15 @@ export default function MicroDashboard() {
                                     "UNDER_PRELIMINARY_TESTING_REVIEW",
                                     "Resubmitted by client"
                                   );
+                                } else if (
+                                  r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                ) {
+                                  await setStatus(
+                                    r.id,
+                                    "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+                                    "set by admin"
+                                  );
+                                  toast.success("Report Status Updated");
                                 }
                                 // optimistic UI
                                 setReports((prev) =>

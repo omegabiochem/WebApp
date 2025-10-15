@@ -6,7 +6,7 @@ export default function Home() {
     return (
       <div className="flex items-center justify-center h-[80vh]">
         <h1 className="text-4xl font-bold text-[var(--brand)]">
-          Welcome to Omega
+          Welcome to Omega BioChem
         </h1>
       </div>
     );

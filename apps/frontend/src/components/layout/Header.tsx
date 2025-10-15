@@ -64,7 +64,7 @@ export default function Header() {
           className="font-bold text-xl"
           style={{ color: "var(--brand)" }}
         >
-          LIMS
+          OMEGA BIOCHEM LIMS
         </Link>
 
         <nav className="flex items-center gap-4 text-sm">

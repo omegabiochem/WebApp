@@ -357,7 +357,7 @@ UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ['ADMIN'],
+    canSet: ['ADMIN',"MICRO"],
     next: ['UNDER_FINAL_RESUBMISSION_TESTING_REVIEW'],
     nextEditableBy: ['ADMIN'],
     canEdit: [],

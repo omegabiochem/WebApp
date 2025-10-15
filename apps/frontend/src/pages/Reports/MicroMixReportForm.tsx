@@ -35,45 +35,6 @@ function useConfirmOnLeave(isDirty: boolean) {
   }, [blocker]);
 }
 
-// ----- Roles (keep in sync with backend) -----
-// type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "QA" | "CLIENT";
-
-// ----- ReportStatus (mirror backend) -----
-// export type ReportStatus =
-//   | "DRAFT"
-//   | "SUBMITTED_BY_CLIENT"
-//   | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
-//   | "CLIENT_NEEDS_FINAL_CORRECTION"
-//   | "UNDER_CLIENT_PRELIMINARY_CORRECTION"
-//   | "UNDER_CLIENT_FINAL_CORRECTION"
-//   | "PRELIMINARY_RESUBMISSION_BY_CLIENT"
-//   | "FINAL_RESUBMITTION_BY_CLIENT"
-//   | "UNDER_CLIENT_PRELIMINARY_REVIEW"
-//   | "UNDER_CLIENT_FINAL_REVIEW"
-//   | "RECEIVED_BY_FRONTDESK"
-//   | "FRONTDESK_ON_HOLD"
-//   | "FRONTDESK_NEEDS_CORRECTION"
-//   | "UNDER_PRELIMINARY_TESTING_REVIEW"
-//   | "PRELIMINARY_TESTING_ON_HOLD"
-//   | "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-//   | "PRELIMINARY_RESUBMITTION_BY_TESTING"
-//   | "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"
-//   | "FINAL_RESUBMITTION_BY_TESTING"
-//   | "PRELIMINARY_APPROVED"
-//   | "UNDER_FINAL_TESTING_REVIEW"
-//   | "FINAL_TESTING_ON_HOLD"
-//   | "FINAL_TESTING_NEEDS_CORRECTION"
-//   | "FINAL_RESUBMITTION_BY_TESTING"
-//   | "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"
-//   | "UNDER_QA_REVIEW"
-//   | "QA_NEEDS_CORRECTION"
-//   | "UNDER_ADMIN_REVIEW"
-//   | "ADMIN_NEEDS_CORRECTION"
-//   | "ADMIN_REJECTED"
-//   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
-//   | "FINAL_APPROVED"
-//   | "LOCKED";
-
 // ---- Map each transition to buttons ----
 
 const statusButtons: Record<string, { label: string; color: string }> = {
@@ -520,47 +481,10 @@ export default function MicroMixReportForm({
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
-  // function requestStatusChange(target: ReportStatus) {
-  //   const isNeeds =
-  //     target === "FRONTDESK_NEEDS_CORRECTION" ||
-  //     target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-  //     target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-  //     target === "QA_NEEDS_CORRECTION" ||
-  //     target === "ADMIN_NEEDS_CORRECTION" ||
-  //     target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-  //     target === "CLIENT_NEEDS_FINAL_CORRECTION";
-
-  //   if (isNeeds) {
-  //     setSelectingCorrections(true);
-  //     setPendingCorrections([]);
-  //     setPendingStatus(target);
-  //     return;
-  //   }
-  //   // existing path (incl. e-sign if required)
-  //   if (uiNeedsESign(target)) {
-  //     setPendingStatus(target);
-  //     setShowESign(true);
-  //   } else {
-  //     handleStatusChange(target);
-  //   }
-  // }
-
   // UI policy: only when server will enforce
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
-
-  // trigger from buttons; Admin must provide e-sign first
-  // function requestStatusChange(target: ReportStatus) {
-  //   if (uiNeedsESign(target)) {
-  //     setPendingStatus(target);
-  //     setChangeReason("");
-  //     setESignPassword("");
-  //     setShowESign(true);
-  //   } else {
-  //     handleStatusChange(target); // fall through to your existing flow
-  //   }
-  // }
 
   function requestStatusChange(target: ReportStatus) {
     const isNeeds =
@@ -603,12 +527,6 @@ export default function MicroMixReportForm({
     // everyone else disabled
     return true;
   }
-
-  // ---- Who can resolve (mirror backend) ----
-  // const CAN_RESOLVE: Role[] = ["ADMIN"];
-  // show resolve only if role can resolve AND can edit THIS field in THIS status
-  // const canResolveField = (field: string) =>
-  //   !!reportId && !!role && canEdit(role, field, status as ReportStatus);
 
   const canResolveField = (field: string) => {
     if (!reportId || !role) return false;
@@ -1005,6 +923,7 @@ export default function MicroMixReportForm({
       setReportId(saved.id); // 👈 keep the new id
       setStatus(saved.status); // in case backend changed it
       setReportNumber(String(saved.reportNumber ?? ""));
+      setIsDirty(false);
       alert("✅ Report saved as '" + saved.status + "'");
       return true;
     } catch (err: any) {
@@ -1099,6 +1018,7 @@ export default function MicroMixReportForm({
 
       setStatus(updated.status ?? newStatus);
       setReportNumber(updated.reportNumber || reportNumber);
+      setIsDirty(false);
       alert(`✅ Status changed to ${newStatus}`);
     } catch (err: any) {
       console.error(err);
@@ -2391,32 +2311,7 @@ export default function MicroMixReportForm({
           </div>
         </div>
       </div>
-      {/* Role-based actions */}
-      {/* Role-based actions OUTSIDE the report */}
-      {/* Role-based actions OUTSIDE the report */}
-      {/* {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-        (targetStatus: ReportStatus) => {
-          if (
-            STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(role!) &&
-            statusButtons[targetStatus]
-          ) {
-            const { label, color } = statusButtons[targetStatus];
-            return (
-              <button
-                key={targetStatus}
-                className={`px-4 py-2 rounded-md border text-white ${color}`}
-                onClick={() => handleStatusChange(targetStatus)}
-                // 👇 disable submit until report is saved
-                disabled={isDirty || !reportId}
-              >
-                {label}
-              </button>
 
-            );
-          }
-          return null;
-        }
-      )} */}
       {/* Actions row: submit/reject on left, close on right */}
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
@@ -2628,24 +2523,7 @@ export default function MicroMixReportForm({
         </div>
       )}
 
-      {/* {openCorrections.map((c) => (
-        <div key={c.id} className="flex items-center gap-2 text-sm">
-          <div>
-            <b>{c.fieldKey}</b>: {c.message}
-          </div>
-          <button
-            className="text-blue-600 underline"
-            onClick={async () => {
-              const token = localStorage.getItem("token")!;
-              await resolveCorrection(reportId!, c.id, token, "Fixed");
-              const fresh = await getCorrections(reportId!, token);
-              setCorrections(fresh); // refresh UI
-            }}
-          >
-            Mark resolved
-          </button>
-        </div>
-      ))} */}
+
       {/* Floating Corrections button */}
       <div className="no-print fixed bottom-6 right-6 z-40">
         <button
