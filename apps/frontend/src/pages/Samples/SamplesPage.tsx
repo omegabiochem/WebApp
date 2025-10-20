@@ -18,7 +18,7 @@ export default function SamplesPage() {
     (async () => {
       try {
         // unified API helper (adds base + auth)
-        const data = await api<any[]>("/reports/micro-mix");
+        const data = await api<any[]>("/reports");
         const list = Array.isArray(data) ? data : [];
 
         // Filter only client’s reports (use the same field you render)
@@ -142,7 +142,7 @@ export default function SamplesPage() {
 //       return;
 //     }
 //     async function fetchReports() {
-//       const res = await fetch("http://localhost:3000/reports/micro-mix", {
+//       const res = await fetch("http://localhost:3000/reports", {
 //         headers: { Authorization: `Bearer ${token}` },
 //       });
 //       if (res.ok) {

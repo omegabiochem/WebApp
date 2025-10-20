@@ -272,7 +272,7 @@ const DashStyles = () => (
 
 const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
 
-export default function MicroMixReportForm({
+export default function MicroReportForm({
   report,
   onClose,
 }: {
@@ -595,9 +595,6 @@ export default function MicroMixReportForm({
     );
   }
 
-  const normalizeGrams = (v: string) =>
-    v.trim() ? (/[gG]$/.test(v) ? v : v + "g") : v;
-
   const [showCorrTray, setShowCorrTray] = useState(false);
 
   // fields to briefly show as "resolved" (green halo)
@@ -622,6 +619,7 @@ export default function MicroMixReportForm({
   //     ? "dash dash-green"
   //     : "";
 
+  // replace your validatePathogenRows with this:
   function validatePathogenRows(
     rows: PathRow[],
     who: Role | undefined = role,
@@ -630,16 +628,10 @@ export default function MicroMixReportForm({
     const rowErrs: PathogenRowError[] = rows.map(() => ({}));
     let tableErr: string | null = null;
 
-    const anyChecked = rows.some((r) => r.checked);
-
-    // 👉 If nothing selected, it's not required: clear errors and pass.
-    if (!anyChecked) {
-      setPathogenRowErrors(rowErrs);
-      setPathogensTableError(null);
-      return true;
-    }
-
     if (who === "CLIENT") {
+      if (!rows.some((r) => r.checked)) {
+        tableErr = "Select at least one organism.";
+      }
       rows.forEach((r, i) => {
         if (r.checked && r.spec !== "Absent" && r.spec !== "Present") {
           rowErrs[i].spec = "Choose Absent or Present";
@@ -647,12 +639,13 @@ export default function MicroMixReportForm({
       });
     }
 
-    if ((who === "MICRO" || who === "ADMIN") && phase === "FINAL") {
-      rows.forEach((r, i) => {
-        if (r.checked && !r.result) {
-          rowErrs[i].result = "Select Absent or Present";
-        }
-      });
+    if (who === "MICRO" || who === "ADMIN") {
+      if (phase === "FINAL") {
+        rows.forEach((r, i) => {
+          if (r.checked && !r.result)
+            rowErrs[i].result = "Select Absent or Present";
+        });
+      }
     }
 
     setPathogenRowErrors(rowErrs);
@@ -664,7 +657,7 @@ export default function MicroMixReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, role);
       return copy;
     });
     // Clear the row error if we unchecked (no result required anymore)
@@ -682,7 +675,7 @@ export default function MicroMixReportForm({
       if (!row.checked) return prev; // ignore if organism not selected
       const copy = [...prev];
       copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, role);
       return copy;
     });
     // Clear the row error once result is set
@@ -699,7 +692,7 @@ export default function MicroMixReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, role);
       return copy;
     });
     // Keep/restore the row error because a checked row without result is invalid
@@ -718,24 +711,6 @@ export default function MicroMixReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], spec: value };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenLabel(idx: number, label: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], label };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenGrams(idx: number, grams: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], grams };
       return copy;
     });
     markDirty();
@@ -799,7 +774,7 @@ export default function MicroMixReportForm({
     const values = makeValues();
 
     validateAndSetErrors(values);
-    validatePathogenRows(values.pathogens, role, phase);
+    validatePathogenRows(values.pathogens, role);
 
     // Build full payload
     const fullPayload: any = {
@@ -939,7 +914,7 @@ export default function MicroMixReportForm({
         // });
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+          body: JSON.stringify({ ...payload, formType: "MICRO_GENERAL" }),
         });
       }
 
@@ -974,7 +949,7 @@ export default function MicroMixReportForm({
 
     const values = makeValues();
     const okFields = validateAndSetErrors(values);
-    const okRows = validatePathogenRows(values.pathogens, role, phase);
+    const okRows = validatePathogenRows(values.pathogens, role);
 
     if (
       newStatus === "SUBMITTED_BY_CLIENT" ||
@@ -1733,7 +1708,7 @@ export default function MicroMixReportForm({
 
             {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
+              <div className="py-1 px-2 text-center"> x 10^0</div>
             </div>
 
             {/* GRAM STAIN */}
@@ -1800,10 +1775,10 @@ export default function MicroMixReportForm({
                   clearError("tbc_result");
                 }}
                 readOnly={lock("tbc_result")}
-                placeholder="CFU/ml/g"
+                placeholder="CFU/ml"
                 aria-invalid={!!errors.tbc_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -1847,7 +1822,7 @@ export default function MicroMixReportForm({
 
             {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
+              <div className="py-1 px-2 text-center"> x 10^0</div>
             </div>
 
             {/* GRAM STAIN */}
@@ -1914,10 +1889,10 @@ export default function MicroMixReportForm({
                   clearError("tmy_result");
                 }}
                 readOnly={lock("tmy_result")}
-                placeholder="CFU/ml/g"
+                placeholder="CFU/ml"
                 aria-invalid={!!errors.tmy_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -2028,23 +2003,11 @@ export default function MicroMixReportForm({
                     disabled={lock("pathogens") || role !== "CLIENT"}
                   />
                   <span className="font-bold">{p.label}</span>
-                  {/* {p.key === "OTHER" && (
+                  {p.key === "OTHER" && (
                     <input
                       className="input-editable leading-tight"
                       placeholder="(specify)"
                       readOnly
-                    />
-                  )} */}
-
-                  {p.key === "OTHER" && (
-                    <input
-                      className="input-editable leading-tight border px-1 text-[8px]"
-                      placeholder="(specify)"
-                      value={p.label === "Other" ? "" : p.label}
-                      onChange={(e) =>
-                        setPathogenLabel(idx, e.target.value || "Other")
-                      }
-                      disabled={lock("pathogens") || role !== "CLIENT"}
                     />
                   )}
                 </div>
@@ -2104,25 +2067,7 @@ export default function MicroMixReportForm({
 
                   {/* inline note, no huge gap */}
                   {/* <span className="ml-2">in 11g of sample</span> */}
-                  {/* <span className="ml-2">in {gramsFor(p)} of sample</span> */}
-                  {p.key === "OTHER" ? (
-                    <span className="ml-2 flex items-center gap-1">
-                      in
-                      <input
-                        className="w-7 border px-1 text-[11px]"
-                        placeholder="__g"
-                        value={p.grams}
-                        onChange={(e) => setPathogenGrams(idx, e.target.value)}
-                        onBlur={(e) =>
-                          setPathogenGrams(idx, normalizeGrams(e.target.value))
-                        }
-                        disabled={lock("pathogens") || role !== "CLIENT"}
-                      />
-                      of sample
-                    </span>
-                  ) : (
-                    <span className="ml-2">in {gramsFor(p)} of sample</span>
-                  )}
+                  <span className="ml-2">in {gramsFor(p)} of sample</span>
 
                   {/* optional row error */}
                   {pathogenRowErrors[idx]?.result && (
@@ -2203,14 +2148,12 @@ export default function MicroMixReportForm({
             }}
             className={`p2 col-span-2 flex relative ${dashClass("comments")}`}
           >
-            <div className=" font-medium  mb-1 flex items-center gap-5">
-              Comments :{" "}
-            </div>
+            <div className="mb-1 font-medium">Comments:</div>
             <FieldErrorBadge name="comments" errors={errors} />
             <ResolveOverlay field="comments" />
             <input
-              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 pl-2 ${
-                errors.comments ? "border-b-red-500" : "border-b-black/70"
+              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                errors.testedBy ? "border-b-red-500" : "border-b-black/70"
               } ${
                 hasCorrection("comments")
                   ? "ring-2 ring-rose-500 animate-pulse"
@@ -2243,6 +2186,7 @@ export default function MicroMixReportForm({
               {/* floating badge; doesn't affect layout */}
               <FieldErrorBadge name="testedBy" errors={errors} />
               <ResolveOverlay field="testedBy" />
+              ``
               <input
                 className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                   errors.testedBy ? "border-b-red-500" : "border-b-black/70"

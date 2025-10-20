@@ -9,11 +9,50 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-model MicroMixReport {
-  id                     String          @id @default(cuid())
-  formNumber             String          @unique
-  reportNumber           String?         @unique
-  prefix                 String          @default("M")
+enum FormType {
+  MICRO_GENERAL   // generic micro
+  MICRO_GENERAL_WATER     // e.g., “micro water report form”
+  MICRO_MIX       // your current MicroMix
+  MICRO_MIX_WATER // if you truly need a distinct variant
+  // CHEMISTRY_* later for HPLC/GC/pH/TOC
+}
+
+
+model Report {
+  id            String       @id @default(cuid())
+  formNumber    String       @unique
+  reportNumber  String?      @unique
+  prefix        String       @default("M")    // “M” for Micro, “C” for Chemistry, etc.
+  status        ReportStatus @default(DRAFT)
+  lockedAt      DateTime?
+  createdBy     String?
+  updatedBy     String?
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  formType      FormType
+
+  // 🔗 shared relations
+  attachments   Attachment[]
+  statusHistory StatusHistory[]
+
+  // 1:1 per-form details (only one will be present based on formType)
+  //micro forms
+  microMix      MicroMixDetails?
+  microMixWater    MicroMixWaterDetails?
+  microGeneral  MicroGeneralDetails?
+  microGeneralWater  MicroGeneralWaterDetails?
+
+
+  // chemistryHplc HplcDetails? … etc.
+}
+
+model MicroMixDetails {
+  reportId               String          @id
+  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+
+ // ⬇️ everything that was specific to MicroMixReport
   client                 String?
   dateSent               DateTime?
   typeOfTest             String?
@@ -48,8 +87,140 @@ model MicroMixReport {
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
   corrections            Json?
-  attachments            Attachment[]
-  statusHistory          StatusHistory[]
+}
+
+
+
+model MicroMixWaterDetails {
+  reportId               String          @id
+  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+
+ // ⬇️ everything that was specific to MicroMixReport
+  client                 String?
+  dateSent               DateTime?
+  typeOfTest             String?
+  sampleType             String?
+  idNo              String?
+  description            String?
+  lotNo                  String?
+  samplingDate        DateTime?
+  testSopNo              String?
+  dateTested             DateTime?
+  preliminaryResults     String?
+  preliminaryResultsDate DateTime?
+  dateCompleted          DateTime?
+  tbc_dilution           String?
+  tbc_gram               String?
+  tbc_result             String?
+  tbc_spec               String?
+  tmy_dilution           String?
+  tmy_gram               String?
+  tmy_result             String?
+  tmy_spec               String?
+  pathogens              Json?
+  comments               String?
+  testedBy               String?
+  testedDate             DateTime?
+  reviewedBy             String?
+  reviewedDate           DateTime?
+  status                 ReportStatus    @default(DRAFT)
+  lockedAt               DateTime?
+  createdBy              String?
+  updatedBy              String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  corrections            Json?
+}
+
+
+
+
+model MicroGeneralDetails {
+  reportId               String          @id
+  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+
+ // ⬇️ everything that was specific to MicroMixReport
+  client                 String?
+  dateSent               DateTime?
+  typeOfTest             String?
+  sampleType             String?
+  formulaNo              String?
+  description            String?
+  lotNo                  String?
+  manufactureDate        DateTime?
+  testSopNo              String?
+  dateTested             DateTime?
+  preliminaryResults     String?
+  preliminaryResultsDate DateTime?
+  dateCompleted          DateTime?
+  tbc_dilution           String?
+  tbc_gram               String?
+  tbc_result             String?
+  tbc_spec               String?
+  tmy_dilution           String?
+  tmy_gram               String?
+  tmy_result             String?
+  tmy_spec               String?
+  pathogens              Json?
+  comments               String?
+  testedBy               String?
+  testedDate             DateTime?
+  reviewedBy             String?
+  reviewedDate           DateTime?
+  status                 ReportStatus    @default(DRAFT)
+  lockedAt               DateTime?
+  createdBy              String?
+  updatedBy              String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  corrections            Json?
+}
+
+
+
+
+model MicroGeneralWaterDetails {
+  reportId               String          @id
+  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+
+ // ⬇️ everything that was specific to MicroMixReport
+  client                 String?
+  dateSent               DateTime?
+  typeOfTest             String?
+  sampleType             String?
+  formulaNo              String?
+  description            String?
+  lotNo                  String?
+  manufactureDate        DateTime?
+  testSopNo              String?
+  dateTested             DateTime?
+  preliminaryResults     String?
+  preliminaryResultsDate DateTime?
+  dateCompleted          DateTime?
+  tbc_dilution           String?
+  tbc_gram               String?
+  tbc_result             String?
+  tbc_spec               String?
+  tmy_dilution           String?
+  tmy_gram               String?
+  tmy_result             String?
+  tmy_spec               String?
+  pathogens              Json?
+  comments               String?
+  testedBy               String?
+  testedDate             DateTime?
+  reviewedBy             String?
+  reviewedDate           DateTime?
+  status                 ReportStatus    @default(DRAFT)
+  lockedAt               DateTime?
+  createdBy              String?
+  updatedBy              String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  corrections            Json?
 }
 
 model Sample {
@@ -199,6 +370,9 @@ enum UserRole {
 model Attachment {
   id         String         @id @default(cuid())
   reportId   String
+
+  report     Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
   kind       AttachmentKind
   filename   String
   storageKey String
@@ -209,7 +383,6 @@ model Attachment {
   createdAt  DateTime       @default(now())
   createdBy  String? // user id or "ingestor"
 
-  MicroMixReport MicroMixReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, checksum])
   @@index([reportId])
@@ -224,6 +397,10 @@ enum AttachmentKind {
 model StatusHistory {
   id        String       @id @default(cuid())
   reportId  String
+
+  report    Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+
   from      ReportStatus
   to        ReportStatus
   reason    String?
@@ -231,8 +408,6 @@ model StatusHistory {
   userId    String?
   role      UserRole?
   ipAddress String?
-
-  report MicroMixReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([reportId, createdAt])
 }

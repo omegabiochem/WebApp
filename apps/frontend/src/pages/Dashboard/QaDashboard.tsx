@@ -29,7 +29,7 @@ export default function QADashboard() {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/reports/micro-mix", {
+      const res = await fetch("http://localhost:3000/reports", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -112,7 +112,7 @@ export default function QADashboard() {
                     className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
                     onClick={() => {
 
-                      navigate(`/reports/micro-mix/${r.id}`);
+                      navigate(`/reports/${r.id}`);
                     }} >
                     Update
                   </button>

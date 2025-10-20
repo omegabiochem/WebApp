@@ -11,6 +11,9 @@ import {
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // -----------------------------
 // Types
@@ -19,6 +22,7 @@ import { api } from "../../lib/api";
 type Report = {
   id: string;
   formNumber: string;
+  formType: string;
   dateSent: string | null;
   status: ReportStatus | string; // Some backends may still send raw string
   reportNumber: string;
@@ -35,6 +39,14 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
 // -----------------------------
 // Utilities
 // -----------------------------
+
+const formTypeToSlug: Record<string, string> = {
+  MICRO_MIX: "micro-mix",
+  MICRO_MIX_WATER: "micro-mix-water",
+  MICRO_GENERAL: "micro-general",
+  MICRO_GENERAL_WATER: "micro-general-water",
+  // CHEMISTRY_* can be added when you wire those forms
+};
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
@@ -102,9 +114,9 @@ export default function FrontDeskDashboard() {
         //   setError("Missing auth token. Please log in again.");
         //   return;
         // }
-        const all = await api<Report[]>("/reports/micro-mix");
+        const all = await api<Report[]>("/reports");
 
-        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        // const res = await fetch("http://localhost:3000/reports", {
         //   headers: { Authorization: `Bearer ${token}` },
         // });
 
@@ -175,62 +187,21 @@ export default function FrontDeskDashboard() {
   }, [statusFilter, search, perPage]);
 
   async function setStatus(
-    reportId: string,
+    r: Report,
     newStatus: string,
-    reason = "Client correction update"
+    reason = "Common Status Change"
   ) {
-    // const token = localStorage.getItem("token");
-    // if (!token) return;
-
-    // const res = await fetch(
-    //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-    //   {
-    //     method: "PATCH",
-    //     headers: {
-    //       "Content-Type": "application/json",
-    //       Authorization: `Bearer ${token}`,
-    //     },
-    //     body: JSON.stringify({ reason, status: newStatus }),
-    //   }
-    // );
-
-    // if (!res.ok) {
-    //   const msg = await res.text().catch(() => "");
-    //   throw new Error(
-    //     msg || `Failed to set status to ${newStatus} (${res.status})`
-    //   );
-    // }
-
-    await api(`/reports/micro-mix/${reportId}/status`, {
+    const slug = formTypeToSlug[r.formType] || "micro-mix";
+    await api(`/reports/${slug}/${r.id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ reason, status: newStatus }),
     });
-
-    // Update local state immediately so the UI stays in sync
-    setReports((prev) =>
-      prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
-    );
   }
 
-  // async function handleUploadSigned(reportId: string, file: File) {
-  //   const token = localStorage.getItem("token");
-  //   if (!token) {
-  //     alert("Missing auth token. Please log in again.");
-  //     return;
-  //   }
-  //   setUploadBusyId(reportId);
-  //   try {
-  //     await uploadSignedPdf(reportId, file, token);
-  //     alert("Signed copy uploaded and attached ✅");
-
-  //     // optional: flip a status right after successful upload
-  //     // await setStatus(reportId, "RECEIVED_BY_FRONTDESK", "Signed scan received");
-  //   } catch (e: any) {
-  //     alert(e?.message || "Upload failed");
-  //   } finally {
-  //     setUploadBusyId(null);
-  //   }
-  // }
+  function goToReportEditor(r: Report) {
+    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    navigate(`/reports/${slug}/${r.id}`);
+  }
 
   return (
     <div className="p-6">
@@ -412,24 +383,6 @@ export default function FrontDeskDashboard() {
                           View
                         </button>
 
-                        {/* NEW: Upload Signed PDF (manual fallback if watcher isn’t used) */}
-                        {/* <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-slate-50">
-                          <input
-                            type="file"
-                            accept="application/pdf,image/png,image/jpeg"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.currentTarget.files?.[0];
-                              if (f) handleUploadSigned(r.id, f);
-                              e.currentTarget.value = ""; // allow re-upload same file name
-                            }}
-                            disabled={uploadBusyId === r.id}
-                          />
-                          {uploadBusyId === r.id
-                            ? "Uploading…"
-                            : "Upload Signed PDF"}
-                        </label> */}
-
                         {/* {canUpdateThisReport(r, user) && ( */}
                         <button
                           className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
@@ -440,12 +393,13 @@ export default function FrontDeskDashboard() {
                                 "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                               ) {
                                 await setStatus(
-                                  r.id,
+                                  r,
                                   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                                   "Sent back to formNumber for correction"
                                 );
                               }
-                              navigate(`/reports/micro-mix/${r.id}`);
+                              // navigate(`/reports/${r.id}`);
+                              goToReportEditor(r);
                             } catch (e: any) {
                               alert(e?.message || "Failed to update status");
                             }
@@ -572,19 +526,19 @@ export default function FrontDeskDashboard() {
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={async () => {
                       try {
-                        const id = selectedReport.id;
                         if (
                           selectedReport.status ===
                           "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           await setStatus(
-                            id,
+                            selectedReport,
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to formNumber for correction"
                           );
                         }
                         setSelectedReport(null);
-                        navigate(`/reports/micro-mix/${id}`);
+                        // navigate(`/reports/${id}`);
+                        goToReportEditor(selectedReport);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }
@@ -603,13 +557,52 @@ export default function FrontDeskDashboard() {
             </div>
 
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView
+              {/* <MicroMixReportFormView
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}
                 pane={modalPane} // 👈 controlled by dashboard header
                 showSwitcher={false} // 👈 hide internal switcher
                 onPaneChange={setModalPane} // (optional) keeps them in sync if needed
-              />
+              /> */}
+
+              {selectedReport?.formType === "MICRO_MIX" ? (
+                <MicroMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+                <MicroMixWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                <MicroGeneralReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                <MicroGeneralWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
+                </div>
+              )}
             </div>
           </div>
         </div>

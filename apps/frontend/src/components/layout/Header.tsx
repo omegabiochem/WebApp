@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import FormsDropdown from "../forms/FormsDropdown";
 
 type MenuItem = { label: string; path: string };
 
@@ -14,6 +15,7 @@ const menuByRole: Record<string, MenuItem[]> = {
   ],
   CLIENT: [
     { label: "Home", path: "/clientDashboard" },
+    { label: "Forms", path: "/formmenu" },
     { label: "New Reports", path: "/reports/new" },
     { label: "Samples", path: "/samples" },
   ],
@@ -80,11 +82,15 @@ export default function Header() {
             </>
           ) : (
             <>
-              {menu.map((item) => (
-                <Link key={item.path} to={item.path}>
-                  {item.label}
-                </Link>
-              ))}
+              {menu.map((item) =>
+                item.label === "Forms" ? (
+                  <FormsDropdown key="forms" align="right" />
+                ) : (
+                  <Link key={item.path} to={item.path}>
+                    {item.label}
+                  </Link>
+                )
+              )}
               {(role === "ADMIN" || role === "SYSTEMADMIN") && (
                 <Link to="/admin">Admin</Link>
               )}

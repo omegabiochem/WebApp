@@ -4,10 +4,15 @@ import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import {
   STATUS_COLORS,
+  canShowUpdateButton,
   type ReportStatus,
+  type Role,
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
 import toast from "react-hot-toast";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // -----------------------------
 // Types
@@ -16,9 +21,11 @@ import toast from "react-hot-toast";
 type Report = {
   id: string;
   client: string;
+  formType: string;
   dateSent: string | null;
   status: string; // backend status
-  reportNumber: number;
+  reportNumber: string | null;
+  formNumber: string;
   prefix?: string; // e.g., MMX-2025
 };
 
@@ -60,6 +67,20 @@ const MICRO_STATUSES = [
 // Utilities
 // -----------------------------
 
+const formTypeToSlug: Record<string, string> = {
+  MICRO_MIX: "micro-mix",
+  MICRO_MIX_WATER: "micro-mix-water",
+  MICRO_GENERAL: "micro-general",
+  MICRO_GENERAL_WATER: "micro-general-water",
+  // CHEMISTRY_* can be added when you wire those forms
+};
+
+function getFormPrefix(formNumber?: string): string | null {
+  if (!formNumber) return null;
+  const m = formNumber.trim().match(/^[A-Za-z]{3}/);
+  return m ? m[0].toUpperCase() : null;
+}
+
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -79,9 +100,13 @@ function formatDate(iso: string | null) {
   });
 }
 
+// function displayReportNo(r: Report) {
+//   const num = String(r.reportNumber ?? "");
+//   return r.prefix ? `${num}` : num;
+// }
+
 function displayReportNo(r: Report) {
-  const num = String(r.reportNumber ?? "");
-  return r.prefix ? `${num}` : num;
+  return r.reportNumber || "-";
 }
 
 // -----------------------------
@@ -89,32 +114,12 @@ function displayReportNo(r: Report) {
 // -----------------------------
 
 async function setStatus(
-  reportId: string,
+  r: Report,
   newStatus: string,
   reason = "Common Status Change"
 ) {
-  // const token = localStorage.getItem("token");
-  // if (!token) throw new Error("Missing auth token");
-
-  // const res = await fetch(
-  //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-  //   {
-  //     method: "PATCH",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ reason, status: newStatus }),
-  //   }
-  // );
-
-  // if (!res.ok) {
-  //   const msg = await res.text().catch(() => "");
-  //   throw new Error(
-  //     msg || `Failed to set status to ${newStatus} (${res.status})`
-  //   );
-  // }
-  await api(`/reports/micro-mix/${reportId}/status`, {
+  // const slug = formTypeToSlug[r.formType] || "micro-mix";
+  await api(`/reports/${r.id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ reason, status: newStatus }),
   });
@@ -156,13 +161,13 @@ export default function MicroDashboard() {
         //   return;
         // }
 
-        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        // const res = await fetch("http://localhost:3000/reports", {
         //   headers: { Authorization: `Bearer ${token}` },
         // });
 
         // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         // const all: Report[] = await res.json();
-        const all = await api<Report[]>("/reports/micro-mix");
+        const all = await api<Report[]>("/reports");
         if (abort) return;
 
         // Keep only statuses Micro cares about (plus whatever backend sends that matches)
@@ -201,11 +206,21 @@ export default function MicroDashboard() {
       : byStatus;
 
     const sorted = [...bySearch].sort((a, b) => {
-      if (sortBy === "reportNumber") {
-        const aN = Number(a.reportNumber ?? 0);
-        const bN = Number(b.reportNumber ?? 0);
-        return sortDir === "asc" ? aN - bN : bN - aN;
+      function reportNoKey(r: Report) {
+        // "M-251000123" -> "251000123"; handles null/empty safely
+        const s = r.reportNumber || "";
+        const parts = s.split("-");
+        return parts[1] ?? ""; // YYMMNNNNN
       }
+
+      if (sortBy === "reportNumber") {
+        const aK = reportNoKey(a);
+        const bK = reportNoKey(b);
+        // simple lexicographic compare works because keys are zero-padded numerics
+        const cmp = aK.localeCompare(bK);
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
@@ -227,7 +242,38 @@ export default function MicroDashboard() {
   }, [statusFilter, search, perPage]);
 
   // Update button guard: only for MICRO role
-  const canUpdate = user?.role === "MICRO";
+  // const canUpdate = user?.role === "MICRO";
+
+  function canUpdateThisReport(r: Report, user?: any) {
+    // if (user?.role !== "CLIENT") return false;
+    // if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
+
+    const fieldsUsedOnForm = [
+      "testSopNo",
+      "dateTested",
+      "preliminaryResults",
+      "preliminaryResultsDate",
+      "tbc_gram",
+      "tbc_result",
+      "tmy_gram",
+      "tmy_result",
+      "pathogens",
+      "comments",
+      "testedBy",
+      "testedDate",
+    ];
+
+    return canShowUpdateButton(
+      user?.role as Role,
+      r.status as ReportStatus,
+      fieldsUsedOnForm
+    );
+  }
+
+  function goToReportEditor(r: Report) {
+    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    navigate(`/reports/${slug}/${r.id}`);
+  }
 
   return (
     <div className="p-6">
@@ -353,7 +399,8 @@ export default function MicroDashboard() {
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
                 <th className="px-4 py-3 font-medium">Report #</th>
-                <th className="px-4 py-3 font-medium">Client</th>
+                <th className="px-4 py-3 font-medium">Form #</th>
+                <th className="px-4 py-3 font-medium">Form @</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -387,7 +434,8 @@ export default function MicroDashboard() {
                     <td className="px-4 py-3 font-medium">
                       {displayReportNo(r)}
                     </td>
-                    <td className="px-4 py-3">{r.client}</td>
+                    <td className="px-4 py-3">{r.formNumber}</td>
+                    <td className="px-4 py-3">{r.formType}</td>
                     <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
                     <td className="px-4 py-3">
                       <span
@@ -409,14 +457,14 @@ export default function MicroDashboard() {
                           View
                         </button>
 
-                        {canUpdate && (
+                        {canUpdateThisReport(r, user) && (
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             onClick={async () => {
                               try {
                                 if (r.status === "SUBMITTED_BY_CLIENT") {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_PRELIMINARY_TESTING_REVIEW",
                                     "Move to prelim testing"
                                   );
@@ -425,7 +473,7 @@ export default function MicroDashboard() {
                                   "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
                                     "Move to RESUBMISSION "
                                   );
@@ -433,7 +481,7 @@ export default function MicroDashboard() {
                                   r.status === "PRELIMINARY_APPROVED"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_FINAL_TESTING_REVIEW",
                                     "Move to final testing"
                                   );
@@ -442,7 +490,7 @@ export default function MicroDashboard() {
                                   "PRELIMINARY_RESUBMISSION_BY_CLIENT"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_PRELIMINARY_TESTING_REVIEW",
                                     "Resubmitted by client"
                                   );
@@ -450,7 +498,7 @@ export default function MicroDashboard() {
                                   r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
                                     "set by admin"
                                   );
@@ -476,7 +524,8 @@ export default function MicroDashboard() {
                                       : x
                                   )
                                 );
-                                navigate(`/reports/micro-mix/${r.id}`);
+                                // navigate(`/reports/${r.id}`);
+                                goToReportEditor(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
                               }
@@ -564,13 +613,14 @@ export default function MicroDashboard() {
                 Report ({displayReportNo(selectedReport)})
               </h2>
               <div className="flex items-center gap-2">
-                {canUpdate && (
+                {canUpdateThisReport(selectedReport, user) && (
                   <button
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={() => {
-                      const id = selectedReport.id;
+                      const r = selectedReport;
                       setSelectedReport(null);
-                      navigate(`/reports/micro-mix/${id}`);
+                      // navigate(`/reports/${id}`);
+                      goToReportEditor(r);
                     }}
                   >
                     Update
@@ -585,12 +635,40 @@ export default function MicroDashboard() {
               </div>
             </div>
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView
-                report={selectedReport}
-                onClose={() => setSelectedReport(null)}
-                showSwitcher={false}
-                pane="FORM"
-              />
+              {selectedReport?.formType === "MICRO_MIX" ? (
+                <MicroMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+                <MicroMixWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                <MicroGeneralReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                <MicroGeneralWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -598,243 +676,3 @@ export default function MicroDashboard() {
     </div>
   );
 }
-
-// import { useEffect, useState } from "react";
-// import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
-// import { useNavigate } from "react-router-dom";
-
-// type Report = {
-//   id: string;
-//   client: string;
-//   dateSent: string | null;
-//   status: string;
-//   reportNumber: number;
-//   prefix?: string;
-// };
-
-// const CLIENT_STATUSES = [
-//   "ALL", // 👈 added ALL option
-//   "SUBMITTED_BY_CLIENT",
-//   "UNDER_PRELIMINARY_TESTING_REVIEW",
-//   "PRELIMINARY_APPROVED",
-//   "UNDER_FINAL_TESTING_REVIEW"
-// ];
-
-// export default function MicroDashboard() {
-//   const [reports, setReports] = useState<Report[]>([]);
-//   const [filter, setFilter] = useState("ALL"); // 👈 default to ALL
-//   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-//   const navigate = useNavigate();
-
-//   useEffect(() => {
-//     async function fetchReports() {
-//       const token = localStorage.getItem("token");
-//       if (!token) return;
-
-//       const res = await fetch("http://localhost:3000/reports/micro-mix", {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-
-//       if (res.ok) {
-//         const all = await res.json();
-//         // Only keep reports in the 3 statuses (ignore others from backend)
-//         setReports(
-//           all.filter((r: Report) =>
-//             [
-//               "SUBMITTED_BY_CLIENT",
-//               "UNDER_PRELIMINARY_TESTING_REVIEW",
-//               "PRELIMINARY_APPROVED",
-//               "UNDER_FINAL_TESTING_REVIEW"
-//             ].includes(r.status)
-//           )
-//         );
-//       } else {
-//         console.error("Failed to fetch reports", res.status);
-//       }
-//     }
-//     fetchReports();
-//   }, []);
-
-//   // 👇 filtering logic with ALL option
-//   const filtered =
-//     filter === "ALL" ? reports : reports.filter((r) => r.status === filter);
-
-//   // replace your markAsReceived() with a generic helper:
-//   async function setStatus(
-//     reportId: string,
-//     newStatus: string,
-//     reason = "Common Status Change"
-//   ) {
-//     const token = localStorage.getItem("token");
-//     if (!token) return;
-
-//     const res = await fetch(
-//       `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-//       {
-//         method: "PATCH",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${token}`,
-//         },
-//         body: JSON.stringify({ reason, status: newStatus }),
-//       }
-//     );
-
-//     if (!res.ok) {
-//       const msg = await res.text().catch(() => "");
-//       throw new Error(
-//         msg || `Failed to set status to ${newStatus} (${res.status})`
-//       );
-//     }
-
-//     // optional: keep the table UI in sync right away
-//     setReports((prev) =>
-//       prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
-//     );
-//   }
-
-//   // async function markAsReceived(reportId: string) {
-//   //   const token = localStorage.getItem("token");
-//   //   if (!token) return;
-//   //   console.log(reportId);
-
-//   //   await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
-//   //     method: "PATCH",
-//   //     headers: {
-//   //       "Content-Type": "application/json",
-//   //       Authorization: `Bearer ${token}`,
-//   //     },
-//   //     body: JSON.stringify({ reason: "Common Status Change",status: "UNDER_PRELIMINARY_TESTING_REVIEW" }),
-//   //   });
-//   // }
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-2xl font-bold mb-4">Micro Dashboard</h1>
-
-//       {/* Tabs */}
-//       <div className="flex gap-2 mb-4">
-//         {CLIENT_STATUSES.map((s) => (
-//           <button
-//             key={s}
-//             onClick={() => setFilter(s)}
-//             className={`px-4 py-2 rounded-md border ${
-//               filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
-//             }`}
-//           >
-//             {s.replace(/_/g, " ")}
-//           </button>
-//         ))}
-//       </div>
-
-//       {/* Table */}
-//       <div className="overflow-x-auto border rounded-lg">
-//         <table className="w-full border-collapse text-sm">
-//           <thead>
-//             <tr className="bg-gray-100 border-b">
-//               <th className="p-2 text-left">Report #</th>
-//               <th className="p-2 text-left">Client</th>
-//               <th className="p-2 text-left">Date Sent</th>
-//               <th className="p-2 text-left">Status</th>
-//               <th className="p-2 text-left">Actions</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {filtered.map((r) => (
-//               <tr key={r.id} className="border-b hover:bg-gray-50">
-//                 <td className="p-2">{r.reportNumber}</td>
-//                 <td className="p-2">{r.client}</td>
-//                 <td className="p-2">
-//                   {r.dateSent ? new Date(r.dateSent).toLocaleDateString() : "-"}
-//                 </td>
-//                 <td className="p-2">{r.status.replace(/_/g, " ")}</td>
-//                 <td className="p-2 flex gap-2">
-//                   <button
-//                     className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-//                     onClick={async () => {
-//                       // if (r.status === "SUBMITTED_BY_CLIENT") {
-//                       //   await markAsReceived(r.id);
-//                       // }
-//                       setSelectedReport(r);
-//                     }}
-//                   >
-//                     View
-//                   </button>
-//                   <button
-//                     className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-//                     onClick={async () => {
-//                       try {
-//                         if (r.status === "SUBMITTED_BY_CLIENT") {
-//                           await setStatus(
-//                             r.id,
-//                             "UNDER_PRELIMINARY_TESTING_REVIEW",
-//                             "Move to prelim testing"
-//                           );
-//                         } else if (r.status === "PRELIMINARY_APPROVED") {
-//                           await setStatus(
-//                             r.id,
-//                             "UNDER_FINAL_TESTING_REVIEW",
-//                             "Move to final testing"
-//                           );
-//                         }
-//                         navigate(`/reports/micro-mix/${r.id}`);
-//                       } catch (e: any) {
-//                         alert(e?.message || "Failed to update status");
-//                       }
-//                     }}
-//                   >
-//                     Update
-//                   </button>
-
-//                   {/* <button
-//                     className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-//                     onClick={async () => {
-//                       if (r.status === "SUBMITTED_BY_CLIENT") {
-//                         await markAsReceived(r.id);
-//                       }
-//                       navigate(`/reports/micro-mix/${r.id}`);
-//                     }} >
-//                     Update
-//                   </button> */}
-//                 </td>
-//               </tr>
-//             ))}
-//             {filtered.length === 0 && (
-//               <tr>
-//                 <td colSpan={5} className="p-4 text-center text-gray-500">
-//                   No reports found for {filter.replace(/_/g, " ")}.
-//                 </td>
-//               </tr>
-//             )}
-//           </tbody>
-//         </table>
-//       </div>
-
-//       {/* Modal with full form in read-only */}
-//       {selectedReport && (
-//         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-//           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
-//             <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-//               Report
-//               {selectedReport.reportNumber}
-//             </h2>
-
-//             <MicroMixReportFormView
-//               report={selectedReport}
-//               onClose={() => setSelectedReport(null)}
-//             />
-
-//             <div className="flex justify-end mt-6">
-//               {/* <button
-//                 onClick={() => setSelectedReport(null)}
-//                 className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-//               >
-//                 Close
-//               </button> */}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }

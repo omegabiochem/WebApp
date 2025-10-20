@@ -188,7 +188,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       // inside the middleware, after you've computed prevStatus/nextStatus:
 
       try {
-        if (entity === 'MicroMixReport') {
+        if (entity === 'Report') {
           const prevStatus = before?.status ?? null;
           const nextStatus =
             result?.status ??

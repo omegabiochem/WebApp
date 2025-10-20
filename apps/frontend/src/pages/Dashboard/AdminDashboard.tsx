@@ -11,6 +11,9 @@ import {
 } from "../../utils/microMixReportFormWorkflow";
 import { api, API_URL, getToken } from "../../lib/api";
 import toast from "react-hot-toast";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // ---------------------------------
 // Types
@@ -19,15 +22,24 @@ import toast from "react-hot-toast";
 type Report = {
   id: string;
   client: string;
+  formType: string;
   dateSent: string | null;
   status: ReportStatus | string;
   reportNumber: number;
-  prefix?: string;
+  formNumber: string | null;
 };
 
 // ---------------------------------
 // Constants
 // ---------------------------------
+
+const formTypeToSlug: Record<string, string> = {
+  MICRO_MIX: "micro-mix",
+  MICRO_MIX_WATER: "micro-mix-water",
+  MICRO_GENERAL: "micro-general",
+  MICRO_GENERAL_WATER: "micro-general-water",
+  // CHEMISTRY_* can be added when you wire those forms
+};
 
 // const BASE_URL = "http://localhost:3000";
 
@@ -67,56 +79,6 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "LOCKED",
 ];
 
-// const STATUS_STYLES: Record<string, string> = {
-//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-//   RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
-//   FRONTDESK_ON_HOLD: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
-//   FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_CLIENT_PRELIMINARY_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   UNDER_CLIENT_FINAL_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   CLIENT_NEEDS_PRELIMINARY_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   CLIENT_NEEDS_FINAL_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_CLIENT_PRELIMINARY_CORRECTION:
-//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-//   UNDER_CLIENT_FINAL_CORRECTION:
-//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
-//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
-//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-//   FINAL_RESUBMISSION_BY_CLIENT:
-//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-//   UNDER_PRELIMINARY_TESTING_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   PRELIMINARY_TESTING_ON_HOLD:
-//     "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
-//   PRELIMINARY_TESTING_NEEDS_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   PRELIMINARY_APPROVED:
-//     "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-//   UNDER_FINAL_TESTING_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   FINAL_TESTING_ON_HOLD: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
-//   FINAL_TESTING_NEEDS_CORRECTION:
-//     "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   UNDER_QA_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
-//   QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
-//   ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-//   ADMIN_REJECTED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-//   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-//   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-// };
-
 // ---------------------------------
 // Utilities
 // ---------------------------------
@@ -141,7 +103,7 @@ function formatDate(iso: string | null) {
 }
 
 function displayReportNo(r: Report) {
-  return r.prefix ? `${r.reportNumber}` : String(r.reportNumber ?? "");
+  return r.reportNumber || "-";
 }
 
 // Admin fields that are actually edited in Update view
@@ -192,29 +154,6 @@ export default function AdminDashboard() {
 
   // Socket (live updates)
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
-  // useEffect(() => {
-  //   const token = localStorage.getItem("token");
-  //   socketRef.current = io(BASE_URL, {
-  //     transports: ["websocket"],
-  //     auth: { token },
-  //   });
-
-  //   socketRef.current.on("microMix:statusChanged", (payload: Report) => {
-  //     setReports((prev) =>
-  //       prev.map((r) =>
-  //         r.id === payload.id ? { ...r, status: payload.status } : r
-  //       )
-  //     );
-  //   });
-
-  //   socketRef.current.on("microMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   return () => {
-  //     socketRef.current?.disconnect();
-  //   };
-  // }, []);
 
   useEffect(() => {
     const t = getToken();
@@ -247,63 +186,16 @@ export default function AdminDashboard() {
   }, []);
 
   async function setStatus(
-    reportId: string,
+    r: Report,
     newStatus: string,
-    reason = "Client correction update"
+    reason = "Common Status Change"
   ) {
-    await api(`/reports/micro-mix/${reportId}/status`, {
+    // const slug = formTypeToSlug[r.formType] || "micro-mix";
+    await api(`/reports/${r.id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ reason, status: newStatus }),
     });
   }
-
-  // async function setStatus(
-  //   reportId: string,
-  //   newStatus: string,
-  //   reason = "Client correction update"
-  // ) {
-  //   const token = localStorage.getItem("token");
-  //   if (!token) return;
-
-  //   await fetch(`http://localhost:3000/reports/micro-mix/${reportId}/status`, {
-  //     method: "PATCH",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ reason, status: newStatus }),
-  //   });
-  // }
-
-  // Fetch
-  // useEffect(() => {
-  //   let abort = false;
-  //   async function fetchReports() {
-  //     try {
-  //       setLoading(true);
-  //       setError(null);
-  //       const token = localStorage.getItem("token");
-  //       if (!token) throw new Error("Missing auth token. Please log in again.");
-
-  //       const res = await fetch(`${BASE_URL}/reports/micro-mix`, {
-  //         headers: { Authorization: `Bearer ${token}` },
-  //       });
-  //       if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  //       const data: Report[] = await res.json();
-  //       if (abort) return;
-  //       setReports(data);
-  //     } catch (e: any) {
-  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
-  //     } finally {
-  //       if (!abort) setLoading(false);
-  //     }
-  //   }
-
-  //   fetchReports();
-  //   return () => {
-  //     abort = true;
-  //   };
-  // }, []);
 
   useEffect(() => {
     let abort = false;
@@ -311,7 +203,7 @@ export default function AdminDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const data = await api<Report[]>("/reports/micro-mix");
+        const data = await api<Report[]>("/reports");
         if (!abort) setReports(data);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
@@ -337,9 +229,7 @@ export default function AdminDashboard() {
       : byStatus;
 
     const byReport = searchReport.trim()
-      ? byClient.filter((r) =>
-          displayReportNo(r).toLowerCase().includes(searchReport.toLowerCase())
-        )
+      ? byClient.filter((r) => displayReportNo(r))
       : byClient;
 
     const byDateFrom = dateFrom
@@ -412,7 +302,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      await api(`/reports/micro-mix/${report.id}/change-status`, {
+      await api(`/reports/${report.id}/change-status`, {
         method: "PATCH",
         body: JSON.stringify({
           status: nextStatus,
@@ -443,6 +333,11 @@ export default function AdminDashboard() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function goToReportEditor(r: Report) {
+    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    navigate(`/reports/${slug}/${r.id}`);
   }
 
   return (
@@ -535,6 +430,8 @@ export default function AdminDashboard() {
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
                 <th className="px-4 py-3 font-medium">Report #</th>
+                <th className="px-4 py-3 font-medium">Form #</th>
+                {/* <th className="px-4 py-3 font-medium">Form @</th> */}
                 <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -569,6 +466,8 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3 font-medium">
                       {displayReportNo(r)}
                     </td>
+                    <td className="px-4 py-3">{r.formNumber}</td>
+                    {/* <td className="px-4 py-3">{r.formType}</td> */}
                     <td className="px-4 py-3">{r.client}</td>
                     <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
                     <td className="px-4 py-3">
@@ -600,13 +499,14 @@ export default function AdminDashboard() {
                                   r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
                                     "set by admin"
                                   );
                                   toast.success("Report Status Updated");
                                 }
-                                navigate(`/reports/micro-mix/${r.id}`);
+                                // navigate(`/reports/${r.id}`);
+                                goToReportEditor(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
                                 toast.error(
@@ -752,19 +652,20 @@ export default function AdminDashboard() {
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={async () => {
                       try {
-                        const id = selectedReport.id;
+                        const r = selectedReport;
                         if (
                           selectedReport.status ===
                           "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           await setStatus(
-                            id,
+                            r,
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to client for correction"
                           );
                         }
                         setSelectedReport(null);
-                        navigate(`/reports/micro-mix/${id}`);
+                        // navigate(`/reports/${id}`);
+                        goToReportEditor(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }
@@ -783,13 +684,51 @@ export default function AdminDashboard() {
             </div>
 
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView
+              {/* <MicroMixReportFormView
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}
                 pane={modalPane} // 👈 controlled by dashboard header
                 showSwitcher={false} // 👈 hide internal switcher
                 onPaneChange={setModalPane} // (optional) keeps them in sync if needed
-              />
+              /> */}
+              {selectedReport?.formType === "MICRO_MIX" ? (
+                <MicroMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+                <MicroMixWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                <MicroGeneralReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                <MicroGeneralWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1105,7 +1044,7 @@ export default function AdminDashboard() {
 //         const token = localStorage.getItem("token");
 //         if (!token) throw new Error("Missing auth token. Please log in again.");
 
-//         const res = await fetch(`${BASE_URL}/reports/micro-mix`, {
+//         const res = await fetch(`${BASE_URL}/reports`, {
 //           headers: { Authorization: `Bearer ${token}` },
 //         });
 //         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
@@ -1195,7 +1134,7 @@ export default function AdminDashboard() {
 
 //     try {
 //       const res = await fetch(
-//         `${BASE_URL}/reports/micro-mix/${report.id}/status`,
+//         `${BASE_URL}/reports/${report.id}/status`,
 //         {
 //           method: "PATCH",
 //           headers: {
@@ -1382,7 +1321,7 @@ export default function AdminDashboard() {
 //                           <button
 //                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
 //                             onClick={() =>
-//                               navigate(`/reports/micro-mix/${r.id}`)
+//                               navigate(`/reports/${r.id}`)
 //                             }
 //                           >
 //                             Update
@@ -1488,7 +1427,7 @@ export default function AdminDashboard() {
 //                     onClick={() => {
 //                       const id = selectedReport.id;
 //                       setSelectedReport(null);
-//                       navigate(`/reports/micro-mix/${id}`);
+//                       navigate(`/reports/${id}`);
 //                     }}
 //                   >
 //                     Update

@@ -30,7 +30,7 @@ type AttachmentItem = {
 //   (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
 
 // const attBase = (id: string) =>
-//   `${API_BASE}/reports/micro-mix/${id}/attachments`;
+//   `${API_BASE}/reports/${id}/attachments`;
 
 const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
@@ -328,7 +328,9 @@ const PrintStyles = () => (
   `}</style>
 );
 
-export default function MicroMixReportFormView(props: MicroReportFormProps) {
+export default function MicroGeneralReportFormView(
+  props: MicroReportFormProps
+) {
   const { report, onClose, pane, onPaneChange, showSwitcher = true } = props;
   type PathRow = {
     checked: boolean;
@@ -344,7 +346,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "E_COLI",
       label: "E.coli",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -352,7 +353,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "P_AER",
       label: "P.aeruginosa",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -360,7 +360,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "S_AUR",
       label: "S.aureus",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -368,7 +367,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "SALM",
       label: "Salmonella",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -376,7 +374,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "CLOSTRIDIA",
       label: "Clostridia species",
-      grams: " 3g",
+      grams: "3g",
       result: "",
       spec: "Absent",
     },
@@ -384,7 +382,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "C_ALB",
       label: "C.albicans",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -392,7 +389,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "B_CEP",
       label: "B.cepacia",
-      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -400,13 +396,11 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       checked: false,
       key: "OTHER",
       label: "Other",
-      grams: "__g",
+      grams: "",
       result: "",
       spec: "Absent",
     },
   ];
-
-  const gramsFor = (p: PathRow) => p.grams ?? "11g";
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
@@ -764,7 +758,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 Total Bacterial Count:
               </div>
               <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^1</div>
+                <div className="py-1 px-2 text-center"> x 10^0</div>
                 {/* <input
               className="w-full border border-black/70 px-1"
               value={tbc_dilution}
@@ -787,7 +781,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml/g</div>
+                <div className="py-1 px-2 text-center">CFU/ml</div>
               </div>
               <div className="py-1 px-2 flex">
                 <input
@@ -804,7 +798,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 Total Mold & Yeast Count:
               </div>
               <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^1</div>
+                <div className="py-1 px-2 text-center"> x 10^0</div>
                 {/* <input
               className="w-full border border-black/70 px-1"
               value={tmy_dilution}
@@ -827,7 +821,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml/g</div>
+                <div className="py-1 px-2 text-center">CFU/ml</div>
               </div>
               <div className="py-1 px-2 flex">
                 <input
@@ -889,7 +883,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                     />{" "}
                     Present
                   </label>
-                  <span className="ml-2">in {gramsFor(p)} of sample</span>
+                  <span className="ml-1">in 11g of sample</span>
                 </div>
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
@@ -913,7 +907,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
             <div className="p2 col-span-2 flex">
               <div className="mb-1 font-medium">Comments:</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none pl-2"
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
                 value={report?.comments || ""}
                 readOnly
                 disabled

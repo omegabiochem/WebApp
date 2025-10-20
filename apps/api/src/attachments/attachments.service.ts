@@ -17,6 +17,7 @@ type CreateInput = {
   pages?: number;
   providedChecksum?: string;
   createdBy?: string;
+  meta?: Record<string, any>;
 };
 
 @Injectable()
@@ -62,8 +63,9 @@ export class AttachmentsService {
   }
 
   async create(input: CreateInput) {
-    const report = await this.prisma.microMixReport.findUnique({
+    const report = await this.prisma.report.findUnique({
       where: { id: input.reportId },
+      select: { id: true },
     });
     if (!report) throw new NotFoundException('Report not found');
 
@@ -94,7 +96,7 @@ export class AttachmentsService {
           source: input.source,
           pages: input.pages,
           createdBy: input.createdBy ?? null,
-          meta: {},
+          meta: input.meta ?? {},
         },
       });
       return { ok: true, id: attachment.id };

@@ -1,5 +1,5 @@
 // Shared DTO for frontend <-> backend
-export type MicroMixReportDTO = {
+export type MicroGeneralWaterReportDTO = {
   id: string;
   client: string | null;
   dateSent: string | null;

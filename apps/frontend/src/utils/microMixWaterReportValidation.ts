@@ -49,18 +49,19 @@ export type PathRow = {
   checked: boolean;
   key: string;
   label: string;
+  grams: string;
   result: "Absent" | "Present" | "";
   spec: "Absent" | "Present" | "";
 };
-export type ReportFormValues = {
+export type MicroMixWaterReportFormValues = {
   client: string;
   dateSent: string;
   typeOfTest: string;
   sampleType: string;
-  formulaNo: string;
+  idNo: string;
   description: string;
   lotNo: string;
-  manufactureDate: string;
+  samplingDate: string;
 
   testSopNo: string;
   dateTested: string;
@@ -128,10 +129,10 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "dateSent",
     "typeOfTest",
     "sampleType",
-    "formulaNo",
+    "idNo",
     "description",
     "lotNo",
-    "manufactureDate",
+    "samplingDate",
     "tmy_spec",
     "tbc_spec",
   ],
@@ -253,13 +254,12 @@ export type CorrectionItem = {
 
 export async function getCorrections(reportId: string) {
   // const res = await fetch(
-  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+  //   `${API_BASE}/reports/${reportId}/corrections`,
   //   {
   //     headers: { Authorization: `Bearer ${token}` },
   //   }
   // );
-  return await api<CorrectionItem[]>(
-    `/reports/micro-mix/${reportId}/corrections`);
+  return await api<CorrectionItem[]>(`/reports/${reportId}/corrections`);
   // if (!res.ok) throw new Error("Failed to fetch corrections");
   // return (await res.json()) as CorrectionItem[];
 }
@@ -271,7 +271,7 @@ export async function createCorrections(
   reason?: string
 ) {
   // const res = await fetch(
-  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections`,
+  //   `${API_BASE}/reports/${reportId}/corrections`,
   //   {
   //     method: "POST",
   //     headers: {
@@ -283,14 +283,11 @@ export async function createCorrections(
   // );
   // if (!res.ok) throw new Error("Failed to create corrections");
   // return res.json();
-  return api<CorrectionItem[]>(
-    `/reports/micro-mix/${reportId}/corrections`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, targetStatus, reason }),
-    }
-  );
+  return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, targetStatus, reason }),
+  });
 }
 
 export async function resolveCorrection(
@@ -299,7 +296,7 @@ export async function resolveCorrection(
   resolutionNote?: string
 ) {
   // const res = await fetch(
-  //   `${API_BASE}/reports/micro-mix/${reportId}/corrections/${cid}`,
+  //   `${API_BASE}/reports/${reportId}/corrections/${cid}`,
   //   {
   //     method: "PATCH",
   //     headers: {
@@ -311,14 +308,11 @@ export async function resolveCorrection(
   // );
   // if (!res.ok) throw new Error("Failed to resolve correction");
   // return res.json();
-   return api<CorrectionItem>(
-    `/reports/micro-mix/${reportId}/corrections/${cid}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resolutionNote }),
-    }
-  );
+  return api<CorrectionItem>(`/reports/${reportId}/corrections/${cid}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolutionNote }),
+  });
 }
 
 /* =======================
@@ -346,67 +340,89 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
     });
   }, []);
 
+  const currentPhase = useMemo(
+    () => opts?.phase ?? deriveMicroPhaseFromStatus(opts?.status),
+    [opts?.phase, opts?.status]
+  );
+
   // How to check emptiness using provided values
-  const isEmpty = useCallback((field: string, v: ReportFormValues): boolean => {
-    switch (field) {
-      // case "client": return !v.client?.trim();
-      case "dateSent":
-        return !v.dateSent;
-      case "typeOfTest":
-        return !v.typeOfTest?.trim();
-      case "sampleType":
-        return !v.sampleType?.trim();
-      case "formulaNo":
-        return !v.formulaNo?.trim();
-      case "description":
-        return !v.description?.trim();
-      case "lotNo":
-        return !v.lotNo?.trim();
-      case "manufactureDate":
-        return !v.manufactureDate;
+  const isEmpty = useCallback(
+    (field: string, v: MicroMixWaterReportFormValues): boolean => {
+      switch (field) {
+        // case "client": return !v.client?.trim();
+        case "dateSent":
+          return !v.dateSent;
+        case "typeOfTest":
+          return !v.typeOfTest?.trim();
+        case "sampleType":
+          return !v.sampleType?.trim();
+        case "idNo":
+          return !v.idNo?.trim();
+        case "description":
+          return !v.description?.trim();
+        case "lotNo":
+          return !v.lotNo?.trim();
+        case "samplingDate":
+          return !v.samplingDate;
 
-      case "testSopNo":
-        return !v.testSopNo?.trim();
-      case "dateTested":
-        return !v.dateTested;
-      case "preliminaryResults":
-        return !v.preliminaryResults?.trim();
-      case "preliminaryResultsDate":
-        return !v.preliminaryResultsDate;
-      case "tbc_gram":
-        return !v.tbc_gram?.trim();
-      case "tbc_result":
-        return !v.tbc_result?.trim();
-      case "tbc_spec":
-        return !v.tbc_spec?.trim();
-      case "tmy_gram":
-        return !v.tmy_gram?.trim();
-      case "tmy_result":
-        return !v.tmy_result?.trim();
-      case "tmy_spec":
-        return !v.tmy_spec?.trim();
-      case "comments":
-        return !v.comments?.trim();
-      case "testedBy":
-        return !v.testedBy?.trim();
-      case "testedDate":
-        return !v.testedDate;
+        case "testSopNo":
+          return !v.testSopNo?.trim();
+        case "dateTested":
+          return !v.dateTested;
+        case "preliminaryResults":
+          return !v.preliminaryResults?.trim();
+        case "preliminaryResultsDate":
+          return !v.preliminaryResultsDate;
+        case "tbc_gram":
+          return !v.tbc_gram?.trim();
+        case "tbc_result":
+          return !v.tbc_result?.trim();
+        case "tbc_spec":
+          return !v.tbc_spec?.trim();
+        case "tmy_gram":
+          return !v.tmy_gram?.trim();
+        case "tmy_result":
+          return !v.tmy_result?.trim();
+        case "tmy_spec":
+          return !v.tmy_spec?.trim();
+        case "comments":
+          return !v.comments?.trim();
+        case "testedBy":
+          return !v.testedBy?.trim();
+        case "testedDate":
+          return !v.testedDate;
 
-      case "dateCompleted":
-        return !v.dateCompleted;
-      case "reviewedBy":
-        return !v.reviewedBy?.trim();
-      case "reviewedDate":
-        return !v.reviewedDate;
+        case "dateCompleted":
+          return !v.dateCompleted;
+        case "reviewedBy":
+          return !v.reviewedBy?.trim();
+        case "reviewedDate":
+          return !v.reviewedDate;
 
-      case "pathogens":
-        return !v.pathogens?.some(
-          (p) => p.result === "Absent" || p.result === "Present"
-        );
-      default:
-        return false;
-    }
-  }, []);
+        case "pathogens": {
+          const rows = v.pathogens || [];
+          const anyChecked = rows.some((r) => r.checked);
+          if (!anyChecked) return false; // 👉 not required if nothing selected
+
+          // Only enforce results for MICRO/ADMIN in FINAL
+          if (
+            (role === "MICRO" || role === "ADMIN") &&
+            currentPhase === "FINAL"
+          ) {
+            const missingResult = rows.some(
+              (r) =>
+                r.checked && r.result !== "Absent" && r.result !== "Present"
+            );
+            return missingResult;
+          }
+          return false;
+        }
+        default:
+          return false;
+      }
+    },
+    []
+  );
 
   const requiredList = useMemo(() => {
     // Base role requireds (fallback)
@@ -434,7 +450,7 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
   /** returns true when valid; sets errors + scrolls to first error */
   const validateAndSetErrors = useCallback(
-    (values: ReportFormValues): boolean => {
+    (values: MicroMixWaterReportFormValues): boolean => {
       const next: Record<string, string> = {};
       requiredList.forEach((f) => {
         if (isEmpty(f, values)) next[f] = "Required";
@@ -454,174 +470,3 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
   return { errors, clearError, validateAndSetErrors };
 }
-
-// import React, { useState } from "react";
-// import {
-//     type Role,
-//     type ReportStatus,
-//     STATUS_TRANSITIONS,
-//     // If you already export FIELD_EDIT_MAP from reportWorkflow, alias it here.
-//     FIELD_EDIT_MAP as ROLE_FIELDS,
-// } from "../utils/microMixReportFormWorkflow";
-
-// // If FIELD_EDIT_MAP isn't exported, either export it from reportWorkflow,
-// // or copy the same object into this file and export ROLE_FIELDS from here.
-
-// export type PathRow = {
-//     checked: boolean;
-//     key: string;
-//     label: string;
-//     result: "Absent" | "Present" | "";
-//     spec: "Absent" | "";
-// };
-
-// export type ReportFormValues = {
-//     client?: string;
-//     dateSent?: string;
-//     typeOfTest?: string;
-//     sampleType?: string;
-//     formulaNo?: string;
-//     description?: string;
-//     lotNo?: string;
-//     manufactureDate?: string;
-
-//     testSopNo?: string;
-//     dateTested?: string;
-//     preliminaryResults?: string;
-//     preliminaryResultsDate?: string;
-
-//     tbc_gram?: string;
-//     tbc_result?: string;
-//     tbc_spec?: string;
-
-//     tmy_gram?: string;
-//     tmy_result?: string;
-//     tmy_spec?: string;
-
-//     comments?: string;
-
-//     testedBy?: string;
-//     testedDate?: string;
-
-//     dateCompleted?: string;
-//     reviewedBy?: string;
-//     reviewedDate?: string;
-
-//     pathogens?: PathRow[];
-// };
-
-// // ---- Permissions helper (pure) ----
-// export function canEditBy(
-//     role: Role | undefined,
-//     field: string,
-//     status?: ReportStatus
-// ) {
-//     if (!role || !status) return false;
-//     const t = STATUS_TRANSITIONS[status];
-//     if (!t || !t.canEdit?.includes(role)) return false;
-//     const list = ROLE_FIELDS[role] ?? [];
-//     return list.includes("*") || list.includes(field);
-// }
-
-// // ---- Validation (pure) ----
-// function isEmpty(field: string, v: ReportFormValues): boolean {
-//     switch (field) {
-//         case "client": return !v.client?.trim();
-//         case "dateSent": return !v.dateSent;
-//         case "typeOfTest": return !v.typeOfTest?.trim();
-//         case "sampleType": return !v.sampleType?.trim();
-//         case "formulaNo": return !v.formulaNo?.trim();
-//         case "description": return !v.description?.trim();
-//         case "lotNo": return !v.lotNo?.trim();
-//         case "manufactureDate": return !v.manufactureDate;
-
-//         case "testSopNo": return !v.testSopNo?.trim();
-//         case "dateTested": return !v.dateTested;
-//         case "preliminaryResults": return !v.preliminaryResults?.trim();
-//         case "preliminaryResultsDate": return !v.preliminaryResultsDate;
-
-//         case "tbc_gram": return !v.tbc_gram?.trim();
-//         case "tbc_result": return !v.tbc_result?.trim();
-//         case "tbc_spec": return !v.tbc_spec?.trim();
-
-//         case "tmy_gram": return !v.tmy_gram?.trim();
-//         case "tmy_result": return !v.tmy_result?.trim();
-//         case "tmy_spec": return !v.tmy_spec?.trim();
-
-//         case "comments": return !v.comments?.trim();
-
-//         case "testedBy": return !v.testedBy?.trim();
-//         case "testedDate": return !v.testedDate;
-
-//         case "dateCompleted": return !v.dateCompleted;
-//         case "reviewedBy": return !v.reviewedBy?.trim();
-//         case "reviewedDate": return !v.reviewedDate;
-
-//         case "pathogens":
-//             return !(v.pathogens ?? []).some(
-//                 (p) => p.result === "Absent" || p.result === "Present"
-//             );
-
-//         default:
-//             return false;
-//     }
-// }
-
-// export type Errors = Record<string, string>;
-
-// export function requiredErrorsForRole(
-//     role: Role | undefined,
-//     values: ReportFormValues
-// ): Errors {
-//     const mustHave = (ROLE_FIELDS[role || "CLIENT"] ?? []).filter((f) => f !== "*");
-//     const errs: Errors = {};
-//     mustHave.forEach((f) => {
-//         if (isEmpty(f, values)) errs[f] = "Required";
-//     });
-//     return errs;
-// }
-
-// // ---- React hook wrapper (state + helpers) ----
-// export function useReportValidation(role: Role | undefined) {
-//     const [errors, setErrors] = useState<Errors>({});
-
-//     function clearError(name: string) {
-//         setErrors((prev) => {
-//             const { [name]: _, ...rest } = prev;
-//             return rest;
-//         });
-//     }
-
-//     function validateAndSetErrors(values: ReportFormValues) {
-//         const next = requiredErrorsForRole(role, values);
-//         setErrors(next);
-
-//         if (Object.keys(next).length) {
-//             const firstKey = Object.keys(next)[0];
-//             const el = document.getElementById("f-" + firstKey);
-//             if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-//             return false;
-//         }
-//         return true;
-//     }
-
-//     return { errors, clearError, validateAndSetErrors, setErrors };
-// }
-
-// // ---- Tiny presentational helper ----
-// export function FieldErrorBadge({
-//     name,
-//     errors,
-// }: {
-//     name: string;
-//     errors: Record<string, string>;
-// }) {
-//     return errors[name] ? (
-//         <span
-//             className="absolute -top-2 right-1 text-[10px] leading-none text-red-600 bg-white px-1 rounded no-print pointer-events-none"
-//             title={errors[name]}
-//         >
-//             {errors[name]}
-//         </span>
-//     ) : null;
-// }

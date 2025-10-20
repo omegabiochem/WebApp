@@ -408,7 +408,7 @@ export default function AuditTrailPage() {
 //     try {
 //       setBusy(true);
 //       const res = await fetch(
-//         `${API_BASE}/reports/micro-mix/${encodeURIComponent(entityId)}/status`,
+//         `${API_BASE}/reports/${encodeURIComponent(entityId)}/status`,
 //         {
 //           method: "PATCH",
 //           headers: {

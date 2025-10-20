@@ -12,6 +12,9 @@ import {
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
 import toast from "react-hot-toast";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
+import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 
 // -----------------------------
 // Types
@@ -20,6 +23,7 @@ import toast from "react-hot-toast";
 type Report = {
   id: string;
   client: string;
+  formType: string;
   dateSent: string | null;
   status: ReportStatus | string; // Some backends may still send raw string
   formNumber: string;
@@ -45,6 +49,17 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 // -----------------------------
 // Utilities
 // -----------------------------
+
+const formTypeToSlug: Record<string, string> = {
+  MICRO_MIX: "micro-mix",
+  MICRO_MIX_WATER: "micro-mix-water",
+  MICRO_GENERAL: "micro-general",
+  MICRO_GENERAL_WATER: "micro-general-water",
+  // CHEMISTRY_* can be added when you wire those forms
+};
+
+const isMicro = (ft?: string) =>
+  typeof ft === "string" && ft.startsWith("MICRO");
 
 function getFormPrefix(formNumber?: string): string | null {
   if (!formNumber) return null;
@@ -80,9 +95,11 @@ function canUpdateThisReport(r: Report, user?: any) {
     "typeOfTest",
     "sampleType",
     "formulaNo",
+    "idNo",
     "description",
     "lotNo",
     "manufactureDate",
+    "samplingDate",
     "pathogens",
   ];
 
@@ -130,14 +147,14 @@ export default function ClientDashboard() {
         //   setError("Missing auth token. Please log in again.");
         //   return;
         // }
-        // const res = await fetch("http://localhost:3000/reports/micro-mix", {
+        // const res = await fetch("http://localhost:3000/reports", {
         //   headers: { Authorization: `Bearer ${token}` },
         // });
 
         // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         // const all: Report[] = await res.json();
 
-        const all = await api<Report[]>("/reports/micro-mix");
+        const all = await api<Report[]>("/reports");
 
         if (abort) return;
 
@@ -205,41 +222,26 @@ export default function ClientDashboard() {
   }, [statusFilter, search, perPage]);
 
   async function setStatus(
-    reportId: string,
+    r: Report,
     newStatus: string,
     reason = "Client correction update"
   ) {
-    await api(`/reports/micro-mix/${reportId}/status`, {
+    // const slug = formTypeToSlug[r.formType] || "micro-mix";
+    await api(`/reports/${r.id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ reason, status: newStatus }),
     });
-    // const token = localStorage.getItem("token");
-    // if (!token) return;
-
-    // const res = await fetch(
-    //   `http://localhost:3000/reports/micro-mix/${reportId}/status`,
-    //   {
-    //     method: "PATCH",
-    //     headers: {
-    //       "Content-Type": "application/json",
-    //       Authorization: `Bearer ${token}`,
-    //     },
-    //     body: JSON.stringify({ reason, status: newStatus }),
-    //   }
-    // );
-
-    // if (!res.ok) {
-    //   const msg = await res.text().catch(() => "");
-    //   throw new Error(
-    //     msg || `Failed to set status to ${newStatus} (${res.status})`
-    //   );
-    // }
 
     // Update local state immediately so the UI stays in sync
     setReports((prev) =>
-      prev.map((r) => (r.id === reportId ? { ...r, status: newStatus } : r))
+      prev.map((x) => (x.id === r.id ? { ...x, status: newStatus } : x))
     );
     // return res;
+  }
+
+  function goToReportEditor(r: Report) {
+    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    navigate(`/reports/${slug}/${r.id}`);
   }
 
   return (
@@ -369,6 +371,7 @@ export default function ClientDashboard() {
               <tr className="text-left text-slate-600">
                 <th className="px-4 py-3 font-medium">Form #</th>
                 <th className="px-4 py-3 font-medium">Client</th>
+                <th className="px-4 py-3 font-medium">Form @</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -401,6 +404,7 @@ export default function ClientDashboard() {
                   <tr key={r.id} className="border-t hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{r.formNumber}</td>
                     <td className="px-4 py-3">{r.client}</td>
+                    <td className="px-4 py-3">{r.formType}</td>
                     <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
                     <td className="px-4 py-3">
                       <span
@@ -426,7 +430,7 @@ export default function ClientDashboard() {
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             // onClick={() =>
-                            //   navigate(`/reports/micro-mix/${r.id}`)
+                            //   navigate(`/reports/${r.id}`)
                             // }
                             onClick={async () => {
                               try {
@@ -435,7 +439,7 @@ export default function ClientDashboard() {
                                   "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                                     "Sent back to client for correction"
                                   );
@@ -445,12 +449,13 @@ export default function ClientDashboard() {
                                   "PRELIMINARY_RESUBMISSION_BY_TESTING"
                                 ) {
                                   await setStatus(
-                                    r.id,
+                                    r,
                                     "UNDER_CLIENT_PRELIMINARY_REVIEW",
                                     "Resubmission under Review"
                                   );
                                 }
-                                navigate(`/reports/micro-mix/${r.id}`);
+                                // navigate(`/reports/${r.id}`);
+                                goToReportEditor(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
                                 toast.error(
@@ -548,17 +553,18 @@ export default function ClientDashboard() {
                     // onClick={() => {
                     //   const id = selectedReport.id;
                     //   setSelectedReport(null);
-                    //   navigate(`/reports/micro-mix/${id}`);
+                    //   navigate(`/reports/${id}`);
                     // }}
                     onClick={async () => {
                       try {
-                        const id = selectedReport.id;
+                        // const id = selectedReport.id;
+                        const r = selectedReport;
                         if (
                           selectedReport.status ===
                           "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           await setStatus(
-                            id,
+                            r,
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to client for correction"
                           );
@@ -567,13 +573,14 @@ export default function ClientDashboard() {
                           "PRELIMINARY_RESUBMISSION_BY_TESTING"
                         ) {
                           await setStatus(
-                            id,
+                            r,
                             "UNDER_CLIENT_PRELIMINARY_REVIEW",
                             "Resubmission under Review"
                           );
                         }
                         setSelectedReport(null);
-                        navigate(`/reports/micro-mix/${id}`);
+                        // navigate(`/reports/${id}`);
+                        goToReportEditor(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }
@@ -591,12 +598,40 @@ export default function ClientDashboard() {
               </div>
             </div>
             <div className="overflow-auto px-6 py-4">
-              <MicroMixReportFormView
-                report={selectedReport}
-                onClose={() => setSelectedReport(null)}
-                showSwitcher={false}
-                pane={paneFor(String(selectedReport.status))}
-              />
+              {selectedReport?.formType === "MICRO_MIX" ? (
+                <MicroMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+                <MicroMixWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                <MicroGeneralReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                <MicroGeneralWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
+                </div>
+              )}
             </div>
           </div>
         </div>
