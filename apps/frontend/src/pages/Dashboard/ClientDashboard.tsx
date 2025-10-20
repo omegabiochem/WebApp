@@ -58,8 +58,8 @@ const formTypeToSlug: Record<string, string> = {
   // CHEMISTRY_* can be added when you wire those forms
 };
 
-const isMicro = (ft?: string) =>
-  typeof ft === "string" && ft.startsWith("MICRO");
+// const isMicro = (ft?: string) =>
+//   typeof ft === "string" && ft.startsWith("MICRO");
 
 function getFormPrefix(formNumber?: string): string | null {
   if (!formNumber) return null;

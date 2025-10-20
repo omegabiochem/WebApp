@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // Header-attached FORMS dropdown (borderless, text-only trigger: "Forms ▾")
@@ -88,7 +88,7 @@ const FORMS: FormDef[] = [
 ];
 
 // prisma-ish enum → slug
-const toSlug = (id: FormId) => id.toLowerCase().replace(/_/g, "-");
+// const toSlug = (id: FormId) => id.toLowerCase().replace(/_/g, "-");
 
 // ---------------------------------
 // Component

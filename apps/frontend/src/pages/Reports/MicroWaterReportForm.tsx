@@ -417,7 +417,7 @@ export default function MicroWaterReportForm({
     []
   );
 
-  const gramsFor = (p: PathRow) => p.grams ?? "11g";
+//   const gramsFor = (p: PathRow) => p.grams ?? "11g";
 
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(

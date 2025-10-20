@@ -75,11 +75,11 @@ const formTypeToSlug: Record<string, string> = {
   // CHEMISTRY_* can be added when you wire those forms
 };
 
-function getFormPrefix(formNumber?: string): string | null {
-  if (!formNumber) return null;
-  const m = formNumber.trim().match(/^[A-Za-z]{3}/);
-  return m ? m[0].toUpperCase() : null;
-}
+// function getFormPrefix(formNumber?: string): string | null {
+//   if (!formNumber) return null;
+//   const m = formNumber.trim().match(/^[A-Za-z]{3}/);
+//   return m ? m[0].toUpperCase() : null;
+// }
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
