@@ -141,18 +141,6 @@ export default function ClientDashboard() {
       try {
         setLoading(true);
         setError(null);
-        // const token = localStorage.getItem("token");
-        // if (!token) {
-        //   setReports([]);
-        //   setError("Missing auth token. Please log in again.");
-        //   return;
-        // }
-        // const res = await fetch("http://localhost:3000/reports", {
-        //   headers: { Authorization: `Bearer ${token}` },
-        // });
-
-        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        // const all: Report[] = await res.json();
 
         const all = await api<Report[]>("/reports");
 
