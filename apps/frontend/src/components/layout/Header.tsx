@@ -16,7 +16,7 @@ const menuByRole: Record<string, MenuItem[]> = {
   CLIENT: [
     { label: "Home", path: "/clientDashboard" },
     { label: "Forms", path: "/formmenu" },
-    { label: "New Reports", path: "/reports/new" },
+    // { label: "New Reports", path: "/reports/new" },
     { label: "Samples", path: "/samples" },
   ],
   SYSTEMADMIN: [
