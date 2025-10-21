@@ -7,7 +7,7 @@ type MenuItem = { label: string; path: string };
 const menuByRole: Record<string, MenuItem[]> = {
   ADMIN: [
     { label: "Home", path: "/adminDashboard" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
     { label: "New Reports", path: "/reports/new" },
     { label: "Audit", path: "/audit" },
     { label: "Results", path: "/results" },
@@ -16,31 +16,31 @@ const menuByRole: Record<string, MenuItem[]> = {
   CLIENT: [
     { label: "Home", path: "/clientDashboard" },
     { label: "Forms", path: "/formmenu" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
   ],
   SYSTEMADMIN: [
     { label: "Home", path: "/systemAdminDashboard" },
     { label: "Dashboard", path: "/" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
     { label: "New Reports", path: "/reports/new" },
     { label: "Audit", path: "/audit" },
   ],
   MICRO: [
     { label: "Home", path: "/microDashboard" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
   ],
   CHEMISTRY: [
     { label: "Home", path: "/chemistryDashboard" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
     { label: "Balancer", path: "/balancer" },
   ],
   QA: [
     { label: "Home", path: "/qaDashboard" },
-    { label: "Samples", path: "/samples" },
+    // { label: "Samples", path: "/samples" },
   ],
   FRONTDESK: [
     { label: "Home", path: "/frontdeskDashboard" },
-    { label: "Samples", path: "/samples/new" },
+    // { label: "Samples", path: "/samples/new" },
     { label: "Balancer", path: "/balancer" },
   ],
   DEFAULT: [{ label: "Home", path: "/home" }],
@@ -61,10 +61,16 @@ export default function Header() {
     <header className="border-b bg-white">
       <div className="mx-auto max-w-6xl p-4 flex items-center justify-between gap-4">
         {/* Brand: logo + name */}
-        <Link to="/" className="flex items-center gap-3 group" aria-label="OMEGA BIOCHEM home">
+        <Link
+          to="/"
+          className="flex items-center gap-3 group"
+          aria-label="OMEGA BIOCHEM home"
+        >
           <img
             src="/logo.svg"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/favicon-32x32.png"; }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/favicon-32x32.png";
+            }}
             alt="OMEGA BIOCHEM"
             className="h-9 w-9 select-none"
             draggable={false}
@@ -81,7 +87,9 @@ export default function Header() {
         <nav className="flex items-center gap-4 text-sm">
           {!user ? (
             <>
-              <Link to="/home" className="hover:underline">Home</Link>
+              <Link to="/home" className="hover:underline">
+                Home
+              </Link>
               <Link
                 to="/login"
                 className="px-3 py-1 rounded-md bg-[var(--brand)] text-white hover:opacity-90 transition"
@@ -95,13 +103,19 @@ export default function Header() {
                 item.label === "Forms" ? (
                   <FormsDropdown key="forms" align="right" />
                 ) : (
-                  <Link key={item.path} to={item.path} className="hover:underline">
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className="hover:underline"
+                  >
                     {item.label}
                   </Link>
                 )
               )}
               {(role === "ADMIN" || role === "SYSTEMADMIN") && (
-                <Link to="/admin" className="hover:underline">Admin</Link>
+                <Link to="/admin" className="hover:underline">
+                  Admin
+                </Link>
               )}
               <button
                 onClick={handleLogout}
@@ -116,13 +130,6 @@ export default function Header() {
     </header>
   );
 }
-
-
-
-
-
-
-
 
 // import { Link, useNavigate } from "react-router-dom";
 // import { useAuth } from "../../context/AuthContext";

@@ -396,11 +396,13 @@ export default function MicroGeneralWaterReportFormView(
       checked: false,
       key: "OTHER",
       label: "Other",
-      grams: "",
+      grams: "__ml",
       result: "",
       spec: "Absent",
     },
   ];
+
+  const mlFor = (p: PathRow) => p.grams ?? "11ml";
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
@@ -573,7 +575,7 @@ export default function MicroGeneralWaterReportFormView(
             <div className="mt-1 grid grid-cols-3 items-center">
               <div /> {/* left spacer */}
               <div className="text-[18px] font-bold text-center underline">
-                Report
+                Water Report
               </div>
               <div className="text-right text-[12px] font-bold font-medium">
                 {report.reportNumber ? <> {report.reportNumber}</> : null}
@@ -606,7 +608,7 @@ export default function MicroGeneralWaterReportFormView(
               </div>
             </div>
 
-            {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
+            {/* TYPE OF TEST / SAMPLE TYPE / ID # */}
             <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
               <div className="px-2 border-r border-black flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">
@@ -633,10 +635,10 @@ export default function MicroGeneralWaterReportFormView(
                 />
               </div>
               <div className="px-2 flex items-center gap-1">
-                <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+                <div className="font-medium whitespace-nowrap">ID NO #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={report?.formulaNo || ""}
+                  value={report?.idNo || ""}
                   readOnly
                   disabled
                 />
@@ -655,7 +657,7 @@ export default function MicroGeneralWaterReportFormView(
               />
             </div>
 
-            {/* LOT # / MANUFACTURE DATE */}
+            {/* LOT # / SAMPLING DATE */}
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
               <div className="px-2 border-r border-black flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">LOT #:</div>
@@ -668,11 +670,11 @@ export default function MicroGeneralWaterReportFormView(
               </div>
               <div className="px-2 flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">
-                  MANUFACTURE DATE:
+                  SAMPLING DATE:
                 </div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={formatDateForInput(report?.manufactureDate) || ""}
+                  value={formatDateForInput(report?.samplingDate) || ""}
                   readOnly
                   disabled
                 />
@@ -883,7 +885,7 @@ export default function MicroGeneralWaterReportFormView(
                     />{" "}
                     Present
                   </label>
-                  <span className="ml-1">in 11g of sample</span>
+                  <span className="ml-2">in {mlFor(p)} of sample</span>
                 </div>
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
@@ -907,7 +909,7 @@ export default function MicroGeneralWaterReportFormView(
             <div className="p2 col-span-2 flex">
               <div className="mb-1 font-medium">Comments:</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none pl-2"
                 value={report?.comments || ""}
                 readOnly
                 disabled

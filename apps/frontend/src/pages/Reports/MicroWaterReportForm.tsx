@@ -4,7 +4,7 @@ import { useBlocker, useNavigate } from "react-router-dom";
 import {
   useReportValidation,
   FieldErrorBadge,
-  type MicroMixReportFormValues,
+  type MicroMixWaterReportFormValues,
   deriveMicroPhaseFromStatus,
   type MicroPhase,
   MICRO_PHASE_FIELDS,
@@ -12,7 +12,7 @@ import {
   getCorrections,
   resolveCorrection,
   createCorrections,
-} from "../../utils/microMixReportValidation";
+} from "../../utils/microMixWaterReportValidation";
 import {
   STATUS_TRANSITIONS,
   type ReportStatus,
@@ -142,10 +142,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateSent",
       "typeOfTest",
       "sampleType",
-      "formulaNo",
+      "idNo",
       "description",
       "lotNo",
-      "manufactureDate",
+      "samplingDate",
     ],
     MICRO: [
       "testSopNo",
@@ -169,10 +169,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateSent",
       "typeOfTest",
       "sampleType",
-      "formulaNo",
+      "idNo",
       "description",
       "lotNo",
-      "manufactureDate",
+      "samplingDate",
       "tbc_spec",
       "tmy_spec",
       "pathogens",
@@ -307,12 +307,10 @@ export default function MicroWaterReportForm({
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
-  const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
+  const [idNo, setidNo] = useState(report?.idNo || "");
   const [description, setDescription] = useState(report?.description || "");
   const [lotNo, setLotNo] = useState(report?.lotNo || "");
-  const [manufactureDate, setManufactureDate] = useState(
-    report?.manufactureDate || ""
-  );
+  const [samplingDate, setsamplingDate] = useState(report?.samplingDate || "");
   const [testSopNo, setTestSopNo] = useState(report?.testSopNo || "");
   const [dateTested, setDateTested] = useState(report?.dateTested || "");
   const [preliminaryResults, setPreliminaryResults] = useState(
@@ -353,7 +351,7 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "E_COLI",
         label: "E.coli",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -361,7 +359,7 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "P_AER",
         label: "P.aeruginosa",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -369,7 +367,7 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "S_AUR",
         label: "S.aureus",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -377,7 +375,7 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "SALM",
         label: "Salmonella",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -385,15 +383,15 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "CLOSTRIDIA",
         label: "Clostridia species",
-        grams: "3g",
+        grams: "3ml",
         result: "",
         spec: "",
       },
       {
         checked: false,
-        key: "C_ALB",
-        label: "C.albicans",
-        grams: "11g",
+        key: "COLI",
+        label: "Coliforms",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -401,7 +399,7 @@ export default function MicroWaterReportForm({
         checked: false,
         key: "B_CEP",
         label: "B.cepacia",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -417,7 +415,7 @@ export default function MicroWaterReportForm({
     []
   );
 
-//   const gramsFor = (p: PathRow) => p.grams ?? "11g";
+  const mlFor = (p: PathRow) => p.grams ?? "11ml";
 
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(
@@ -619,7 +617,6 @@ export default function MicroWaterReportForm({
   //     ? "dash dash-green"
   //     : "";
 
-  // replace your validatePathogenRows with this:
   function validatePathogenRows(
     rows: PathRow[],
     who: Role | undefined = role,
@@ -628,10 +625,16 @@ export default function MicroWaterReportForm({
     const rowErrs: PathogenRowError[] = rows.map(() => ({}));
     let tableErr: string | null = null;
 
+    const anyChecked = rows.some((r) => r.checked);
+
+    // 👉 If nothing selected, it's not required: clear errors and pass.
+    if (!anyChecked) {
+      setPathogenRowErrors(rowErrs);
+      setPathogensTableError(null);
+      return true;
+    }
+
     if (who === "CLIENT") {
-      if (!rows.some((r) => r.checked)) {
-        tableErr = "Select at least one organism.";
-      }
       rows.forEach((r, i) => {
         if (r.checked && r.spec !== "Absent" && r.spec !== "Present") {
           rowErrs[i].spec = "Choose Absent or Present";
@@ -639,13 +642,12 @@ export default function MicroWaterReportForm({
       });
     }
 
-    if (who === "MICRO" || who === "ADMIN") {
-      if (phase === "FINAL") {
-        rows.forEach((r, i) => {
-          if (r.checked && !r.result)
-            rowErrs[i].result = "Select Absent or Present";
-        });
-      }
+    if ((who === "MICRO" || who === "ADMIN") && phase === "FINAL") {
+      rows.forEach((r, i) => {
+        if (r.checked && !r.result) {
+          rowErrs[i].result = "Select Absent or Present";
+        }
+      });
     }
 
     setPathogenRowErrors(rowErrs);
@@ -657,7 +659,7 @@ export default function MicroWaterReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role);
+      validatePathogenRows(copy, role, phase);
       return copy;
     });
     // Clear the row error if we unchecked (no result required anymore)
@@ -675,7 +677,7 @@ export default function MicroWaterReportForm({
       if (!row.checked) return prev; // ignore if organism not selected
       const copy = [...prev];
       copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role);
+      validatePathogenRows(copy, role, phase);
       return copy;
     });
     // Clear the row error once result is set
@@ -692,7 +694,7 @@ export default function MicroWaterReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role);
+      validatePathogenRows(copy, role, phase);
       return copy;
     });
     // Keep/restore the row error because a checked row without result is invalid
@@ -716,6 +718,27 @@ export default function MicroWaterReportForm({
     markDirty();
   }
 
+  function setPathogenLabel(idx: number, label: string) {
+    setPathogens((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], label };
+      return copy;
+    });
+    markDirty();
+  }
+
+  const normalizeGrams = (v: string) =>
+    v.trim() ? (/[gG]$/.test(v) ? v : v + "ml") : v;
+
+  function setPathogenGrams(idx: number, grams: string) {
+    setPathogens((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], grams };
+      return copy;
+    });
+    markDirty();
+  }
+
   const [comments, setComments] = useState(report?.comments || "");
   const [testedBy, setTestedBy] = useState(report?.testedBy || "");
   const [reviewedBy, setReviewedBy] = useState(report?.reviewedBy || "");
@@ -734,15 +757,15 @@ export default function MicroWaterReportForm({
   );
 
   // Current values snapshot (use inside handlers)
-  const makeValues = (): MicroMixReportFormValues => ({
+  const makeValues = (): MicroMixWaterReportFormValues => ({
     client,
     dateSent,
     typeOfTest,
     sampleType,
-    formulaNo,
+    idNo,
     description,
     lotNo,
-    manufactureDate,
+    samplingDate,
     testSopNo,
     dateTested,
     preliminaryResults,
@@ -774,7 +797,7 @@ export default function MicroWaterReportForm({
     const values = makeValues();
 
     validateAndSetErrors(values);
-    validatePathogenRows(values.pathogens, role);
+    validatePathogenRows(values.pathogens, role, phase);
 
     // Build full payload
     const fullPayload: any = {
@@ -782,10 +805,10 @@ export default function MicroWaterReportForm({
       dateSent,
       typeOfTest,
       sampleType,
-      formulaNo,
+      idNo,
       description,
       lotNo,
-      manufactureDate,
+      samplingDate,
       testSopNo,
       dateTested,
       preliminaryResults,
@@ -832,10 +855,10 @@ export default function MicroWaterReportForm({
         "dateSent",
         "typeOfTest",
         "sampleType",
-        "formulaNo",
+        "idNo",
         "description",
         "lotNo",
-        "manufactureDate",
+        "samplingDate",
       ],
       MICRO: [
         "testSopNo",
@@ -859,10 +882,10 @@ export default function MicroWaterReportForm({
         "dateSent",
         "typeOfTest",
         "sampleType",
-        "formulaNo",
+        "idNo",
         "description",
         "lotNo",
-        "manufactureDate",
+        "samplingDate",
         "tbc_spec",
         "tmy_spec",
         "pathogens",
@@ -914,7 +937,7 @@ export default function MicroWaterReportForm({
         // });
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_GENERAL_WATER" }),
+          body: JSON.stringify({ ...payload, formType: "MICRO_MIX_WATER" }),
         });
       }
 
@@ -949,7 +972,7 @@ export default function MicroWaterReportForm({
 
     const values = makeValues();
     const okFields = validateAndSetErrors(values);
-    const okRows = validatePathogenRows(values.pathogens, role);
+    const okRows = validatePathogenRows(values.pathogens, role, phase);
 
     if (
       newStatus === "SUBMITTED_BY_CLIENT" ||
@@ -1159,9 +1182,9 @@ export default function MicroWaterReportForm({
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={client}
+                  value={client.toUpperCase()}
                   onChange={(e) => {
-                    setClient(e.target.value);
+                    setClient(e.target.value.toUpperCase());
                     markDirty();
                   }}
                   // disabled={role === "CLIENT"}
@@ -1246,7 +1269,7 @@ export default function MicroWaterReportForm({
             </div> */}
           </div>
 
-          {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
+          {/* TYPE OF TEST / SAMPLE TYPE / ID NO # */}
           <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
             <div
               id="f-typeOfTest"
@@ -1324,38 +1347,38 @@ export default function MicroWaterReportForm({
               )}
             </div>
             <div
-              id="f-formulaNo"
+              id="f-idNo"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("formulaNo");
+                setAddForField("idNo");
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative
-                ${dashClass("formulaNo")}`}
+                ${dashClass("idNo")}`}
             >
-              <div className="font-medium whitespace-nowrap">FORMULA #:</div>
-              <FieldErrorBadge name="formulaNo" errors={errors} />
-              <ResolveOverlay field="formulaNo" />
-              {lock("formulaNo") ? (
-                <div className="flex-1 min-h-[14px]">{formulaNo}</div>
+              <div className="font-medium whitespace-nowrap">ID NO #:</div>
+              <FieldErrorBadge name="idNo" errors={errors} />
+              <ResolveOverlay field="idNo" />
+              {lock("idNo") ? (
+                <div className="flex-1 min-h-[14px]">{idNo}</div>
               ) : (
                 <input
                   className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.formulaNo
+                    errors.idNo
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   }  ${
-                    hasCorrection("formulaNo")
+                    hasCorrection("idNo")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   } `}
-                  value={formulaNo}
+                  value={idNo}
                   onChange={(e) => {
-                    setFormulaNo(e.target.value);
-                    clearError("formulaNo");
+                    setidNo(e.target.value);
+                    clearError("idNo");
                     markDirty();
                   }}
-                  aria-invalid={!!errors.formulaNo}
+                  aria-invalid={!!errors.idNo}
                 />
               )}
             </div>
@@ -1440,44 +1463,44 @@ export default function MicroWaterReportForm({
               )}
             </div>
             <div
-              id="f-manufactureDate"
+              id="f-samplingDate"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("manufactureDate");
+                setAddForField("samplingDate");
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "manufactureDate"
+                "samplingDate"
               )}`}
             >
               <div className="font-medium whitespace-nowrap">
-                MANUFACTURE DATE:
+                SAMPLING DATE:
               </div>
-              <FieldErrorBadge name="manufactureDate" errors={errors} />
-              <ResolveOverlay field="manufactureDate" />
-              {lock("manufactureDate") ? (
+              <FieldErrorBadge name="samplingDate" errors={errors} />
+              <ResolveOverlay field="samplingDate" />
+              {lock("samplingDate") ? (
                 <div className="flex-1  min-h-[14px]">
-                  {formatDateForInput(manufactureDate)}
+                  {formatDateForInput(samplingDate)}
                 </div>
               ) : (
                 <input
                   className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.manufactureDate
+                    errors.samplingDate
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("manufactureDate")
+                    hasCorrection("samplingDate")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   } `}
                   type="date"
-                  value={formatDateForInput(manufactureDate)}
+                  value={formatDateForInput(samplingDate)}
                   onChange={(e) => {
-                    setManufactureDate(e.target.value);
+                    setsamplingDate(e.target.value);
                     markDirty();
-                    clearError("manufactureDate");
+                    clearError("samplingDate");
                   }}
-                  aria-invalid={!!errors.manufactureDate}
+                  aria-invalid={!!errors.samplingDate}
                 />
               )}
             </div>
@@ -2005,9 +2028,13 @@ export default function MicroWaterReportForm({
                   <span className="font-bold">{p.label}</span>
                   {p.key === "OTHER" && (
                     <input
-                      className="input-editable leading-tight"
+                      className="input-editable leading-tight border px-1 text-[8px]"
                       placeholder="(specify)"
-                      readOnly
+                      value={p.label === "Other" ? "" : p.label}
+                      onChange={(e) =>
+                        setPathogenLabel(idx, e.target.value || "Other")
+                      }
+                      disabled={lock("pathogens") || role !== "CLIENT"}
                     />
                   )}
                 </div>
@@ -2066,7 +2093,26 @@ export default function MicroWaterReportForm({
                   </label>
 
                   {/* inline note, no huge gap */}
-                  <span className="ml-2">in 11g of sample</span>
+                  {/* <span className="ml-2">in 11g of sample</span> */}
+                  {/* <span className="ml-2">in {gramsFor(p)} of sample</span> */}
+                  {p.key === "OTHER" ? (
+                    <span className="ml-2 flex items-center gap-1">
+                      in
+                      <input
+                        className="w-7 border px-1 text-[11px]"
+                        placeholder="__ml"
+                        value={p.grams}
+                        onChange={(e) => setPathogenGrams(idx, e.target.value)}
+                        onBlur={(e) =>
+                          setPathogenGrams(idx, normalizeGrams(e.target.value))
+                        }
+                        disabled={lock("pathogens") || role !== "CLIENT"}
+                      />
+                      of sample
+                    </span>
+                  ) : (
+                    <span className="ml-2">in {mlFor(p)} of sample</span>
+                  )}
 
                   {/* optional row error */}
                   {pathogenRowErrors[idx]?.result && (
@@ -2151,7 +2197,7 @@ export default function MicroWaterReportForm({
             <FieldErrorBadge name="comments" errors={errors} />
             <ResolveOverlay field="comments" />
             <input
-              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0  pl-2 ${
                 errors.testedBy ? "border-b-red-500" : "border-b-black/70"
               } ${
                 hasCorrection("comments")
@@ -2185,7 +2231,6 @@ export default function MicroWaterReportForm({
               {/* floating badge; doesn't affect layout */}
               <FieldErrorBadge name="testedBy" errors={errors} />
               <ResolveOverlay field="testedBy" />
-              ``
               <input
                 className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                   errors.testedBy ? "border-b-red-500" : "border-b-black/70"
