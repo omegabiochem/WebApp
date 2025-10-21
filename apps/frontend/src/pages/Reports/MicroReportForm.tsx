@@ -939,7 +939,7 @@ export default function MicroReportForm({
         // });
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+          body: JSON.stringify({ ...payload, formType: "MICRO_GENERAL" }),
         });
       }
 

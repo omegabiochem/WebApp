@@ -937,7 +937,7 @@ export default function MicroWaterReportForm({
         // });
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX_WATER" }),
+          body: JSON.stringify({ ...payload, formType: "MICRO_GENERAL_WATER" }),
         });
       }
 
