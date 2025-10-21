@@ -1,13 +1,61 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>OMEGA BIOCHEM LAB</title>
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Meta -->
+    <meta name="theme-color" content="#0b1220" />
+    <meta
+      name="description"
+      content="OMEGA BIOCHEM — Tech-forward lab management (LIMS)."
+    />
+
+    <!-- Social (Open Graph) -->
+    <meta property="og:title" content="OMEGA BIOCHEM LAB" />
+    <meta property="og:site_name" content="OMEGA BIOCHEM" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:description"
+      content="Techy, futuristic lab management platform."
+    />
   </head>
+
   <body>
     <div id="root"></div>
+
+    <!-- Dev-only (safe) preamble for Vite React Refresh -->
+    <script type="module">
+      // Guard so it won't crash if not served by Vite
+      const isViteDev =
+        typeof import.meta !== "undefined" &&
+        import.meta.env &&
+        import.meta.env.DEV;
+
+      if (isViteDev) {
+        import("/@vite/client");
+        import("/@react-refresh").then((m) => {
+          const R = m.default || m;
+          R.injectIntoGlobalHook(window);
+          window.$RefreshReg$ = () => {};
+          window.$RefreshSig$ = () => (type) => type;
+          window.__vite_plugin_react_preamble_installed__ = true;
+        });
+      }
+    </script>
+
+    <!-- 👇 This actually boots your React app (critical) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
