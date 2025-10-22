@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /login
+Disallow: /signin
+Disallow: /reset-password
+Disallow: /admin
+Disallow: /clientDashboard
+Disallow: /frontDeskDashboard
+Disallow: /microDashboard
+Disallow: /qaDashboard
+Disallow: /reports/new
+Allow: /
+
+Sitemap: https://www.omegabiochemlab.com/sitemap.xml

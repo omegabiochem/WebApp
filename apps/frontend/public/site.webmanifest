@@ -1,13 +1,12 @@
 {
-  "name": "OMEGA BIOCHEM",
-  "short_name": "Omega",
-  "icons": [
-    { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
-  ],
-  "theme_color": "#0b1220",
-  "background_color": "#0b1220",
-  "display": "standalone",
+  "name": "Omega Biochem Laboratories",
+  "short_name": "Omega Biochem",
   "start_url": "/",
-  "scope": "/"
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    { "src": "/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
 }
