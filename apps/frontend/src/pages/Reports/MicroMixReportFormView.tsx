@@ -324,6 +324,14 @@ const PrintStyles = () => (
 
       /* Optional: slightly smaller line-height for dense tables */
       .tight-row { line-height: 1.1 !important; }
+
+
+       img, svg { 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* If you ever fall back to <img>, prevent interpolation */
+  img { image-rendering: pixelated; image-rendering: crisp-edges; }
     }
   `}</style>
 );
@@ -414,37 +422,57 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     return new Date(value).toISOString().split("T")[0];
   }
 
-  const appBase =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "http://localhost:5173";
+  // const appBase =
+  //   typeof window !== "undefined"
+  //     ? window.location.origin
+  //     : "http://localhost:5173";
 
   const qrValue = report?.id
     ? JSON.stringify({
         t: "report",
         id: report.id, // ← the only thing the watcher needs
-        url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
       })
     : "";
 
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  // const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
     if (!qrValue) {
-      setQrDataUrl("");
+      // setQrDataUrl("");
+      setQrSvg("");
       return;
     }
-    QRCode.toDataURL(qrValue, {
-      margin: 1,
-      scale: 6,
-      errorCorrectionLevel: "M",
+    //   QRCode.toDataURL(qrValue, {
+    //     margin: 1,
+    //     scale: 6,
+    //     errorCorrectionLevel: "M",
+    //   })
+    //     .then((url) => {
+    //       if (alive) setQrDataUrl(url);
+    //     })
+    //     .catch(() => {
+    //       if (alive) setQrDataUrl("");
+    //     });
+    //   return () => {
+    //     alive = false;
+    //   };
+    // }, [qrValue]);
+
+    QRCode.toString(qrValue, {
+      type: "svg",
+      errorCorrectionLevel: "H", // stronger ECC helps with print/scan damage
+      margin: 4, // 4-module quiet zone is the standard
+      // version: 7,                // optional: fix version to keep modules coarse (see note below)
+      color: { dark: "#000000", light: "#FFFFFF" },
     })
-      .then((url) => {
-        if (alive) setQrDataUrl(url);
+      .then((svg) => {
+        if (alive) setQrSvg(svg);
       })
       .catch(() => {
-        if (alive) setQrDataUrl("");
+        if (alive) setQrSvg("");
       });
     return () => {
       alive = false;
@@ -976,6 +1004,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
             <div className="flex items-center gap-3">
               <div className="text-right leading-tight">
+                {/* <div className="p-1 bg-white"> */}
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
                 {report?.reportNumber && (
@@ -986,11 +1015,12 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 <div className="mt-1 text-[10px] text-slate-600">
                   Scan to open in LIMS
                 </div>
+                {/* </div> */}
               </div>
 
               {/* QR code (prints nicely; includeMargin helps scanners) */}
               {/* QR code (prints nicely; margin helps scanners) */}
-              {qrDataUrl ? (
+              {/* {qrDataUrl ? (
                 <img
                   src={qrDataUrl}
                   alt="Report QR"
@@ -1005,9 +1035,27 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 >
                   QR
                 </div>
+              )} */}
+
+              {qrSvg ? (
+                <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+                  <div
+                    // ~28–32mm square is a sweet spot for IDs this length
+                    style={{ width: "36mm", height: "36mm" }}
+                    dangerouslySetInnerHTML={{ __html: qrSvg }}
+                  />
+                </div>
+              ) : (
+                <div
+                  style={{ width: 96, height: 96 }}
+                  className="flex items-center justify-center border border-black/30 text-[10px] text-slate-500"
+                >
+                  QR
+                </div>
               )}
             </div>
           </div>
+          {/* </div> */}
         </>
       ) : (
         // ATTACHMENTS PANE

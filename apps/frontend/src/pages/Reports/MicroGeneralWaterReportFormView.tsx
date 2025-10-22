@@ -324,6 +324,16 @@ const PrintStyles = () => (
 
       /* Optional: slightly smaller line-height for dense tables */
       .tight-row { line-height: 1.1 !important; }
+
+      @media print {
+  img, svg { 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* If you ever fall back to <img>, prevent interpolation */
+  img { image-rendering: pixelated; image-rendering: crisp-edges; }
+}
+
     }
   `}</style>
 );
@@ -410,37 +420,40 @@ export default function MicroGeneralWaterReportFormView(
     return new Date(value).toISOString().split("T")[0];
   }
 
-  const appBase =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "http://localhost:5173";
+  //   const appBase =
+  //     typeof window !== "undefined"
+  //       ? window.location.origin
+  //       : "http://localhost:5173";
 
   const qrValue = report?.id
     ? JSON.stringify({
         t: "report",
         id: report.id, // ← the only thing the watcher needs
-        url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
       })
     : "";
 
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
     if (!qrValue) {
-      setQrDataUrl("");
+      setQrSvg("");
       return;
     }
-    QRCode.toDataURL(qrValue, {
-      margin: 1,
-      scale: 6,
-      errorCorrectionLevel: "M",
+
+    QRCode.toString(qrValue, {
+      type: "svg",
+      errorCorrectionLevel: "H", // stronger ECC helps with print/scan damage
+      margin: 4, // 4-module quiet zone is the standard
+      // version: 7,                // optional: fix version to keep modules coarse (see note below)
+      color: { dark: "#000000", light: "#FFFFFF" },
     })
-      .then((url) => {
-        if (alive) setQrDataUrl(url);
+      .then((svg) => {
+        if (alive) setQrSvg(svg);
       })
       .catch(() => {
-        if (alive) setQrDataUrl("");
+        if (alive) setQrSvg("");
       });
     return () => {
       alive = false;
@@ -986,14 +999,14 @@ export default function MicroGeneralWaterReportFormView(
 
               {/* QR code (prints nicely; includeMargin helps scanners) */}
               {/* QR code (prints nicely; margin helps scanners) */}
-              {qrDataUrl ? (
-                <img
-                  src={qrDataUrl}
-                  alt="Report QR"
-                  width={96}
-                  height={96}
-                  style={{ width: 96, height: 96 }}
-                />
+              {qrSvg ? (
+                <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+                  <div
+                    // ~28–32mm square is a sweet spot for IDs this length
+                    style={{ width: "36mm", height: "36mm" }}
+                    dangerouslySetInnerHTML={{ __html: qrSvg }}
+                  />
+                </div>
               ) : (
                 <div
                   style={{ width: 96, height: 96 }}
