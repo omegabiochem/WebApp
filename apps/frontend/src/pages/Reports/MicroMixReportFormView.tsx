@@ -441,25 +441,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   useEffect(() => {
     let alive = true;
     if (!qrValue) {
-      // setQrDataUrl("");
       setQrSvg("");
       return;
     }
-    //   QRCode.toDataURL(qrValue, {
-    //     margin: 1,
-    //     scale: 6,
-    //     errorCorrectionLevel: "M",
-    //   })
-    //     .then((url) => {
-    //       if (alive) setQrDataUrl(url);
-    //     })
-    //     .catch(() => {
-    //       if (alive) setQrDataUrl("");
-    //     });
-    //   return () => {
-    //     alive = false;
-    //   };
-    // }, [qrValue]);
 
     QRCode.toString(qrValue, {
       type: "svg",
