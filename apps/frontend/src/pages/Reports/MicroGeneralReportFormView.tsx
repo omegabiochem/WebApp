@@ -10,6 +10,7 @@ type MicroReportFormProps = {
   pane?: Pane; // if provided, component becomes controlled
   onPaneChange?: (p: Pane) => void; // optional callback
   showSwitcher?: boolean; // default true; hide internal switcher when false
+  isBulkPrint?: boolean;
 };
 
 // ---------------- Attachments panel (web-only; hidden on print) ----------------
@@ -331,7 +332,14 @@ const PrintStyles = () => (
 export default function MicroGeneralReportFormView(
   props: MicroReportFormProps
 ) {
-  const { report, onClose, pane, onPaneChange, showSwitcher = true } = props;
+  const {
+    report,
+    onClose,
+    pane,
+    onPaneChange,
+    showSwitcher = true,
+    isBulkPrint = false,
+  } = props;
   type PathRow = {
     checked: boolean;
     key: string;
@@ -447,10 +455,11 @@ export default function MicroGeneralReportFormView(
 
   // ...
   useEffect(() => {
+    if (isBulkPrint) return;
     const onAfterPrint = () => onClose?.();
     window.addEventListener("afterprint", onAfterPrint);
     return () => window.removeEventListener("afterprint", onAfterPrint);
-  }, [onClose]);
+  }, [onClose, isBulkPrint]);
 
   const isControlled = typeof pane !== "undefined";
   const [internalPane, setInternalPane] = useState<Pane>("FORM");
@@ -464,8 +473,7 @@ export default function MicroGeneralReportFormView(
 
   return (
     <div className="sheet relative mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4 ">
-      <PrintStyles />
-
+      {!isBulkPrint && <PrintStyles />}
       {/* View switcher */}
       {/* <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
         <div className="flex items-center gap-2 py-2">
@@ -529,7 +537,7 @@ export default function MicroGeneralReportFormView(
 
       {/* Controls (hidden on print) */}
       {/* Controls (hidden on print) */}
-      <div className="no-print absolute top-2 right-2 flex gap-2">
+      {/* <div className="no-print absolute top-2 right-2 flex gap-2">
         {activePane === "FORM" && (
           <button
             onClick={() => window.print()}
@@ -544,7 +552,7 @@ export default function MicroGeneralReportFormView(
         >
           Close
         </button>
-      </div>
+      </div> */}
 
       {activePane === "FORM" ? (
         <>

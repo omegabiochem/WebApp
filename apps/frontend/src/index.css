@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 /* tokens */
-:root { --brand:#0057A3; }
+:root {
+  --brand: #0057a3;
+}
 
 @layer components {
   .input-editable {
@@ -15,43 +17,39 @@
   }
 
   /* ✅ Thick black square checkbox with tick mark */
- .thick-box {
-  @apply appearance-none inline-grid place-content-center 
+  .thick-box {
+    @apply appearance-none inline-grid place-content-center 
          h-4 w-4 border-2 border-black cursor-pointer;
-}
+  }
 
-.thick-box::after {
-  content: "";
-  display: block;
-  width: 6px;
-  height: 12px;
-  border-right: 4px solid black; /* ← thicker */
-  border-bottom: 4px solid black; /* ← thicker */
-  transform: scale(0) rotate(45deg);
-  transition: transform 150ms ease-in-out;
-}
+  .thick-box::after {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 12px;
+    border-right: 4px solid black; /* ← thicker */
+    border-bottom: 4px solid black; /* ← thicker */
+    transform: scale(0) rotate(45deg);
+    transition: transform 150ms ease-in-out;
+  }
 
-.thick-box:checked::after {
-  transform: scale(1) rotate(45deg);
-}
-
+  .thick-box:checked::after {
+    transform: scale(1) rotate(45deg);
+  }
 
   .thick-box:disabled {
     opacity: 1; /* keeps them black instead of greyed */
   }
 }
 
+/* index.css */
 @media print {
-  body * {
-    visibility: hidden;
+  /* keep inputs nice */
+  .input-editable {
+    border: none !important;
+    outline: none !important;
   }
-  .sheet, .sheet * {
-    visibility: visible;
-  }
-  .sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-  }
+
+  /* DON'T blindly hide everything here.
+     Let pages/components decide what to show. */
 }

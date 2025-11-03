@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
@@ -17,23 +17,20 @@ import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportF
 // -----------------------------
 // Types
 // -----------------------------
-
 type Report = {
   id: string;
   client: string;
   formType: string;
   dateSent: string | null;
-  status: string; // backend status
+  status: string;
   reportNumber: string | null;
   formNumber: string;
-  prefix?: string; // e.g., MMX-2025
+  prefix?: string;
 };
 
 // -----------------------------
-// Statuses (Micro view)
+// Statuses
 // -----------------------------
-
-// Keep Micro's short, actionable queue + ALL
 const MICRO_STATUSES = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
@@ -42,44 +39,21 @@ const MICRO_STATUSES = [
   "UNDER_FINAL_TESTING_REVIEW",
   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  // "PRELIMINARY_SUBMISSION_NEEDS_CORRECTION",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
   "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
 ] as const;
 
-// Map statuses → badge styles (fallback provided below for unknown keys)
-// const STATUS_STYLES: Record<string, string> = {
-//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
-//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
-//   UNDER_PRELIMINARY_TESTING_REVIEW:
-//     "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
-//   PRELIMINARY_APPROVED:
-//     "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
-//   UNDER_FINAL_TESTING_REVIEW:
-//     "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
-//   PRELIMINARY_RESUBMISSION_BY_CLIENT:
-//     "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
-// };
-
 // -----------------------------
 // Utilities
 // -----------------------------
-
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   MICRO_GENERAL: "micro-general",
   MICRO_GENERAL_WATER: "micro-general-water",
-  // CHEMISTRY_* can be added when you wire those forms
 };
-
-function getFormPrefix(formNumber?: string): string | null {
-  if (!formNumber) return null;
-  const m = formNumber.trim().match(/^[A-Za-z]{3}/);
-  return m ? m[0].toUpperCase() : null;
-}
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
@@ -100,25 +74,18 @@ function formatDate(iso: string | null) {
   });
 }
 
-// function displayReportNo(r: Report) {
-//   const num = String(r.reportNumber ?? "");
-//   return r.prefix ? `${num}` : num;
-// }
-
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
 }
 
 // -----------------------------
-// API helpers
+// API helper
 // -----------------------------
-
 async function setStatus(
   r: Report,
   newStatus: string,
   reason = "Common Status Change"
 ) {
-  // const slug = formTypeToSlug[r.formType] || "micro-mix";
   await api(`/reports/${r.id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ reason, status: newStatus }),
@@ -126,9 +93,117 @@ async function setStatus(
 }
 
 // -----------------------------
+// Reusable bulk/single print area
+// -----------------------------
+// -----------------------------
+// ✅ Bulk print area
+// -----------------------------
+function BulkPrintArea({
+  reports,
+  onAfterPrint,
+}: {
+  reports: Report[];
+  onAfterPrint: () => void;
+}) {
+  if (!reports.length) return null;
+
+  // 👇 figure out if it's just one report
+  const isSingle = reports.length === 1;
+
+  React.useEffect(() => {
+    const tid = setTimeout(() => {
+      window.print();
+    }, 200);
+
+    const handleAfterPrint = () => {
+      onAfterPrint();
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+
+    return () => {
+      clearTimeout(tid);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [reports, onAfterPrint]);
+
+  return (
+    <div
+      id="bulk-print-root"
+      className={
+        isSingle ? "hidden print:block" : "hidden print:block multi-print"
+      }
+    >
+      {reports.map((r) => {
+        // ⬇️ only add page break when we have multiple
+        const pageStyle: React.CSSProperties = isSingle
+          ? {}
+          : {
+              pageBreakAfter: "always",
+              breakAfter: "page",
+            };
+
+        if (r.formType === "MICRO_MIX") {
+          return (
+            <div key={r.id} className="report-page" style={pageStyle}>
+              <MicroMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        } else if (r.formType === "MICRO_MIX_WATER") {
+          return (
+            <div key={r.id} className="report-page" style={pageStyle}>
+              <MicroMixWaterReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        } else if (r.formType === "MICRO_GENERAL") {
+          return (
+            <div key={r.id} className="report-page" style={pageStyle}>
+              <MicroGeneralReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+              />
+            </div>
+          );
+        } else if (r.formType === "MICRO_GENERAL_WATER") {
+          return (
+            <div key={r.id} className="report-page" style={pageStyle}>
+              <MicroGeneralWaterReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+              />
+            </div>
+          );
+        } else {
+          return (
+            <div key={r.id} className="report-page" style={pageStyle}>
+              <h1>{r.reportNumber}</h1>
+              <p>Unknown form type: {r.formType}</p>
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
+}
+
+// -----------------------------
 // Component
 // -----------------------------
-
 export default function MicroDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -144,33 +219,27 @@ export default function MicroDashboard() {
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
+  // ✅ multiple selection & bulk print
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkPrinting, setIsBulkPrinting] = useState(false);
+
+  // ✅ NEW: single-report print from modal
+  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
+    null
+  );
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Fetch all Micro mix reports (no per-client filter for Micro role)
+  // fetch
   useEffect(() => {
     let abort = false;
     async function fetchReports() {
       try {
         setLoading(true);
         setError(null);
-        // const token = localStorage.getItem("token");
-        // if (!token) {
-        //   setReports([]);
-        //   setError("Missing auth token. Please log in again.");
-        //   return;
-        // }
-
-        // const res = await fetch("http://localhost:3000/reports", {
-        //   headers: { Authorization: `Bearer ${token}` },
-        // });
-
-        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        // const all: Report[] = await res.json();
         const all = await api<Report[]>("/reports");
         if (abort) return;
-
-        // Keep only statuses Micro cares about (plus whatever backend sends that matches)
         const keep = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
         setReports(all.filter((r) => keep.has(r.status as any)));
       } catch (e: any) {
@@ -179,14 +248,13 @@ export default function MicroDashboard() {
         if (!abort) setLoading(false);
       }
     }
-
     fetchReports();
     return () => {
       abort = true;
     };
   }, []);
 
-  // Derived table data (filter → search → sort)
+  // derived
   const processed = useMemo(() => {
     const byStatus =
       statusFilter === "ALL"
@@ -206,21 +274,11 @@ export default function MicroDashboard() {
       : byStatus;
 
     const sorted = [...bySearch].sort((a, b) => {
-      function reportNoKey(r: Report) {
-        // "M-251000123" -> "251000123"; handles null/empty safely
-        const s = r.reportNumber || "";
-        const parts = s.split("-");
-        return parts[1] ?? ""; // YYMMNNNNN
-      }
-
       if (sortBy === "reportNumber") {
-        const aK = reportNoKey(a);
-        const bK = reportNoKey(b);
-        // simple lexicographic compare works because keys are zero-padded numerics
-        const cmp = aK.localeCompare(bK);
-        return sortDir === "asc" ? cmp : -cmp;
+        const aK = (a.reportNumber || "").toLowerCase();
+        const bK = (b.reportNumber || "").toLowerCase();
+        return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
-
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
@@ -229,7 +287,7 @@ export default function MicroDashboard() {
     return sorted;
   }, [reports, statusFilter, search, sortBy, sortDir]);
 
-  // Pagination
+  // pagination
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const pageClamped = Math.min(page, totalPages);
@@ -241,13 +299,7 @@ export default function MicroDashboard() {
     setPage(1);
   }, [statusFilter, search, perPage]);
 
-  // Update button guard: only for MICRO role
-  // const canUpdate = user?.role === "MICRO";
-
-  function canUpdateThisReport(r: Report, user?: any) {
-    // if (user?.role !== "CLIENT") return false;
-    // if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
-
+  function canUpdateThisReportLocal(r: Report, user?: any) {
     const fieldsUsedOnForm = [
       "testSopNo",
       "dateTested",
@@ -271,21 +323,113 @@ export default function MicroDashboard() {
   }
 
   function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    const slug = formTypeToSlug[r.formType] || "micro-mix";
     navigate(`/reports/${slug}/${r.id}`);
   }
 
+  // selection
+  const isRowSelected = (id: string) => selectedIds.includes(id);
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) =>
+        prev.filter((id) => !pageRows.some((r) => r.id === id))
+      );
+    } else {
+      setSelectedIds((prev) => {
+        const set = new Set(prev);
+        pageRows.forEach((r) => set.add(r.id));
+        return Array.from(set);
+      });
+    }
+  };
+
+  const handlePrintSelected = () => {
+    if (!selectedIds.length) return;
+    setIsBulkPrinting(true);
+  };
+
+  const selectedReportObjects = selectedIds
+    .map((id) => reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
+
   return (
     <div className="p-6">
+      {(isBulkPrinting || singlePrintReport) && (
+        <style>
+          {`
+      @media print {
+        body * {
+          visibility: hidden !important;
+        }
+        #bulk-print-root,
+        #bulk-print-root * {
+          visibility: visible !important;
+        }
+        #bulk-print-root {
+          position: absolute;
+          inset: 0;
+          background: white;
+        }
+        #bulk-print-root .sheet {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+
+        /* 👇 only add page breaks if it's MULTI print */
+        ${
+          isBulkPrinting
+            ? `
+          #bulk-print-root .report-page {
+            page-break-after: avoid;
+            break-after: avoid;
+          }
+        `
+            : ``
+        }
+
+        @page {
+          size: A4 portrait;
+          margin: 6mm 10mm 10mm 10mm;
+        }
+      }
+    `}
+        </style>
+      )}
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Micro Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Queue of Micro Mix reports for preliminary/final testing.
+            Queue of Micro Mix / Water / General reports for micro team.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePrintSelected}
+            disabled={!selectedIds.length}
+            className={classNames(
+              "inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium shadow-sm",
+              selectedIds.length
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-200 text-slate-500 cursor-not-allowed"
+            )}
+          >
+            🖨️ Print selected ({selectedIds.length})
+          </button>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -297,9 +441,8 @@ export default function MicroDashboard() {
         </div>
       </div>
 
-      {/* Controls Card */}
+      {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
-        {/* Status filter chips (scrollable) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {MICRO_STATUSES.map((s) => (
             <button
@@ -311,14 +454,12 @@ export default function MicroDashboard() {
                   ? "bg-blue-600 text-white ring-blue-600"
                   : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
               )}
-              aria-pressed={statusFilter === s}
             >
               {niceStatus(String(s))}
             </button>
           ))}
         </div>
 
-        {/* Search & Sort row */}
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="relative">
             <input
@@ -332,7 +473,6 @@ export default function MicroDashboard() {
                 type="button"
                 onClick={() => setSearch("")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label="Clear search"
               >
                 ✕
               </button>
@@ -340,11 +480,7 @@ export default function MicroDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="sortBy">
-              Sort by
-            </label>
             <select
-              id="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
@@ -352,13 +488,10 @@ export default function MicroDashboard() {
               <option value="dateSent">Date Sent</option>
               <option value="reportNumber">Report #</option>
             </select>
-
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
               className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-              aria-label="Toggle sort direction"
-              title="Toggle sort direction"
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
@@ -386,18 +519,23 @@ export default function MicroDashboard() {
 
       {/* Content card */}
       <div className="rounded-2xl border bg-white shadow-sm">
-        {/* States */}
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
+                <th className="px-4 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectPage}
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
                 <th className="px-4 py-3 font-medium">Form @</th>
@@ -408,8 +546,11 @@ export default function MicroDashboard() {
             </thead>
             <tbody>
               {loading &&
-                [...Array(6)].map((_, i) => (
+                [...Array(7)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-4 rounded bg-slate-200" />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                     </td>
@@ -431,6 +572,13 @@ export default function MicroDashboard() {
               {!loading &&
                 pageRows.map((r) => (
                   <tr key={r.id} className="border-t hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isRowSelected(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       {displayReportNo(r)}
                     </td>
@@ -456,8 +604,7 @@ export default function MicroDashboard() {
                         >
                           View
                         </button>
-
-                        {canUpdateThisReport(r, user) && (
+                        {canUpdateThisReportLocal(r, user) && (
                           <button
                             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             onClick={async () => {
@@ -504,7 +651,6 @@ export default function MicroDashboard() {
                                   );
                                   toast.success("Report Status Updated");
                                 }
-                                // optimistic UI
                                 setReports((prev) =>
                                   prev.map((x) =>
                                     x.id === r.id
@@ -524,7 +670,6 @@ export default function MicroDashboard() {
                                       : x
                                   )
                                 );
-                                // navigate(`/reports/${r.id}`);
                                 goToReportEditor(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
@@ -542,7 +687,7 @@ export default function MicroDashboard() {
               {!loading && pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports found for{" "}
@@ -596,13 +741,10 @@ export default function MicroDashboard() {
         )}
       </div>
 
-      {/* Modal: read-only full form */}
+      {/* Modal */}
       {selectedReport && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Report details"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
@@ -613,13 +755,20 @@ export default function MicroDashboard() {
                 Report ({displayReportNo(selectedReport)})
               </h2>
               <div className="flex items-center gap-2">
-                {canUpdateThisReport(selectedReport, user) && (
+                {/* ✅ NEW: Print this report */}
+                {/* <button
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                  onClick={() => setSinglePrintReport(selectedReport)}
+                >
+                  🖨️ Print
+                </button> */}
+
+                {canUpdateThisReportLocal(selectedReport, user) && (
                   <button
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={() => {
                       const r = selectedReport;
                       setSelectedReport(null);
-                      // navigate(`/reports/${id}`);
                       goToReportEditor(r);
                     }}
                   >
@@ -635,28 +784,28 @@ export default function MicroDashboard() {
               </div>
             </div>
             <div className="overflow-auto px-6 py-4">
-              {selectedReport?.formType === "MICRO_MIX" ? (
+              {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
                   pane="FORM"
                 />
-              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+              ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
                   pane="FORM"
                 />
-              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+              ) : selectedReport.formType === "MICRO_GENERAL" ? (
                 <MicroGeneralReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
                   pane="FORM"
                 />
-              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+              ) : selectedReport.formType === "MICRO_GENERAL_WATER" ? (
                 <MicroGeneralWaterReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
@@ -665,13 +814,34 @@ export default function MicroDashboard() {
                 />
               ) : (
                 <div className="text-sm text-slate-600">
-                  This form type ({selectedReport?.formType}) doesn’t have a
+                  This form type ({selectedReport.formType}) doesn’t have a
                   viewer yet.
                 </div>
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* bulk print hidden area */}
+      {isBulkPrinting && (
+        <BulkPrintArea
+          reports={selectedReportObjects}
+          onAfterPrint={() => {
+            setIsBulkPrinting(false);
+            // setSelectedIds([]);
+          }}
+        />
+      )}
+
+      {/* ✅ single-report print hidden area */}
+      {singlePrintReport && (
+        <BulkPrintArea
+          reports={[singlePrintReport]}
+          onAfterPrint={() => {
+            setSinglePrintReport(null);
+          }}
+        />
       )}
     </div>
   );

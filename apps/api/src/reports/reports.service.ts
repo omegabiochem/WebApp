@@ -771,7 +771,15 @@ export class ReportsService {
       );
     }
 
-    const trans = STATUS_TRANSITIONS[current.status];
+    if (!eSignPassword) {
+      throw new BadRequestException(
+        'Electronic Signature (password) is required for status changes',
+      );
+    }
+
+    await this.esign.verifyPassword(user.userId, String(eSignPassword));
+
+    const trans = STATUS_TRANSITIONS[current.status as ReportStatus];
     if (!trans) {
       throw new BadRequestException(
         `Invalid current status: ${current.status}`,
@@ -1027,47 +1035,4 @@ export class ReportsService {
       meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
     });
   }
-
-  //   async addAttachment(
-  //     user: any,
-  //     id: string,
-  //     file: Express.Multer.File,
-  //     body: { pages?: string; checksum?: string; source?: string; createdBy?: string; kind?: string },
-  //   ) {
-  //     await this.findReportOrThrow(user, id);
-
-  //       // read file contents regardless of storage
-  //  const buf = file.buffer ?? await fsp.readFile((file as any).path);
-  //   const checksum = body.checksum || crypto.createHash('sha256').update(buf).digest('hex');
-
-  //     // Optional: de-dupe per report + checksum
-  //     const existing = await this.prisma.attachment.findFirst({
-  //       where: { reportId: id, checksum },
-  //       select: { id: true },
-  //     });
-  //     if (existing) return { ok: true, id: existing.id, dedup: true };
-
-  //     // Persist file (adjust to S3/GCS if needed)
-  //     const dir = path.join(process.cwd(), 'uploads', 'micro-mix', id);
-  //     await fsp.mkdir(dir, { recursive: true });
-  //     const safeName = `${Date.now()}_${(file.originalname || 'scan').replace(/[^\w.\-]+/g, '_')}`;
-  //     const fullPath = path.join(dir, safeName);
-  //     await fsp.writeFile(fullPath, buf);
-
-  //     const att = await this.prisma.attachment.create({
-  //       data: {
-  //         reportId: id,
-  //         kind: (body.kind as AttachmentKind) || AttachmentKind.SIGNED_FORM,
-  //         filename: safeName,
-  //         storageKey: fullPath,   // or a URL if you serve it
-  //         checksum,
-  //         pages: body.pages ? Number(body.pages) : null,
-  //         source: body.source || 'scan-hotfolder',
-  //         meta: {},
-  //         createdBy: body.createdBy || user?.sub || 'ingestor',
-  //       },
-  //     });
-
-  //     return { ok: true, id: att.id };
-  //   }
 }

@@ -10,6 +10,8 @@ type MicroReportFormProps = {
   pane?: Pane; // if provided, component becomes controlled
   onPaneChange?: (p: Pane) => void; // optional callback
   showSwitcher?: boolean; // default true; hide internal switcher when false
+  isBulkPrint?: boolean;
+  isSingleBulk?: boolean;
 };
 
 // ---------------- Attachments panel (web-only; hidden on print) ----------------
@@ -331,7 +333,15 @@ const PrintStyles = () => (
 export default function MicroMixWaterReportFormView(
   props: MicroReportFormProps
 ) {
-  const { report, onClose, pane, onPaneChange, showSwitcher = true } = props;
+  const {
+    report,
+    onClose,
+    pane,
+    onPaneChange,
+    showSwitcher = true,
+    isBulkPrint = false,
+    isSingleBulk = false,
+  } = props;
   type PathRow = {
     checked: boolean;
     key: string;
@@ -340,6 +350,8 @@ export default function MicroMixWaterReportFormView(
     result: "Absent" | "Present" | "";
     spec: "Absent" | "";
   };
+
+  const isBulk = isBulkPrint === true;
 
   const pathogenDefaults: PathRow[] = [
     {
@@ -449,10 +461,11 @@ export default function MicroMixWaterReportFormView(
 
   // ...
   useEffect(() => {
+    if (isBulkPrint) return;
     const onAfterPrint = () => onClose?.();
     window.addEventListener("afterprint", onAfterPrint);
     return () => window.removeEventListener("afterprint", onAfterPrint);
-  }, [onClose]);
+  }, [onClose, isBulkPrint]);
 
   const isControlled = typeof pane !== "undefined";
   const [internalPane, setInternalPane] = useState<Pane>("FORM");
@@ -465,8 +478,18 @@ export default function MicroMixWaterReportFormView(
   };
 
   return (
-    <div className="sheet relative mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4 ">
-      <PrintStyles />
+    <div
+      className={
+        isBulk
+          ? "sheet bg-white text-black p-0 m-0"
+          : "sheet relative mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4"
+      }
+    >
+      {!isBulk && <PrintStyles />}
+
+      {!isBulk &&
+        // any floating / sticky UI
+        null}
 
       {/* View switcher */}
       {/* <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
@@ -498,7 +521,7 @@ export default function MicroMixWaterReportFormView(
         </div>
       </div> */}
 
-      {showSwitcher !== false && (
+      {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
           <div className="flex items-center gap-2 py-2">
             <button
@@ -531,7 +554,7 @@ export default function MicroMixWaterReportFormView(
 
       {/* Controls (hidden on print) */}
       {/* Controls (hidden on print) */}
-      <div className="no-print absolute top-2 right-2 flex gap-2">
+      {/* <div className="no-print absolute top-2 right-2 flex gap-2">
         {activePane === "FORM" && (
           <button
             onClick={() => window.print()}
@@ -546,9 +569,9 @@ export default function MicroMixWaterReportFormView(
         >
           Close
         </button>
-      </div>
+      </div> */}
 
-      {activePane === "FORM" ? (
+      {isBulk || activePane === "FORM" ? (
         <>
           {/* Letterhead */}
           <div className="mb-2 text-center">
@@ -965,7 +988,24 @@ export default function MicroMixWaterReportFormView(
           </div>
 
           {/* Footer: Report ID + QR */}
-          <div className="mt-2 flex items-end justify-between avoid-break">
+          <div
+            className={
+              isBulk
+                ? "mt-2 flex items-end justify-between"
+                : "mt-2 flex items-end justify-between avoid-break"
+            }
+            style={
+              // For normal view → keep avoid
+              !isBulk
+                ? { pageBreakInside: "avoid", breakInside: "avoid" }
+                : // For bulk:
+                // - if it's MANY reports → keep avoid
+                // - if it's ONLY ONE report → let browser break (no extra page)
+                !isSingleBulk
+                ? { pageBreakInside: "avoid", breakInside: "avoid" }
+                : undefined
+            }
+          >
             <div className="text-[10px] text-slate-600">
               This report is confidential and intended only for the recipient.
             </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // Header-attached FORMS dropdown (borderless, text-only trigger: "Forms ▾")
@@ -15,8 +15,8 @@ const PATH_BY_ID: Record<FormId, string> = {
   // ⬇️ CHANGE these to your actual pages
   MICRO_MIX: "/reports/micro-mix/new",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new",
-  MICRO_GENERAL: "/reports/micro-general/new",
-  MICRO_GENERAL_WATER: "/reports/micro-general-water/new",
+  // MICRO_GENERAL: "/reports/micro-general/new",
+  // MICRO_GENERAL_WATER: "/reports/micro-general-water/new",
 
   // // chemistry (fill when pages exist)
   // HPLC_ASSAY:           "/reports/hplc-assay/new",
@@ -29,7 +29,7 @@ type Category = "MICRO" | "CHEMISTRY";
 
 type FormId =
   // MICRO (matches your Prisma.FormType values)
-  "MICRO_MIX" | "MICRO_MIX_WATER" | "MICRO_GENERAL" | "MICRO_GENERAL_WATER";
+  "MICRO_MIX" | "MICRO_MIX_WATER";
 // CHEMISTRY (placeholder slugs for future chemistry forms)
 // | "HPLC_ASSAY"
 // | "GC_RESIDUALS"
@@ -52,18 +52,18 @@ const FORMS: FormDef[] = [
     category: "MICRO",
     emoji: "💧",
   },
-  {
-    id: "MICRO_GENERAL",
-    name: "Micro General",
-    category: "MICRO",
-    emoji: "🦠",
-  },
-  {
-    id: "MICRO_GENERAL_WATER",
-    name: "Micro General (Water)",
-    category: "MICRO",
-    emoji: "🚰",
-  },
+  // {
+  //   id: "MICRO_GENERAL",
+  //   name: "Micro General",
+  //   category: "MICRO",
+  //   emoji: "🦠",
+  // },
+  // {
+  //   id: "MICRO_GENERAL_WATER",
+  //   name: "Micro General (Water)",
+  //   category: "MICRO",
+  //   emoji: "🚰",
+  // },
 
   // ---- Chemistry (you can wire details later) ----
   // { id: "HPLC_ASSAY", name: "HPLC Assay", category: "CHEMISTRY", emoji: "🧪" },
@@ -88,7 +88,7 @@ const FORMS: FormDef[] = [
 ];
 
 // prisma-ish enum → slug
-const toSlug = (id: FormId) => id.toLowerCase().replace(/_/g, "-");
+// const toSlug = (id: FormId) => id.toLowerCase().replace(/_/g, "-");
 
 // ---------------------------------
 // Component
