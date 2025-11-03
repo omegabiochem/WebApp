@@ -35,6 +35,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const ct = res.headers.get("content-type") || "";
   // @ts-expect-error allow void
   return ct.includes("application/json") ? await res.json() as T : undefined;
+
 }
+
 
 

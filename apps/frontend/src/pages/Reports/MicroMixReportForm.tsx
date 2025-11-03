@@ -810,7 +810,7 @@ export default function MicroMixReportForm({
       formulaNo,
       description,
       lotNo,
-      manufactureDate,
+      manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
       testSopNo,
       dateTested,
       preliminaryResults,
@@ -1044,6 +1044,21 @@ export default function MicroMixReportForm({
       setReportNumber(updated.reportNumber || reportNumber);
       setIsDirty(false);
       alert(`✅ Status changed to ${newStatus}`);
+      if (role === "CLIENT") {
+        navigate("/clientDashboard");
+      } else if (role === "FRONTDESK") {
+        navigate("/frontdeskDashboard");
+      } else if (role === "MICRO") {
+        navigate("/microDashboard");
+        // } else if (role === "CHEMISTRY") {
+        //   navigate("/chemistryDashboard");
+      } else if (role === "QA") {
+        navigate("/qaDashboard");
+      } else if (role === "ADMIN") {
+        navigate("/adminDashboard");
+      } else if (role === "SYSTEMADMIN") {
+        navigate("/systemAdminDashboard");
+      }
     } catch (err: any) {
       console.error(err);
       alert("❌ Error changing status: " + err.message);
@@ -1056,6 +1071,7 @@ export default function MicroMixReportForm({
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
+    if (value === "NA") return "NA";
     // Convert ISO to yyyy-MM-dd
     return new Date(value).toISOString().split("T")[0];
   }
@@ -1482,7 +1498,7 @@ export default function MicroMixReportForm({
               <ResolveOverlay field="manufactureDate" />
               {lock("manufactureDate") ? (
                 <div className="flex-1  min-h-[14px]">
-                  {formatDateForInput(manufactureDate)}
+                  {manufactureDate ? formatDateForInput(manufactureDate) : "NA"}
                 </div>
               ) : (
                 <input
@@ -1496,7 +1512,9 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
-                  value={formatDateForInput(manufactureDate)}
+                  value={
+                    manufactureDate ? formatDateForInput(manufactureDate) : "NA"
+                  }
                   onChange={(e) => {
                     setManufactureDate(e.target.value);
                     markDirty();

@@ -1042,6 +1042,21 @@ export default function MicroMixWaterReportForm({
       setReportNumber(updated.reportNumber || reportNumber);
       setIsDirty(false);
       alert(`✅ Status changed to ${newStatus}`);
+      if (role === "CLIENT") {
+        navigate("/clientDashboard");
+      } else if (role === "FRONTDESK") {
+        navigate("/frontdeskDashboard");
+      } else if (role === "MICRO") {
+        navigate("/microDashboard");
+        // } else if (role === "CHEMISTRY") {
+        //   navigate("/chemistryDashboard");
+      } else if (role === "QA") {
+        navigate("/qaDashboard");
+      } else if (role === "ADMIN") {
+        navigate("/adminDashboard");
+      } else if (role === "SYSTEMADMIN") {
+        navigate("/systemAdminDashboard");
+      }
     } catch (err: any) {
       console.error(err);
       alert("❌ Error changing status: " + err.message);
