@@ -135,12 +135,10 @@ function BulkPrintArea({
     >
       {reports.map((r) => {
         // ⬇️ only add page break when we have multiple
-        const pageStyle: React.CSSProperties = isSingle
-          ? {}
-          : {
-              pageBreakAfter: "always",
-              breakAfter: "page",
-            };
+        const pageStyle: React.CSSProperties = {
+          pageBreakAfter: "always",
+          breakAfter: "page",
+        };
 
         if (r.formType === "MICRO_MIX") {
           return (
@@ -363,47 +361,49 @@ export default function MicroDashboard() {
 
   return (
     <div className="p-6">
-      {(isBulkPrinting || singlePrintReport) && (
+      {isBulkPrinting && (
         <style>
           {`
-      @media print {
-        body * {
-          visibility: hidden !important;
-        }
-        #bulk-print-root,
-        #bulk-print-root * {
-          visibility: visible !important;
-        }
-        #bulk-print-root {
-          position: absolute;
-          inset: 0;
-          background: white;
-        }
-        #bulk-print-root .sheet {
-          width: 100% !important;
-          max-width: 100% !important;
-          margin: 0 !important;
-          box-shadow: none !important;
-          border: none !important;
-        }
-
-        /* 👇 only add page breaks if it's MULTI print */
-        ${
-          isBulkPrinting
-            ? `
-          #bulk-print-root .report-page {
-            page-break-after: avoid;
-            break-after: avoid;
-          }
-        `
-            : ``
-        }
-
-        @page {
-          size: A4 portrait;
-          margin: 6mm 10mm 10mm 10mm;
-        }
+  @media print {
+      /* hide everything */
+      body * {
+        visibility: hidden !important;
       }
+
+      /* show only our bulk print area */
+      #bulk-print-root,
+      #bulk-print-root * {
+        visibility: visible !important;
+      }
+
+      #bulk-print-root {
+        position: absolute;
+        inset: 0;
+        background: white;
+      }
+
+      /* make all report "sheets" use the full printable width */
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+
+      /* make sure each printed report starts on a new page */
+      #bulk-print-root .report-page {
+        page-break-after: always;
+        break-after: page;
+      }
+
+      /* optional: reduce default page margins */
+      @page {
+        size: A4 portrait;
+        margin: 6mm 10mm 10mm 10mm;
+      }
+    }
+
     `}
         </style>
       )}
