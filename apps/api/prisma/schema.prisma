@@ -191,10 +191,10 @@ model MicroGeneralWaterDetails {
   dateSent               DateTime?
   typeOfTest             String?
   sampleType             String?
-  formulaNo              String?
+  idNo              String?
   description            String?
   lotNo                  String?
-  manufactureDate        DateTime?
+  samplingDate        DateTime?
   testSopNo              String?
   dateTested             DateTime?
   preliminaryResults     String?

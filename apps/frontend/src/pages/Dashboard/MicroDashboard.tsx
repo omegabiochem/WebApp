@@ -55,6 +55,15 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_GENERAL_WATER: "micro-general-water",
 };
 
+<<<<<<< HEAD
+=======
+// function getFormPrefix(formNumber?: string): string | null {
+//   if (!formNumber) return null;
+//   const m = formNumber.trim().match(/^[A-Za-z]{3}/);
+//   return m ? m[0].toUpperCase() : null;
+// }
+
+>>>>>>> origin/main
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -749,7 +758,7 @@ export default function MicroDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({displayReportNo(selectedReport)})
@@ -783,8 +792,13 @@ export default function MicroDashboard() {
                 </button>
               </div>
             </div>
+<<<<<<< HEAD
             <div className="overflow-auto px-6 py-4">
               {selectedReport.formType === "MICRO_MIX" ? (
+=======
+            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
+              {selectedReport?.formType === "MICRO_MIX" ? (
+>>>>>>> origin/main
                 <MicroMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}

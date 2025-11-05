@@ -325,6 +325,16 @@ const PrintStyles = () => (
 
       /* Optional: slightly smaller line-height for dense tables */
       .tight-row { line-height: 1.1 !important; }
+
+      @media print {
+  img, svg { 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* If you ever fall back to <img>, prevent interpolation */
+  img { image-rendering: pixelated; image-rendering: crisp-edges; }
+}
+
     }
   `}</style>
 );
@@ -404,11 +414,13 @@ export default function MicroGeneralWaterReportFormView(
       checked: false,
       key: "OTHER",
       label: "Other",
-      grams: "",
+      grams: "__ml",
       result: "",
       spec: "Absent",
     },
   ];
+
+  const mlFor = (p: PathRow) => p.grams ?? "11ml";
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
@@ -416,37 +428,40 @@ export default function MicroGeneralWaterReportFormView(
     return new Date(value).toISOString().split("T")[0];
   }
 
-  const appBase =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "http://localhost:5173";
+  //   const appBase =
+  //     typeof window !== "undefined"
+  //       ? window.location.origin
+  //       : "http://localhost:5173";
 
   const qrValue = report?.id
     ? JSON.stringify({
         t: "report",
         id: report.id, // ← the only thing the watcher needs
-        url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
       })
     : "";
 
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
     if (!qrValue) {
-      setQrDataUrl("");
+      setQrSvg("");
       return;
     }
-    QRCode.toDataURL(qrValue, {
-      margin: 1,
-      scale: 6,
-      errorCorrectionLevel: "M",
+
+    QRCode.toString(qrValue, {
+      type: "svg",
+      errorCorrectionLevel: "H", // stronger ECC helps with print/scan damage
+      margin: 4, // 4-module quiet zone is the standard
+      // version: 7,                // optional: fix version to keep modules coarse (see note below)
+      color: { dark: "#000000", light: "#FFFFFF" },
     })
-      .then((url) => {
-        if (alive) setQrDataUrl(url);
+      .then((svg) => {
+        if (alive) setQrSvg(svg);
       })
       .catch(() => {
-        if (alive) setQrDataUrl("");
+        if (alive) setQrSvg("");
       });
     return () => {
       alive = false;
@@ -582,7 +597,7 @@ export default function MicroGeneralWaterReportFormView(
             <div className="mt-1 grid grid-cols-3 items-center">
               <div /> {/* left spacer */}
               <div className="text-[18px] font-bold text-center underline">
-                Report
+                Water Report
               </div>
               <div className="text-right text-[12px] font-bold font-medium">
                 {report.reportNumber ? <> {report.reportNumber}</> : null}
@@ -615,7 +630,7 @@ export default function MicroGeneralWaterReportFormView(
               </div>
             </div>
 
-            {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
+            {/* TYPE OF TEST / SAMPLE TYPE / ID # */}
             <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
               <div className="px-2 border-r border-black flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">
@@ -642,10 +657,10 @@ export default function MicroGeneralWaterReportFormView(
                 />
               </div>
               <div className="px-2 flex items-center gap-1">
-                <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+                <div className="font-medium whitespace-nowrap">ID NO #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={report?.formulaNo || ""}
+                  value={report?.idNo || ""}
                   readOnly
                   disabled
                 />
@@ -664,7 +679,7 @@ export default function MicroGeneralWaterReportFormView(
               />
             </div>
 
-            {/* LOT # / MANUFACTURE DATE */}
+            {/* LOT # / SAMPLING DATE */}
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
               <div className="px-2 border-r border-black flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">LOT #:</div>
@@ -677,11 +692,11 @@ export default function MicroGeneralWaterReportFormView(
               </div>
               <div className="px-2 flex items-center gap-1">
                 <div className="font-medium whitespace-nowrap">
-                  MANUFACTURE DATE:
+                  SAMPLING DATE:
                 </div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={formatDateForInput(report?.manufactureDate) || ""}
+                  value={formatDateForInput(report?.samplingDate) || ""}
                   readOnly
                   disabled
                 />
@@ -892,7 +907,7 @@ export default function MicroGeneralWaterReportFormView(
                     />{" "}
                     Present
                   </label>
-                  <span className="ml-1">in 11g of sample</span>
+                  <span className="ml-2">in {mlFor(p)} of sample</span>
                 </div>
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
@@ -916,7 +931,7 @@ export default function MicroGeneralWaterReportFormView(
             <div className="p2 col-span-2 flex">
               <div className="mb-1 font-medium">Comments:</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none pl-2"
                 value={report?.comments || ""}
                 readOnly
                 disabled
@@ -993,14 +1008,14 @@ export default function MicroGeneralWaterReportFormView(
 
               {/* QR code (prints nicely; includeMargin helps scanners) */}
               {/* QR code (prints nicely; margin helps scanners) */}
-              {qrDataUrl ? (
-                <img
-                  src={qrDataUrl}
-                  alt="Report QR"
-                  width={96}
-                  height={96}
-                  style={{ width: 96, height: 96 }}
-                />
+              {qrSvg ? (
+                <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+                  <div
+                    // ~28–32mm square is a sweet spot for IDs this length
+                    style={{ width: "36mm", height: "36mm" }}
+                    dangerouslySetInnerHTML={{ __html: qrSvg }}
+                  />
+                </div>
               ) : (
                 <div
                   style={{ width: 96, height: 96 }}

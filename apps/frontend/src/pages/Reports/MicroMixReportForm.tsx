@@ -1200,9 +1200,9 @@ export default function MicroMixReportForm({
               ) : (
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={client}
+                  value={client.toUpperCase()}
                   onChange={(e) => {
-                    setClient(e.target.value);
+                    setClient(e.target.value.toUpperCase());
                     markDirty();
                   }}
                   // disabled={role === "CLIENT"}

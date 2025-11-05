@@ -141,18 +141,6 @@ export default function ClientDashboard() {
       try {
         setLoading(true);
         setError(null);
-        // const token = localStorage.getItem("token");
-        // if (!token) {
-        //   setReports([]);
-        //   setError("Missing auth token. Please log in again.");
-        //   return;
-        // }
-        // const res = await fetch("http://localhost:3000/reports", {
-        //   headers: { Authorization: `Bearer ${token}` },
-        // });
-
-        // if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        // const all: Report[] = await res.json();
 
         const all = await api<Report[]>("/reports");
 
@@ -541,7 +529,7 @@ export default function ClientDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({selectedReport.formNumber})
@@ -597,7 +585,7 @@ export default function ClientDashboard() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto px-6 py-4">
+            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}

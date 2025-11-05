@@ -31,7 +31,7 @@ type AttachmentItem = {
 //   (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
 
 // const attBase = (id: string) =>
-//   `${API_BASE}/reports/${id}/attachments`;
+//   `${API_BASE}/reports/micro-mix/${id}/attachments`;
 
 const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
@@ -325,6 +325,16 @@ const PrintStyles = () => (
 
       /* Optional: slightly smaller line-height for dense tables */
       .tight-row { line-height: 1.1 !important; }
+
+      @media print {
+  img, svg { 
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* If you ever fall back to <img>, prevent interpolation */
+  img { image-rendering: pixelated; image-rendering: crisp-edges; }
+}
+
     }
   `}</style>
 );
@@ -354,6 +364,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "E_COLI",
       label: "E.coli",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -361,6 +372,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "P_AER",
       label: "P.aeruginosa",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -368,6 +380,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "S_AUR",
       label: "S.aureus",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -375,6 +388,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "SALM",
       label: "Salmonella",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -382,7 +396,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "CLOSTRIDIA",
       label: "Clostridia species",
-      grams: "3g",
+      grams: " 3g",
       result: "",
       spec: "Absent",
     },
@@ -390,6 +404,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "C_ALB",
       label: "C.albicans",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -397,6 +412,7 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "B_CEP",
       label: "B.cepacia",
+      grams: "11g",
       result: "",
       spec: "Absent",
     },
@@ -404,11 +420,13 @@ export default function MicroGeneralReportFormView(
       checked: false,
       key: "OTHER",
       label: "Other",
-      grams: "",
+      grams: "__g",
       result: "",
       spec: "Absent",
     },
   ];
+
+  const gramsFor = (p: PathRow) => p.grams ?? "11g";
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
@@ -416,37 +434,39 @@ export default function MicroGeneralReportFormView(
     return new Date(value).toISOString().split("T")[0];
   }
 
-  const appBase =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "http://localhost:5173";
+  //   const appBase =
+  //     typeof window !== "undefined"
+  //       ? window.location.origin
+  //       : "http://localhost:5173";
 
   const qrValue = report?.id
     ? JSON.stringify({
         t: "report",
         id: report.id, // ← the only thing the watcher needs
-        url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
       })
     : "";
-
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
     if (!qrValue) {
-      setQrDataUrl("");
+      setQrSvg("");
       return;
     }
-    QRCode.toDataURL(qrValue, {
-      margin: 1,
-      scale: 6,
-      errorCorrectionLevel: "M",
+
+    QRCode.toString(qrValue, {
+      type: "svg",
+      errorCorrectionLevel: "H", // stronger ECC helps with print/scan damage
+      margin: 4, // 4-module quiet zone is the standard
+      // version: 7,                // optional: fix version to keep modules coarse (see note below)
+      color: { dark: "#000000", light: "#FFFFFF" },
     })
-      .then((url) => {
-        if (alive) setQrDataUrl(url);
+      .then((svg) => {
+        if (alive) setQrSvg(svg);
       })
       .catch(() => {
-        if (alive) setQrDataUrl("");
+        if (alive) setQrSvg("");
       });
     return () => {
       alive = false;
@@ -766,7 +786,7 @@ export default function MicroGeneralReportFormView(
                 Total Bacterial Count:
               </div>
               <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^0</div>
+                <div className="py-1 px-2 text-center"> x 10^1</div>
                 {/* <input
               className="w-full border border-black/70 px-1"
               value={tbc_dilution}
@@ -789,7 +809,7 @@ export default function MicroGeneralReportFormView(
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml</div>
+                <div className="py-1 px-2 text-center">CFU/ml/g</div>
               </div>
               <div className="py-1 px-2 flex">
                 <input
@@ -806,7 +826,7 @@ export default function MicroGeneralReportFormView(
                 Total Mold & Yeast Count:
               </div>
               <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^0</div>
+                <div className="py-1 px-2 text-center"> x 10^1</div>
                 {/* <input
               className="w-full border border-black/70 px-1"
               value={tmy_dilution}
@@ -829,7 +849,7 @@ export default function MicroGeneralReportFormView(
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml</div>
+                <div className="py-1 px-2 text-center">CFU/ml/g</div>
               </div>
               <div className="py-1 px-2 flex">
                 <input
@@ -891,7 +911,7 @@ export default function MicroGeneralReportFormView(
                     />{" "}
                     Present
                   </label>
-                  <span className="ml-1">in 11g of sample</span>
+                  <span className="ml-2">in {gramsFor(p)} of sample</span>
                 </div>
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
@@ -915,7 +935,7 @@ export default function MicroGeneralReportFormView(
             <div className="p2 col-span-2 flex">
               <div className="mb-1 font-medium">Comments:</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none pl-2"
                 value={report?.comments || ""}
                 readOnly
                 disabled
@@ -992,14 +1012,14 @@ export default function MicroGeneralReportFormView(
 
               {/* QR code (prints nicely; includeMargin helps scanners) */}
               {/* QR code (prints nicely; margin helps scanners) */}
-              {qrDataUrl ? (
-                <img
-                  src={qrDataUrl}
-                  alt="Report QR"
-                  width={96}
-                  height={96}
-                  style={{ width: 96, height: 96 }}
-                />
+              {qrSvg ? (
+                <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+                  <div
+                    // ~28–32mm square is a sweet spot for IDs this length
+                    style={{ width: "36mm", height: "36mm" }}
+                    dangerouslySetInnerHTML={{ __html: qrSvg }}
+                  />
+                </div>
               ) : (
                 <div
                   style={{ width: 96, height: 96 }}

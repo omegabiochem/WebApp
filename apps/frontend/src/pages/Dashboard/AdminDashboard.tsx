@@ -614,7 +614,7 @@ export default function AdminDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               {/* Left: Title */}
               <h2 className="text-lg font-semibold">
@@ -689,7 +689,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="overflow-auto px-6 py-4">
+            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
               {/* <MicroMixReportFormView
                 report={selectedReport}
                 onClose={() => setSelectedReport(null)}

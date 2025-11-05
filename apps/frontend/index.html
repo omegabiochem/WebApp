@@ -1,13 +1,63 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>
+      Omega Biochem Laboratories | FDA-Registered Microbiology & Analytical Lab
+    </title>
+    <link rel="canonical" href="https://www.omegabiochemlab.com/" />
+
+    <meta
+      name="description"
+      content="Omega Biochem Laboratories is an FDA-registered, full-service microbiology and analytical testing laboratory specializing in cosmetics, personal care, and OTC products."
+    />
+    <meta name="theme-color" content="#0b1220" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.omegabiochemlab.com/" />
+    <meta property="og:title" content="Omega Biochem Laboratories" />
+    <meta
+      property="og:description"
+      content="FDA-registered microbiology & analytical testing laboratory."
+    />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Omega Biochem Laboratories" />
+    <meta
+      name="twitter:description"
+      content="FDA-registered microbiology & analytical testing laboratory."
+    />
+    <meta name="twitter:image" content="/og-image.png" />
   </head>
+
   <body>
     <div id="root"></div>
+
+    <!-- Dev-only (safe) preamble for Vite React Refresh -->
+    <script type="module">
+      // Guard so it won't crash if not served by Vite
+      const isViteDev =
+        typeof import.meta !== "undefined" &&
+        import.meta.env &&
+        import.meta.env.DEV;
+
+      if (isViteDev) {
+        import("/@vite/client");
+        import("/@react-refresh").then((m) => {
+          const R = m.default || m;
+          R.injectIntoGlobalHook(window);
+          window.$RefreshReg$ = () => {};
+          window.$RefreshSig$ = () => (type) => type;
+          window.__vite_plugin_react_preamble_installed__ = true;
+        });
+      }
+    </script>
+
+    <!-- 👇 This actually boots your React app (critical) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
