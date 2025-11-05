@@ -23,8 +23,8 @@ import RequireAuth from "./Routes/RequireAuth";
 import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
-import MicroReportForm from "./pages/Reports/MicroReportForm";
-import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
+// import MicroReportForm from "./pages/Reports/MicroReportForm";
+// import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
 export const router = createBrowserRouter([
   {
@@ -208,26 +208,26 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      {
-        path: "reports/micro-general/new",
-        element: (
-          <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <MicroReportForm />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "reports/micro-general-water/new",
-        element: (
-          <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <MicroWaterReportForm />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
+      // {
+      //   path: "reports/micro-general/new",
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+      //         <MicroReportForm />
+      //       </RequireRole>
+      //     </RequireAuth>
+      //   ),
+      // },
+      // {
+      //   path: "reports/micro-general-water/new",
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+      //         <MicroWaterReportForm />
+      //       </RequireRole>
+      //     </RequireAuth>
+      //   ),
+      // },
 
       {
         path: "reports/micro-mix/:id", // ← no leading slash

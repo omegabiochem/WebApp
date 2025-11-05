@@ -12,8 +12,8 @@ import {
 import { api, API_URL, getToken } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
-import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
-import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
+// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // ---------------------------------
 // Types
@@ -713,23 +713,23 @@ export default function AdminDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
-              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-                <MicroGeneralReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
-                />
-              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-                <MicroGeneralWaterReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
-                />
               ) : (
+                // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                //   <MicroGeneralReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane={modalPane}
+                //     onPaneChange={setModalPane}
+                //   />
+                // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                //   <MicroGeneralWaterReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane={modalPane}
+                //     onPaneChange={setModalPane}
+                //   />
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
                   viewer yet.
