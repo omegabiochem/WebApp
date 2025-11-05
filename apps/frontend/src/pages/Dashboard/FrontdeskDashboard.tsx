@@ -659,7 +659,7 @@ export default function FrontDeskDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({selectedReport.reportNumber})
@@ -729,19 +729,7 @@ export default function FrontDeskDashboard() {
               </div>
             </div>
 
-<<<<<<< HEAD
             <div className="overflow-auto px-6 py-4">
-=======
-            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
-              {/* <MicroMixReportFormView
-                report={selectedReport}
-                onClose={() => setSelectedReport(null)}
-                pane={modalPane} // 👈 controlled by dashboard header
-                showSwitcher={false} // 👈 hide internal switcher
-                onPaneChange={setModalPane} // (optional) keeps them in sync if needed
-              /> */}
-
->>>>>>> origin/main
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
