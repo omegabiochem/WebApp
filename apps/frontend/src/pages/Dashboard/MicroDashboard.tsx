@@ -11,8 +11,8 @@ import {
 import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
-import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
-import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
+// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // -----------------------------
 // Types
@@ -173,28 +173,28 @@ function BulkPrintArea({
               />
             </div>
           );
-        } else if (r.formType === "MICRO_GENERAL") {
-          return (
-            <div key={r.id} className="report-page" style={pageStyle}>
-              <MicroGeneralReportFormView
-                report={r}
-                onClose={() => {}}
-                showSwitcher={false}
-                isBulkPrint={true}
-              />
-            </div>
-          );
-        } else if (r.formType === "MICRO_GENERAL_WATER") {
-          return (
-            <div key={r.id} className="report-page" style={pageStyle}>
-              <MicroGeneralWaterReportFormView
-                report={r}
-                onClose={() => {}}
-                showSwitcher={false}
-                isBulkPrint={true}
-              />
-            </div>
-          );
+          // } else if (r.formType === "MICRO_GENERAL") {
+          //   return (
+          //     <div key={r.id} className="report-page" style={pageStyle}>
+          //       <MicroGeneralReportFormView
+          //         report={r}
+          //         onClose={() => {}}
+          //         showSwitcher={false}
+          //         isBulkPrint={true}
+          //       />
+          //     </div>
+          //   );
+          // } else if (r.formType === "MICRO_GENERAL_WATER") {
+          //   return (
+          //     <div key={r.id} className="report-page" style={pageStyle}>
+          //       <MicroGeneralWaterReportFormView
+          //         report={r}
+          //         onClose={() => {}}
+          //         showSwitcher={false}
+          //         isBulkPrint={true}
+          //       />
+          //     </div>
+          //   );
         } else {
           return (
             <div key={r.id} className="report-page" style={pageStyle}>
@@ -812,21 +812,21 @@ export default function MicroDashboard() {
                   showSwitcher={false}
                   pane="FORM"
                 />
-              ) : selectedReport.formType === "MICRO_GENERAL" ? (
-                <MicroGeneralReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane="FORM"
-                />
-              ) : selectedReport.formType === "MICRO_GENERAL_WATER" ? (
-                <MicroGeneralWaterReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane="FORM"
-                />
               ) : (
+                // ) : selectedReport.formType === "MICRO_GENERAL" ? (
+                //   <MicroGeneralReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane="FORM"
+                //   />
+                // ) : selectedReport.formType === "MICRO_GENERAL_WATER" ? (
+                //   <MicroGeneralWaterReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane="FORM"
+                //   />
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport.formType}) doesn’t have a
                   viewer yet.

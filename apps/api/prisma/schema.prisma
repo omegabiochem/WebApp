@@ -10,8 +10,6 @@ datasource db {
 }
 
 enum FormType {
-  MICRO_GENERAL   // generic micro
-  MICRO_GENERAL_WATER     // e.g., “micro water report form”
   MICRO_MIX       // your current MicroMix
   MICRO_MIX_WATER // if you truly need a distinct variant
   // CHEMISTRY_* later for HPLC/GC/pH/TOC
@@ -40,8 +38,6 @@ model Report {
   //micro forms
   microMix      MicroMixDetails?
   microMixWater    MicroMixWaterDetails?
-  microGeneral  MicroGeneralDetails?
-  microGeneralWater  MicroGeneralWaterDetails?
 
 
   // chemistryHplc HplcDetails? … etc.
@@ -136,11 +132,9 @@ model MicroMixWaterDetails {
 
 
 
-model MicroGeneralDetails {
-  reportId               String          @id
-  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
 
+<<<<<<< Updated upstream
  // ⬇️ everything that was specific to MicroMixReport
   client                 String?
   dateSent               DateTime?
@@ -223,6 +217,8 @@ model MicroGeneralWaterDetails {
   corrections            Json?
 }
 
+=======
+>>>>>>> Stashed changes
 model Sample {
   id         String   @id @default(cuid())
   clientId   String

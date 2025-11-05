@@ -13,8 +13,8 @@ import {
 import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
-import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
-import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
+// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 
 // -----------------------------
 // Types
@@ -600,20 +600,20 @@ export default function ClientDashboard() {
                   showSwitcher={false}
                   pane={paneFor(String(selectedReport.status))}
                 />
-              ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-                <MicroGeneralReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
-                />
-              ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-                <MicroGeneralWaterReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
-                />
+              // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+              //   <MicroGeneralReportFormView
+              //     report={selectedReport}
+              //     onClose={() => setSelectedReport(null)}
+              //     showSwitcher={false}
+              //     pane={paneFor(String(selectedReport.status))}
+              //   />
+              // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+              //   <MicroGeneralWaterReportFormView
+              //     report={selectedReport}
+              //     onClose={() => setSelectedReport(null)}
+              //     showSwitcher={false}
+              //     pane={paneFor(String(selectedReport.status))}
+              //   />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a

@@ -1,225 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "../../context/AuthContext";
-import { useBlocker, useNavigate } from "react-router-dom";
-import {
-  useReportValidation,
-  FieldErrorBadge,
-  type MicroMixReportFormValues,
-  deriveMicroPhaseFromStatus,
-  type MicroPhase,
-  MICRO_PHASE_FIELDS,
-  type CorrectionItem,
-  getCorrections,
-  resolveCorrection,
-  createCorrections,
-} from "../../utils/microMixReportValidation";
-import {
-  STATUS_TRANSITIONS,
-  type ReportStatus,
-  type Role,
-} from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+// import { useEffect, useMemo, useState } from "react";
+// import { useAuth } from "../../context/AuthContext";
+// import { useBlocker, useNavigate } from "react-router-dom";
+// import {
+//   useReportValidation,
+//   FieldErrorBadge,
+//   type MicroMixReportFormValues,
+//   deriveMicroPhaseFromStatus,
+//   type MicroPhase,
+//   MICRO_PHASE_FIELDS,
+//   type CorrectionItem,
+//   getCorrections,
+//   resolveCorrection,
+//   createCorrections,
+// } from "../../utils/microMixReportValidation";
+// import {
+//   STATUS_TRANSITIONS,
+//   type ReportStatus,
+//   type Role,
+// } from "../../utils/microMixReportFormWorkflow";
+// import { api } from "../../lib/api";
 
-// Hook for confirming navigation
-function useConfirmOnLeave(isDirty: boolean) {
-  const blocker = useBlocker(isDirty);
+// // Hook for confirming navigation
+// function useConfirmOnLeave(isDirty: boolean) {
+//   const blocker = useBlocker(isDirty);
 
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      if (window.confirm("⚠️ You have unsaved changes. Leave anyway?")) {
-        blocker.proceed();
-      } else {
-        blocker.reset();
-      }
-    }
-  }, [blocker]);
-}
-
-// ---- Map each transition to buttons ----
-
-const statusButtons: Record<string, { label: string; color: string }> = {
-  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-  UNDER_CLIENT_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_CLIENT_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_APPROVED: { label: "Approve", color: "bg-green-600" },
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  CLIENT_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
-  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FRONTDESK_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-red-600",
-  },
-  UNDER_PRELIMINARY_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
-  UNDER_FINAL_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
-  FINAL_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FINAL_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
-  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
-  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
-  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-  FINAL_APPROVED: { label: "Approve", color: "bg-green-700" },
-};
-
-// A small helper to lock fields per role (frontend hint; backend is the source of truth)
-function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
-  if (!role || !status) return false;
-  const transition = STATUS_TRANSITIONS[status]; // ✅ safe now
-  if (!transition || !transition.canEdit?.includes(role)) {
-    return false;
-  }
-
-  // --- PHASE GUARD ---
-  const p = deriveMicroPhaseFromStatus(status);
-
-  // Block FINAL fields during PRELIM for MICRO & ADMIN
-  if ((role === "MICRO" || role === "ADMIN") && p === "PRELIM") {
-    if (MICRO_PHASE_FIELDS.FINAL.includes(field)) return false;
-  }
-
-  // (Optional) Once in FINAL, freeze PRELIM fields too:
-  if ((role === "MICRO" || role === "ADMIN") && p === "FINAL") {
-    if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
-  }
-  const map: Record<Role, string[]> = {
-    SYSTEMADMIN: [],
-    ADMIN: [
-      "testSopNo",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      "tbc_gram",
-      "tbc_result",
-      "tbc_spec",
-      "tmy_gram",
-      "tmy_result",
-      "tmy_spec",
-      "pathogens",
-      "comments",
-      "testedBy",
-      "testedDate",
-      "dateCompleted",
-      "reviewedBy",
-      "reviewedDate",
-    ],
-    FRONTDESK: [
-      "client",
-      "dateSent",
-      "typeOfTest",
-      "sampleType",
-      "formulaNo",
-      "description",
-      "lotNo",
-      "manufactureDate",
-    ],
-    MICRO: [
-      "testSopNo",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      // "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      // "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
-      "comments",
-      "testedBy",
-      "testedDate",
-    ],
-    QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-    CLIENT: [
-      "client",
-      "dateSent",
-      "typeOfTest",
-      "sampleType",
-      "formulaNo",
-      "description",
-      "lotNo",
-      "manufactureDate",
-      "tbc_spec",
-      "tmy_spec",
-      "pathogens",
-    ], // read-only
-  };
-  if (!role) return false;
-  // special rule: client can edit anything in DRAFT
-  // if (role === "CLIENT" && status === "DRAFT") {
-  //   return true;
-  // }
-
-  if (map[role]?.includes("*")) return true;
-  return map[role]?.includes(field) ?? false;
-}
-
-// // Simple input wrapper that locks by role
-// function Field({
-//   label,
-//   value,
-//   onChange,
-//   readOnly,
-//   className = "",
-//   inputClass = "",
-//   placeholder = " ", // placeholder space keeps boxes visible when empty
-// }: {
-//   label: string;
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-//   inputClass?: string;
-//   placeholder?: string;
-// }) {
-//   return (
-//     <div className={`flex gap-2 items-center ${className}`}>
-//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-//       <input
-//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-//         value={value}
-//         onChange={(e) => onChange(e.target.value)}
-//         readOnly={readOnly}
-//         placeholder={placeholder}
-//       />
-//     </div>
-//   );
+//   useEffect(() => {
+//     if (blocker.state === "blocked") {
+//       if (window.confirm("⚠️ You have unsaved changes. Leave anyway?")) {
+//         blocker.proceed();
+//       } else {
+//         blocker.reset();
+//       }
+//     }
+//   }, [blocker]);
 // }
 
+<<<<<<< Updated upstream
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
   <style>{`
@@ -2680,6 +2496,8 @@ export default function MicroReportForm({
 //   }, [blocker]);
 // }
 
+=======
+>>>>>>> Stashed changes
 // // ---- Map each transition to buttons ----
 
 // const statusButtons: Record<string, { label: string; color: string }> = {
