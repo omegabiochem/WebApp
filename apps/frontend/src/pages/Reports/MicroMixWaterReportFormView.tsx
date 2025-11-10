@@ -393,7 +393,7 @@ export default function MicroMixWaterReportFormView(
       checked: false,
       key: "CLOSTRIDIA",
       label: "Clostridia species",
-      grams: "3g",
+      grams: "3ml",
       result: "",
       spec: "Absent",
     },
@@ -421,7 +421,12 @@ export default function MicroMixWaterReportFormView(
     },
   ];
 
-  const mlFor = (p: PathRow) => p.grams ?? "11ml";
+  // ✅ normalize ml text
+  const mlFor = (p: PathRow) => {
+    const raw = (p.grams ?? "11ml").toString().trim();
+    // If it ends with a digit, assume missing unit and add "ml"
+    return /\d$/.test(raw) ? `${raw}ml` : raw;
+  };
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
@@ -907,43 +912,52 @@ export default function MicroMixWaterReportFormView(
             {(report?.pathogens || pathogenDefaults).map((p: any) => (
               <div
                 key={p.key}
-                className="grid grid-cols-[25%_55%_20%] border-b border-black text-[11px]"
+                className="grid grid-cols-[25%_55%_20%] items-center border-b border-black text-[11px]"
               >
-                <div className="py-[2px] px-2 border-r flex gap-2 items-center text-center">
-                  {/* Organism checkbox */}
-                  <input
-                    type="checkbox"
-                    className="thick-box"
-                    checked={p.checked || false}
-                    readOnly
-                    disabled
-                  />
+                <div className="py-[2px] px-2 border-r flex gap-2 items-center">
+                  <span className="inline-block w-4 shrink-0 text-center">
+                    <input
+                      type="checkbox"
+                      className="thick-box align-middle"
+                      checked={p.checked || false}
+                      readOnly
+                      disabled
+                    />
+                  </span>
                   <span>{p.label}</span>
                 </div>
-                <div className="py-[2px] px-2 border-r flex gap-4 justify-center text-center">
-                  <label>
-                    {/* Result radios */}
-                    <input
-                      type="radio"
-                      className="thick-box"
-                      checked={p.result === "Absent"}
-                      readOnly
-                      disabled
-                    />{" "}
-                    Absent
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      className="thick-box"
-                      checked={p.result === "Present"}
-                      readOnly
-                      disabled
-                    />{" "}
-                    Present
-                  </label>
-                  <span className="ml-2">in {mlFor(p)} of sample</span>
+
+                <div className="py-[2px] px-2 border-r flex items-center justify-center">
+                  {/* fixed columns so radios line up perfectly across rows */}
+                  <div className="inline-grid grid-cols-[88px_88px_auto] items-center">
+                    <label className="inline-flex items-center gap-1 w-[88px]">
+                      <input
+                        type="radio"
+                        className="thick-box align-middle"
+                        checked={p.result === "Absent"}
+                        readOnly
+                        disabled
+                      />
+                      Absent
+                    </label>
+
+                    <label className="inline-flex items-center gap-1 w-[88px]">
+                      <input
+                        type="radio"
+                        className="thick-box align-middle"
+                        checked={p.result === "Present"}
+                        readOnly
+                        disabled
+                      />
+                      Present
+                    </label>
+
+                    <span className="ml-2 whitespace-nowrap">
+                      in {mlFor(p)} of sample
+                    </span>
+                  </div>
                 </div>
+
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
             ))}

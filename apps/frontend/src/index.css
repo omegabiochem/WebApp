@@ -18,8 +18,10 @@
 
   /* ✅ Thick black square checkbox with tick mark */
   .thick-box {
-    @apply appearance-none inline-grid place-content-center 
-         h-4 w-4 border-2 border-black cursor-pointer;
+    /* existing */
+    @apply appearance-none inline-grid place-content-center h-4 w-4 border-2 border-black cursor-pointer;
+    /* new: keep height tight and center with text */
+    @apply align-middle leading-none;
   }
 
   .thick-box::after {
