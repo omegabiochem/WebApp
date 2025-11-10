@@ -15,6 +15,8 @@ const PATH_BY_ID: Record<FormId, string> = {
   // ⬇️ CHANGE these to your actual pages
   MICRO_MIX: "/reports/micro-mix/new",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new",
+  CHEMISTRY_MIX: "/reports/micro-mix/new",
+  CHEMISTRY_MIX_WATER: "/reports/micro-mix-water/new",
   // MICRO_GENERAL: "/reports/micro-general/new",
   // MICRO_GENERAL_WATER: "/reports/micro-general-water/new",
 
@@ -29,7 +31,7 @@ type Category = "MICRO" | "CHEMISTRY";
 
 type FormId =
   // MICRO (matches your Prisma.FormType values)
-  "MICRO_MIX" | "MICRO_MIX_WATER";
+  "MICRO_MIX" | "MICRO_MIX_WATER" | "CHEMISTRY_MIX" | "CHEMISTRY_MIX_WATER";
 // CHEMISTRY (placeholder slugs for future chemistry forms)
 // | "HPLC_ASSAY"
 // | "GC_RESIDUALS"
@@ -52,39 +54,18 @@ const FORMS: FormDef[] = [
     category: "MICRO",
     emoji: "💧",
   },
-  // {
-  //   id: "MICRO_GENERAL",
-  //   name: "Micro General",
-  //   category: "MICRO",
-  //   emoji: "🦠",
-  // },
-  // {
-  //   id: "MICRO_GENERAL_WATER",
-  //   name: "Micro General (Water)",
-  //   category: "MICRO",
-  //   emoji: "🚰",
-  // },
-
-  // ---- Chemistry (you can wire details later) ----
-  // { id: "HPLC_ASSAY", name: "HPLC Assay", category: "CHEMISTRY", emoji: "🧪" },
-  // {
-  //   id: "GC_RESIDUALS",
-  //   name: "GC Residual Solvents",
-  //   category: "CHEMISTRY",
-  //   emoji: "⚗️",
-  // },
-  // {
-  //   id: "PH_CONDUCTIVITY",
-  //   name: "pH & Conductivity",
-  //   category: "CHEMISTRY",
-  //   emoji: "📈",
-  // },
-  // {
-  //   id: "TOC",
-  //   name: "Total Organic Carbon",
-  //   category: "CHEMISTRY",
-  //   emoji: "🧴",
-  // },
+  {
+    id: "CHEMISTRY_MIX",
+    name: "Chemistry Mix",
+    category: "CHEMISTRY",
+    emoji: "🧴",
+  },
+  {
+    id: "CHEMISTRY_MIX_WATER",
+    name: "Chemistry Mix Water",
+    category: "CHEMISTRY",
+    emoji: "💧",
+  },
 ];
 
 // prisma-ish enum → slug
