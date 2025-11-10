@@ -11,24 +11,18 @@ import MicroMixWaterReportForm from "./MicroMixWaterReportForm"; // MICRO_MIX_WA
 // Import your specific DTOs
 import type { MicroMixReportDTO } from "../../../../SharedTypes/Reports/MicroMixReportDto";
 import type { MicroMixWaterReportDTO } from "../../../../SharedTypes/Reports/MicroMixWaterReportDto";
-import type { MicroGeneralReportDTO } from "../../../../SharedTypes/Reports/MicroGeneralReportDto";
-import type { MicroGeneralWaterReportDTO } from "../../../../SharedTypes/Reports/MicroGeneralWaterReportDto";
 
 // base discriminator that MUST be present in API response
 type FormType =
   | "MICRO_MIX"
-  | "MICRO_MIX_WATER"
-  | "MICRO_GENERAL"
-  | "MICRO_GENERAL_WATER";
+  | "MICRO_MIX_WATER";
 
 type BaseReport = { id: string; formType: FormType };
 
 // Discriminated union of all DTOs (each must include formType at runtime)
 type AnyReportDTO =
   | (BaseReport & MicroMixReportDTO)
-  | (BaseReport & MicroMixWaterReportDTO)
-  | (BaseReport & MicroGeneralReportDTO)
-  | (BaseReport & MicroGeneralWaterReportDTO);
+  | (BaseReport & MicroMixWaterReportDTO);
 
 // Type guards (optional but nice for TS)
 function isMix(r: AnyReportDTO): r is BaseReport & MicroMixReportDTO {

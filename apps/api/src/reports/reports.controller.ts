@@ -43,10 +43,6 @@ const slugToFormType = (slug: string): FormType | null => {
       return 'MICRO_MIX';
     case 'micro-mix-water':
       return 'MICRO_MIX_WATER';
-    case 'micro-general':
-      return 'MICRO_GENERAL';
-    case 'micro-general-water':
-      return 'MICRO_GENERAL_WATER';
     default:
       return null;
   }

@@ -13,6 +13,8 @@ import {
 import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import React from "react";
+import { createPortal } from "react-dom";
 // import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 // import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 
@@ -53,8 +55,6 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
-  MICRO_GENERAL: "micro-general",
-  MICRO_GENERAL_WATER: "micro-general-water",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -114,6 +114,83 @@ const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
   status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED"
     ? "ATTACHMENTS"
     : "FORM";
+
+function BulkPrintArea({
+  reports,
+  onAfterPrint,
+}: {
+  reports: Report[];
+  onAfterPrint: () => void;
+}) {
+  if (!reports.length) return null;
+
+  const isSingle = reports.length === 1;
+  React.useEffect(() => {
+    const tid = setTimeout(() => {
+      window.print();
+    }, 200);
+
+    const handleAfterPrint = () => {
+      onAfterPrint();
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      clearTimeout(tid);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [reports, onAfterPrint]);
+
+  return (
+    <div
+      id="bulk-print-root"
+      className={
+        isSingle ? "hidden print:block" : "hidden print:block multi-print"
+      }
+    >
+      {reports.map((r) => {
+        // ⬇️ only add page break when we have multiple
+        // const pageStyle: React.CSSProperties = {
+        //   pageBreakAfter: "always",
+        //   breakAfter: "page",
+        // };
+
+        if (r.formType === "MICRO_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        } else if (r.formType === "MICRO_MIX_WATER") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixWaterReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        } else {
+          return (
+            <div key={r.id} className="report-page">
+              <h1>{r.formNumber}</h1>
+              <p>Unknown form type: {r.formType}</p>
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -131,6 +208,15 @@ export default function ClientDashboard() {
   const [perPage, setPerPage] = useState(10);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+
+  // ✅ multiple selection & bulk print
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkPrinting, setIsBulkPrinting] = useState(false);
+
+  // ✅ NEW: single-report print from modal
+  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
+    null
+  );
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -232,8 +318,96 @@ export default function ClientDashboard() {
     navigate(`/reports/${slug}/${r.id}`);
   }
 
+  // selection
+  const isRowSelected = (id: string) => selectedIds.includes(id);
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) =>
+        prev.filter((id) => !pageRows.some((r) => r.id === id))
+      );
+    } else {
+      setSelectedIds((prev) => {
+        const set = new Set(prev);
+        pageRows.forEach((r) => set.add(r.id));
+        return Array.from(set);
+      });
+    }
+  };
+
+  const handlePrintSelected = () => {
+    if (!selectedIds.length) return;
+    setIsBulkPrinting(true);
+  };
+
+  const selectedReportObjects = selectedIds
+    .map((id) => reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
+
   return (
     <div className="p-6">
+      {(isBulkPrinting || !!singlePrintReport) &&
+        createPortal(
+          <>
+            <style>
+              {`
+@media print {
+  /* Hide everything in the document body except our print root */
+  body > *:not(#bulk-print-root) { display: none !important; }
+  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+
+  /* Page sizing & margins */
+  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+  /* Make all report "sheets" fill the width without shadow/padding */
+  #bulk-print-root .sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  /* Keep each report together */
+  #bulk-print-root .report-page {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  /* Start every report AFTER the first on a new page */
+  #bulk-print-root .report-page + .report-page {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  @supports (margin-trim: block) {
+    @page { margin-trim: block; }
+  }
+}
+        `}
+            </style>
+
+            <BulkPrintArea
+              reports={
+                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+              }
+              onAfterPrint={() => {
+                if (isBulkPrinting) setIsBulkPrinting(false);
+                if (singlePrintReport) setSinglePrintReport(null);
+              }}
+            />
+          </>,
+          document.body
+        )}
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
@@ -245,6 +419,19 @@ export default function ClientDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePrintSelected}
+            disabled={!selectedIds.length}
+            className={classNames(
+              "inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium shadow-sm",
+              selectedIds.length
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-200 text-slate-500 cursor-not-allowed"
+            )}
+          >
+            🖨️ Print selected ({selectedIds.length})
+          </button>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -357,6 +544,13 @@ export default function ClientDashboard() {
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
+                <th className="px-4 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectPage}
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">Form #</th>
                 <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Form @</th>
@@ -390,6 +584,13 @@ export default function ClientDashboard() {
               {!loading &&
                 pageRows.map((r) => (
                   <tr key={r.id} className="border-t hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isRowSelected(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium">{r.formNumber}</td>
                     <td className="px-4 py-3">{r.client}</td>
                     <td className="px-4 py-3">{r.formType}</td>
@@ -535,6 +736,13 @@ export default function ClientDashboard() {
                 Report ({selectedReport.formNumber})
               </h2>
               <div className="flex items-center gap-2">
+                {/* ✅ NEW: Print this report */}
+                <button
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                  onClick={() => setSinglePrintReport(selectedReport)}
+                >
+                  🖨️ Print
+                </button>
                 {canUpdateThisReport(selectedReport, user) && (
                   <button
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
@@ -600,20 +808,6 @@ export default function ClientDashboard() {
                   showSwitcher={false}
                   pane={paneFor(String(selectedReport.status))}
                 />
-              // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-              //   <MicroGeneralReportFormView
-              //     report={selectedReport}
-              //     onClose={() => setSelectedReport(null)}
-              //     showSwitcher={false}
-              //     pane={paneFor(String(selectedReport.status))}
-              //   />
-              // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-              //   <MicroGeneralWaterReportFormView
-              //     report={selectedReport}
-              //     onClose={() => setSelectedReport(null)}
-              //     showSwitcher={false}
-              //     pane={paneFor(String(selectedReport.status))}
-              //   />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
@@ -624,6 +818,26 @@ export default function ClientDashboard() {
           </div>
         </div>
       )}
+
+      {/* bulk print hidden area */}
+      {/* {isBulkPrinting && (
+        <BulkPrintArea
+          reports={selectedReportObjects}
+          onAfterPrint={() => {
+            setIsBulkPrinting(false);
+          }}
+        />
+      )} */}
+
+      {/* ✅ single-report print hidden area */}
+      {/* {singlePrintReport && (
+        <BulkPrintArea
+          reports={[singlePrintReport]}
+          onAfterPrint={() => {
+            setSinglePrintReport(null);
+          }}
+        />
+      )} */}
     </div>
   );
 }

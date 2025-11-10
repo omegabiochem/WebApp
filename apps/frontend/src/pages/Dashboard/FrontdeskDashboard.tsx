@@ -12,6 +12,7 @@ import {
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import { createPortal } from "react-dom";
 // import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 // import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
@@ -39,8 +40,6 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
-  MICRO_GENERAL: "micro-general",
-  MICRO_GENERAL_WATER: "micro-general-water",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -78,16 +77,16 @@ function BulkPrintArea({
 }) {
   if (!reports.length) return null;
 
-  useEffect(() => {
+  const isSingle = reports.length === 1;
+  React.useEffect(() => {
     const tid = setTimeout(() => {
       window.print();
-    }, 80);
+    }, 200);
 
     const handleAfterPrint = () => {
       onAfterPrint();
     };
     window.addEventListener("afterprint", handleAfterPrint);
-
     return () => {
       clearTimeout(tid);
       window.removeEventListener("afterprint", handleAfterPrint);
@@ -95,61 +94,47 @@ function BulkPrintArea({
   }, [reports, onAfterPrint]);
 
   return (
-    <div id="bulk-print-root" className="hidden print:block">
+    <div
+      id="bulk-print-root"
+      className={
+        isSingle ? "hidden print:block" : "hidden print:block multi-print"
+      }
+    >
       {reports.map((r) => {
-        const pageStyle: React.CSSProperties = {
-          pageBreakAfter: "always",
-          breakAfter: "page",
-        };
+        // ⬇️ only add page break when we have multiple
+        // const pageStyle: React.CSSProperties = {
+        //   pageBreakAfter: "always",
+        //   breakAfter: "page",
+        // };
 
         if (r.formType === "MICRO_MIX") {
           return (
-            <div key={r.id} className="report-page" style={pageStyle}>
+            <div key={r.id} className="report-page">
               <MicroMixReportFormView
                 report={r}
                 onClose={() => {}}
                 showSwitcher={false}
                 isBulkPrint={true}
+                isSingleBulk={isSingle}
               />
             </div>
           );
         } else if (r.formType === "MICRO_MIX_WATER") {
           return (
-            <div key={r.id} className="report-page" style={pageStyle}>
+            <div key={r.id} className="report-page">
               <MicroMixWaterReportFormView
                 report={r}
                 onClose={() => {}}
                 showSwitcher={false}
                 isBulkPrint={true}
+                isSingleBulk={isSingle}
               />
             </div>
           );
-        // } else if (r.formType === "MICRO_GENERAL") {
-        //   return (
-        //     <div key={r.id} className="report-page" style={pageStyle}>
-        //       <MicroGeneralReportFormView
-        //         report={r}
-        //         onClose={() => {}}
-        //         showSwitcher={false}
-        //         isBulkPrint={true}
-        //       />
-        //     </div>
-        //   );
-        // } else if (r.formType === "MICRO_GENERAL_WATER") {
-        //   return (
-        //     <div key={r.id} className="report-page" style={pageStyle}>
-        //       <MicroGeneralWaterReportFormView
-        //         report={r}
-        //         onClose={() => {}}
-        //         showSwitcher={false}
-        //         isBulkPrint={true}
-        //       />
-        //     </div>
-        //   );
         } else {
           return (
-            <div key={r.id} className="report-page" style={pageStyle}>
-              <h1>{r.reportNumber}</h1>
+            <div key={r.id} className="report-page">
+              <h1>{r.formNumber}</h1>
               <p>Unknown form type: {r.formType}</p>
             </div>
           );
@@ -182,6 +167,11 @@ export default function FrontDeskDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // NEW: whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
+
+  // ✅ NEW: single-report print from modal
+  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
+    null
+  );
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -315,51 +305,60 @@ export default function FrontDeskDashboard() {
 
   return (
     <div className="p-6">
-      {isBulkPrinting && (
-        <style>
-          {`
-    @media print {
-      /* hide everything */
-      body * {
-        visibility: hidden !important;
-      }
+      {(isBulkPrinting || !!singlePrintReport) &&
+        createPortal(
+          <>
+            <style>
+              {`
+                  @media print {
+                  /* Hide everything in the document body except our print root */
+                  body > *:not(#bulk-print-root) { display: none !important; }
+                 #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+    
+                  /* Page sizing & margins */
+                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+    
+                  /* Make all report "sheets" fill the width without shadow/padding */
+                  #bulk-print-root .sheet {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                  }
+    
+                  /* Keep each report together */
+                  #bulk-print-root .report-page {
+                    break-inside: avoid-page;
+                    page-break-inside: avoid;
+                  }
+    
+                  /* Start every report AFTER the first on a new page */
+                  #bulk-print-root .report-page + .report-page {
+                    break-before: page;
+                    page-break-before: always;
+                  }
+    
+                  @supports (margin-trim: block) {
+                    @page { margin-trim: block; }
+                  }
+                }
+            `}
+            </style>
 
-      /* show only our bulk print area */
-      #bulk-print-root,
-      #bulk-print-root * {
-        visibility: visible !important;
-      }
-
-      #bulk-print-root {
-        position: absolute;
-        inset: 0;
-        background: white;
-      }
-
-      /* make all report "sheets" use the full printable width */
-      #bulk-print-root .sheet {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-        box-shadow: none !important;
-        border: none !important;
-      }
-
-      /* make sure each printed report starts on a new page */
-      #bulk-print-root .report-page {
-        page-break-after: always;
-        break-after: page;
-      }
-
-      /* optional: reduce default page margins */
-      @page {
-        size: A4 portrait;
-        margin: 6mm 10mm 10mm 10mm;
-      }
-    }
-    `}
-        </style>
-      )}
+            <BulkPrintArea
+              reports={
+                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+              }
+              onAfterPrint={() => {
+                if (isBulkPrinting) setIsBulkPrinting(false);
+                if (singlePrintReport) setSinglePrintReport(null);
+              }}
+            />
+          </>,
+          document.body
+        )}
 
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
@@ -720,6 +719,13 @@ export default function FrontDeskDashboard() {
                     Update
                   </button>
                 )}
+                {/* ✅ NEW: Print this report */}
+                <button
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                  onClick={() => setSinglePrintReport(selectedReport)}
+                >
+                  🖨️ Print
+                </button>
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
                   onClick={() => setSelectedReport(null)}
@@ -746,23 +752,23 @@ export default function FrontDeskDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
-              // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-              //   <MicroGeneralReportFormView
-              //     report={selectedReport}
-              //     onClose={() => setSelectedReport(null)}
-              //     showSwitcher={false}
-              //     pane={modalPane}
-              //     onPaneChange={setModalPane}
-              //   />
-              // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-              //   <MicroGeneralWaterReportFormView
-              //     report={selectedReport}
-              //     onClose={() => setSelectedReport(null)}
-              //     showSwitcher={false}
-              //     pane={modalPane}
-              //     onPaneChange={setModalPane}
-              //   />
               ) : (
+                // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
+                //   <MicroGeneralReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane={modalPane}
+                //     onPaneChange={setModalPane}
+                //   />
+                // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
+                //   <MicroGeneralWaterReportFormView
+                //     report={selectedReport}
+                //     onClose={() => setSelectedReport(null)}
+                //     showSwitcher={false}
+                //     pane={modalPane}
+                //     onPaneChange={setModalPane}
+                //   />
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
                   viewer yet.
@@ -774,7 +780,7 @@ export default function FrontDeskDashboard() {
       )}
 
       {/* bulk print hidden area */}
-      {isBulkPrinting && (
+      {/* {isBulkPrinting && (
         <BulkPrintArea
           reports={selectedReportObjects}
           onAfterPrint={() => {
@@ -784,8 +790,7 @@ export default function FrontDeskDashboard() {
             // setSelectedIds([]);
           }}
         />
-      )}
+      )} */}
     </div>
   );
 }
-

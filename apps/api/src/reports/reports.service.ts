@@ -356,14 +356,9 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 }
 
 // Which details relation to use for a given formType
-const DETAILS_RELATION: Record<
-  FormType,
-  'microMix' | 'microMixWater' | 'microGeneral' | 'microGeneralWater'
-> = {
+const DETAILS_RELATION: Record<FormType, 'microMix' | 'microMixWater'> = {
   MICRO_MIX: 'microMix',
   MICRO_MIX_WATER: 'microMixWater',
-  MICRO_GENERAL: 'microGeneral',
-  MICRO_GENERAL_WATER: 'microGeneralWater',
 };
 
 // Prisma delegate per details model
@@ -373,10 +368,7 @@ function detailsDelegate(prisma: PrismaService, t: FormType) {
       return prisma.microMixDetails;
     case 'MICRO_MIX_WATER':
       return prisma.microMixWaterDetails;
-    case 'MICRO_GENERAL':
-      return prisma.microGeneralDetails;
-    case 'MICRO_GENERAL_WATER':
-      return prisma.microGeneralWaterDetails;
+
     default:
       throw new BadRequestException(`Unsupported formType: ${t}`);
   }
@@ -408,19 +400,12 @@ function splitPatch(patch: Record<string, any>) {
 
 // Pick the one details object off an included Report
 function pickDetails(r: any) {
-  return (
-    r.microMix ??
-    r.microMixWater ??
-    r.microGeneral ??
-    r.microGeneralWater ??
-    null
-  );
+  return r.microMix ?? r.microMixWater ?? null;
 }
 
 // Flatten for backwards-compat responses (base + active details on top)
 function flattenReport(r: any) {
-  const { microMix, microMixWater, microGeneral, microGeneralWater, ...base } =
-    r;
+  const { microMix, microMixWater, ...base } = r;
   const dRaw = pickDetails(r) || {};
 
   // Strip any keys that belong to the base report so they can't override it.
@@ -449,10 +434,6 @@ function updateDetailsByType(
       return tx.microMixDetails.update({ where: { reportId }, data });
     case 'MICRO_MIX_WATER':
       return tx.microMixWaterDetails.update({ where: { reportId }, data });
-    case 'MICRO_GENERAL':
-      return tx.microGeneralDetails.update({ where: { reportId }, data });
-    case 'MICRO_GENERAL_WATER':
-      return tx.microGeneralWaterDetails.update({ where: { reportId }, data });
     default:
       throw new Error(`Unsupported formType: ${formType}`);
   }
@@ -535,8 +516,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
 
@@ -550,8 +529,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
         attachments: true,
         statusHistory: true,
       },
@@ -570,8 +547,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
     if (!current) throw new NotFoundException('Report not found');
@@ -702,8 +677,6 @@ export class ReportsService {
         include: {
           microMix: true,
           microMixWater: true,
-          microGeneral: true,
-          microGeneralWater: true,
         },
       }),
     ];
@@ -827,8 +800,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
     return rows.map(flattenReport);
@@ -888,8 +859,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -945,8 +914,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -965,8 +932,6 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
-        microGeneral: true,
-        microGeneralWater: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
