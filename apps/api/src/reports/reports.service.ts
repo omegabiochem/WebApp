@@ -491,6 +491,12 @@ export class ReportsService {
       return yyyy; // e.g. "2410"
     }
 
+    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+    function seqPad(num: number): string {
+      const width = Math.max(4, String(num).length);
+      return String(num).padStart(width, '0');
+    }
+
     // per-client running number
     const seq = await this.prisma.clientSequence.upsert({
       where: { clientCode },
@@ -499,7 +505,8 @@ export class ReportsService {
     });
 
     // const formNumber = `${clientCode}-${String(seq.lastNumber).padStart(4, '0')}`;
-    const n = String(seq.lastNumber).padStart(4, '0');
+    // const n = String(seq.lastNumber).padStart(4, '0');
+    const n = seqPad(seq.lastNumber);
     const formNumber = `${clientCode}-${yyyy()}${n}`;
     const prefix = getDeptLetterForForm(formType); // "M" for MICRO_*
 
@@ -639,6 +646,12 @@ export class ReportsService {
         return yyyy; // e.g. "2410"
       }
 
+      // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+      function seqPad(num: number): string {
+        const width = Math.max(4, String(num).length);
+        return String(num).padStart(width, '0');
+      }
+
       // Assign report number when lab work starts
       if (
         patchIn.status === 'UNDER_PRELIMINARY_TESTING_REVIEW' &&
@@ -650,7 +663,7 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
-        const n = String(seq.lastNumber).padStart(4, '0'); // NNNNN
+        const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`; // M-YYMMNNNNN
       }
 
@@ -782,6 +795,12 @@ export class ReportsService {
       return yyyy; // e.g. "2410"
     }
 
+    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+    function seqPad(num: number): string {
+      const width = Math.max(4, String(num).length);
+      return String(num).padStart(width, '0');
+    }
+
     if (
       target === 'UNDER_PRELIMINARY_TESTING_REVIEW' &&
       !current.reportNumber
@@ -795,7 +814,7 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
-        const n = String(seq.lastNumber).padStart(4, '0');
+        const n = seqPad(seq.lastNumber);
         patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
       }
     }
