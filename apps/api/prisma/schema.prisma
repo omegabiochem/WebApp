@@ -13,7 +13,7 @@ model Report {
   id                       String                    @id @default(cuid())
   formNumber               String                    @unique
   reportNumber             String?                   @unique
-  prefix                   String                    @default("M")
+  prefix                   String                    @default("OM")
   status                   ReportStatus              @default(DRAFT)
   lockedAt                 DateTime?
   createdBy                String?

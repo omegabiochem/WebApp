@@ -318,9 +318,9 @@ function allowedForRole(role: UserRole, fields: string[]) {
 function getDepartmentLetter(role: string): string {
   switch (role) {
     case 'MICRO':
-      return 'M';
+      return 'OM';
     case 'CHEMISTRY':
-      return 'C';
+      return 'BC';
     default:
       return '';
   }
@@ -418,7 +418,7 @@ function flattenReport(r: any) {
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
-  return formType.startsWith('MICRO') ? 'M' : 'C';
+  return formType.startsWith('MICRO') ? 'OM' : 'BC';
 }
 
 function updateDetailsByType(
@@ -480,10 +480,15 @@ export class ReportsService {
       );
     }
 
-    function yymm(d: Date = new Date()): string {
-      const yy = String(d.getFullYear()).slice(-2);
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      return yy + mm; // e.g. "2510"
+    // function yymm(d: Date = new Date()): string {
+    //   const yy = String(d.getFullYear()).slice(-2);
+    //   const mm = String(d.getMonth() + 1).padStart(2, '0');
+    //   return yy + mm; // e.g. "2410"
+    // }
+
+    function yyyy(d: Date = new Date()): string {
+      const yyyy = String(d.getFullYear());
+      return yyyy; // e.g. "2410"
     }
 
     // per-client running number
@@ -494,8 +499,8 @@ export class ReportsService {
     });
 
     // const formNumber = `${clientCode}-${String(seq.lastNumber).padStart(4, '0')}`;
-    const n = String(seq.lastNumber).padStart(5, '0');
-    const formNumber = `${clientCode}-${yymm()}${n}`;
+    const n = String(seq.lastNumber).padStart(4, '0');
+    const formNumber = `${clientCode}-${yyyy()}${n}`;
     const prefix = getDeptLetterForForm(formType); // "M" for MICRO_*
 
     // remove non-details keys from body that would collide with Report fields
@@ -623,10 +628,15 @@ export class ReportsService {
         );
       }
 
-      function yymm(d: Date = new Date()): string {
-        const yy = String(d.getFullYear()).slice(-2);
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        return yy + mm; // e.g. "2510"
+      // function yymm(d: Date = new Date()): string {
+      //   const yy = String(d.getFullYear()).slice(-2);
+      //   const mm = String(d.getMonth() + 1).padStart(2, '0');
+      //   return yy + mm; // e.g. "2410"
+      // }
+
+      function yyyy(d: Date = new Date()): string {
+        const yyyy = String(d.getFullYear());
+        return yyyy; // e.g. "2410"
       }
 
       // Assign report number when lab work starts
@@ -640,8 +650,8 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
-        const n = String(seq.lastNumber).padStart(5, '0'); // NNNNN
-        base.reportNumber = `${deptLetter}-${yymm()}${n}`; // M-YYMMNNNNN
+        const n = String(seq.lastNumber).padStart(4, '0'); // NNNNN
+        base.reportNumber = `${deptLetter}-${yyyy()}${n}`; // M-YYMMNNNNN
       }
 
       // e-sign requirements
@@ -761,10 +771,15 @@ export class ReportsService {
 
     const patch: any = { status: target };
 
-    function yymm(d: Date = new Date()): string {
-      const yy = String(d.getFullYear()).slice(-2);
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      return yy + mm; // e.g. "2510"
+    // function yymm(d: Date = new Date()): string {
+    //   const yy = String(d.getFullYear()).slice(-2);
+    //   const mm = String(d.getMonth() + 1).padStart(2, '0');
+    //   return yy + mm; // e.g. "2410"
+    // }
+
+    function yyyy(d: Date = new Date()): string {
+      const yyyy = String(d.getFullYear());
+      return yyyy; // e.g. "2410"
     }
 
     if (
@@ -780,8 +795,8 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
-        const n = String(seq.lastNumber).padStart(5, '0');
-        patch.reportNumber = `${deptLetter}-${yymm()}${n}`;
+        const n = String(seq.lastNumber).padStart(4, '0');
+        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
       }
     }
 
