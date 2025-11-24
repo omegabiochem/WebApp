@@ -15,6 +15,11 @@ const PATH_BY_ID: Record<FormId, string> = {
   // ⬇️ CHANGE these to your actual pages
   MICRO_MIX: "/reports/micro-mix/new",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new",
+
+
+  // CHEMISTRY_MIX: "/reports/micro-mix/new",
+  // CHEMISTRY_MIX_WATER: "/reports/micro-mix-water/new",
+
   // MICRO_GENERAL: "/reports/micro-general/new",
   // MICRO_GENERAL_WATER: "/reports/micro-general-water/new",
 
@@ -52,7 +57,9 @@ const FORMS: FormDef[] = [
     category: "MICRO",
     emoji: "💧",
   },
+]
   // {
+
   //   id: "MICRO_GENERAL",
   //   name: "Micro General",
   //   category: "MICRO",
@@ -85,7 +92,18 @@ const FORMS: FormDef[] = [
   //   category: "CHEMISTRY",
   //   emoji: "🧴",
   // },
-];
+
+  //   id: "CHEMISTRY_MIX",
+  //   name: "Chemistry Mix",
+  //   category: "CHEMISTRY",
+  //   emoji: "🧴",
+  // },
+  // {
+  //   id: "CHEMISTRY_MIX_WATER",
+  //   name: "Chemistry Mix Water",
+  //   category: "CHEMISTRY",
+  //   emoji: "💧",
+  // },];
 
 // prisma-ish enum → slug
 // const toSlug = (id: FormId) => id.toLowerCase().replace(/_/g, "-");

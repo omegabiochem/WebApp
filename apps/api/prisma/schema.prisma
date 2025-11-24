@@ -3,52 +3,32 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-enum FormType {
-  MICRO_MIX       // your current MicroMix
-  MICRO_MIX_WATER // if you truly need a distinct variant
-  // CHEMISTRY_* later for HPLC/GC/pH/TOC
-}
-
-
 model Report {
-  id            String       @id @default(cuid())
-  formNumber    String       @unique
-  reportNumber  String?      @unique
-  prefix        String       @default("M")    // “M” for Micro, “C” for Chemistry, etc.
-  status        ReportStatus @default(DRAFT)
-  lockedAt      DateTime?
-  createdBy     String?
-  updatedBy     String?
-
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  formType      FormType
-
-  // 🔗 shared relations
-  attachments   Attachment[]
-  statusHistory StatusHistory[]
-
-  // 1:1 per-form details (only one will be present based on formType)
-  //micro forms
-  microMix      MicroMixDetails?
-  microMixWater    MicroMixWaterDetails?
-
-
-  // chemistryHplc HplcDetails? … etc.
+  id                       String                    @id @default(cuid())
+  formNumber               String                    @unique
+  reportNumber             String?                   @unique
+  prefix                   String                    @default("OM")
+  status                   ReportStatus              @default(DRAFT)
+  lockedAt                 DateTime?
+  createdBy                String?
+  updatedBy                String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  formType                 FormType
+  attachments              Attachment[]
+  microMix                 MicroMixDetails?
+  microMixWater            MicroMixWaterDetails?
+  statusHistory            StatusHistory[]
 }
 
 model MicroMixDetails {
-  reportId               String          @id
-  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
-
-
- // ⬇️ everything that was specific to MicroMixReport
+  reportId               String       @id
   client                 String?
   dateSent               DateTime?
   typeOfTest             String?
@@ -76,31 +56,24 @@ model MicroMixDetails {
   testedDate             DateTime?
   reviewedBy             String?
   reviewedDate           DateTime?
-  status                 ReportStatus    @default(DRAFT)
+  status                 ReportStatus @default(DRAFT)
   lockedAt               DateTime?
   createdBy              String?
   updatedBy              String?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
   corrections            Json?
+  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
-
-
 model MicroMixWaterDetails {
-  reportId               String          @id
-  report                 Report          @relation(fields: [reportId], references: [id], onDelete: Cascade)
-
-
- // ⬇️ everything that was specific to MicroMixReport
+  reportId               String       @id
   client                 String?
   dateSent               DateTime?
   typeOfTest             String?
   sampleType             String?
-  idNo              String?
   description            String?
   lotNo                  String?
-  samplingDate        DateTime?
   testSopNo              String?
   dateTested             DateTime?
   preliminaryResults     String?
@@ -120,17 +93,17 @@ model MicroMixWaterDetails {
   testedDate             DateTime?
   reviewedBy             String?
   reviewedDate           DateTime?
-  status                 ReportStatus    @default(DRAFT)
+  status                 ReportStatus @default(DRAFT)
   lockedAt               DateTime?
   createdBy              String?
   updatedBy              String?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
   corrections            Json?
+  idNo                   String?
+  samplingDate           DateTime?
+  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
-
-
-
 
 model Sample {
   id         String   @id @default(cuid())
@@ -144,37 +117,27 @@ model Sample {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  role         UserRole @default(CLIENT)
-  passwordHash String
-
-  // client
-  clientCode String?
-
-  // userId login + lifecycle
-  userId            String?   @unique
-  userIdSetAt       DateTime?
-  passwordUpdatedAt DateTime?
-  passwordVersion   Int       @default(1)
-
-  // flag that set it in the first-login flow
-  mustChangePassword Boolean @default(false)
-
-  // admin invite / temporary credentials
-  inviteToken           String?   @unique
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  name                  String?
+  role                  UserRole         @default(CLIENT)
+  passwordHash          String
+  mustChangePassword    Boolean          @default(false)
+  active                Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  inviteToken           String?          @unique
   inviteTokenExpiresAt  DateTime?
+  passwordUpdatedAt     DateTime?
+  passwordVersion       Int              @default(1)
   tempPasswordExpiresAt DateTime?
-
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 👇 relation: one user can have many balance readings
-  readings    BalanceReading[]
-  // 👇 relation: one user can have many audit trails
-  auditTrails AuditTrail[]
+  userId                String?          @unique
+  userIdSetAt           DateTime?
+  clientCode            String?
+  lastLoginAt           DateTime?        @db.Timestamp(6)
+  lastActivityAt        DateTime?        @db.Timestamp(6)
+  auditTrails           AuditTrail[]
+  readings              BalanceReading[]
 }
 
 model ClientSequence {
@@ -192,77 +155,109 @@ model BalanceReading {
   instrument String
   command    String
   result     String
+  userId     String?
   createdAt  DateTime @default(now())
-
-  // foreign key
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
 }
 
 model AuditTrail {
   id        String    @id @default(cuid())
   action    String
+  details   String
+  userId    String?
+  createdAt DateTime  @default(now())
+  changes   Json?
   entity    String
   entityId  String?
-  changes   Json?
-  details   String
-  role      UserRole?
   ipAddress String?
-  createdAt DateTime  @default(now())
-
-  // foreign key
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  role      UserRole?
+  user      User?     @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId, createdAt])
   @@index([userId, createdAt])
 }
 
-enum ReportStatus {
-  // ----- Client -----
-  DRAFT
-  SUBMITTED_BY_CLIENT // old (keep for backward compat if needed)
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION // new
-  CLIENT_NEEDS_FINAL_CORRECTION // new
-  UNDER_CLIENT_PRELIMINARY_CORRECTION // new
-  UNDER_CLIENT_FINAL_CORRECTION // new
-  PRELIMINARY_RESUBMISSION_BY_CLIENT // new
-  FINAL_RESUBMISSION_BY_CLIENT // new
-  UNDER_CLIENT_PRELIMINARY_REVIEW // new
-  UNDER_CLIENT_FINAL_REVIEW // new
+model Attachment {
+  id         String         @id @default(cuid())
+  reportId   String
+  kind       AttachmentKind
+  filename   String
+  storageKey String
+  checksum   String
+  pages      Int?
+  source     String
+  meta       Json?
+  createdAt  DateTime       @default(now())
+  createdBy  String?
+  report     Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  // ----- Frontdesk (optional branch) -----
+  @@unique([reportId, checksum])
+  @@index([reportId])
+}
+
+model StatusHistory {
+  id        String       @id @default(cuid())
+  reportId  String
+  from      ReportStatus
+  to        ReportStatus
+  reason    String?
+  createdAt DateTime     @default(now())
+  userId    String?
+  role      UserRole?
+  ipAddress String?
+  report    Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+}
+
+model MachineClient {
+  clientId   String    @id
+  secretHash String
+  scopes     String[]  @default([])
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+}
+
+
+enum FormType {
+  MICRO_MIX
+  MICRO_MIX_WATER
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED_BY_CLIENT
+  CLIENT_NEEDS_PRELIMINARY_CORRECTION
+  CLIENT_NEEDS_FINAL_CORRECTION
+  UNDER_CLIENT_PRELIMINARY_CORRECTION
+  UNDER_CLIENT_FINAL_CORRECTION
+  PRELIMINARY_RESUBMISSION_BY_CLIENT
+  FINAL_RESUBMISSION_BY_CLIENT
+  UNDER_CLIENT_PRELIMINARY_REVIEW
+  UNDER_CLIENT_FINAL_REVIEW
   RECEIVED_BY_FRONTDESK
   FRONTDESK_ON_HOLD
   FRONTDESK_NEEDS_CORRECTION
-
-  // ----- Preliminary Testing (Micro round 1) -----
-  UNDER_PRELIMINARY_TESTING_REVIEW // new
-  PRELIMINARY_TESTING_ON_HOLD // new
-  PRELIMINARY_TESTING_NEEDS_CORRECTION // new
-  PRELIMINARY_RESUBMISSION_BY_TESTING // new
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW // new
-  PRELIMINARY_APPROVED // new
-
-  // ----- Final Testing (Micro round 2) -----
-  UNDER_FINAL_TESTING_REVIEW // new
-  FINAL_TESTING_ON_HOLD // new
-  FINAL_TESTING_NEEDS_CORRECTION // new
-  FINAL_RESUBMISSION_BY_TESTING // new
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW // new
-
-  // ----- QA -----
+  UNDER_PRELIMINARY_TESTING_REVIEW
+  PRELIMINARY_TESTING_ON_HOLD
+  PRELIMINARY_TESTING_NEEDS_CORRECTION
+  PRELIMINARY_RESUBMISSION_BY_TESTING
+  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW
+  PRELIMINARY_APPROVED
+  UNDER_FINAL_TESTING_REVIEW
+  FINAL_TESTING_ON_HOLD
+  FINAL_TESTING_NEEDS_CORRECTION
+  FINAL_RESUBMISSION_BY_TESTING
+  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
-
-  // ----- Admin -----
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
   ADMIN_REJECTED
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW // new
-
-  // ----- Final -----
-  FINAL_APPROVED // new
+  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW
+  FINAL_APPROVED
   LOCKED
 }
 
@@ -276,58 +271,8 @@ enum UserRole {
   CLIENT
 }
 
-model Attachment {
-  id         String         @id @default(cuid())
-  reportId   String
-
-  report     Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
-
-  kind       AttachmentKind
-  filename   String
-  storageKey String
-  checksum   String
-  pages      Int?
-  source     String // "scan-smb" | "scan-email" | "manual"
-  meta       Json?
-  createdAt  DateTime       @default(now())
-  createdBy  String? // user id or "ingestor"
-
-
-  @@unique([reportId, checksum])
-  @@index([reportId])
-}
-
 enum AttachmentKind {
   SIGNED_FORM
   RAW_SCAN
   OTHER
-}
-
-model StatusHistory {
-  id        String       @id @default(cuid())
-  reportId  String
-
-  report    Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
-
-
-  from      ReportStatus
-  to        ReportStatus
-  reason    String?
-  createdAt DateTime     @default(now())
-  userId    String?
-  role      UserRole?
-  ipAddress String?
-
-  @@index([reportId, createdAt])
-}
-
-
-model MachineClient {
-  clientId    String    @id
-  secretHash  String
-  scopes      String[]  @default([]) // e.g., ["reports.read","attachments.write"]
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  lastUsedAt  DateTime?
 }
