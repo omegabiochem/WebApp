@@ -23,6 +23,7 @@ import RequireAuth from "./Routes/RequireAuth";
 import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
+import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -208,26 +209,6 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      // {
-      //   path: "reports/micro-general/new",
-      //   element: (
-      //     <RequireAuth>
-      //       <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-      //         <MicroReportForm />
-      //       </RequireRole>
-      //     </RequireAuth>
-      //   ),
-      // },
-      // {
-      //   path: "reports/micro-general-water/new",
-      //   element: (
-      //     <RequireAuth>
-      //       <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-      //         <MicroWaterReportForm />
-      //       </RequireRole>
-      //     </RequireAuth>
-      //   ),
-      // },
 
       {
         path: "reports/micro-mix/:id", // ← no leading slash
@@ -272,42 +253,11 @@ export const router = createBrowserRouter([
       },
 
       {
-        path: "reports/micro-general/:id", // ← no leading slash
+        path: "reports/chemistry-mix/new",
         element: (
           <RequireAuth>
-            <RequireRole
-              roles={[
-                "FRONTDESK",
-                "MICRO",
-                "CHEMISTRY",
-                "QA",
-                "ADMIN",
-                "SYSTEMADMIN",
-                "CLIENT",
-              ]}
-            >
-              <MicroMixReportFormWrapper />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-
-      {
-        path: "reports/micro-general-water/:id", // ← no leading slash
-        element: (
-          <RequireAuth>
-            <RequireRole
-              roles={[
-                "FRONTDESK",
-                "MICRO",
-                "CHEMISTRY",
-                "QA",
-                "ADMIN",
-                "SYSTEMADMIN",
-                "CLIENT",
-              ]}
-            >
-              <MicroMixReportFormWrapper />
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+              <ChemistryMixReportForm />
             </RequireRole>
           </RequireAuth>
         ),
