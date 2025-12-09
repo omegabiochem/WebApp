@@ -356,7 +356,9 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 }
 
 // Which details relation to use for a given formType
-const DETAILS_RELATION: Record<FormType, 'microMix' | 'microMixWater'> = {
+type MicroFormType = Extract<FormType, 'MICRO_MIX' | 'MICRO_MIX_WATER'>;
+
+const DETAILS_RELATION: Record<MicroFormType, 'microMix' | 'microMixWater'> = {
   MICRO_MIX: 'microMix',
   MICRO_MIX_WATER: 'microMixWater',
 };

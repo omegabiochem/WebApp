@@ -81,30 +81,6 @@ export class AuthController {
     return this.auth.logout(req, { id: sub, role, userId: uid }, jti);
   }
 
-  // src/auth/auth.controller.ts
-  // @Post('m2m/token')
-  // @Public() // ← or protect with basic auth/rate-limit/IP allowlist
-  // async m2mToken(@Body() body: { clientId: string; clientSecret: string }) {
-  //   const ok =
-  //     body.clientId === process.env.M2M_CLIENT_ID &&
-  //     body.clientSecret === process.env.M2M_CLIENT_SECRET;
-  //   if (!ok) throw new UnauthorizedException();
-
-  //   const payload = {
-  //     type: 'service', // distinguish from human tokens
-  //     service: 'scan-watcher',
-  //     scopes: ['reports:read', 'attachments:write'],
-  //     sub: body.clientId,
-  //     role: 'M2M',
-  //   };
-
-  //   const expiresIn = '15m'; // short-lived
-  //   const access_token = await this.jwtService.signAsync(payload, {
-  //     expiresIn,
-  //   });
-  //   return { access_token, token_type: 'Bearer', expires_in: 15 * 60 };
-  // }
-
   @Post('m2m/token')
   @Public()
   async m2mToken(@Body() body: { clientId: string; clientSecret: string }) {
@@ -120,6 +96,7 @@ export class AuthController {
       sub: `m2m:${mc.clientId}`,
       typ: 'm2m',
       role: 'SYSTEMADMIN', // quick: pass your existing role guards
+
       scopes: mc.scopes, // keep scopes for later tightening
     };
 
@@ -138,9 +115,9 @@ export class AuthController {
   @Public()
   @Get('db-branch')
   async dbBranch() {
-    const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      "select current_database() as db, current_setting('neon.branch', true) as branch",
-    );
+    const rows = await this.prisma.$queryRaw<any[]>`
+      select current_database() as db, current_setting('neon.branch', true) as branch
+    `;
     return rows?.[0] ?? {};
   }
 }
