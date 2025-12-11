@@ -589,7 +589,7 @@ export default function ChemistryMixReportForm({
           <div className="flex items-center gap-2 mb-2">
             <span className="font-medium">Comments :</span>
             <input
-              className="flex-1 border-none outline-none"
+              className="flex-1 border-0 border-b border-black/60 outline-none"
               value={comments}
               onChange={(e) => {
                 setComments(e.target.value);
@@ -603,7 +603,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">TESTED BY :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   value={testedBy}
                   onChange={(e) => {
                     setTestedBy(e.target.value.toUpperCase());
@@ -614,7 +614,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   type="date"
                   value={formatDateForInput(testedDate)}
                   onChange={(e) => {
@@ -629,7 +629,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">REVIEWED BY :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   value={reviewedBy}
                   onChange={(e) => {
                     setReviewedBy(e.target.value.toUpperCase());
@@ -640,7 +640,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   type="date"
                   value={formatDateForInput(reviewedDate)}
                   onChange={(e) => {

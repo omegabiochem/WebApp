@@ -378,7 +378,7 @@ export default function ChemistryMixReportFormView(
           <div className="flex items-center gap-2 mb-2">
             <span className="font-medium">Comments :</span>
             <input
-              className="flex-1 border-none outline-none"
+              className="flex-1 border-0 border-b border-black/60 outline-none"
               value={report?.comments || ""}
               readOnly
               disabled
@@ -390,7 +390,7 @@ export default function ChemistryMixReportFormView(
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">TESTED BY :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   value={report?.testedBy || ""}
                   readOnly
                   disabled
@@ -399,7 +399,7 @@ export default function ChemistryMixReportFormView(
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   type="date"
                   value={formatDateForInput(report?.testedDate) || ""}
                   readOnly
@@ -412,7 +412,7 @@ export default function ChemistryMixReportFormView(
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">REVIEWED BY :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   value={report?.reviewedBy || ""}
                   readOnly
                   disabled
@@ -421,7 +421,7 @@ export default function ChemistryMixReportFormView(
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-none outline-none"
+                  className="flex-1 border-0 border-b border-black/60 outline-none"
                   type="date"
                   value={formatDateForInput(report?.reviewedDate) || ""}
                   readOnly
