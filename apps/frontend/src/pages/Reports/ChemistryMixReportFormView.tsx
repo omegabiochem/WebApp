@@ -1,249 +1,51 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { useBlocker } from "react-router-dom";
-import { api } from "../../lib/api";
-import {
-  DEFAULT_CHEM_ACTIVES,
-  type ChemActiveRow,
-} from "../../utils/chemistryReportValidation";
-import type { ReportStatus } from "../../utils/chemistryReportFormWorkflow";
+import { DEFAULT_CHEM_ACTIVES } from "../../utils/chemistryReportValidation";
 
-// ---------- tiny hook to warn on unsaved ----------
-function useConfirmOnLeave(isDirty: boolean) {
-  const blocker = useBlocker(isDirty);
+type ChemistryMixReportFormProps = {
+  report: any;
+  onClose: () => void;
+};
 
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      if (window.confirm("⚠️ You have unsaved changes. Leave anyway?")) {
-        blocker.proceed();
-      } else {
-        blocker.reset();
-      }
-    }
-  }, [blocker]);
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
-}
-
-// --------- helper for date <-> input value ----------
 function formatDateForInput(value: string | null) {
   if (!value) return "";
-  if (value === "NA") return "NA";
+
   return new Date(value).toISOString().split("T")[0];
 }
 
-const PrintStyles = () => (
-  <style>{`
-    @media print {
-      @page { size: A4 portrait; margin: 14mm; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .no-print { display: none !important; }
-      .sheet { box-shadow: none !important; border: none !important; }
-    }
-  `}</style>
-);
+// sample type checkboxes
+type SampleTypeKey =
+  | "BULK"
+  | "FINISHED_GOOD"
+  | "RAW_MATERIAL"
+  | "PROCESS_VALIDATION"
+  | "CLEANING_VALIDATION"
+  | "COMPOSITE"
+  | "DI_WATER_SAMPLE";
 
-type ChemistryReportFormProps = {
-  report?: any; // same pattern as Micro
-  onClose?: () => void;
-};
+// Above component body (or inside, before return)
+const sampleTypeColumns: [SampleTypeKey, string][][] = [
+  [
+    ["BULK", "BULK"],
+    ["FINISHED_GOOD", "FINISHED GOOD"],
+  ],
+  [
+    ["RAW_MATERIAL", "RAW MATERIAL"],
+    ["COMPOSITE", "COMPOSITE"],
+  ],
+  [
+    ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
+    ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
+  ],
+];
 
-export default function ChemistryMixReportForm({
-  report,
-  onClose,
-}: ChemistryReportFormProps) {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const [isDirty, setIsDirty] = useState(false);
-  const markDirty = () => !isDirty && setIsDirty(true);
-  useConfirmOnLeave(isDirty);
-
-  // ---- core report identity ----
-  const [reportId, setReportId] = useState<string | null>(report?.id ?? null);
-  const [reportNumber, setReportNumber] = useState<string>(
-    report?.reportNumber ?? ""
-  );
-
-  // ---- header fields (same as micro) ----
-  const [client, setClient] = useState(
-    report?.client ?? (user?.role === "CLIENT" ? user?.clientCode ?? "" : "")
-  );
-  const [dateSent, setDateSent] = useState(report?.dateSent || "");
-
-  // ---- SAMPLE DESCRIPTION BLOCK ----
-  const [sampleDescription, setSampleDescription] = useState(
-    report?.sampleDescription || ""
-  );
-
-  // type of test: ID / Percent Assay / Content Uniformity
-  type TestType = "ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY";
-  const [testTypes, setTestTypes] = useState<TestType[]>(
-    report?.testTypes || []
-  );
-
-  // sample collected position: top / mid / bottom
-  type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
-
-  const [sampleCollected, setSampleCollected] = useState<SampleCollected | "">(
-    report?.sampleCollected || null
-  );
-
-  const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
-  const [manufactureDate, setManufactureDate] = useState(
-    report?.manufactureDate || ""
-  );
-
-  const [formulaId, setFormulaId] = useState(report?.formulaId || "");
-  const [sampleSize, setSampleSize] = useState(report?.sampleSize || "");
-  const [numberOfActives, setNumberOfActives] = useState(
-    report?.numberOfActives || ""
-  );
-
-  // sample type checkboxes
-  type SampleTypeKey =
-    | "BULK"
-    | "FINISHED_GOOD"
-    | "RAW_MATERIAL"
-    | "PROCESS_VALIDATION"
-    | "CLEANING_VALIDATION"
-    | "COMPOSITE"
-    | "DI_WATER_SAMPLE";
-
-  const [sampleTypes, setSampleTypes] = useState<SampleTypeKey[]>(
-    report?.sampleTypes || []
-  );
-
-  const toggleSampleType = (key: SampleTypeKey) => {
-    setSampleTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-    markDirty();
-  };
-
-  const toggleTestType = (key: TestType) => {
-    setTestTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-    markDirty();
-  };
-
-  // ---- ACTIVES TABLE ----
-  const [actives, setActives] = useState<ChemActiveRow[]>(
-    report?.actives || DEFAULT_CHEM_ACTIVES
-  );
-
-  const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
-    setActives((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], ...patch };
-      return copy;
-    });
-    markDirty();
-  };
-
-  // ---- comments / signatures ----
-  const [comments, setComments] = useState(report?.comments || "");
-  const [testedBy, setTestedBy] = useState(report?.testedBy || "");
-  const [testedDate, setTestedDate] = useState(report?.testedDate || "");
-  const [reviewedBy, setReviewedBy] = useState(report?.reviewedBy || "");
-  const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
-
-  type SavedReport = {
-    id: string;
-    status: ReportStatus;
-    reportNumber?: number | string;
-  };
-
-  // ------------- SAVE -------------
-  const handleSave = async (): Promise<boolean> => {
-    const payload = {
-      client,
-      dateSent,
-      formType: "CHEMISTRY_MIX" as const, // important for backend
-      sampleDescription,
-      testTypes,
-      sampleCollected,
-      lotBatchNo,
-      manufactureDate: manufactureDate?.trim() || "NA",
-      formulaId,
-      sampleSize,
-      numberOfActives,
-      sampleTypes,
-      actives,
-      comments,
-      testedBy,
-      testedDate,
-      reviewedBy,
-      reviewedDate,
-    };
-
-    try {
-      let saved: SavedReport;
-
-      if (reportId) {
-        saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
-      } else {
-        saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      }
-      setReportId(saved.id); // 👈 keep the new id
-      // setStatus(saved.status); // in case backend changed it
-      setReportNumber(String(saved.reportNumber ?? ""));
-      setIsDirty(false);
-      alert("✅ Chemistry report saved");
-      return true;
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error saving chemistry report: " + err.message);
-      return false;
-    }
-  };
-
-  const handleClose = () => {
-    if (onClose) onClose();
-    else navigate(-1);
-  };
-
-  // Above component body (or inside, before return)
-  const sampleTypeColumns: [SampleTypeKey, string][][] = [
-    [
-      ["BULK", "BULK"],
-      ["FINISHED_GOOD", "FINISHED GOOD"],
-    ],
-    [
-      ["RAW_MATERIAL", "RAW MATERIAL"],
-      ["COMPOSITE", "COMPOSITE"],
-    ],
-    [
-      ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
-      ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-    ],
-  ];
-
-  // ---------------- RENDER ----------------
+export default function ChemistryMixReportFormView(
+  props: ChemistryMixReportFormProps
+) {
+  const { report, onClose } = props;
   return (
     <>
-      <PrintStyles />
-
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
         {/* Top buttons */}
-        <div className="no-print mb-4 flex justify-end gap-2">
+        {/* <div className="no-print mb-4 flex justify-end gap-2">
           <button
             className="px-3 py-1 rounded-md border bg-gray-600 text-white"
             onClick={handleClose}
@@ -256,7 +58,7 @@ export default function ChemistryMixReportForm({
           >
             {reportId ? "Update Report" : "Save Report"}
           </button>
-        </div>
+        </div> */}
 
         {/* Letterhead – same look as Micro */}
         <div className="mb-2 text-center">
@@ -282,7 +84,7 @@ export default function ChemistryMixReportForm({
               Report
             </div>
             <div className="text-right text-[12px] font-bold">
-              {reportNumber}
+              {report.reportNumber ? <> {report.reportNumber}</> : null}
             </div>
           </div>
         </div>
@@ -294,11 +96,9 @@ export default function ChemistryMixReportForm({
               <div className="whitespace-nowrap font-medium">CLIENT :</div>
               <input
                 className="flex-1 border-0 border-b border-black/70  text-[12px]"
-                value={client}
-                onChange={(e) => {
-                  setClient(e.target.value.toUpperCase());
-                  markDirty();
-                }}
+                value={report?.client || ""}
+                readOnly
+                disabled
               />
             </div>
             <div className="px-2 flex items-center gap-1">
@@ -306,11 +106,9 @@ export default function ChemistryMixReportForm({
               <input
                 className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
                 type="date"
-                value={formatDateForInput(dateSent)}
-                onChange={(e) => {
-                  setDateSent(e.target.value);
-                  markDirty();
-                }}
+                value={formatDateForInput(report?.dateSent) || ""}
+                readOnly
+                disabled
               />
             </div>
           </div>
@@ -320,11 +118,9 @@ export default function ChemistryMixReportForm({
             <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
             <input
               className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
-              value={sampleDescription}
-              onChange={(e) => {
-                setSampleDescription(e.target.value);
-                markDirty();
-              }}
+              value={report?.sampleDescription || ""}
+              readOnly
+              disabled
             />
           </div>
 
@@ -335,24 +131,27 @@ export default function ChemistryMixReportForm({
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
-                  checked={testTypes.includes("ID")}
-                  onChange={() => toggleTestType("ID")}
+                  checked={report?.testTypes.includes("ID")}
+                  readOnly
+                  disabled
                 />
                 ID
               </label>
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
-                  checked={testTypes.includes("PERCENT_ASSAY")}
-                  onChange={() => toggleTestType("PERCENT_ASSAY")}
+                  checked={report?.testTypes.includes("PERCENT_ASSAY")}
+                  readOnly
+                  disabled
                 />
                 Percent Assay
               </label>
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
-                  checked={testTypes.includes("CONTENT_UNIFORMITY")}
-                  onChange={() => toggleTestType("CONTENT_UNIFORMITY")}
+                  checked={report?.testTypes.includes("CONTENT_UNIFORMITY")}
+                  readOnly
+                  disabled
                 />
                 Content Uniformity
               </label>
@@ -363,11 +162,9 @@ export default function ChemistryMixReportForm({
                 <input
                   type="radio"
                   name="sampleCollected"
-                  checked={sampleCollected === "TOP_BEG"}
-                  onChange={() => {
-                    setSampleCollected("TOP_BEG");
-                    markDirty();
-                  }}
+                  checked={report?.sampleCollected === "TOP_BEG"}
+                  readOnly
+                  disabled
                 />
                 Top / Beg
               </label>
@@ -376,11 +173,9 @@ export default function ChemistryMixReportForm({
                 <input
                   type="radio"
                   name="sampleCollected"
-                  checked={sampleCollected === "MID"}
-                  onChange={() => {
-                    setSampleCollected("MID");
-                    markDirty();
-                  }}
+                  checked={report?.sampleCollected === "MID"}
+                  readOnly
+                  disabled
                 />
                 Mid
               </label>
@@ -389,11 +184,9 @@ export default function ChemistryMixReportForm({
                 <input
                   type="radio"
                   name="sampleCollected"
-                  checked={sampleCollected === "BOTTOM_END"}
-                  onChange={() => {
-                    setSampleCollected("BOTTOM_END");
-                    markDirty();
-                  }}
+                  checked={report?.sampleCollected === "BOTTOM_END"}
+                  readOnly
+                  disabled
                 />
                 Bottom / End
               </label>
@@ -406,11 +199,9 @@ export default function ChemistryMixReportForm({
               <span className="font-medium">LOT / BATCH # :</span>
               <input
                 className="flex-1 border-0 border-b border-black/70 outline-none"
-                value={lotBatchNo}
-                onChange={(e) => {
-                  setLotBatchNo(e.target.value);
-                  markDirty();
-                }}
+                value={report?.lotBatchNo || ""}
+                readOnly
+                disabled
               />
             </div>
             <div className="px-2 flex items-center gap-2">
@@ -418,11 +209,9 @@ export default function ChemistryMixReportForm({
               <input
                 className="flex-1 border-0 border-b border-black/70 outline-none"
                 type="date"
-                value={formatDateForInput(manufactureDate)}
-                onChange={(e) => {
-                  setManufactureDate(e.target.value);
-                  markDirty();
-                }}
+                value={formatDateForInput(report?.manufactureDate) || ""}
+                readOnly
+                disabled
               />
             </div>
           </div>
@@ -435,11 +224,9 @@ export default function ChemistryMixReportForm({
               </span>
               <input
                 className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
-                value={formulaId}
-                onChange={(e) => {
-                  setFormulaId(e.target.value);
-                  markDirty();
-                }}
+                value={report?.formulaId || ""}
+                readOnly
+                disabled
               />
             </div>
 
@@ -449,11 +236,9 @@ export default function ChemistryMixReportForm({
               </span>
               <input
                 className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
-                value={sampleSize}
-                onChange={(e) => {
-                  setSampleSize(e.target.value);
-                  markDirty();
-                }}
+                value={report?.sampleSize || ""}
+                readOnly
+                disabled
               />
             </div>
 
@@ -463,11 +248,9 @@ export default function ChemistryMixReportForm({
               </span>
               <input
                 className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
-                value={numberOfActives}
-                onChange={(e) => {
-                  setNumberOfActives(e.target.value);
-                  markDirty();
-                }}
+                value={report?.numberOfActives || ""}
+                readOnly
+                disabled
               />
             </div>
           </div>
@@ -490,8 +273,9 @@ export default function ChemistryMixReportForm({
                     >
                       <input
                         type="checkbox"
-                        checked={sampleTypes.includes(key)}
-                        onChange={() => toggleSampleType(key)}
+                        checked={report?.sampleTypes.includes(key)}
+                        readOnly
+                        disabled
                       />
                       {label}
                     </label>
@@ -512,7 +296,7 @@ export default function ChemistryMixReportForm({
             <div className="p-1">DATE TESTED / INITIAL</div>
           </div>
 
-          {actives.map((row, idx) => (
+          {DEFAULT_CHEM_ACTIVES.map((row, idx) => (
             <div
               key={row.key}
               className="grid grid-cols-[25%_15%_23%_20%_17%] border-b last:border-b-0 border-black"
@@ -522,9 +306,8 @@ export default function ChemistryMixReportForm({
                 <input
                   type="checkbox"
                   checked={row.checked}
-                  onChange={(e) =>
-                    updateActive(idx, { checked: e.target.checked })
-                  }
+                  readOnly
+                  disabled
                 />
                 <span>{row.label}</span>
               </div>
@@ -534,7 +317,8 @@ export default function ChemistryMixReportForm({
                 <input
                   className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
                   value={row.sopNo}
-                  onChange={(e) => updateActive(idx, { sopNo: e.target.value })}
+                  readOnly
+                  disabled
                 />
               </div>
 
@@ -543,9 +327,8 @@ export default function ChemistryMixReportForm({
                 <input
                   className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
                   value={row.formulaContent}
-                  onChange={(e) =>
-                    updateActive(idx, { formulaContent: e.target.value })
-                  }
+                  readOnly
+                  disabled
                 />
                 <span>%</span>
               </div>
@@ -555,9 +338,8 @@ export default function ChemistryMixReportForm({
                 <input
                   className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
                   value={row.result}
-                  onChange={(e) =>
-                    updateActive(idx, { result: e.target.value })
-                  }
+                  readOnly
+                  disabled
                 />
                 <span>%</span>
               </div>
@@ -568,9 +350,8 @@ export default function ChemistryMixReportForm({
                   className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
                   placeholder="MM/DD/YYYY / AB"
                   value={row.dateTestedInitial}
-                  onChange={(e) =>
-                    updateActive(idx, { dateTestedInitial: e.target.value })
-                  }
+                  readOnly
+                  disabled
                 />
               </div>
             </div>
@@ -590,11 +371,9 @@ export default function ChemistryMixReportForm({
             <span className="font-medium">Comments :</span>
             <input
               className="flex-1 border-0 border-b border-black/70 outline-none"
-              value={comments}
-              onChange={(e) => {
-                setComments(e.target.value);
-                markDirty();
-              }}
+              value={report?.comments || ""}
+              readOnly
+              disabled
             />
           </div>
 
@@ -604,11 +383,9 @@ export default function ChemistryMixReportForm({
                 <span className="font-medium">TESTED BY :</span>
                 <input
                   className="flex-1 border-0 border-b border-black/70 outline-none"
-                  value={testedBy}
-                  onChange={(e) => {
-                    setTestedBy(e.target.value.toUpperCase());
-                    markDirty();
-                  }}
+                  value={report?.testedBy || ""}
+                  readOnly
+                  disabled
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -616,11 +393,9 @@ export default function ChemistryMixReportForm({
                 <input
                   className="flex-1 border-0 border-b border-black/70 outline-none"
                   type="date"
-                  value={formatDateForInput(testedDate)}
-                  onChange={(e) => {
-                    setTestedDate(e.target.value);
-                    markDirty();
-                  }}
+                  value={formatDateForInput(report?.testedDate) || ""}
+                  readOnly
+                  disabled
                 />
               </div>
             </div>
@@ -630,11 +405,9 @@ export default function ChemistryMixReportForm({
                 <span className="font-medium">REVIEWED BY :</span>
                 <input
                   className="flex-1 border-0 border-b border-black/70 outline-none"
-                  value={reviewedBy}
-                  onChange={(e) => {
-                    setReviewedBy(e.target.value.toUpperCase());
-                    markDirty();
-                  }}
+                  value={report?.reviewedBy || ""}
+                  readOnly
+                  disabled
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -642,11 +415,9 @@ export default function ChemistryMixReportForm({
                 <input
                   className="flex-1 border-0 border-b border-black/70 outline-none"
                   type="date"
-                  value={formatDateForInput(reviewedDate)}
-                  onChange={(e) => {
-                    setReviewedDate(e.target.value);
-                    markDirty();
-                  }}
+                  value={formatDateForInput(report?.reviewedDate) || ""}
+                  readOnly
+                  disabled
                 />
               </div>
             </div>

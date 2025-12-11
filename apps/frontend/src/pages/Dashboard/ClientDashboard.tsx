@@ -15,8 +15,7 @@ import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import React from "react";
 import { createPortal } from "react-dom";
-// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
-// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 // -----------------------------
 // Types
@@ -55,6 +54,7 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  CHEMISTRY_MIX: "chemistry-mix",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -178,6 +178,12 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "CHEMISTRY_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <ChemistryMixReportFormView report={r} onClose={() => {}} />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -228,7 +234,10 @@ export default function ClientDashboard() {
         setLoading(true);
         setError(null);
 
-        const all = await api<Report[]>("/reports");
+        const micro = await api<Report[]>("/reports");
+        const chemistry = await api<Report[]>("/chemistry-reports");
+
+        const all = [...micro, ...chemistry];
 
         if (abort) return;
 
@@ -359,40 +368,40 @@ export default function ClientDashboard() {
           <>
             <style>
               {`
-@media print {
-  /* Hide everything in the document body except our print root */
-  body > *:not(#bulk-print-root) { display: none !important; }
-  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+              @media print {
+              /* Hide everything in the document body except our print root */
+              body > *:not(#bulk-print-root) { display: none !important; }
+             #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
 
-  /* Page sizing & margins */
-  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+              /* Page sizing & margins */
+              @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
 
-  /* Make all report "sheets" fill the width without shadow/padding */
-  #bulk-print-root .sheet {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-  }
+              /* Make all report "sheets" fill the width without shadow/padding */
+              #bulk-print-root .sheet {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+              }
 
-  /* Keep each report together */
-  #bulk-print-root .report-page {
-    break-inside: avoid-page;
-    page-break-inside: avoid;
-  }
+              /* Keep each report together */
+              #bulk-print-root .report-page {
+                break-inside: avoid-page;
+                page-break-inside: avoid;
+              }
 
-  /* Start every report AFTER the first on a new page */
-  #bulk-print-root .report-page + .report-page {
-    break-before: page;
-    page-break-before: always;
-  }
+              /* Start every report AFTER the first on a new page */
+              #bulk-print-root .report-page + .report-page {
+                break-before: page;
+                page-break-before: always;
+              }
 
-  @supports (margin-trim: block) {
-    @page { margin-trim: block; }
-  }
-}
+              @supports (margin-trim: block) {
+                @page { margin-trim: block; }
+              }
+            }
         `}
             </style>
 
@@ -808,6 +817,11 @@ export default function ClientDashboard() {
                   showSwitcher={false}
                   pane={paneFor(String(selectedReport.status))}
                 />
+              ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
+                <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
@@ -818,26 +832,6 @@ export default function ClientDashboard() {
           </div>
         </div>
       )}
-
-      {/* bulk print hidden area */}
-      {/* {isBulkPrinting && (
-        <BulkPrintArea
-          reports={selectedReportObjects}
-          onAfterPrint={() => {
-            setIsBulkPrinting(false);
-          }}
-        />
-      )} */}
-
-      {/* ✅ single-report print hidden area */}
-      {/* {singlePrintReport && (
-        <BulkPrintArea
-          reports={[singlePrintReport]}
-          onAfterPrint={() => {
-            setSinglePrintReport(null);
-          }}
-        />
-      )} */}
     </div>
   );
 }

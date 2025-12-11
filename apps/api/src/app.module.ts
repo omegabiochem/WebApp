@@ -26,6 +26,7 @@ import { ESignService } from './auth/esign.service';
 import { AuditModule } from './audit/audit.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { HealthController } from './health.controller';
+import { ChemistryReportsModule } from './reports/chemistryreports.module';
 
 
 
@@ -39,6 +40,7 @@ import { HealthController } from './health.controller';
     BalanceModule,
     AuditModule,
     AttachmentsModule,
+    ChemistryReportsModule
   ],
   controllers: [HealthController],
   providers: [
