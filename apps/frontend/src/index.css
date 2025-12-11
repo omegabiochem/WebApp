@@ -44,6 +44,61 @@
   }
 }
 
+
+/* ✅ Thick black square checkbox with tick mark */
+  .thick-box2 {
+    /* existing */
+    @apply appearance-none inline-grid place-content-center h-3.5 w-3.5 border-2 border-black cursor-pointer;
+    /* new: keep height tight and center with text */
+    @apply align-middle leading-none;
+  }
+
+  .thick-box2::after {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 10px;
+    border-right: 4px solid black; /* ← thicker */
+    border-bottom: 4px solid black; /* ← thicker */
+    transform: scale(0) rotate(45deg);
+    transition: transform 150ms ease-in-out;
+  }
+
+  .thick-box2:checked::after {
+    transform: scale(1) rotate(45deg);
+  }
+
+  .thick-box2:disabled {
+    opacity: 1; /* keeps them black instead of greyed */
+  }
+
+
+/* ✅ Thick black circular radio (same style as thick-box) */
+.thick-radio {
+  @apply appearance-none inline-grid place-content-center h-3.5 w-3.5 cursor-pointer;
+  @apply border-2 border-black rounded-full;
+  @apply align-middle leading-none; /* keep alignment same as checkbox */
+  position: relative;
+}
+
+.thick-radio::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: black;
+  transform: scale(0);
+  transition: transform 150ms ease-in-out;
+}
+
+.thick-radio:checked::after {
+  transform: scale(1);
+}
+
+.thick-radio:disabled {
+  opacity: 1; /* keep it black, not grey */
+}
+
 /* index.css */
 @media print {
   /* keep inputs nice */

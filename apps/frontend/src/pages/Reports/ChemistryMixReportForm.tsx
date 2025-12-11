@@ -293,7 +293,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT :</div>
               <input
-                className="flex-1 border-0 border-b border-black/70  text-[12px]"
+                className="flex-1 border-none  text-[12px]"
                 value={client}
                 onChange={(e) => {
                   setClient(e.target.value.toUpperCase());
@@ -304,7 +304,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">DATE SENT :</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
+                className="flex-1 border-none outline-none text-[12px]"
                 type="date"
                 value={formatDateForInput(dateSent)}
                 onChange={(e) => {
@@ -319,7 +319,7 @@ export default function ChemistryMixReportForm({
           <div className="border-b border-black flex items-center gap-2 px-2">
             <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
             <input
-              className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
+              className="flex-1 border-none outline-none text-[12px]"
               value={sampleDescription}
               onChange={(e) => {
                 setSampleDescription(e.target.value);
@@ -405,7 +405,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 border-r border-black flex items-center gap-2">
               <span className="font-medium">LOT / BATCH # :</span>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none"
+                className="flex-1 border-none outline-none"
                 value={lotBatchNo}
                 onChange={(e) => {
                   setLotBatchNo(e.target.value);
@@ -416,7 +416,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 flex items-center gap-2">
               <span className="font-medium">MANUFACTURE DATE :</span>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none"
+                className="flex-1 border-none outline-none"
                 type="date"
                 value={formatDateForInput(manufactureDate)}
                 onChange={(e) => {
@@ -434,7 +434,7 @@ export default function ChemistryMixReportForm({
                 FORMULA # / ID # :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={formulaId}
                 onChange={(e) => {
                   setFormulaId(e.target.value);
@@ -448,7 +448,7 @@ export default function ChemistryMixReportForm({
                 SAMPLE SIZE :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={sampleSize}
                 onChange={(e) => {
                   setSampleSize(e.target.value);
@@ -462,7 +462,7 @@ export default function ChemistryMixReportForm({
                 NUMBER OF ACTIVES :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={numberOfActives}
                 onChange={(e) => {
                   setNumberOfActives(e.target.value);
@@ -532,7 +532,7 @@ export default function ChemistryMixReportForm({
               {/* SOP # */}
               <div className="border-r border-black px-1 ">
                 <input
-                  className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="w-full border-none outline-none text-[11px]"
                   value={row.sopNo}
                   onChange={(e) => updateActive(idx, { sopNo: e.target.value })}
                 />
@@ -541,7 +541,7 @@ export default function ChemistryMixReportForm({
               {/* formula content % */}
               <div className="border-r border-black px-1  flex items-center gap-1">
                 <input
-                  className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="flex-1 border-none outline-none text-[11px]"
                   value={row.formulaContent}
                   onChange={(e) =>
                     updateActive(idx, { formulaContent: e.target.value })
@@ -553,7 +553,7 @@ export default function ChemistryMixReportForm({
               {/* result % */}
               <div className="border-r border-black px-1  flex items-center gap-1">
                 <input
-                  className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="flex-1 border-none outline-none text-[11px]"
                   value={row.result}
                   onChange={(e) =>
                     updateActive(idx, { result: e.target.value })
@@ -565,7 +565,7 @@ export default function ChemistryMixReportForm({
               {/* date tested / initials */}
               <div className="px-1 ">
                 <input
-                  className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="w-full border-none outline-none text-[11px]"
                   placeholder="MM/DD/YYYY / AB"
                   value={row.dateTestedInitial}
                   onChange={(e) =>
@@ -589,7 +589,7 @@ export default function ChemistryMixReportForm({
           <div className="flex items-center gap-2 mb-2">
             <span className="font-medium">Comments :</span>
             <input
-              className="flex-1 border-0 border-b border-black/70 outline-none"
+              className="flex-1 border-none outline-none"
               value={comments}
               onChange={(e) => {
                 setComments(e.target.value);
@@ -603,7 +603,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">TESTED BY :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   value={testedBy}
                   onChange={(e) => {
                     setTestedBy(e.target.value.toUpperCase());
@@ -614,7 +614,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   type="date"
                   value={formatDateForInput(testedDate)}
                   onChange={(e) => {
@@ -629,7 +629,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">REVIEWED BY :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   value={reviewedBy}
                   onChange={(e) => {
                     setReviewedBy(e.target.value.toUpperCase());
@@ -640,7 +640,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   type="date"
                   value={formatDateForInput(reviewedDate)}
                   onChange={(e) => {

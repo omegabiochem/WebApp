@@ -95,7 +95,7 @@ export default function ChemistryMixReportFormView(
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT :</div>
               <input
-                className="flex-1 border-0 border-b border-black/70  text-[12px]"
+                className="flex-1 border-none  text-[12px]"
                 value={report?.client || ""}
                 readOnly
                 disabled
@@ -104,7 +104,7 @@ export default function ChemistryMixReportFormView(
             <div className="px-2 flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">DATE SENT :</div>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
+                className="flex-1 border-none outline-none text-[12px]"
                 type="date"
                 value={formatDateForInput(report?.dateSent) || ""}
                 readOnly
@@ -117,7 +117,7 @@ export default function ChemistryMixReportFormView(
           <div className="border-b border-black flex items-center gap-2 px-2">
             <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
             <input
-              className="flex-1 border-0 border-b border-black/70 outline-none text-[12px]"
+              className="flex-1 border-none outline-none text-[12px]"
               value={report?.sampleDescription || ""}
               readOnly
               disabled
@@ -131,6 +131,7 @@ export default function ChemistryMixReportFormView(
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
+                  className="thick-box2"
                   checked={report?.testTypes.includes("ID")}
                   readOnly
                   disabled
@@ -140,6 +141,7 @@ export default function ChemistryMixReportFormView(
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
+                  className="thick-box2"
                   checked={report?.testTypes.includes("PERCENT_ASSAY")}
                   readOnly
                   disabled
@@ -149,6 +151,7 @@ export default function ChemistryMixReportFormView(
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
+                  className="thick-box2"
                   checked={report?.testTypes.includes("CONTENT_UNIFORMITY")}
                   readOnly
                   disabled
@@ -162,6 +165,7 @@ export default function ChemistryMixReportFormView(
                 <input
                   type="radio"
                   name="sampleCollected"
+                  className="thick-radio"
                   checked={report?.sampleCollected === "TOP_BEG"}
                   readOnly
                   disabled
@@ -173,6 +177,7 @@ export default function ChemistryMixReportFormView(
                 <input
                   type="radio"
                   name="sampleCollected"
+                  className="thick-radio"
                   checked={report?.sampleCollected === "MID"}
                   readOnly
                   disabled
@@ -184,6 +189,7 @@ export default function ChemistryMixReportFormView(
                 <input
                   type="radio"
                   name="sampleCollected"
+                  className="thick-radio"
                   checked={report?.sampleCollected === "BOTTOM_END"}
                   readOnly
                   disabled
@@ -198,7 +204,7 @@ export default function ChemistryMixReportFormView(
             <div className="px-2 border-r border-black flex items-center gap-2">
               <span className="font-medium">LOT / BATCH # :</span>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none"
+                className="flex-1 border-none outline-none"
                 value={report?.lotBatchNo || ""}
                 readOnly
                 disabled
@@ -207,7 +213,7 @@ export default function ChemistryMixReportFormView(
             <div className="px-2 flex items-center gap-2">
               <span className="font-medium">MANUFACTURE DATE :</span>
               <input
-                className="flex-1 border-0 border-b border-black/70 outline-none"
+                className="flex-1 border-none outline-none"
                 type="date"
                 value={formatDateForInput(report?.manufactureDate) || ""}
                 readOnly
@@ -223,7 +229,7 @@ export default function ChemistryMixReportFormView(
                 FORMULA # / ID # :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={report?.formulaId || ""}
                 readOnly
                 disabled
@@ -235,7 +241,7 @@ export default function ChemistryMixReportFormView(
                 SAMPLE SIZE :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={report?.sampleSize || ""}
                 readOnly
                 disabled
@@ -247,7 +253,7 @@ export default function ChemistryMixReportFormView(
                 NUMBER OF ACTIVES :
               </span>
               <input
-                className="w-[80px] border-0 border-b border-black/70 outline-none shrink-0"
+                className="w-[80px] border-none outline-none shrink-0"
                 value={report?.numberOfActives || ""}
                 readOnly
                 disabled
@@ -273,6 +279,7 @@ export default function ChemistryMixReportFormView(
                     >
                       <input
                         type="checkbox"
+                        className="thick-box2"
                         checked={report?.sampleTypes.includes(key)}
                         readOnly
                         disabled
@@ -296,7 +303,7 @@ export default function ChemistryMixReportFormView(
             <div className="p-1">DATE TESTED / INITIAL</div>
           </div>
 
-          {DEFAULT_CHEM_ACTIVES.map((row, idx) => (
+          {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
             <div
               key={row.key}
               className="grid grid-cols-[25%_15%_23%_20%_17%] border-b last:border-b-0 border-black"
@@ -305,6 +312,7 @@ export default function ChemistryMixReportFormView(
               <div className="flex items-center gap-2 border-r border-black px-1 ">
                 <input
                   type="checkbox"
+                  className="thick-box2"
                   checked={row.checked}
                   readOnly
                   disabled
@@ -315,7 +323,7 @@ export default function ChemistryMixReportFormView(
               {/* SOP # */}
               <div className="border-r border-black px-1 ">
                 <input
-                  className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="w-full border-none outline-none text-[11px]"
                   value={row.sopNo}
                   readOnly
                   disabled
@@ -325,7 +333,7 @@ export default function ChemistryMixReportFormView(
               {/* formula content % */}
               <div className="border-r border-black px-1  flex items-center gap-1">
                 <input
-                  className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="flex-1 border-none outline-none text-[11px]"
                   value={row.formulaContent}
                   readOnly
                   disabled
@@ -336,7 +344,7 @@ export default function ChemistryMixReportFormView(
               {/* result % */}
               <div className="border-r border-black px-1  flex items-center gap-1">
                 <input
-                  className="flex-1 border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="flex-1 border-none outline-none text-[11px]"
                   value={row.result}
                   readOnly
                   disabled
@@ -347,7 +355,7 @@ export default function ChemistryMixReportFormView(
               {/* date tested / initials */}
               <div className="px-1 ">
                 <input
-                  className="w-full border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="w-full border-none outline-none text-[11px]"
                   placeholder="MM/DD/YYYY / AB"
                   value={row.dateTestedInitial}
                   readOnly
@@ -370,7 +378,7 @@ export default function ChemistryMixReportFormView(
           <div className="flex items-center gap-2 mb-2">
             <span className="font-medium">Comments :</span>
             <input
-              className="flex-1 border-0 border-b border-black/70 outline-none"
+              className="flex-1 border-none outline-none"
               value={report?.comments || ""}
               readOnly
               disabled
@@ -382,7 +390,7 @@ export default function ChemistryMixReportFormView(
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">TESTED BY :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   value={report?.testedBy || ""}
                   readOnly
                   disabled
@@ -391,7 +399,7 @@ export default function ChemistryMixReportFormView(
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   type="date"
                   value={formatDateForInput(report?.testedDate) || ""}
                   readOnly
@@ -404,7 +412,7 @@ export default function ChemistryMixReportFormView(
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">REVIEWED BY :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   value={report?.reviewedBy || ""}
                   readOnly
                   disabled
@@ -413,7 +421,7 @@ export default function ChemistryMixReportFormView(
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
                 <input
-                  className="flex-1 border-0 border-b border-black/70 outline-none"
+                  className="flex-1 border-none outline-none"
                   type="date"
                   value={formatDateForInput(report?.reviewedDate) || ""}
                   readOnly
