@@ -7,7 +7,13 @@ import {
   DEFAULT_CHEM_ACTIVES,
   type ChemActiveRow,
 } from "../../utils/chemistryReportValidation";
-import type { ReportStatus } from "../../utils/chemistryReportFormWorkflow";
+import {
+  STATUS_TRANSITIONS,
+  type ChemistryReportStatus,
+  type Role,
+} from "../../utils/chemistryReportFormWorkflow";
+import { set } from "zod";
+import toast from "react-hot-toast";
 
 // ---------- tiny hook to warn on unsaved ----------
 function useConfirmOnLeave(isDirty: boolean) {
@@ -58,14 +64,61 @@ type ChemistryReportFormProps = {
   onClose?: () => void;
 };
 
+const statusButtons: Record<string, { label: string; color: string }> = {
+  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
+  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
+
+  CLIENT_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-600",
+  },
+
+  RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
+  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  FRONTDESK_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-red-600",
+  },
+  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  TESTING_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-500",
+  },
+  RESUBMISSION_BY_TESTING: {
+    label: "Resubmit",
+    color: "bg-blue-600",
+  },
+  RESUBMISSION_BY_CLIENT: {
+    label: "Resubmit",
+    color: "bg-blue-600",
+  },
+  UNDER_RESUBMISSION_TESTING_REVIEW: {
+    label: "Approve",
+    color: "bg-blue-600",
+  },
+
+  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
+  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
+  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
+  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
+  APPROVED: { label: "Approve", color: "bg-green-700" },
+};
+
 export default function ChemistryMixReportForm({
   report,
   onClose,
 }: ChemistryReportFormProps) {
   const { user } = useAuth();
+
+  const role = user?.role as Role | undefined;
   const navigate = useNavigate();
 
   const [isDirty, setIsDirty] = useState(false);
+
+  const [status, setStatus] = useState(report?.status || "DRAFT");
+
   const markDirty = () => !isDirty && setIsDirty(true);
   useConfirmOnLeave(isDirty);
 
@@ -161,12 +214,12 @@ export default function ChemistryMixReportForm({
 
   type SavedReport = {
     id: string;
-    status: ReportStatus;
+    status: ChemistryReportStatus;
     reportNumber?: number | string;
   };
 
   // ------------- SAVE -------------
-  const handleSave = async (): Promise<boolean> => {
+  const handleSave = async (): Promise<SavedReport | null> => {
     const payload = {
       client,
       dateSent,
@@ -203,17 +256,49 @@ export default function ChemistryMixReportForm({
         });
       }
       setReportId(saved.id); // 👈 keep the new id
-      // setStatus(saved.status); // in case backend changed it
+      setStatus(saved.status); // in case backend changed it
       setReportNumber(String(saved.reportNumber ?? ""));
       setIsDirty(false);
       alert("✅ Chemistry report saved");
-      return true;
+      return saved;
     } catch (err: any) {
       console.error(err);
       alert("❌ Error saving chemistry report: " + err.message);
-      return false;
+      return null;
     }
   };
+
+  type UpdatedReport = {
+    status?: ChemistryReportStatus;
+    reportNumber?: number | string;
+  };
+
+  async function handleStatusChange(newStatus: ChemistryReportStatus) {
+    let id;
+    if (!reportId) {
+      toast.loading("Saving report...");
+      const saved = await handleSave();
+      id = saved?.id;
+      toast.success("Report saved successfully");
+      if (!saved) return;
+    }
+    try {
+      let updated: UpdatedReport;
+
+      updated = await api<UpdatedReport>(`/chemistry-reports/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      setStatus(updated.status ?? newStatus);
+      setReportNumber(String(updated.reportNumber || reportNumber));
+      setIsDirty(false);
+      alert("✅ Report status updated to " + newStatus);
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Error updating report status: " + err.message);
+    }
+  }
 
   const handleClose = () => {
     if (onClose) onClose();
@@ -651,6 +736,38 @@ export default function ChemistryMixReportForm({
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Actions row: submit/reject on left, close on right */}
+      <div className="no-print mt-4 flex items-center justify-between">
+        {/* Left: status action buttons */}
+        <div className="flex flex-wrap gap-2">
+          {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
+            (targetStatus: ChemistryReportStatus) => {
+              if (
+                STATUS_TRANSITIONS[
+                  status as ChemistryReportStatus
+                ].canSet.includes(role!) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color}`}
+                    // onClick={() => requestStatusChange(targetStatus)}
+                    onClick={() => handleStatusChange(targetStatus)}
+
+                    // disabled={role === "SYSTEMADMIN"}
+                  >
+                    {label}
+                  </button>
+                );
+              }
+              return null;
+            }
+          )}
         </div>
       </div>
     </>

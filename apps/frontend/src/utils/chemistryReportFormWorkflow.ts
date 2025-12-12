@@ -16,7 +16,7 @@ export type CorrectionItem = {
   createdAt: string;
 };
 
-export type ReportStatus =
+export type ChemistryReportStatus =
   | "DRAFT"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_CORRECTION"
@@ -42,10 +42,10 @@ export type ReportStatus =
 
 // 🔁 Keep this in sync with backend
 export const STATUS_TRANSITIONS: Record<
-  ReportStatus,
+  ChemistryReportStatus,
   {
     canSet: Role[];
-    next: ReportStatus[];
+    next: ChemistryReportStatus[];
     nextEditableBy: Role[];
     canEdit: Role[];
   }
@@ -191,7 +191,7 @@ export const STATUS_TRANSITIONS: Record<
 };
 
 //  these are designed for readable badges on white UI
-export const STATUS_COLORS: Record<ReportStatus, string> = {
+export const STATUS_COLORS: Record<ChemistryReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
@@ -266,7 +266,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,
-  status?: ReportStatus
+  status?: ChemistryReportStatus
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
@@ -275,7 +275,7 @@ export function canRoleEditInStatus(
 
 export function canRoleEditField(
   role: Role | undefined,
-  status: ReportStatus | undefined,
+  status: ChemistryReportStatus | undefined,
   field: string
 ): boolean {
   if (!role || !status) return false;
@@ -293,9 +293,9 @@ export function canRoleEditField(
  *  - there is at least one field they’re allowed to edit (field-level).
  * You can pass a list of fields relevant to that screen; default checks any field in the map.
  */
-export function canShowUpdateButton(
+export function canShowChemistryUpdateButton(
   role: Role | undefined,
-  status: ReportStatus | undefined,
+  status: ChemistryReportStatus | undefined,
   fieldsToConsider?: string[]
 ): boolean {
   if (!role || !status) return false;

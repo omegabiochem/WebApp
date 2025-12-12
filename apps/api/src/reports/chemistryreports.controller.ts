@@ -4,13 +4,14 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ChemistryReportsService } from './chemistryreports.service';
 import { JwtAuthGuard } from 'src/common/jwt-auth.guard';
-import { FormType } from '@prisma/client';
+import { ChemistryReportStatus, FormType } from '@prisma/client';
 
 const slugToFormType = (slug: string): FormType | null => {
   switch (slug) {
@@ -42,5 +43,20 @@ export class ChemistryReportsController {
   @Get()
   findAll() {
     return this.svc.findAll();
+  }
+
+  @Patch(':id')
+  update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.svc.update(req.user, id, body);
+  }
+
+  @Patch(':id/status')
+  async updateStatus(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: { status: ChemistryReportStatus },
+  ) {
+    return this.svc.updateStatus(req.user, id, body.status);
   }
 }

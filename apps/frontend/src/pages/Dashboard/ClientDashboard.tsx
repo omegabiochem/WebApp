@@ -16,6 +16,10 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import React from "react";
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+import {
+  canShowChemistryUpdateButton,
+  type ChemistryReportStatus,
+} from "../../utils/chemistryReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -30,8 +34,11 @@ type Report = {
   formNumber: string;
 };
 
-// Include an "ALL" pseudo-status for filtering
-const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
+// A status filter can be micro OR chemistry OR "ALL"
+type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+
+// Micro client statuses (what you already had)
+const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
   "FINAL_APPROVED",
   "DRAFT",
@@ -46,6 +53,35 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
   "FINAL_RESUBMISSION_BY_CLIENT",
   "LOCKED",
 ];
+
+// Chemistry client statuses – adjust to your real flow
+const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
+  "ALL",
+  "APPROVED",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "LOCKED",
+];
+
+// // Include an "ALL" pseudo-status for filtering
+// const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
+//   "ALL",
+//   "FINAL_APPROVED",
+//   "DRAFT",
+//   "SUBMITTED_BY_CLIENT",
+//   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+//   "UNDER_CLIENT_FINAL_REVIEW",
+//   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+//   "CLIENT_NEEDS_FINAL_CORRECTION",
+//   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+//   "UNDER_CLIENT_FINAL_CORRECTION",
+//   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+//   "FINAL_RESUBMISSION_BY_CLIENT",
+//   "LOCKED",
+// ];
 
 // -----------------------------
 // Utilities
@@ -107,6 +143,34 @@ function canUpdateThisReport(r: Report, user?: any) {
     user?.role as Role,
     r.status as ReportStatus,
     fieldsUsedOnForm
+  );
+}
+
+function canUpdateThisChemistryReport(r: Report, user?: any) {
+  if (user?.role !== "CLIENT") return false;
+  if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
+
+  const chemistryFieldsUsedOnForm = [
+    "client",
+    "dateSent",
+    "sampleDescription",
+    "testTypes",
+    "samplePosition",
+    "lotBatchNo",
+    "manufactureDate",
+    "formulaId",
+    "sampleSize",
+    "numberOfActives",
+    "sampleTypes",
+    "comments",
+    "activeToBeTested",
+    "formulaContent",
+  ];
+
+  return canShowChemistryUpdateButton(
+    user?.role,
+    r.status as ChemistryReportStatus,
+    chemistryFieldsUsedOnForm
   );
 }
 
@@ -206,7 +270,7 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
+  // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -223,6 +287,19 @@ export default function ClientDashboard() {
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null
   );
+
+  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
+    "ALL"
+  );
+
+  // status filter now uses combined type
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
+  const statusOptions =
+    formFilter === "CHEMISTRY" ? CLIENT_CHEM_STATUSES : CLIENT_MICRO_STATUSES;
+
+  // // status filter now uses combined type
+  // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -260,11 +337,23 @@ export default function ClientDashboard() {
 
   // Derived table data
   const processed = useMemo(() => {
+    // 1) form type filter
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) =>
+            formFilter === "MICRO"
+              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
+              : r.formType === "CHEMISTRY_MIX"
+          );
+
+    // 2) status filter – compare as strings so enums from both worlds work
     const byStatus =
       statusFilter === "ALL"
-        ? reports
-        : reports.filter((r) => r.status === statusFilter);
+        ? byForm
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
 
+    // 3) search
     const bySearch = search.trim()
       ? byStatus.filter((r) => {
           const q = search.toLowerCase();
@@ -276,20 +365,20 @@ export default function ClientDashboard() {
         })
       : byStatus;
 
+    // 4) sort (same as you already have)
     const sorted = [...bySearch].sort((a, b) => {
       if (sortBy === "formNumber") {
         const aN = a.formNumber.toLowerCase();
         const bN = b.formNumber.toLowerCase();
         return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
       }
-      // dateSent
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir]);
+  }, [reports, formFilter, statusFilter, search, sortBy, sortDir]);
 
   // Pagination
   const total = processed.length;
@@ -418,13 +507,14 @@ export default function ClientDashboard() {
           document.body
         )}
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between gap-4">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Client Dashboard
           </h1>
           <p className="text-sm text-slate-500">
-            View and manage your Micro Mix reports
+            View and manage your lab reports
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -452,11 +542,40 @@ export default function ClientDashboard() {
         </div>
       </div>
 
+      {/* Form type tabs */}
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All forms"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Chemistry"}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
       {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         {/* Status filter chips (scrollable) */}
+        {/* Status filter chips (scrollable) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {CLIENT_STATUSES.map((s) => (
+          {statusOptions.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}

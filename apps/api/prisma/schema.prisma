@@ -289,7 +289,7 @@ model ChemistryReport {
   formNumber               String                    @unique
   reportNumber             String?                   @unique
   prefix                   String                    @default("BC")
-  status                   ChemistryStatus           @default(DRAFT)
+  status                   ChemistryReportStatus           @default(DRAFT)
   lockedAt                 DateTime?
   createdBy                String?
   updatedBy                String?
@@ -300,7 +300,7 @@ model ChemistryReport {
 
   
   chemistryMix             ChemistryMixDetails?
-  statusHistory            ChemistryStatusHistory[]
+  statusHistory            ChemistryReportStatusHistory[]
 }
 
 
@@ -344,7 +344,7 @@ model ChemistryMixDetails {
   reviewedDate      DateTime?
 
   // Per-form status, like MicroMixDetails
-  status            ChemistryStatus  @default(DRAFT)
+  status            ChemistryReportStatus  @default(DRAFT)
   lockedAt          DateTime?
   createdBy         String?
   updatedBy         String?
@@ -358,12 +358,13 @@ model ChemistryMixDetails {
 
 
 
-enum ChemistryStatus {
+enum ChemistryReportStatus {
   DRAFT
   SUBMITTED_BY_CLIENT
   CLIENT_NEEDS_CORRECTION
   UNDER_CLIENT_CORRECTION
   RESUBMISSION_BY_CLIENT
+  UNDER_RESUBMISSION_TESTING_REVIEW
   RECEIVED_BY_FRONTDESK
   FRONTDESK_ON_HOLD
   FRONTDESK_NEEDS_CORRECTION
@@ -382,11 +383,11 @@ enum ChemistryStatus {
   LOCKED
 }
 
-model ChemistryStatusHistory {
+model ChemistryReportStatusHistory {
   id           String           @id @default(cuid())
   chemistryId  String
-  from         ChemistryStatus
-  to           ChemistryStatus
+  from         ChemistryReportStatus
+  to           ChemistryReportStatus
   reason       String?
   createdAt    DateTime         @default(now())
   userId       String?

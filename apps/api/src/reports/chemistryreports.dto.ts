@@ -8,7 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TestType, SampleCollected, SampleType, ChemistryStatus } from '@prisma/client';
+import { TestType, SampleCollected, SampleType, ChemistryReportStatus } from '@prisma/client';
 
 
 
@@ -120,8 +120,8 @@ export class ChemistryMixDto {
   // ---------- Status / audit fields (usually server-controlled) ----------
 
   @IsOptional()
-  @IsEnum(ChemistryStatus)
-  status?: ChemistryStatus;
+  @IsEnum(ChemistryReportStatus)
+  status?: ChemistryReportStatus;
 
   @IsOptional()
   @IsDateString()
