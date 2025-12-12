@@ -59,4 +59,9 @@ export class ChemistryReportsController {
   ) {
     return this.svc.updateStatus(req.user, id, body.status);
   }
+
+  @Get(':id')
+  get(@Param('id') id: string) {
+    return this.svc.get(id);
+  }
 }

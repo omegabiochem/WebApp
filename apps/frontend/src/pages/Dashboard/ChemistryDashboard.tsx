@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
   canShowChemistryUpdateButton,
-  STATUS_COLORS,
+  CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
 
@@ -35,7 +35,6 @@ const CHEMISTRY_STATUSES = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
   "UNDER_TESTING_REVIEW",
-  "UNDER_FINAL_TESTING_REVIEW",
   "TESTING_NEEDS_CORRECTION",
   "RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
@@ -281,7 +280,7 @@ export default function ChemistryDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "chemistry-mix";
-    navigate(`/reports/${slug}/${r.id}`);
+    navigate(`/chemistry-reports/${slug}/${r.id}`);
   }
 
   // selection
@@ -558,7 +557,9 @@ export default function ChemistryDashboard() {
                       <span
                         className={classNames(
                           "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_COLORS[r.status as ChemistryReportStatus] ||
+                          CHEMISTRY_STATUS_COLORS[
+                            r.status as ChemistryReportStatus
+                          ] ||
                             "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
                         )}
                       >
@@ -592,12 +593,6 @@ export default function ChemistryDashboard() {
                                     "UNDER_RESUBMISSION_TESTING_REVIEW",
                                     "Move to RESUBMISSION "
                                   );
-                                } else if (r.status === "APPROVED") {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_FINAL_TESTING_REVIEW",
-                                    "Move to final testing"
-                                  );
                                 } else if (
                                   r.status === "RESUBMISSION_BY_CLIENT"
                                 ) {
@@ -606,15 +601,6 @@ export default function ChemistryDashboard() {
                                     "UNDER_TESTING_REVIEW",
                                     "Resubmitted by client"
                                   );
-                                } else if (
-                                  r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
-                                    "set by admin"
-                                  );
-                                  toast.success("Report Status Updated");
                                 }
                                 setReports((prev) =>
                                   prev.map((x) =>
@@ -624,8 +610,6 @@ export default function ChemistryDashboard() {
                                           status:
                                             r.status === "SUBMITTED_BY_CLIENT"
                                               ? "UNDER_TESTING_REVIEW"
-                                              : r.status === "APPROVED"
-                                              ? "UNDER_FINAL_TESTING_REVIEW"
                                               : r.status ===
                                                 "RESUBMISSION_BY_CLIENT"
                                               ? "UNDER_TESTING_REVIEW"

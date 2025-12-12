@@ -18,8 +18,10 @@ import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
   canShowChemistryUpdateButton,
+  CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
+import { is } from "zod/locales";
 
 // -----------------------------
 // Types
@@ -30,7 +32,7 @@ type Report = {
   client: string;
   formType: string;
   dateSent: string | null;
-  status: ReportStatus | string; // Some backends may still send raw string
+  status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
 };
 
@@ -398,10 +400,20 @@ export default function ClientDashboard() {
     newStatus: string,
     reason = "Client correction update"
   ) {
+    const isChemistry = r.formType === "CHEMISTRY_MIX";
+
+    const url = isChemistry
+      ? `/chemistry-reports/${r.id}/status`
+      : `/reports/${r.id}/status`;
+
+    const body = isChemistry
+      ? { status: newStatus }
+      : { reason, status: newStatus };
+
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
-    await api(`/reports/${r.id}/status`, {
+    await api(url, {
       method: "PATCH",
-      body: JSON.stringify({ reason, status: newStatus }),
+      body: JSON.stringify(body),
     });
 
     // Update local state immediately so the UI stays in sync
@@ -413,7 +425,11 @@ export default function ClientDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
-    navigate(`/reports/${slug}/${r.id}`);
+    if (r.formType === "CHEMISTRY_MIX") {
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}`);
+    }
   }
 
   // selection
@@ -710,84 +726,135 @@ export default function ClientDashboard() {
                 ))}
 
               {!loading &&
-                pageRows.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={isRowSelected(r.id)}
-                        onChange={() => toggleRow(r.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium">{r.formNumber}</td>
-                    <td className="px-4 py-3">{r.client}</td>
-                    <td className="px-4 py-3">{r.formType}</td>
-                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={classNames(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_COLORS[r.status as ReportStatus] ||
-                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                        )}
-                      >
-                        {niceStatus(String(r.status))}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                          onClick={() => setSelectedReport(r)}
-                        >
-                          View
-                        </button>
+                pageRows.map((r) => {
+                  const isMicro =
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
 
-                        {canUpdateThisReport(r, user) && (
+                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  return (
+                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isRowSelected(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-medium">{r.formNumber}</td>
+                      <td className="px-4 py-3">{r.client}</td>
+                      <td className="px-4 py-3">{r.formType}</td>
+                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={classNames(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            (isChemistry
+                              ? CHEMISTRY_STATUS_COLORS[
+                                  r.status as ChemistryReportStatus
+                                ]
+                              : STATUS_COLORS[r.status as ReportStatus]) ||
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                          )}
+                        >
+                          {niceStatus(String(r.status))}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
                           <button
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            // onClick={() =>
-                            //   navigate(`/reports/${r.id}`)
-                            // }
-                            onClick={async () => {
-                              try {
-                                if (
-                                  r.status ===
-                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                    "Sent back to client for correction"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button>
+
+                          {isMicro && canUpdateThisReport(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                              // onClick={() =>
+                              //   navigate(`/reports/${r.id}`)
+                              // }
+                              onClick={async () => {
+                                try {
+                                  if (
+                                    r.status ===
+                                    "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                  ) {
+                                    await setStatus(
+                                      r,
+                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                      "Sent back to client for correction"
+                                    );
+                                    toast.success("Report status updated");
+                                  } else if (
+                                    r.status ===
+                                    "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                  ) {
+                                    await setStatus(
+                                      r,
+                                      "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                      "Resubmission under Review"
+                                    );
+                                  }
+                                  // navigate(`/reports/${r.id}`);
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  alert(
+                                    e?.message || "Failed to update status"
                                   );
-                                  toast.success("Report status updated");
-                                } else if (
-                                  r.status ===
-                                  "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                    "Resubmission under Review"
+                                  toast.error(
+                                    e?.message || "Failed to update status"
                                   );
                                 }
-                                // navigate(`/reports/${r.id}`);
-                                goToReportEditor(r);
-                              } catch (e: any) {
-                                alert(e?.message || "Failed to update status");
-                                toast.error(
-                                  e?.message || "Failed to update status"
-                                );
-                              }
-                            }}
-                          >
-                            Update
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                              }}
+                            >
+                              Update
+                            </button>
+                          )}
+
+                          {isChemistry &&
+                            canUpdateThisChemistryReport(r, user) && (
+                              <button
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                                onClick={async () => {
+                                  try {
+                                    if (
+                                      r.status === "TESTING_NEEDS_CORRECTION "
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_CLIENT_CORRECTION",
+                                        "Sent back to client for correction"
+                                      );
+                                    } else if (
+                                      r.status === "RESUBMISSION_BY_TESTING"
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_CLIENT_REVIEW",
+                                        "Resubmission under Review"
+                                      );
+                                    }
+                                    goToReportEditor(r);
+                                  } catch (e: any) {
+                                    alert(
+                                      e?.message || "Failed to update status"
+                                    );
+                                    toast.error(
+                                      e?.message || "Failed to update status"
+                                    );
+                                  }
+                                }}
+                              >
+                                Update
+                              </button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
               {!loading && pageRows.length === 0 && (
                 <tr>

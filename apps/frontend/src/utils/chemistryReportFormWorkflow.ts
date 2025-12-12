@@ -191,7 +191,7 @@ export const STATUS_TRANSITIONS: Record<
 };
 
 //  these are designed for readable badges on white UI
-export const STATUS_COLORS: Record<ChemistryReportStatus, string> = {
+export const CHEMISTRY_STATUS_COLORS: Record<ChemistryReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",

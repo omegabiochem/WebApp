@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ChemistryReportStatus,
@@ -432,5 +433,16 @@ export class ChemistryReportsService {
     status: ChemistryReportStatus,
   ) {
     return this.update(user, id, { status });
+  }
+
+  async get(id: string) {
+    const r = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+      },
+    });
+    if (!r) throw new NotFoundException('Report not found');
+    return flattenReport(r);
   }
 }

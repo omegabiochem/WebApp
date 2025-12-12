@@ -24,6 +24,7 @@ import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
 import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
+import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -258,6 +259,26 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
               <ChemistryMixReportForm />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "chemistry-reports/chemistry-mix/:id", // ← no leading slash
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "CHEMISTRY",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
+              <ChemistryMixReportFormWrapper />
             </RequireRole>
           </RequireAuth>
         ),
