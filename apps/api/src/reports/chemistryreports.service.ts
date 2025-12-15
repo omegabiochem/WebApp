@@ -128,7 +128,7 @@ const STATUS_TRANSITIONS: Record<
     next: [
       'TESTING_ON_HOLD',
       'TESTING_NEEDS_CORRECTION',
-      'UNDER_CLIENT_REVIEW',
+      'UNDER_ADMIN_REVIEW',
     ],
     nextEditableBy: ['CHEMISTRY'],
     canEdit: ['CHEMISTRY', 'ADMIN'],

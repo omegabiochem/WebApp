@@ -107,11 +107,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ["CHEMISTRY"],
-    next: [
-      "TESTING_ON_HOLD",
-      "TESTING_NEEDS_CORRECTION",
-      "UNDER_CLIENT_REVIEW",
-    ],
+    next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["CHEMISTRY"],
     canEdit: ["CHEMISTRY", "ADMIN"],
   },

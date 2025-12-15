@@ -274,29 +274,60 @@ export default function ChemistryMixReportForm({
   };
 
   async function handleStatusChange(newStatus: ChemistryReportStatus) {
-    let id;
-    if (!reportId) {
-      toast.loading("Saving report...");
-      const saved = await handleSave();
-      id = saved?.id;
-      toast.success("Report saved successfully");
-      if (!saved) return;
-    }
     try {
-      let updated: UpdatedReport;
+      toast.loading("Saving...");
 
-      updated = await api<UpdatedReport>(`/chemistry-reports/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
-      });
+      // 1) Always save if:
+      //    - report doesn't exist yet, OR
+      //    - user changed something (dirty)
+      let saved: SavedReport | null = null;
+
+      if (!reportId || isDirty) {
+        saved = await handleSave();
+        if (!saved) return; // save failed
+      }
+
+      // 2) Decide the correct id to use for status update
+      const effectiveId = reportId ?? saved?.id;
+      if (!effectiveId) return;
+
+      toast.dismiss();
+      toast.loading("Updating status...");
+
+      const updated = await api<UpdatedReport>(
+        `/chemistry-reports/${effectiveId}/status`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
 
       setStatus(updated.status ?? newStatus);
-      setReportNumber(String(updated.reportNumber || reportNumber));
+      setReportNumber(String(updated.reportNumber ?? reportNumber));
       setIsDirty(false);
-      alert("✅ Report status updated to " + newStatus);
+
+      toast.dismiss();
+      toast.success(`✅ Status updated to ${newStatus}`);
+
+      if (role === "CLIENT") {
+        navigate("/clientDashboard");
+      } else if (role === "FRONTDESK") {
+        navigate("/frontdeskDashboard");
+      } else if (role === "CHEMISTRY") {
+        navigate("/chemistryDashboard");
+        // } else if (role === "CHEMISTRY") {
+        //   navigate("/chemistryDashboard");
+      } else if (role === "QA") {
+        navigate("/qaDashboard");
+      } else if (role === "ADMIN") {
+        navigate("/adminDashboard");
+      } else if (role === "SYSTEMADMIN") {
+        navigate("/systemAdminDashboard");
+      }
     } catch (err: any) {
+      toast.dismiss();
+      toast.error(err?.message || "❌ Failed to update status");
       console.error(err);
-      alert("❌ Error updating report status: " + err.message);
     }
   }
 
