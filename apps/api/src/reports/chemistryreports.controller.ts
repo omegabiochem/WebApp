@@ -12,6 +12,7 @@ import {
 import { ChemistryReportsService } from './chemistryreports.service';
 import { JwtAuthGuard } from 'src/common/jwt-auth.guard';
 import { ChemistryReportStatus, FormType } from '@prisma/client';
+import { withRequestContext } from 'src/common/request-context';
 
 const slugToFormType = (slug: string): FormType | null => {
   switch (slug) {
@@ -21,6 +22,14 @@ const slugToFormType = (slug: string): FormType | null => {
       return null;
   }
 };
+
+export class ChangeStatusDto {
+  status!: ChemistryReportStatus;
+  reason?: string;
+  eSignPassword?: string;
+  force?: boolean;
+  deptRoleForSeq?: 'MICRO' | 'CHEMISTRY';
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('chemistry-reports')
@@ -63,5 +72,23 @@ export class ChemistryReportsController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);
+  }
+
+  @Patch(':id/change-status')
+  async changeStatus(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: ChangeStatusDto,
+  ) {
+    return withRequestContext(
+      {
+        userId: req.user.userId,
+        role: req.user.role,
+        ip: req.ip,
+        reason: dto.reason,
+        eSignPassword: dto.eSignPassword,
+      },
+      () => this.svc.changeStatus(req.user, id, dto),
+    );
   }
 }

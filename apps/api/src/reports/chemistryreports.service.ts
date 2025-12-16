@@ -14,6 +14,7 @@ import {
 import { copy } from 'fs-extra';
 import { get } from 'http';
 import { PrismaService } from 'prisma/prisma.service';
+import { ESignService } from 'src/auth/esign.service';
 import { getRequestContext } from 'src/common/request-context';
 import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
@@ -125,11 +126,7 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['CHEMISTRY'],
-    next: [
-      'TESTING_ON_HOLD',
-      'TESTING_NEEDS_CORRECTION',
-      'UNDER_ADMIN_REVIEW',
-    ],
+    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['CHEMISTRY'],
     canEdit: ['CHEMISTRY', 'ADMIN'],
   },
@@ -208,6 +205,10 @@ const STATUS_TRANSITIONS: Record<
   },
 };
 
+type ChangeStatusInput =
+  | ChemistryReportStatus
+  | { status: ChemistryReportStatus; reason?: string; eSignPassword?: string };
+
 function splitPatch(patch: Record<string, any>) {
   const base: any = {};
   const details: any = {};
@@ -236,10 +237,24 @@ function updateDetailsByType(
   }
 }
 
+function getDepartmentLetter(role: string): string {
+  switch (role) {
+    case 'MICRO':
+      return 'OM';
+    case 'CHEMISTRY':
+      return 'BC';
+    default:
+      return '';
+  }
+}
+
 @Injectable()
 export class ChemistryReportsService {
   // Service methods would go here
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly esign: ESignService,
+  ) {}
 
   async createChemistryReportDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
@@ -362,7 +377,7 @@ export class ChemistryReportsService {
     const { base, details } = splitPatch(this._coerce(patchIn));
 
     if (patchIn.status) {
-      const trans = STATUS_TRANSITIONS[current.status];
+      const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
       if (!trans) {
         throw new BadRequestException(
           `Invalid status transition from ${current.status}`,
@@ -444,5 +459,95 @@ export class ChemistryReportsService {
     });
     if (!r) throw new NotFoundException('Report not found');
     return flattenReport(r);
+  }
+
+  // TO CHANGE STATUS
+
+  async changeStatus(
+    user: { userId: string; role: UserRole },
+    id: string,
+    input: ChangeStatusInput,
+  ) {
+    const current = await this.get(id);
+
+    if (!['ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+      throw new ForbiddenException(
+        'Only ADMIN/SYSTEMADMIN can Change Status this directly',
+      );
+    }
+
+    const target: ChemistryReportStatus =
+      typeof input === 'string' ? input : input.status;
+    if (!target) {
+      throw new BadRequestException('Status is required');
+    }
+
+    const ctx = getRequestContext() || {};
+
+    const reason =
+      typeof input === 'string'
+        ? undefined
+        : (input.reason ?? (ctx as any)?.reason);
+    const eSignPassword =
+      typeof input === 'string'
+        ? undefined
+        : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
+
+    if (!reason) {
+      throw new BadRequestException(
+        'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
+      );
+    }
+
+    if (!eSignPassword) {
+      throw new BadRequestException(
+        'Electronic Signature (password) is required for status changes',
+      );
+    }
+
+    await this.esign.verifyPassword(user.userId, String(eSignPassword));
+
+    const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
+    if (!trans) {
+      throw new BadRequestException(
+        `Invalid current status: ${current.status}`,
+      );
+    }
+
+    const patch: any = { status: target };
+
+    function yyyy(d: Date = new Date()): string {
+      const yyyy = String(d.getFullYear());
+      return yyyy; // e.g. "2410"
+    }
+
+    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+    function seqPad(num: number): string {
+      const width = Math.max(4, String(num).length);
+      return String(num).padStart(width, '0');
+    }
+
+    if (target === 'UNDER_TESTING_REVIEW' && !current.reportNumber) {
+      const deptLetter =
+        getDeptLetterForForm((current as any).formType) ||
+        getDepartmentLetter(user.role);
+      if (deptLetter) {
+        const seq = await this.prisma.labReportSequence.upsert({
+          where: { department: deptLetter },
+          update: { lastNumber: { increment: 1 } },
+          create: { department: deptLetter, lastNumber: 1 },
+        });
+        const n = seqPad(seq.lastNumber);
+        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+      }
+    }
+
+    const updated = await this.prisma.chemistryReport.update({
+      where: { id },
+      data: { ...patch, updatedBy: user.userId },
+    });
+
+    // this.reportsGateway.notifyStatusChange(id, target);
+    return updated;
   }
 }
