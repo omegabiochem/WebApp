@@ -140,7 +140,13 @@ function BulkPrintArea({
         } else if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
-              <ChemistryMixReportFormView report={r} onClose={() => {}} />
+              <ChemistryMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
             </div>
           );
         } else {
@@ -848,6 +854,9 @@ export default function FrontDeskDashboard() {
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

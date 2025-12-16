@@ -143,9 +143,9 @@ function BulkPrintArea({
               <ChemistryMixReportFormView
                 report={r}
                 onClose={() => {}}
-                // showSwitcher={false}
-                // isBulkPrint={true}
-                // isSingleBulk={isSingle}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
               />
             </div>
           );
@@ -381,7 +381,7 @@ export default function ChemistryDashboard() {
             Chemistry Dashboard
           </h1>
           <p className="text-sm text-slate-500">
-            Queue of Chemistry Mix / Water / General reports for chemistry team.
+            Queue of Chemistry reports for chemistry team.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -736,6 +736,8 @@ export default function ChemistryDashboard() {
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
                 />
               ) : (
                 <div className="text-sm text-slate-600">

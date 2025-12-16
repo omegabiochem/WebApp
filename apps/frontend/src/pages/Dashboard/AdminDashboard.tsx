@@ -938,6 +938,9 @@ export default function AdminDashboard() {
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

@@ -247,7 +247,13 @@ function BulkPrintArea({
         } else if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
-              <ChemistryMixReportFormView report={r} onClose={() => {}} />
+              <ChemistryMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
             </div>
           );
         } else {
@@ -426,7 +432,7 @@ export default function ClientDashboard() {
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
     if (r.formType === "CHEMISTRY_MIX") {
-      navigate(`/chemistry-reports/${slug}/${r.id}`);
+      navigate(`/chemistry-reports/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
     }
@@ -1007,6 +1013,8 @@ export default function ClientDashboard() {
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
                 />
               ) : (
                 <div className="text-sm text-slate-600">
