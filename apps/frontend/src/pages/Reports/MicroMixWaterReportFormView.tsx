@@ -635,12 +635,19 @@ export default function MicroMixWaterReportFormView(
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
             <div className="mt-1 grid grid-cols-3 items-center">
-              <div /> {/* left spacer */}
-              <div className="text-[18px] font-bold text-center underline">
+              {/* Left: Form Number */}
+              <div className="text-left text-[12px] font-bold">
+                {report.formNumber && report.formNumber}
+              </div>
+
+              {/* Center: Title */}
+              <div className="text-center text-[18px] font-bold underline">
                 Water Report
               </div>
-              <div className="text-right text-[12px] font-bold font-medium">
-                {report.reportNumber ? <> {report.reportNumber}</> : null}
+
+              {/* Right: Report Number */}
+              <div className="text-right text-[12px] font-bold">
+                {report.reportNumber && report.reportNumber}
               </div>
             </div>
           </div>

@@ -611,9 +611,9 @@ export default function FrontDeskDashboard() {
 
               {!loading &&
                 pageRows.map((r) => {
-                  const isMicro =
-                    r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                  // const isMicro =
+                  //   r.formType === "MICRO_MIX" ||
+                  //   r.formType === "MICRO_MIX_WATER";
 
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   return (

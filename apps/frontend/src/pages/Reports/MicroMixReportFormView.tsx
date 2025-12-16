@@ -23,16 +23,6 @@ type AttachmentItem = {
 };
 
 // // one helper, at top of the file
-// const getAuthHeaders = (): HeadersInit | undefined => {
-//   const token = localStorage.getItem("token");
-//   return token ? { Authorization: `Bearer ${token}` } : undefined;
-// };
-
-// const API_BASE =
-//   (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
-
-// const attBase = (id: string) =>
-//   `${API_BASE}/reports/micro-mix/${id}/attachments`;
 
 const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
@@ -51,23 +41,6 @@ function useAttachments(reportId?: string) {
       return;
     }
     setLoading(true);
-
-    // const url = attBase(reportId);
-    // fetch(url, { credentials: "include", headers: authHeaders() })
-    //   .then(async (r) => {
-    //     if (!r.ok) {
-    //       const msg = await r.text().catch(() => r.statusText);
-    //       throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
-    //     }
-    //     return r.json();
-    //   })
-    //   .catch((e) => {
-    //     console.error(e);
-    //     setItems([]); // keep current UI behavior
-    //   })
-    //   .then((d) => setItems(Array.isArray(d) ? d : []))
-    //   .catch(() => setItems([]))
-    //   .finally(() => setLoading(false));
     (async () => {
       try {
         const list = await api<AttachmentItem[]>(attBase(reportId));
@@ -222,32 +195,6 @@ function AttachmentPreview({
 
   useEffect(() => {
     let revoke: string | null = null;
-
-    // fetch(`${attBase(reportId)}/${attId}`, {
-    //   credentials: "include",
-    //   headers: getAuthHeaders(),
-    // })
-    //   .then((r) =>
-    //     r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
-    //   )
-    //   .then((m) => {
-    //     setMeta(m);
-    //     return fetch(`${attBase(reportId)}/${attId}/file`, {
-    //       credentials: "include",
-    //       headers: getAuthHeaders(),
-    //     });
-    //   })
-    //   .then((r) =>
-    //     r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
-    //   )
-    //   .then((blob) => {
-    //     const url = URL.createObjectURL(blob);
-    //     revoke = url;
-    //     setObjectUrl(url);
-    //   })
-    //   .catch((e) => setError(e.message))
-    //   .finally(() => {})
-    // .finally(() => setLoadingFile(false));
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(
@@ -341,6 +288,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     isBulkPrint = false,
     isSingleBulk = false,
   } = props;
+
   type PathRow = {
     checked: boolean;
     key: string;
@@ -502,34 +450,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
         null}
 
       {/* View switcher */}
-      {/* <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
-        <div className="flex items-center gap-2 py-2">
-          <button
-            type="button"
-            onClick={() => setPane("FORM")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "FORM"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "FORM"}
-          >
-            Main form
-          </button>
-          <button
-            type="button"
-            onClick={() => setPane("ATTACHMENTS")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "ATTACHMENTS"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "ATTACHMENTS"}
-          >
-            Attachments
-          </button>
-        </div>
-      </div> */}
 
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
@@ -563,22 +483,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       )}
 
       {/* Controls (hidden on print) */}
-      {/* <div className="no-print absolute top-2 right-2 flex gap-2">
-        {activePane === "FORM" && (
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Print
-          </button>
-        )}
-        {/* <button
-          onClick={onClose}
-          className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800"
-        >
-          Close
-        </button> */}
-      {/* </div> */}
 
       {isBulk || activePane === "FORM" ? (
         <>
@@ -605,12 +509,19 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
             <div className="mt-1 grid grid-cols-3 items-center">
-              <div /> {/* left spacer */}
-              <div className="text-[18px] font-bold text-center underline">
+              {/* Left: Form Number */}
+              <div className="text-left text-[12px] font-bold">
+                {report.formNumber && report.formNumber}
+              </div>
+
+              {/* Center: Title */}
+              <div className="text-center text-[18px] font-bold underline">
                 Report
               </div>
-              <div className="text-right text-[12px] font-bold font-medium">
-                {report.reportNumber ? <> {report.reportNumber}</> : null}
+
+              {/* Right: Report Number */}
+              <div className="text-right text-[12px] font-bold">
+                {report.reportNumber && report.reportNumber}
               </div>
             </div>
           </div>
@@ -833,12 +744,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               </div>
               <div className="py-1 px-2 border-r border-black">
                 <div className="py-1 px-2 text-center"> x 10^1</div>
-                {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tmy_dilution}
-              onChange={(e) => set_tmy_dilution(e.target.value)}
-              readOnly={lock("tmy_dilution")}
-            /> */}
               </div>
               <div className="py-1 px-2 border-r border-black flex">
                 <input
