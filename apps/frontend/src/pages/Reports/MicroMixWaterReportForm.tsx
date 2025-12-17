@@ -35,6 +35,8 @@ function useConfirmOnLeave(isDirty: boolean) {
   }, [blocker]);
 }
 
+
+
 // ---- Map each transition to buttons ----
 
 const statusButtons: Record<string, { label: string; color: string }> = {
@@ -188,37 +190,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-// // Simple input wrapper that locks by role
-// function Field({
-//   label,
-//   value,
-//   onChange,
-//   readOnly,
-//   className = "",
-//   inputClass = "",
-//   placeholder = " ", // placeholder space keeps boxes visible when empty
-// }: {
-//   label: string;
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-//   inputClass?: string;
-//   placeholder?: string;
-// }) {
-//   return (
-//     <div className={`flex gap-2 items-center ${className}`}>
-//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-//       <input
-//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-//         value={value}
-//         onChange={(e) => onChange(e.target.value)}
-//         readOnly={readOnly}
-//         placeholder={placeholder}
-//       />
-//     </div>
-//   );
-// }
+
 
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
@@ -561,19 +533,7 @@ export default function MicroMixReportForm({
     flashResolved(c.fieldKey); // ✅ show green halo briefly
   }
 
-  // Tiny inline pill next to a field label/badge
-  // function ResolvePill({ field }: { field: string }) {
-  //   if (!canResolveField || !hasCorrection(field)) return null;
-  //   return (
-  //     <button
-  //       className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-[2px] text-[10px] font-medium text-white hover:bg-emerald-700"
-  //       title="Resolve all notes for this field"
-  //       onClick={() => resolveField(field)}
-  //     >
-  //       ✓
-  //     </button>
-  //   );
-  // }
+
 
   // Tiny inline pill next to a field label/badge
   function ResolveOverlay({ field }: { field: string }) {
@@ -615,12 +575,7 @@ export default function MicroMixReportForm({
       : flash[keyOrPrefix]
       ? "dash dash-green"
       : "";
-  // const dashClass = (field: string) =>
-  //   hasOpenCorrection(field)
-  //     ? "dash dash-red"
-  //     : flash[field]
-  //     ? "dash dash-green"
-  //     : "";
+
 
   function validatePathogenRows(
     rows: PathRow[],

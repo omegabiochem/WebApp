@@ -64,8 +64,7 @@ export default function MicroMixReportFormWrapper() {
   // Render the correct editor based on formType
   if (isMix(report)) return <MicroMixReportForm report={report} />;
   if (isMixWater(report)) return <MicroMixWaterReportForm report={report} />;
-  // if (isGeneral(report)) return <MicroReportForm report={report} />;
-  // if (isGeneralWater(report)) return <MicroWaterReportForm report={report} />;
+
 
   return (
     <div className="p-4 text-sm text-slate-600">

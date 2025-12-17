@@ -394,7 +394,7 @@ model ChemistryReportStatusHistory {
   role         UserRole?
   ipAddress    String?
 
-  chemistry    ChemistryReport  @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+  report    ChemistryReport  @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 
   @@index([chemistryId, createdAt])
 }
@@ -404,6 +404,7 @@ model ChemistryAttachment {
   id         String          @id @default(cuid())
   chemistryId   String
   filename   String
+  kind       AttachmentKind
   storageKey String
   checksum   String
   pages      Int?

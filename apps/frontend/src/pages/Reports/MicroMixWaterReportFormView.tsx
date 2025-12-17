@@ -52,22 +52,6 @@ function useAttachments(reportId?: string) {
     }
     setLoading(true);
 
-    // const url = attBase(reportId);
-    // fetch(url, { credentials: "include", headers: authHeaders() })
-    //   .then(async (r) => {
-    //     if (!r.ok) {
-    //       const msg = await r.text().catch(() => r.statusText);
-    //       throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
-    //     }
-    //     return r.json();
-    //   })
-    //   .catch((e) => {
-    //     console.error(e);
-    //     setItems([]); // keep current UI behavior
-    //   })
-    //   .then((d) => setItems(Array.isArray(d) ? d : []))
-    //   .catch(() => setItems([]))
-    //   .finally(() => setLoading(false));
     (async () => {
       try {
         const list = await api<AttachmentItem[]>(attBase(reportId));
@@ -223,31 +207,7 @@ function AttachmentPreview({
   useEffect(() => {
     let revoke: string | null = null;
 
-    // fetch(`${attBase(reportId)}/${attId}`, {
-    //   credentials: "include",
-    //   headers: getAuthHeaders(),
-    // })
-    //   .then((r) =>
-    //     r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
-    //   )
-    //   .then((m) => {
-    //     setMeta(m);
-    //     return fetch(`${attBase(reportId)}/${attId}/file`, {
-    //       credentials: "include",
-    //       headers: getAuthHeaders(),
-    //     });
-    //   })
-    //   .then((r) =>
-    //     r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
-    //   )
-    //   .then((blob) => {
-    //     const url = URL.createObjectURL(blob);
-    //     revoke = url;
-    //     setObjectUrl(url);
-    //   })
-    //   .catch((e) => setError(e.message))
-    //   .finally(() => {})
-    // .finally(() => setLoadingFile(false));
+  
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(

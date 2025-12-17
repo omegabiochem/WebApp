@@ -7,12 +7,15 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ChemistryReportsService } from './chemistryreports.service';
 import { JwtAuthGuard } from 'src/common/jwt-auth.guard';
 import { ChemistryReportStatus, FormType } from '@prisma/client';
 import { withRequestContext } from 'src/common/request-context';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 const slugToFormType = (slug: string): FormType | null => {
   switch (slug) {
@@ -31,8 +34,16 @@ export class ChangeStatusDto {
   deptRoleForSeq?: 'MICRO' | 'CHEMISTRY';
 }
 
+type CreateAttachmentDto = {
+  pages?: string;
+  checksum?: string;
+  source?: string;
+  createdBy?: string;
+  kind?: 'SIGNED_FORM' | 'RAW_SCAN' | 'OTHER';
+};
+
 @UseGuards(JwtAuthGuard)
-@Controller('chemistry-reports')
+@Controller(['chemistry-reports', 'chemistry-reports/chemistry-mix'])
 export class ChemistryReportsController {
   // Controller methods would go here
   constructor(private svc: ChemistryReportsService) {}
@@ -90,5 +101,17 @@ export class ChemistryReportsController {
       },
       () => this.svc.changeStatus(req.user, id, dto),
     );
+  }
+
+  @Post(':id/attachments')
+  @UseInterceptors(FileInterceptor('file'))
+  async addAttachment(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: CreateAttachmentDto,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.svc.addAttachment(req.user, id, file, body);
   }
 }

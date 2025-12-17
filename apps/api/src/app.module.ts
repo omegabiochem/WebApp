@@ -27,8 +27,7 @@ import { AuditModule } from './audit/audit.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { HealthController } from './health.controller';
 import { ChemistryReportsModule } from './reports/chemistryreports.module';
-
-
+import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.module';
 
 @Module({
   imports: [
@@ -40,14 +39,16 @@ import { ChemistryReportsModule } from './reports/chemistryreports.module';
     BalanceModule,
     AuditModule,
     AttachmentsModule,
-    ChemistryReportsModule
+    ChemistryReportsModule,
+    ChemistryAttachmentsModule,
   ],
   controllers: [HealthController],
   providers: [
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard }, PrismaService, ESignService
+    { provide: APP_GUARD, useClass: RolesGuard },
+    PrismaService,
+    ESignService,
   ],
 })
-export class AppModule { }
-
+export class AppModule {}

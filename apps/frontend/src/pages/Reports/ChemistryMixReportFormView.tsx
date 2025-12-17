@@ -23,8 +23,7 @@ type AttachmentItem = {
   createdAt: string;
 };
 
-const attBase = (id: string) =>
-  `/chemistry-reports/chemistry-mix/${id}/attachments`;
+const attBase = (id: string) => `/chemistry-reports/${id}/attachments`;
 
 const authHeaders = (): HeadersInit => {
   const t = getToken();
@@ -334,7 +333,7 @@ export default function ChemistryMixReportFormView(
 
   const qrValue = report?.id
     ? JSON.stringify({
-        t: "report",
+        t: "chemistry",
         id: report.id, // ← the only thing the watcher needs
         // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
       })

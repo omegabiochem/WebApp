@@ -14,6 +14,7 @@ import {
 import { copy } from 'fs-extra';
 import { get } from 'http';
 import { PrismaService } from 'prisma/prisma.service';
+import { ChemistryAttachmentsService } from 'src/attachments/chemistryattachments.service';
 import { ESignService } from 'src/auth/esign.service';
 import { getRequestContext } from 'src/common/request-context';
 import de from 'zod/v4/locales/de.js';
@@ -254,6 +255,7 @@ export class ChemistryReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly esign: ESignService,
+    private readonly attachments: ChemistryAttachmentsService,
   ) {}
 
   async createChemistryReportDraft(
@@ -549,5 +551,32 @@ export class ChemistryReportsService {
 
     // this.reportsGateway.notifyStatusChange(id, target);
     return updated;
+  }
+
+  async addAttachment(
+    user: any,
+    id: string,
+    file: Express.Multer.File,
+    body: {
+      pages?: string;
+      checksum?: string;
+      source?: string;
+      createdBy?: string;
+      kind?: string;
+      meta?: Record<string, any>;
+    },
+  ) {
+    // delegate; AttachmentsService handles FILES_DIR & DB
+    // reports.service.ts (addAttachment handler)
+    return this.attachments.create({
+      chemistryId: id,
+      file,
+      kind: (body.kind as any) ?? 'OTHER',
+      source: body.source ?? 'upload',
+      pages: body.pages ? Number(body.pages) : undefined,
+      providedChecksum: body.checksum, // you already added this
+      createdBy: body.createdBy ?? user?.userId ?? 'web',
+      meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
+    });
   }
 }

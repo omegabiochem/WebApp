@@ -288,6 +288,12 @@ export class AuthService {
       };
     }
 
+    // Normal login:
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
+    });
+
     // Issue JWT
     const payload = {
       sub: user.id,

@@ -188,37 +188,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-// // Simple input wrapper that locks by role
-// function Field({
-//   label,
-//   value,
-//   onChange,
-//   readOnly,
-//   className = "",
-//   inputClass = "",
-//   placeholder = " ", // placeholder space keeps boxes visible when empty
-// }: {
-//   label: string;
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-//   inputClass?: string;
-//   placeholder?: string;
-// }) {
-//   return (
-//     <div className={`flex gap-2 items-center ${className}`}>
-//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-//       <input
-//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-//         value={value}
-//         onChange={(e) => onChange(e.target.value)}
-//         readOnly={readOnly}
-//         placeholder={placeholder}
-//       />
-//     </div>
-//   );
-// }
+
 
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
@@ -912,40 +882,16 @@ export default function MicroMixReportForm({
       let saved: SavedReport;
 
       if (reportId) {
-        // console.log("Updating report", reportId);
-        // update
-        // res = await fetch(`${API_BASE}/reports/${reportId}`, {
-        //   method: "PATCH",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify({ ...payload, reason: "Saving" }),
-        // });
-        // console.log(res);
         saved = await api<SavedReport>(`/reports/${reportId}`, {
           method: "PATCH",
           body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
       } else {
-        // create
-        // res = await fetch(`${API_BASE}/reports`, {
-        //   method: "POST",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify(payload),
-        // });
         saved = await api(`/reports`, {
           method: "POST",
           body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
         });
       }
-
-      // if (!res.ok) throw new Error("Failed to save draft");
-      // const saved = await res.json();
-      // setIsDirty(false);
 
       setReportId(saved.id); // 👈 keep the new id
       setStatus(saved.status); // in case backend changed it
