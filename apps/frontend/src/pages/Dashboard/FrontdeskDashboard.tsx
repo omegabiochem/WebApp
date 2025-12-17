@@ -15,6 +15,7 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
@@ -70,7 +71,12 @@ function formatDate(iso: string | null) {
 function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
-  return canShowUpdateButton(user?.role as Role, r.status as ReportStatus);
+
+  const isChem = r.formType === "CHEMISTRY_MIX";
+
+  return isChem
+    ? canShowChemistryUpdateButton(user.role, r.status as ChemistryReportStatus)
+    : canShowUpdateButton(user.role as Role, r.status as ReportStatus);
 }
 
 // --------------- Bulk print helper (renders selected reports + window.print) ---------------

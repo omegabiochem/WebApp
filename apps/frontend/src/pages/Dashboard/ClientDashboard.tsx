@@ -21,7 +21,6 @@ import {
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
-import { is } from "zod/locales";
 
 // -----------------------------
 // Types
@@ -177,7 +176,9 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
 }
 
 const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
-  status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED"
+  status === "UNDER_CLIENT_FINAL_REVIEW" ||
+  status === "FINAL_APPROVED" ||
+  status === "UNDER_CLIENT_REVIEW"
     ? "ATTACHMENTS"
     : "FORM";
 
@@ -432,7 +433,7 @@ export default function ClientDashboard() {
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
     if (r.formType === "CHEMISTRY_MIX") {
-      navigate(`/chemistry-reports/${r.id}`);
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
     }
@@ -972,6 +973,46 @@ export default function ClientDashboard() {
                           await setStatus(
                             r,
                             "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                            "Resubmission under Review"
+                          );
+                        }
+                        setSelectedReport(null);
+                        // navigate(`/reports/${id}`);
+                        goToReportEditor(r);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
+                    }}
+                  >
+                    Update
+                  </button>
+                )}
+                {canUpdateThisChemistryReport(selectedReport, user) && (
+                  <button
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                    // onClick={() => {
+                    //   const id = selectedReport.id;
+                    //   setSelectedReport(null);
+                    //   navigate(`/reports/${id}`);
+                    // }}
+                    onClick={async () => {
+                      try {
+                        // const id = selectedReport.id;
+                        const r = selectedReport;
+                        if (
+                          selectedReport.status === "TESTING_NEEDS_CORRECTION"
+                        ) {
+                          await setStatus(
+                            r,
+                            "UNDER_CLIENT_CORRECTION",
+                            "Sent back to client for correction"
+                          );
+                        } else if (
+                          selectedReport.status === "RESUBMISSION_BY_TESTING"
+                        ) {
+                          await setStatus(
+                            r,
+                            "UNDER_CLIENT_REVIEW",
                             "Resubmission under Review"
                           );
                         }

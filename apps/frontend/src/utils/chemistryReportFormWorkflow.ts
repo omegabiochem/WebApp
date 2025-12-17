@@ -65,7 +65,7 @@ export const STATUS_TRANSITIONS: Record<
   UNDER_CLIENT_REVIEW: {
     canSet: ["CLIENT"],
     next: ["CLIENT_NEEDS_CORRECTION", "APPROVED"],
-    nextEditableBy: ["CLIENT"],
+    nextEditableBy: ["ADMIN"],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
@@ -131,7 +131,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ["CLIENT"],
-    next: ["UNDER_CLIENT_REVIEW"],
+    next: ["UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
   },
