@@ -326,6 +326,7 @@ export class ChemistryReportsService {
     const dateKeys = [
       'dateSent',
       'manufactureDate',
+      'dateReceived',
       'testedDate',
       'reviewedDate',
     ];

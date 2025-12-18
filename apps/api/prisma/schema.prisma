@@ -333,6 +333,8 @@ model ChemistryMixDetails {
   // SAMPLE TYPE – multiple checkboxes across the row
   sampleTypes       SampleType[]  // BULK / FINISHED_GOOD / etc.
 
+  dateReceived      DateTime?
+
   // “ACTIVE TO BE TESTED” rows
   actives           Json?
 

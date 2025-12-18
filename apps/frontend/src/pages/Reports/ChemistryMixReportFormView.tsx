@@ -663,33 +663,44 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE TYPE checkboxes */}
-            <div className="border-b border-black px-2 py-1 text-[11px] flex">
+            <div className="px-2  text-[11px] flex items-stretch gap-3">
               {/* Left label */}
-              <span className="font-medium mr-2 whitespace-nowrap">
-                SAMPLE TYPE :
-              </span>
+              <div className="flex w-fit pr-7 py-1 self-stretch border-r border-black">
+                <span className="font-medium mr-4 whitespace-nowrap">
+                  SAMPLE TYPE :
+                </span>
 
-              {/* Right side: 3 columns, 2 rows */}
-              <div className="grid grid-cols-3 gap-x-6 gap-y-1 flex-1">
-                {sampleTypeColumns.map((col, colIdx) => (
-                  <div key={colIdx} className="flex flex-col gap-[2px]">
-                    {col.map(([key, label]) => (
-                      <label
-                        key={key}
-                        className="flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <input
-                          type="checkbox"
-                          className="thick-box2"
-                          checked={report?.sampleTypes.includes(key)}
-                          readOnly
-                          disabled
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                ))}
+                {/* Right side: 3 columns, 2 rows */}
+                <div className="grid grid-cols-3 gap-x-1 gap-y-1 -ml-2 w-fit">
+                  {sampleTypeColumns.map((col, colIdx) => (
+                    <div key={colIdx} className="flex flex-col gap-[2px] w-fit">
+                      {col.map(([key, label]) => (
+                        <label
+                          key={key}
+                          className="flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <input
+                            type="checkbox"
+                            className="thick-box2"
+                            checked={report?.sampleTypes.includes(key)}
+                            readOnly
+                            disabled
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* RIGHT */}
+              <div className="flex items-center gap-2 whitespace-nowrap ml-1 py-1">
+                <span className="font-medium">DATE RECEIVED :</span>
+                <input
+                  type="date"
+                  className="w-[130px] border-0 border-b border-black/60 outline-none text-[11px]"
+                  value={formatDateForInput(report?.dateReceived ?? "")}
+                />
               </div>
             </div>
           </div>

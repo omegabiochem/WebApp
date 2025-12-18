@@ -123,6 +123,9 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
+  const isMicro =
+    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+  if (!isMicro) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
 
@@ -148,6 +151,8 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
+  const isChemistry = r.formType === "CHEMISTRY_MIX";
+  if (!isChemistry) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
 
@@ -156,7 +161,7 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
     "dateSent",
     "sampleDescription",
     "testTypes",
-    "samplePosition",
+    "sampleCollected",
     "lotBatchNo",
     "manufactureDate",
     "formulaId",
@@ -827,7 +832,7 @@ export default function ClientDashboard() {
                                 onClick={async () => {
                                   try {
                                     if (
-                                      r.status === "TESTING_NEEDS_CORRECTION "
+                                      r.status === "TESTING_NEEDS_CORRECTION"
                                     ) {
                                       await setStatus(
                                         r,

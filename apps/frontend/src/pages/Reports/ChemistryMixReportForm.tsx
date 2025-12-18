@@ -8,11 +8,12 @@ import {
   type ChemActiveRow,
 } from "../../utils/chemistryReportValidation";
 import {
+  FIELD_EDIT_MAP,
   STATUS_TRANSITIONS,
   type ChemistryReportStatus,
   type Role,
 } from "../../utils/chemistryReportFormWorkflow";
-import { set } from "zod";
+
 import toast from "react-hot-toast";
 
 // ---------- tiny hook to warn on unsaved ----------
@@ -106,6 +107,24 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   APPROVED: { label: "Approve", color: "bg-green-700" },
 };
 
+// A small helper to lock fields per role (frontend hint; backend is the source of truth)
+function canEdit(
+  role: Role | undefined,
+  field: string,
+  status?: ChemistryReportStatus
+) {
+  if (!role || !status) return false;
+  const transition = STATUS_TRANSITIONS[status];
+  if (!transition || !transition.canEdit?.includes(role)) {
+    return false;
+  }
+
+  if (!role) return false;
+
+  if (FIELD_EDIT_MAP[role]?.includes("*")) return true;
+  return FIELD_EDIT_MAP[role]?.includes(field) ?? false;
+}
+
 export default function ChemistryMixReportForm({
   report,
   onClose,
@@ -149,7 +168,7 @@ export default function ChemistryMixReportForm({
   type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
 
   const [sampleCollected, setSampleCollected] = useState<SampleCollected | "">(
-    report?.sampleCollected || null
+    report?.sampleCollected ?? null
   );
 
   const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
@@ -162,6 +181,7 @@ export default function ChemistryMixReportForm({
   const [numberOfActives, setNumberOfActives] = useState(
     report?.numberOfActives || ""
   );
+  const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
 
   // sample type checkboxes
   type SampleTypeKey =
@@ -218,6 +238,9 @@ export default function ChemistryMixReportForm({
     reportNumber?: number | string;
   };
 
+  const lock = (f: string) =>
+    !canEdit(role, f, status as ChemistryReportStatus);
+
   // ------------- SAVE -------------
   const handleSave = async (): Promise<SavedReport | null> => {
     const payload = {
@@ -233,6 +256,7 @@ export default function ChemistryMixReportForm({
       sampleSize,
       numberOfActives,
       sampleTypes,
+      dateReceived,
       actives,
       comments,
       testedBy,
@@ -408,40 +432,54 @@ export default function ChemistryMixReportForm({
           <div className="grid grid-cols-[67%_33%] border-b border-black">
             <div className="px-2 border-r border-black flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">CLIENT :</div>
-              <input
-                className="flex-1 border-none  text-[12px]"
-                value={client}
-                onChange={(e) => {
-                  setClient(e.target.value.toUpperCase());
-                  markDirty();
-                }}
-              />
+              {lock("client") ? (
+                <div className="flex-1  min-h-[14px]">{client}</div>
+              ) : (
+                <input
+                  className="flex-1 border-none  text-[12px]"
+                  value={client}
+                  onChange={(e) => {
+                    setClient(e.target.value.toUpperCase());
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
             <div className="px-2 flex items-center gap-1">
               <div className="whitespace-nowrap font-medium">DATE SENT :</div>
-              <input
-                className="flex-1 border-none outline-none text-[12px]"
-                type="date"
-                value={formatDateForInput(dateSent)}
-                onChange={(e) => {
-                  setDateSent(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("dateSent") ? (
+                <div className="flex-1 min-h-[14px]">
+                  {formatDateForInput(dateSent)}
+                </div>
+              ) : (
+                <input
+                  className="flex-1 border-none outline-none text-[12px]"
+                  type="date"
+                  value={formatDateForInput(dateSent)}
+                  onChange={(e) => {
+                    setDateSent(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
           </div>
 
           {/* SAMPLE DESCRIPTION line */}
           <div className="border-b border-black flex items-center gap-2 px-2">
             <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
-            <input
-              className="flex-1 border-none outline-none text-[12px]"
-              value={sampleDescription}
-              onChange={(e) => {
-                setSampleDescription(e.target.value);
-                markDirty();
-              }}
-            />
+            {lock("sampleDescription") ? (
+              <div className="flex-1 min-h-[14px]"> {sampleDescription}</div>
+            ) : (
+              <input
+                className="flex-1 border-none outline-none text-[12px]"
+                value={sampleDescription}
+                onChange={(e) => {
+                  setSampleDescription(e.target.value);
+                  markDirty();
+                }}
+              />
+            )}
           </div>
 
           {/* TYPE OF TEST / SAMPLE COLLECTED */}
@@ -452,23 +490,43 @@ export default function ChemistryMixReportForm({
                 <input
                   type="checkbox"
                   checked={testTypes.includes("ID")}
-                  onChange={() => toggleTestType("ID")}
+                  onChange={() => {
+                    if (lock("testTypes")) return; // ✅ locked (no change)
+                    toggleTestType("ID");
+                  }}
+                  className={
+                    lock("testTypes") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 ID
               </label>
+
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   checked={testTypes.includes("PERCENT_ASSAY")}
-                  onChange={() => toggleTestType("PERCENT_ASSAY")}
+                  onChange={() => {
+                    if (lock("testTypes")) return;
+                    toggleTestType("PERCENT_ASSAY");
+                  }}
+                  className={
+                    lock("testTypes") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 Percent Assay
               </label>
+
               <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   checked={testTypes.includes("CONTENT_UNIFORMITY")}
-                  onChange={() => toggleTestType("CONTENT_UNIFORMITY")}
+                  onChange={() => {
+                    if (lock("testTypes")) return;
+                    toggleTestType("CONTENT_UNIFORMITY");
+                  }}
+                  className={
+                    lock("testTypes") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 Content Uniformity
               </label>
@@ -481,9 +539,13 @@ export default function ChemistryMixReportForm({
                   name="sampleCollected"
                   checked={sampleCollected === "TOP_BEG"}
                   onChange={() => {
+                    if (lock("sampleCollected")) return;
                     setSampleCollected("TOP_BEG");
                     markDirty();
                   }}
+                  className={
+                    lock("sampleCollected") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 Top / Beg
               </label>
@@ -494,9 +556,13 @@ export default function ChemistryMixReportForm({
                   name="sampleCollected"
                   checked={sampleCollected === "MID"}
                   onChange={() => {
+                    if (lock("sampleCollected")) return;
                     setSampleCollected("MID");
                     markDirty();
                   }}
+                  className={
+                    lock("sampleCollected") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 Mid
               </label>
@@ -507,9 +573,13 @@ export default function ChemistryMixReportForm({
                   name="sampleCollected"
                   checked={sampleCollected === "BOTTOM_END"}
                   onChange={() => {
+                    if (lock("sampleCollected")) return;
                     setSampleCollected("BOTTOM_END");
                     markDirty();
                   }}
+                  className={
+                    lock("sampleCollected") ? "accent-black" : "accent-blue-600"
+                  }
                 />
                 Bottom / End
               </label>
@@ -520,26 +590,36 @@ export default function ChemistryMixReportForm({
           <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
             <div className="px-2 border-r border-black flex items-center gap-2">
               <span className="font-medium">LOT / BATCH # :</span>
-              <input
-                className="flex-1 border-none outline-none"
-                value={lotBatchNo}
-                onChange={(e) => {
-                  setLotBatchNo(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("lotBatchNo") ? (
+                <div className="flex-1 min-h-[14px]"> {lotBatchNo}</div>
+              ) : (
+                <input
+                  className="flex-1 border-none outline-none"
+                  value={lotBatchNo}
+                  onChange={(e) => {
+                    setLotBatchNo(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
             <div className="px-2 flex items-center gap-2">
               <span className="font-medium">MANUFACTURE DATE :</span>
-              <input
-                className="flex-1 border-none outline-none"
-                type="date"
-                value={formatDateForInput(manufactureDate)}
-                onChange={(e) => {
-                  setManufactureDate(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("manufactureDate") ? (
+                <div className="flex-1 min-h-[14px]">
+                  {formatDateForInput(manufactureDate)}
+                </div>
+              ) : (
+                <input
+                  className="flex-1 border-none outline-none"
+                  type="date"
+                  value={formatDateForInput(manufactureDate)}
+                  onChange={(e) => {
+                    setManufactureDate(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
           </div>
 
@@ -549,71 +629,115 @@ export default function ChemistryMixReportForm({
               <span className="whitespace-nowrap font-medium">
                 FORMULA # / ID # :
               </span>
-              <input
-                className="w-[80px] border-none outline-none shrink-0"
-                value={formulaId}
-                onChange={(e) => {
-                  setFormulaId(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("formulaId") ? (
+                <div className="flex-1 min-h-[14px]">{formulaId}</div>
+              ) : (
+                <input
+                  className="w-[80px] border-none outline-none shrink-0"
+                  value={formulaId}
+                  onChange={(e) => {
+                    setFormulaId(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
 
             <div className="px-2 border-r border-black flex items-center gap-1">
               <span className="whitespace-nowrap font-medium">
                 SAMPLE SIZE :
               </span>
-              <input
-                className="w-[80px] border-none outline-none shrink-0"
-                value={sampleSize}
-                onChange={(e) => {
-                  setSampleSize(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("sampleSize") ? (
+                <div className="flex-1 min-h-[14px]">{sampleSize}</div>
+              ) : (
+                <input
+                  className="w-[80px] border-none outline-none shrink-0"
+                  value={sampleSize}
+                  onChange={(e) => {
+                    setSampleSize(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
 
             <div className="px-2 flex items-center gap-1">
               <span className="whitespace-nowrap font-medium">
                 NUMBER OF ACTIVES :
               </span>
-              <input
-                className="w-[80px] border-none outline-none shrink-0"
-                value={numberOfActives}
-                onChange={(e) => {
-                  setNumberOfActives(e.target.value);
-                  markDirty();
-                }}
-              />
+              {lock("numberOfActives") ? (
+                <div className="flex-1 min-h-[14px]">{numberOfActives}</div>
+              ) : (
+                <input
+                  className="w-[80px] border-none outline-none shrink-0"
+                  value={numberOfActives}
+                  onChange={(e) => {
+                    setNumberOfActives(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
           </div>
 
           {/* SAMPLE TYPE checkboxes */}
-          <div className="border-b border-black px-2 py-1 text-[11px] flex">
-            {/* Left label */}
-            <span className="font-medium mr-2 whitespace-nowrap">
-              SAMPLE TYPE :
-            </span>
+          {/* SAMPLE TYPE checkboxes */}
+          <div className="px-2 text-[11px] flex items-stretch gap-3">
+            {/* LEFT */}
+            <div className="flex w-fit pr-7 py-1 self-stretch border-r border-black">
+              <span className="font-medium mr-4 whitespace-nowrap">
+                SAMPLE TYPE :
+              </span>
 
-            {/* Right side: 3 columns, 2 rows */}
-            <div className="grid grid-cols-3 gap-x-6 gap-y-1 flex-1">
-              {sampleTypeColumns.map((col, colIdx) => (
-                <div key={colIdx} className="flex flex-col gap-[2px]">
-                  {col.map(([key, label]) => (
-                    <label
-                      key={key}
-                      className="flex items-center gap-1 whitespace-nowrap"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={sampleTypes.includes(key)}
-                        onChange={() => toggleSampleType(key)}
-                      />
-                      {label}
-                    </label>
-                  ))}
+              <div className="grid grid-cols-3 gap-x-1 gap-y-1 -ml-2 w-fit">
+                {sampleTypeColumns.map((col, colIdx) => (
+                  <div key={colIdx} className="flex flex-col gap-[2px] w-fit">
+                    {col.map(([key, label]) => (
+                      <label
+                        key={key}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={sampleTypes.includes(key)}
+                          onChange={() => {
+                            if (lock("sampleTypes")) return;
+                            toggleSampleType(key);
+                          }}
+                          className={
+                            lock("sampleTypes")
+                              ? "accent-black"
+                              : "accent-blue-600"
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* RIGHT */}
+            <div className="flex items-center gap-2 whitespace-nowrap ml-1 py-1">
+              <span className="whitespace-nowrap font-medium">
+                DATE RECEIVED :
+              </span>
+              {lock("dateReceived") ? (
+                <div className="flex-1 min-h-[14px]">
+                  {formatDateForInput(dateReceived)}
                 </div>
-              ))}
+              ) : (
+                <input
+                  type="date"
+                  className="w-[130px] border-0 border-b border-black/60 outline-none text-[11px]"
+                  value={formatDateForInput(dateReceived)}
+                  onChange={(e) => {
+                    setDateReceived(e.target.value);
+                    markDirty();
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -641,6 +765,7 @@ export default function ChemistryMixReportForm({
                   onChange={(e) =>
                     updateActive(idx, { checked: e.target.checked })
                   }
+                  disabled={lock("actives") || role !== "CLIENT"}
                 />
                 <span>{row.label}</span>
               </div>
@@ -651,6 +776,7 @@ export default function ChemistryMixReportForm({
                   className="w-full border-none outline-none text-[11px]"
                   value={row.sopNo}
                   onChange={(e) => updateActive(idx, { sopNo: e.target.value })}
+                  disabled={lock("actives") || role === "CLIENT"}
                 />
               </div>
 
@@ -662,6 +788,7 @@ export default function ChemistryMixReportForm({
                   onChange={(e) =>
                     updateActive(idx, { formulaContent: e.target.value })
                   }
+                  disabled={lock("actives") || role !== "CLIENT"}
                 />
                 <span>%</span>
               </div>
@@ -674,6 +801,7 @@ export default function ChemistryMixReportForm({
                   onChange={(e) =>
                     updateActive(idx, { result: e.target.value })
                   }
+                  disabled={lock("actives") || role === "CLIENT"}
                 />
                 <span>%</span>
               </div>
@@ -687,6 +815,7 @@ export default function ChemistryMixReportForm({
                   onChange={(e) =>
                     updateActive(idx, { dateTestedInitial: e.target.value })
                   }
+                  disabled={lock("actives") || role === "CLIENT"}
                 />
               </div>
             </div>
@@ -704,20 +833,26 @@ export default function ChemistryMixReportForm({
         <div className="mt-2 text-[12px]">
           <div className="flex items-center gap-2 mb-2">
             <span className="font-medium">Comments :</span>
-            <input
-              className="flex-1 border-0 border-b border-black/60 outline-none"
-              value={comments}
-              onChange={(e) => {
-                setComments(e.target.value);
-                markDirty();
-              }}
-            />
+
+            {lock("comments") ? (
+              <div className="flex-1 min-h-[14px]">{comments}</div>
+            ) : (
+              <input
+                className="flex-1 border-0 border-b border-black/60 outline-none"
+                value={comments}
+                onChange={(e) => {
+                  setComments(e.target.value);
+                  markDirty();
+                }}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-2">
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-medium">TESTED BY :</span>
+
                 <input
                   className="flex-1 border-0 border-b border-black/60 outline-none"
                   value={testedBy}
@@ -725,10 +860,13 @@ export default function ChemistryMixReportForm({
                     setTestedBy(e.target.value.toUpperCase());
                     markDirty();
                   }}
+                  readOnly={lock("testedBy")}
+                  placeholder="Name"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-medium">DATE :</span>
+
                 <input
                   className="flex-1 border-0 border-b border-black/60 outline-none"
                   type="date"
@@ -737,6 +875,8 @@ export default function ChemistryMixReportForm({
                     setTestedDate(e.target.value);
                     markDirty();
                   }}
+                  readOnly={lock("testedDate")}
+                  placeholder="MM/DD/YYYY"
                 />
               </div>
             </div>
@@ -751,6 +891,8 @@ export default function ChemistryMixReportForm({
                     setReviewedBy(e.target.value.toUpperCase());
                     markDirty();
                   }}
+                  readOnly={lock("reviewedBy")}
+                  placeholder="Name"
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -763,6 +905,8 @@ export default function ChemistryMixReportForm({
                     setReviewedDate(e.target.value);
                     markDirty();
                   }}
+                  readOnly={lock("reviewedDate")}
+                  placeholder="MM/DD/YYYY"
                 />
               </div>
             </div>

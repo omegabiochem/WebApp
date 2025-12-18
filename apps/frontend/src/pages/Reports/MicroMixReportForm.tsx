@@ -188,8 +188,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-
-
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
   <style>{`

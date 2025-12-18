@@ -232,6 +232,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   ADMIN: ["*"],
   FRONTDESK: [],
   CHEMISTRY: [
+    "dateReceived",
     "sop",
     "results",
     "dateTested",
@@ -239,6 +240,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "comments",
     "testedBy",
     "testedDate",
+    "actives",
   ],
   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
   CLIENT: [
@@ -246,7 +248,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "dateSent",
     "sampleDescription",
     "testTypes",
-    "samplePosition",
+    "sampleCollected",
     "lotBatchNo",
     "manufactureDate",
     "formulaId",
@@ -254,7 +256,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "numberOfActives",
     "sampleTypes",
     "comments",
-    "activeToBeTested",
+    "actives",
     "formulaContent",
   ],
 };
