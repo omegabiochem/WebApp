@@ -419,7 +419,7 @@ export default function ClientDashboard() {
       : `/reports/${r.id}/status`;
 
     const body = isChemistry
-      ? { status: newStatus }
+      ? { reason,status: newStatus }
       : { reason, status: newStatus };
 
     // const slug = formTypeToSlug[r.formType] || "micro-mix";

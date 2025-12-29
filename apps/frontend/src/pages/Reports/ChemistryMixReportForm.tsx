@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker } from "react-router-dom";
 import { api } from "../../lib/api";
 import {
+  createCorrections,
   DEFAULT_CHEM_ACTIVES,
   FieldErrorBadge,
+  getCorrections,
+  resolveCorrection,
   useChemistryReportValidation,
   type ChemActiveRow,
   type ChemistryMixReportFormValues,
@@ -14,10 +17,9 @@ import {
   FIELD_EDIT_MAP,
   STATUS_TRANSITIONS,
   type ChemistryReportStatus,
+  type CorrectionItem,
   type Role,
 } from "../../utils/chemistryReportFormWorkflow";
-
-import toast from "react-hot-toast";
 
 // ---------- tiny hook to warn on unsaved ----------
 function useConfirmOnLeave(isDirty: boolean) {
@@ -60,6 +62,45 @@ const PrintStyles = () => (
       .no-print { display: none !important; }
       .sheet { box-shadow: none !important; border: none !important; }
     }
+  `}</style>
+);
+
+const DashStyles = () => (
+  <style>{`
+    /* moving dashed outline that doesn't affect layout */
+    .dash { position: relative; z-index: 0; }
+    .dash::after{
+      content:"";
+      position:absolute;
+      inset:-4px;                 /* sits just outside the box */
+      border-radius:6px;          /* tweak to taste */
+      pointer-events:none;
+      z-index:10;
+
+      /* four dashed sides (top, bottom, left, right) */
+      background:
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0    0    /16px 2px repeat-x,
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0    100% /16px 2px repeat-x,
+        linear-gradient(0deg,  var(--dash-color) 0 8px, transparent 8px 16px) 0    0    /2px  16px repeat-y,
+        linear-gradient(0deg,  var(--dash-color) 0 8px, transparent 8px 16px) 100% 0    /2px  16px repeat-y;
+
+      opacity:0;                  /* off by default */
+      animation: dash-move 1.05s linear infinite;
+    }
+    .dash-red::after   { --dash-color:#dc2626; opacity:1; } /* red = correction */
+    .dash-green::after { --dash-color:#16a34a; opacity:1; } /* green = resolved */
+
+    @keyframes dash-move {
+      to {
+        background-position:
+          16px 0,     /* top marches right  */
+          -16px 100%, /* bottom marches left */
+          0 16px,     /* left marches down   */
+          100% -16px; /* right marches up    */
+      }
+    }
+    @media (prefers-reduced-motion: reduce) { .dash::after { animation:none; } }
+    @media print { .dash::after { display:none; } }
   `}</style>
 );
 
@@ -382,6 +423,157 @@ export default function ChemistryMixReportForm({
     markDirty();
   }
 
+  // --- E-Sign modal state (Admin-only) ---
+  // Admin E-sign modal state
+  const [showESign, setShowESign] = useState(false);
+  const [changeReason, setChangeReason] = useState("");
+  const [eSignPassword, setESignPassword] = useState("");
+
+  // ⬇️ Fetch existing corrections when a report id is present (new or existing)
+  useEffect(() => {
+    // const token = localStorage.getItem("token");
+    if (!reportId) return;
+    getCorrections(reportId)
+      .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
+      .catch(() => {});
+  }, [reportId]);
+
+  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const openCorrections = useMemo(
+    () => corrections.filter((c) => c.status === "OPEN"),
+    [corrections]
+  );
+  const corrByField = useMemo(() => {
+    const m: Record<string, CorrectionItem[]> = {};
+    for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
+    return m;
+  }, [openCorrections]);
+
+  const hasCorrection = (field: string) => !!corrByField[field];
+  // const correctionText = (field: string) =>
+  //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
+
+  const [selectingCorrections, setSelectingCorrections] = useState(false);
+  const [pendingCorrections, setPendingCorrections] = useState<
+    { fieldKey: string; message: string }[]
+  >([]);
+  const [addForField, setAddForField] = useState<string | null>(null);
+  const [addMessage, setAddMessage] = useState("");
+
+  const uiNeedsESign = (s: string) =>
+    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
+    (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+
+  function requestStatusChange(target: ChemistryReportStatus) {
+    const isNeeds =
+      target === "FRONTDESK_NEEDS_CORRECTION" ||
+      target === "TESTING_NEEDS_CORRECTION" ||
+      target === "QA_NEEDS_CORRECTION" ||
+      target === "ADMIN_NEEDS_CORRECTION" ||
+      target === "CLIENT_NEEDS_CORRECTION";
+
+    if (isNeeds) {
+      setSelectingCorrections(true);
+      setPendingCorrections([]);
+      setPendingStatus(target);
+      return;
+    }
+
+    // existing path (incl. e-sign if required)
+    if (uiNeedsESign(target)) {
+      setPendingStatus(target);
+      setShowESign(true);
+    } else {
+      handleStatusChange(target);
+    }
+  }
+
+  const [pendingStatus, setPendingStatus] =
+    useState<ChemistryReportStatus | null>(null);
+
+  const [showCorrTray, setShowCorrTray] = useState(false);
+
+  // fields to briefly show as "resolved" (green halo)
+  // near other state
+  const [flash, setFlash] = useState<Record<string, boolean>>({});
+  function flashResolved(field: string) {
+    setFlash((m) => ({ ...m, [field]: true }));
+    setTimeout(() => setFlash((m) => ({ ...m, [field]: false })), 1600);
+  }
+
+  // and update your dashClass to include the flash:
+  const dashClass = (keyOrPrefix: string) =>
+    hasOpenCorrection(keyOrPrefix)
+      ? "dash dash-red"
+      : flash[keyOrPrefix]
+      ? "dash dash-green"
+      : "";
+
+  const canResolveField = (field: string) => {
+    if (!reportId || !role) return false;
+    const base = field.split(":")[0]; // "pathogens" for "pathogens:E_COLI"
+    return canEdit(role, base, status as ChemistryReportStatus);
+  };
+
+  // Resolve ALL corrections for a field
+  async function resolveField(fieldKey: string) {
+    if (!reportId) return;
+    // const token = localStorage.getItem("token")!;
+    const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
+    if (!items.length) return;
+
+    await Promise.all(
+      items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
+    );
+    const fresh = await getCorrections(reportId!);
+    setCorrections(fresh);
+    flashResolved(fieldKey); // ✅ show green halo briefly
+  }
+
+  // Resolve a single correction
+  async function resolveOne(c: CorrectionItem) {
+    if (!reportId) return;
+    // const token = localStorage.getItem("token")!;
+    await resolveCorrection(reportId!, c.id, "Fixed");
+    const fresh = await getCorrections(reportId!);
+    setCorrections(fresh);
+    flashResolved(c.fieldKey); // ✅ show green halo briefly
+  }
+
+  // Tiny inline pill next to a field label/badge
+  // function ResolvePill({ field }: { field: string }) {
+  //   if (!canResolveField || !hasCorrection(field)) return null;
+  //   return (
+  //     <button
+  //       className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-[2px] text-[10px] font-medium text-white hover:bg-emerald-700"
+  //       title="Resolve all notes for this field"
+  //       onClick={() => resolveField(field)}
+  //     >
+  //       ✓
+  //     </button>
+  //   );
+  // }
+
+  // Tiny inline pill next to a field label/badge
+  function ResolveOverlay({ field }: { field: string }) {
+    if (!hasCorrection(field) || !canResolveField(field)) return null;
+    return (
+      <button
+        type="button"
+        title="Resolve all notes for this field"
+        onClick={() => resolveField(field)}
+        className="
+          absolute -top-2 -right-2 z-20
+          h-5 w-5 rounded-full grid place-items-center
+          bg-emerald-600 text-white shadow
+          hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400
+        "
+      >
+        ✓
+      </button>
+    );
+  }
+
   // ------------- SAVE -------------
   const handleSave = async (): Promise<SavedReport | null> => {
     const values = makeValues();
@@ -398,7 +590,7 @@ export default function ChemistryMixReportForm({
       return null;
     }
 
-    const payload = {
+    const fullPayload = {
       client,
       dateSent,
       formType: "CHEMISTRY_MIX" as const, // important for backend
@@ -420,18 +612,61 @@ export default function ChemistryMixReportForm({
       reviewedDate,
     };
 
+    const BASE_ALLOWED: Record<Role, string[]> = {
+      ADMIN: ["*"],
+      SYSTEMADMIN: [],
+      FRONTDESK: [],
+      CHEMISTRY: [
+        "dateReceived",
+        "sop",
+        "results",
+        "dateTested",
+        "initial",
+        "comments",
+        "testedBy",
+        "testedDate",
+        "actives",
+      ],
+      QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+      CLIENT: [
+        "client",
+        "dateSent",
+        "sampleDescription",
+        "testTypes",
+        "sampleCollected",
+        "lotBatchNo",
+        "manufactureDate",
+        "formulaId",
+        "sampleSize",
+        "numberOfActives",
+        "sampleTypes",
+        "comments",
+        "actives",
+        "formulaContent",
+      ],
+    };
+
+    const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+    const allowed = allowedBase.includes("*")
+      ? Object.keys(fullPayload)
+      : allowedBase;
+
+    const payload = Object.fromEntries(
+      Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+    );
+
     try {
       let saved: SavedReport;
 
       if (reportId) {
         saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
           method: "PATCH",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
       } else {
         saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, formType: "CHEMISTRY_MIX" }),
         });
       }
       setReportId(saved.id); // 👈 keep the new id
@@ -452,53 +687,70 @@ export default function ChemistryMixReportForm({
     reportNumber?: number | string;
   };
 
-  async function handleStatusChange(newStatus: ChemistryReportStatus) {
-    const cur = status as ChemistryReportStatus;
+  async function handleStatusChange(
+    newStatus: ChemistryReportStatus,
+    opts?: { reason?: string; eSignPassword?: string }
+  ) {
+    const values = makeValues();
 
-    // ✅ permission guard
-    const t = STATUS_TRANSITIONS[cur];
-    if (!role || !t?.canSet?.includes(role) || !t.next?.includes(newStatus)) {
-      toast.error("Not allowed to change status.");
-      return;
-    }
+    const okFields = validateAndSetErrors(values);
+    const okRows = validateActiveRows(values.actives || [], role);
 
-    const savingToast = toast.loading("Saving...");
-
-    try {
-      // ✅ save first if needed
-      let saved: SavedReport | null = null;
-      if (!reportId || isDirty) {
-        saved = await handleSave();
-        if (!saved) {
-          toast.dismiss(savingToast);
-          return;
-        }
-      }
-
-      const effectiveId = reportId ?? saved?.id;
-      if (!effectiveId) {
-        toast.dismiss(savingToast);
-        toast.error("Missing report id.");
+    if (
+      newStatus === "SUBMITTED_BY_CLIENT" ||
+      newStatus === "RECEIVED_BY_FRONTDESK" ||
+      newStatus === "UNDER_TESTING_REVIEW" ||
+      newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+      newStatus === "UNDER_CLIENT_REVIEW" ||
+      newStatus === "RESUBMISSION_BY_CLIENT" ||
+      newStatus === "UNDER_ADMIN_REVIEW" ||
+      newStatus === "QA_NEEDS_CORRECTION" ||
+      newStatus === "ADMIN_NEEDS_CORRECTION" ||
+      newStatus === "ADMIN_REJECTED" ||
+      newStatus === "CLIENT_NEEDS_CORRECTION" ||
+      newStatus === "TESTING_ON_HOLD" ||
+      newStatus === "TESTING_NEEDS_CORRECTION" ||
+      newStatus === "FRONTDESK_ON_HOLD" ||
+      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+      newStatus === "LOCKED" ||
+      newStatus === "APPROVED"
+    ) {
+      if (!okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
         return;
       }
+      if (!okRows) {
+        alert("⚠️ Please fix the highlighted rows before changing status.");
+        return;
+      }
+    }
 
-      toast.dismiss(savingToast);
-      const statusToast = toast.loading("Updating status...");
-
+    // 3) Ensure latest edits are saved
+    if (!reportId || isDirty) {
+      const saved = await handleSave(); // <-- your chemistry save (POST/PATCH /reports)
+      if (!saved) return;
+    }
+    // 4) PATCH status (THIS is where your 400 reason/header issue matters)
+    try {
       const updated = await api<UpdatedReport>(
-        `/chemistry-reports/${effectiveId}/status`,
-        { method: "PATCH", body: JSON.stringify({ status: newStatus }) }
+        `/chemistry-reports/${reportId}/status`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: newStatus,
+            reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
+            eSignPassword: opts?.eSignPassword ?? undefined,
+          }),
+          // If your API supports header alternative:
+          // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
+        }
       );
 
-      toast.dismiss(statusToast);
-
       setStatus(updated.status ?? newStatus);
-      setReportNumber(String(updated.reportNumber ?? reportNumber));
       setIsDirty(false);
+      alert(`✅ Status changed to ${newStatus}`);
 
-      toast.success(`✅ Status updated to ${newStatus}`);
-
-      // navigate
+      // navigate per role (same as micro)
       if (role === "CLIENT") navigate("/clientDashboard");
       else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
       else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
@@ -506,9 +758,8 @@ export default function ChemistryMixReportForm({
       else if (role === "ADMIN") navigate("/adminDashboard");
       else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
     } catch (err: any) {
-      toast.dismiss(savingToast);
-      toast.error(err?.message || "❌ Failed to update status");
       console.error(err);
+      alert("❌ Error changing status: " + err.message);
     }
   }
 
@@ -536,12 +787,21 @@ export default function ChemistryMixReportForm({
   const inputClass = (name: keyof typeof errors, extra = "") =>
     `input-editable px-1 py-[2px] text-[12px] leading-snug border ${
       errors[name] ? "border-red-500 ring-1 ring-red-500" : "border-black/70"
-    } ${extra}`;
+    } ${extra} ${
+      hasCorrection(String(name)) ? "ring-2 ring-rose-500 animate-pulse" : ""
+    }`;
+
+  const hasOpenCorrection = (keyOrPrefix: string) =>
+    openCorrections.some(
+      (c) =>
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
+    );
 
   // ---------------- RENDER ----------------
   return (
     <>
       <PrintStyles />
+      <DashStyles />
 
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
         {/* Top buttons */}
@@ -607,9 +867,20 @@ export default function ChemistryMixReportForm({
                 />
               )}
             </div>
-            <div className="px-2 flex items-center gap-1">
+            <div
+              id="f-dateSent"
+              onClick={() => {
+                if (!selectingCorrections) return;
+                setAddForField("dateSent");
+                setAddMessage("");
+              }}
+              className={`px-2 flex items-center gap-1 relative ${dashClass(
+                "dateSent"
+              )}`}
+            >
               <div className="whitespace-nowrap font-medium">DATE SENT :</div>
               <FieldErrorBadge name="dateSent" errors={errors} />
+              <ResolveOverlay field="dateSent" />
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">
                   {formatDateForInput(dateSent)}
@@ -1268,8 +1539,8 @@ export default function ChemistryMixReportForm({
                   <button
                     key={targetStatus}
                     className={`px-4 py-2 rounded-md border text-white ${color}`}
-                    // onClick={() => requestStatusChange(targetStatus)}
-                    onClick={() => handleStatusChange(targetStatus)}
+                    onClick={() => requestStatusChange(targetStatus)}
+                    // onClick={() => handleStatusChange(targetStatus)}
 
                     // disabled={role === "SYSTEMADMIN"}
                   >
@@ -1282,6 +1553,248 @@ export default function ChemistryMixReportForm({
           )}
         </div>
       </div>
+
+      {showESign && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="E-signature"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-2">
+              Confirm Status Change
+            </h2>
+            <p className="text-sm text-slate-600 mb-3">
+              Change status to{" "}
+              <span className="font-medium">{pendingStatus}</span>. Provide a
+              reason and your e-signature password.
+            </p>
+
+            <input
+              type="text"
+              placeholder="Reason for change"
+              value={changeReason}
+              onChange={(e) => setChangeReason(e.target.value)}
+              className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="password"
+              placeholder="E-signature password"
+              value={eSignPassword}
+              onChange={(e) => setESignPassword(e.target.value)}
+              className="mb-4 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                onClick={() => {
+                  setShowESign(false);
+                  setPendingStatus(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                disabled={
+                  !pendingStatus ||
+                  !changeReason.trim() ||
+                  !eSignPassword.trim()
+                }
+                onClick={() => {
+                  if (!pendingStatus) return;
+                  const statusToApply = pendingStatus;
+                  setShowESign(false);
+                  setPendingStatus(null);
+                  handleStatusChange(statusToApply, {
+                    reason: changeReason.trim(),
+                    eSignPassword,
+                  });
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectingCorrections && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
+          <div className="text-sm font-medium">Corrections picker</div>
+          <div className="text-xs text-slate-600">
+            Click a field in the form to add a note.
+          </div>
+
+          <ul className="mt-2 max-h-32 overflow-auto text-xs">
+            {pendingCorrections.map((c, i) => (
+              <li key={i} className="flex items-center justify-between gap-2">
+                <span className="truncate">
+                  <b>{c.fieldKey}</b>: {c.message}
+                </span>
+                <button
+                  className="text-rose-600 hover:underline"
+                  onClick={() =>
+                    setPendingCorrections((prev) =>
+                      prev.filter((_, idx) => idx !== i)
+                    )
+                  }
+                >
+                  remove
+                </button>
+              </li>
+            ))}
+            {pendingCorrections.length === 0 && (
+              <li className="text-slate-400">No items yet</li>
+            )}
+          </ul>
+
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              className="rounded-lg border px-3 py-1.5 text-sm"
+              onClick={() => {
+                setSelectingCorrections(false);
+                setPendingCorrections([]);
+                setPendingStatus(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={
+                !pendingCorrections.length || !pendingStatus || !reportId
+              }
+              onClick={async () => {
+                // const token = localStorage.getItem("token")!;
+                await createCorrections(
+                  reportId!,
+                  pendingCorrections,
+                  pendingStatus!, // MOVE status in same call
+                  "Corrections requested" // audit reason
+                );
+                setSelectingCorrections(false);
+                setPendingCorrections([]);
+                // refresh corrections list and status
+                const fresh = await getCorrections(reportId!);
+                setCorrections(fresh);
+                setStatus(pendingStatus!);
+                setPendingStatus(null);
+              }}
+            >
+              Send corrections
+            </button>
+          </div>
+        </div>
+      )}
+
+      {addForField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-semibold mb-2">Add correction</h3>
+            <p className="text-xs mb-2 text-slate-600">
+              Field: <b>{addForField}</b>
+            </p>
+            <textarea
+              autoFocus
+              rows={3}
+              value={addMessage}
+              onChange={(e) => setAddMessage(e.target.value)}
+              placeholder="Describe what needs to be corrected"
+              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="rounded-lg border px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setAddForField(null);
+                  setAddMessage("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!addMessage.trim()}
+                onClick={() => {
+                  setPendingCorrections((prev) => [
+                    ...prev,
+                    { fieldKey: addForField!, message: addMessage.trim() },
+                  ]);
+                  setAddForField(null);
+                  setAddMessage("");
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Corrections button */}
+      <div className="no-print fixed bottom-6 right-6 z-40">
+        <button
+          onClick={() => setShowCorrTray((s) => !s)}
+          className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+        >
+          📝 Corrections
+          {openCorrections.length > 0 && (
+            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+              {openCorrections.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {showCorrTray && (
+        <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <div className="text-sm font-semibold">Open corrections</div>
+            <button
+              className="rounded px-2 py-1 text-xs hover:bg-slate-100"
+              onClick={() => setShowCorrTray(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="max-h-72 overflow-auto divide-y">
+            {openCorrections.length === 0 ? (
+              <div className="p-3 text-xs text-slate-500">
+                No open corrections.
+              </div>
+            ) : (
+              openCorrections.map((c) => (
+                <div key={c.id} className="p-3 text-sm">
+                  <div className="text-[11px] font-medium text-slate-500">
+                    {c.fieldKey}
+                  </div>
+                  <div className="mt-1">{c.message}</div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      className="text-xs font-medium text-emerald-700 hover:underline"
+                      onClick={() => resolveOne(c)}
+                    >
+                      ✓ Mark resolved
+                    </button>
+                    <button
+                      className="text-xs text-slate-500 hover:underline"
+                      onClick={() => resolveField(c.fieldKey)}
+                      title="Resolve all notes for this field"
+                    >
+                      Resolve all for field
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ChemistryReportStatus } from "./chemistryReportFormWorkflow";
 import React from "react";
+import { api } from "../lib/api";
 
 export type ChemActiveRow = {
   key: string; // internal key, unique
@@ -323,7 +324,13 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   QA: ["reviewedBy", "reviewedDate"],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
-  ADMIN: [],
+  ADMIN: [
+    "dateReceived",
+    "actives", // special rules inside isEmpty()
+    "comments",
+    "testedBy",
+    "testedDate",
+  ],
 };
 
 /* =======================
@@ -533,4 +540,44 @@ export function useChemistryReportValidation(
   );
 
   return { errors, clearError, validateAndSetErrors };
+}
+
+export type CorrectionItem = {
+  id: string;
+  fieldKey: string;
+  message: "OPEN" | "RESOLVED" extends never ? never : string; // (keep)
+  status: "OPEN" | "RESOLVED";
+  requestedByRole: Role;
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedByUserId?: string;
+};
+
+export async function getCorrections(reportId: string) {
+  return await api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`);
+}
+
+export async function createCorrections(
+  reportId: string,
+  items: { fieldKey: string; message: string }[],
+  targetStatus?: string,
+  reason?: string
+) {
+  return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, targetStatus, reason }),
+  });
+}
+
+export async function resolveCorrection(
+  reportId: string,
+  cid: string,
+  resolutionNote?: string
+) {
+  return api<CorrectionItem>(`/chemistry-reports/${reportId}/corrections/${cid}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolutionNote }),
+  });
 }

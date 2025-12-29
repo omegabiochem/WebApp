@@ -14,8 +14,19 @@ import {
 import { ChemistryReportsService } from './chemistryreports.service';
 import { JwtAuthGuard } from 'src/common/jwt-auth.guard';
 import { ChemistryReportStatus, FormType } from '@prisma/client';
-import { withRequestContext } from 'src/common/request-context';
+import {
+  setRequestContext,
+  withRequestContext,
+} from 'src/common/request-context';
 import { FileInterceptor } from '@nestjs/platform-express';
+
+type CreateCorrectionsDto = {
+  items: { fieldKey: string; message: string }[];
+  targetStatus?: ChemistryReportStatus;
+  reason?: string;
+};
+
+type ResolveCorrectionDto = { resolutionNote?: string };
 
 const slugToFormType = (slug: string): FormType | null => {
   switch (slug) {
@@ -67,6 +78,20 @@ export class ChemistryReportsController {
 
   @Patch(':id')
   update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    const reasonFromHeader = req.headers['x-change-reason'] as
+      | string
+      | undefined;
+    const eSignFromHeader = req.headers['x-esign-password'] as
+      | string
+      | undefined;
+
+    setRequestContext({
+      userId: req.user?.userId,
+      role: req.user?.role,
+      ip: req.ip,
+      reason: body?.reason ?? reasonFromHeader ?? undefined,
+      eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+    });
     return this.svc.update(req.user, id, body);
   }
 
@@ -75,8 +100,27 @@ export class ChemistryReportsController {
     @Req() req: any,
     @Param('id') id: string,
     @Body()
-    body: { status: ChemistryReportStatus },
+    body: {
+      status: ChemistryReportStatus;
+      reason?: string;
+      eSignPassword?: string;
+    },
   ) {
+    const reasonFromHeader = req.headers['x-change-reason'] as
+      | string
+      | undefined;
+    const eSignFromHeader = req.headers['x-esign-password'] as
+      | string
+      | undefined;
+
+    setRequestContext({
+      userId: req.user?.userId,
+      role: req.user?.role,
+      ip: req.ip,
+      reason: body?.reason ?? reasonFromHeader ?? undefined,
+      eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+    });
+
     return this.svc.updateStatus(req.user, id, body.status);
   }
 
@@ -113,5 +157,30 @@ export class ChemistryReportsController {
   ) {
     if (!file) throw new BadRequestException('file is required');
     return this.svc.addAttachment(req.user, id, file, body);
+  }
+
+  // Corrections
+  @Post(':id/corrections')
+  createCorrections(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: CreateCorrectionsDto,
+  ) {
+    return this.svc.createCorrections(req.user, id, body);
+  }
+
+  @Get(':id/corrections')
+  listCorrections(@Param('id') id: string) {
+    return this.svc.listCorrections(id);
+  }
+
+  @Patch(':id/corrections/:cid')
+  resolveCorrection(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('cid') cid: string,
+    @Body() body: ResolveCorrectionDto,
+  ) {
+    return this.svc.resolveCorrection(req.user, id, cid, body);
   }
 }

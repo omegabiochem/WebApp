@@ -1153,23 +1153,6 @@ export default function MicroMixReportForm({
                 />
               )}
             </div>
-            {/* <div id="f-dateSent" className="px-2 flex items-center gap-1">
-              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-               <FieldError name="dateSent"  errors={errors}/>
-              {lock("dateSent") || role === "CLIENT" ? (
-                <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
-              ) : (
-                <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  type="date"
-                  value={formatDateForInput(dateSent)}
-                  onChange={(e) => {
-                    setDateSent(e.target.value);
-                    markDirty();
-                  }}
-                />
-              )}
-            </div> */}
 
             <div
               id="f-dateSent"
@@ -1186,11 +1169,6 @@ export default function MicroMixReportForm({
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
               <FieldErrorBadge name="dateSent" errors={errors} />
               <ResolveOverlay field="dateSent" />
-
-              {/* tiny floating badge; does not affect layout */}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" /> */}
 
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">

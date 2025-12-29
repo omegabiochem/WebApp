@@ -11,6 +11,7 @@ import {
   User,
   UserRole,
 } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { copy } from 'fs-extra';
 import { get } from 'http';
 import { PrismaService } from 'prisma/prisma.service';
@@ -206,6 +207,41 @@ const STATUS_TRANSITIONS: Record<
   },
 };
 
+const EDIT_MAP: Record<UserRole, string[]> = {
+  SYSTEMADMIN: [],
+  ADMIN: ['*'],
+  FRONTDESK: [],
+  CHEMISTRY: [
+    'dateReceived',
+    'sop',
+    'results',
+    'dateTested',
+    'initial',
+    'comments',
+    'testedBy',
+    'testedDate',
+    'actives',
+  ],
+  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate'],
+  CLIENT: [
+    'client',
+    'dateSent',
+    'sampleDescription',
+    'testTypes',
+    'sampleCollected',
+    'lotBatchNo',
+    'manufactureDate',
+    'formulaId',
+    'sampleSize',
+    'numberOfActives',
+    'sampleTypes',
+    'comments',
+    'actives',
+    'formulaContent',
+  ],
+  MICRO: [],
+};
+
 type ChangeStatusInput =
   | ChemistryReportStatus
   | { status: ChemistryReportStatus; reason?: string; eSignPassword?: string };
@@ -238,6 +274,12 @@ function updateDetailsByType(
   }
 }
 
+function allowedForRole(role: UserRole, fields: string[]) {
+  if (EDIT_MAP[role]?.includes('*')) return [];
+  const disallowed = fields.filter((f) => !EDIT_MAP[role]?.includes(f));
+  return disallowed;
+}
+
 function getDepartmentLetter(role: string): string {
   switch (role) {
     case 'MICRO':
@@ -249,6 +291,32 @@ function getDepartmentLetter(role: string): string {
   }
 }
 
+// Critical fields that require reason
+const CRITICAL_FIELDS = new Set<string>([
+  'dateCompleted',
+  'reviewedBy',
+  'reviewedDate',
+  'testedBy',
+  'testedDate',
+  'status',
+]);
+
+type CorrectionItem = {
+  id: string;
+  fieldKey: string; // e.g. "dateSent", "tbc_result"
+  message: string; // reason text
+  status: 'OPEN' | 'RESOLVED';
+  requestedByUserId: string;
+  requestedByRole: UserRole;
+  createdAt: Date;
+  resolvedAt?: Date | null;
+  resolvedByUserId?: string | null;
+};
+
+function _getCorrectionsArray(r: any): CorrectionItem[] {
+  const raw = (r.corrections ?? []) as CorrectionItem[];
+  return Array.isArray(raw) ? raw : [];
+}
 @Injectable()
 export class ChemistryReportsService {
   // Service methods would go here
@@ -257,6 +325,12 @@ export class ChemistryReportsService {
     private readonly esign: ESignService,
     private readonly attachments: ChemistryAttachmentsService,
   ) {}
+
+  // 👇 add this inside the class
+  private _getCorrectionsArray(r: any): CorrectionItem[] {
+    const raw = (r?.corrections ?? []) as CorrectionItem[];
+    return Array.isArray(raw) ? raw : [];
+  }
 
   async createChemistryReportDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
@@ -374,10 +448,52 @@ export class ChemistryReportsService {
       throw new ForbiddenException('Report is locked and cannot be edited');
     }
 
-    // const ctx = getRequestContext() || {};
+    const ctx = getRequestContext() || {};
+
+    const {
+      reason: _reasonFromBody,
+      eSignPassword: _pwdFromBody,
+      ...patch
+    } = { ...patchIn };
+
+    // field-level permissions (ignore 'status' here)
+    const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
+
+    // Clients can edit any field while in DRAFT
+    if (!(user.role === 'CLIENT' && current.status === 'DRAFT')) {
+      const bad = allowedForRole(user.role, fieldKeys);
+      if (bad.length)
+        throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
+    }
+
+    // status-based edit guard
+    if (fieldKeys.length > 0) {
+      const transition = STATUS_TRANSITIONS[current.status];
+      if (!transition)
+        throw new BadRequestException(
+          `Invalid current status: ${current.status}`,
+        );
+      if (!transition.canEdit.includes(user.role)) {
+        throw new ForbiddenException(
+          `Role ${user.role} cannot edit report in status ${current.status}`,
+        );
+      }
+    }
+
+    // reason for critical fields
+    const touchingCritical = Object.keys(patchIn).some((k) =>
+      CRITICAL_FIELDS.has(k),
+    );
+    const reasonFromCtxOrBody =
+      (ctx as any).reason ?? _reasonFromBody ?? patchIn?.reason;
+    if (touchingCritical && !reasonFromCtxOrBody) {
+      throw new BadRequestException(
+        'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
+      );
+    }
 
     // Split base-vs-details
-    const { base, details } = splitPatch(this._coerce(patchIn));
+    const { base, details } = splitPatch(this._coerce(patch));
 
     if (patchIn.status) {
       const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
@@ -418,6 +534,24 @@ export class ChemistryReportsService {
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
       }
 
+      // e-sign requirements
+      if (
+        patchIn.status === 'UNDER_CLIENT_REVIEW' ||
+        patchIn.status === 'LOCKED'
+      ) {
+        const password =
+          _pwdFromBody ||
+          (patchIn as any)?.eSignPassword ||
+          (ctx as any)?.eSignPassword ||
+          null;
+        if (!password)
+          throw new BadRequestException(
+            'Electronic signature (password) is required',
+          );
+        await this.esign.verifyPassword(user.userId, String(password));
+      }
+
+      if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
       base.status = patchIn.status;
     }
 
@@ -579,5 +713,129 @@ export class ChemistryReportsService {
       createdBy: body.createdBy ?? user?.userId ?? 'web',
       meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
     });
+  }
+
+  // POST /reports/:id/corrections
+  async createCorrections(
+    user: { userId: string; role: UserRole },
+    id: string,
+    body: {
+      items: { fieldKey: string; message: string }[];
+      targetStatus?: ChemistryReportStatus;
+      reason?: string;
+    },
+  ) {
+    if (!body.items?.length) {
+      throw new BadRequestException(
+        'At least one correction item is required.',
+      );
+    }
+
+    const report = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+      },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    const mayRequest = [
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+      'CLIENT',
+    ] as const;
+    if (!mayRequest.includes(user.role))
+      throw new ForbiddenException('Not allowed');
+
+    const d = pickDetails(report);
+    if (!d)
+      throw new BadRequestException('Details row missing for this report');
+
+    const nowIso = new Date().toISOString();
+    const existing = this._getCorrectionsArray(d);
+    const toAdd = body.items.map((it) => ({
+      id: randomUUID(),
+      fieldKey: it.fieldKey,
+      message: it.message,
+      status: 'OPEN' as const,
+      requestedByUserId: user.userId,
+      requestedByRole: user.role,
+      createdAt: nowIso,
+      resolvedAt: null as string | null,
+      resolvedByUserId: null as string | null,
+    }));
+    const nextCorrections = [...existing, ...toAdd];
+
+    await updateDetailsByType(this.prisma, report.formType, id, {
+      corrections: nextCorrections,
+    });
+
+    if (body.targetStatus) {
+      await this.update(user, id, {
+        status: body.targetStatus,
+        reason: body.reason || 'Corrections requested',
+      });
+    }
+
+    return nextCorrections;
+  }
+
+  async listCorrections(id: string) {
+    const report = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+      },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+    const d = pickDetails(report);
+    return this._getCorrectionsArray(d);
+  }
+
+  async resolveCorrection(
+    user: { userId: string; role: UserRole },
+    id: string,
+    cid: string,
+    body: { resolutionNote?: string },
+  ) {
+    const report = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+      },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    const d = pickDetails(report) || { corrections: [] };
+    const arr = this._getCorrectionsArray(d);
+    const idx = arr.findIndex((c) => c.id === cid);
+    if (idx < 0) throw new NotFoundException('Correction not found');
+
+    const allowedResolvers: UserRole[] = [
+      'CLIENT',
+      'MICRO',
+      'FRONTDESK',
+      'ADMIN',
+    ];
+    if (!allowedResolvers.includes(user.role))
+      throw new ForbiddenException('Not allowed to resolve');
+
+    arr[idx] = {
+      ...arr[idx],
+      status: 'RESOLVED',
+      resolvedAt: new Date(),
+      resolvedByUserId: user.userId,
+    };
+
+    await updateDetailsByType(this.prisma, report.formType, id, {
+      corrections: arr,
+    });
+
+    // this.reportsGateway.notifyReportUpdate({ id });
+    return { ok: true };
   }
 }
