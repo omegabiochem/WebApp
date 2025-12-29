@@ -270,19 +270,6 @@ export async function createCorrections(
   targetStatus?: string,
   reason?: string
 ) {
-  // const res = await fetch(
-  //   `${API_BASE}/reports/${reportId}/corrections`,
-  //   {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ items, targetStatus, reason }),
-  //   }
-  // );
-  // if (!res.ok) throw new Error("Failed to create corrections");
-  // return res.json();
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -295,19 +282,6 @@ export async function resolveCorrection(
   cid: string,
   resolutionNote?: string
 ) {
-  // const res = await fetch(
-  //   `${API_BASE}/reports/${reportId}/corrections/${cid}`,
-  //   {
-  //     method: "PATCH",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ resolutionNote }),
-  //   }
-  // );
-  // if (!res.ok) throw new Error("Failed to resolve correction");
-  // return res.json();
   return api<CorrectionItem>(`/reports/${reportId}/corrections/${cid}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -362,7 +336,8 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
           return !v.description?.trim();
         case "lotNo":
           return !v.lotNo?.trim();
-        case "manufactureDate": { // return !v.manufactureDate;
+        case "manufactureDate": {
+          // return !v.manufactureDate;
           // Treat blank as acceptable (will be saved as "NA" in handleSave)
           // Also allow explicit "NA".
           if (!v.manufactureDate || v.manufactureDate === "NA") return false;
