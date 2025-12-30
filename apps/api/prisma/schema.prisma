@@ -184,6 +184,8 @@ model Attachment {
   kind       AttachmentKind
   filename   String
   storageKey String
+  storageDriver String         @default("local") // "local" | "s3"
+  storageBucket String?
   checksum   String
   pages      Int?
   source     String
@@ -408,6 +410,8 @@ model ChemistryAttachment {
   filename   String
   kind       AttachmentKind
   storageKey String
+  storageDriver String          @default("local")
+  storageBucket String?
   checksum   String
   pages      Int?
   source     String

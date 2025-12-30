@@ -700,6 +700,8 @@ export default function ChemistryMixReportFormView(
                   type="date"
                   className="w-[130px] border-0 border-b border-black/60 outline-none text-[11px]"
                   value={formatDateForInput(report?.dateReceived ?? "")}
+                  readOnly
+                  disabled
                 />
               </div>
             </div>

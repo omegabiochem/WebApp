@@ -143,7 +143,11 @@ export class ChemistryAttachmentsService {
 
   async stream(
     id: string,
-  ): Promise<{ stream: ReadStream; mime: string; filename: string }> {
+  ): Promise<{
+    stream: NodeJS.ReadableStream;
+    mime: string;
+    filename: string;
+  }> {
     const a = await this.prisma.chemistryAttachment.findUnique({
       where: { id },
     });
@@ -159,7 +163,7 @@ export class ChemistryAttachmentsService {
             ? 'image/jpeg'
             : 'application/octet-stream';
 
-    const stream = this.storage.createReadStream(a.storageKey); // ReadStream
-    return { stream, mime, filename: a.filename };
+    const stream = await this.storage.createReadStream(a.storageKey);
+    return { stream: stream as any, mime, filename: a.filename };
   }
 }
