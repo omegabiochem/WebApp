@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { DEFAULT_CHEM_ACTIVES } from "../../utils/chemistryReportValidation";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
+import pjla from "../../assets/pjla.png";
+import ilacmra from "../../assets/ilacmra.png";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -385,6 +387,13 @@ export default function ChemistryMixReportFormView(
     onPaneChange?.(p);
   };
 
+  const FOOTER_IMAGES = [
+    { src: pjla, alt: "FDA Registered" },
+    { src: ilacmra, alt: "ISO Certified" },
+  ];
+
+  const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
+
   return (
     <div
       className={
@@ -446,7 +455,7 @@ export default function ChemistryMixReportFormView(
               OMEGA BIOLOGICAL LABORATORY, INC.
             </div>
             <div className="text-[16px]" style={{ color: "blue" }}>
-              (FDA REG.)
+              (FDA REG. | ISO 17025 ACC)
             </div>
             <div className="text-[12px]">
               56 PARK AVENUE, LYNDHURST, NJ 07071 <br />
@@ -853,6 +862,7 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* Footer: Report ID + QR */}
+          {/* Footer: Logos + Confidential text + Report ID + QR */}
           <div
             className={
               isBulk
@@ -860,24 +870,44 @@ export default function ChemistryMixReportFormView(
                 : "mt-2 flex items-end justify-between print-footer"
             }
             style={
-              // For normal view → keep avoid
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
-                : // For bulk:
-                // - if it's MANY reports → keep avoid
-                // - if it's ONLY ONE report → let browser break (no extra page)
-                !isSingleBulk
+                : !isSingleBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
                 : undefined
             }
           >
-            <div className="text-[10px] text-slate-600">
-              This report is confidential and intended only for the recipient.
+            {/* LEFT: logos on top, then confidential text */}
+            {/* LEFT: logos + centered accreditation + confidential + footer note */}
+            <div className="flex flex-col gap-2">
+              {/* ✅ Logos row stays unchanged (no centering wrapper that can shift it) */}
+              <div className="flex items-center gap-2">
+                {FOOTER_IMAGES.map((img, idx) => (
+                  <img
+                    key={idx}
+                    src={img.src}
+                    alt={img.alt}
+                    className="w-[64px] h-[64px] object-contain border border-black/10 rounded bg-white"
+                  />
+                ))}
+              </div>
+
+              {/* ✅ Center text WITHOUT moving logos:
+      width = exact width of two logos + gap */}
+              <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+                Accreditation No: <span className="font-bold">109344</span>
+              </div>
+
+              <div className="text-[10px] text-slate-600">
+                This report is confidential and intended only for the recipient.
+              </div>
+
+              <div className="text-[10px] text-slate-600">{FOOTER_NOTE}</div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* RIGHT: Report ID + QR */}
+            <div className="flex items-end gap-3">
               <div className="text-right leading-tight">
-                {/* <div className="p-1 bg-white"> */}
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
                 {report?.reportNumber && (
@@ -888,13 +918,11 @@ export default function ChemistryMixReportFormView(
                 <div className="mt-1 text-[10px] text-slate-600">
                   Scan to open in LIMS
                 </div>
-                {/* </div> */}
               </div>
 
               {qrSvg ? (
                 <div className="p-1 bg-white shrink-0" aria-label="Report QR">
                   <div
-                    // ~28–32mm square is a sweet spot for IDs this length
                     style={{ width: "36mm", height: "36mm" }}
                     dangerouslySetInnerHTML={{ __html: qrSvg }}
                   />

@@ -10,7 +10,7 @@
 // })
 // export class AppModule {}
 
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { SamplesModule } from './samples/samples.module';
@@ -28,6 +28,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { HealthController } from './health.controller';
 import { ChemistryReportsModule } from './reports/chemistryreports.module';
 import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.module';
+import { RequestContextMiddleware } from './common/context.middleware';
 
 @Module({
   imports: [
@@ -51,4 +52,8 @@ import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.m
     ESignService,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}

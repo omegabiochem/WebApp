@@ -9,7 +9,12 @@ const OMIT_FIELDS = new Set(['updatedAt']); // reduce noise in diffs
 const SKIP_MODELS = new Set(['AuditTrail']); // never audit the audit table itself
 
 function isPlainObject(x: unknown): x is AnyObj {
-  return typeof x === 'object' && x !== null && !Array.isArray(x) && !(x instanceof Date);
+  return (
+    typeof x === 'object' &&
+    x !== null &&
+    !Array.isArray(x) &&
+    !(x instanceof Date)
+  );
 }
 
 function prune(input: unknown): unknown {
@@ -78,7 +83,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         );
       } catch {
         // eslint-disable-next-line no-console
-        console.error('[PrismaService] PrismaClient.$use is missing. Audit middleware disabled.');
+        console.error(
+          '[PrismaService] PrismaClient.$use is missing. Audit middleware disabled.',
+        );
       }
       return;
     }
@@ -98,7 +105,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
       const ctx = getRequestContext() || {};
       const where = params.args?.where || {};
-      let entityId: string | null = where?.id ?? null;
+      let entityId: string | null =
+        where?.id ??
+        where?.clientCode ?? // ✅ for ClientSequence
+        null;
 
       // -------- FETCH BEFORE (ONLY FOR OPS THAT MODIFY EXISTING) --------
       let before: any = null;
@@ -116,6 +126,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       const result = await next(params);
 
       if (!entityId && result?.id) entityId = result.id;
+      if (!entityId && result?.clientCode) entityId = result.clientCode;
 
       // -------- BUILD AUDIT ROW --------
       let changes: any = null;
