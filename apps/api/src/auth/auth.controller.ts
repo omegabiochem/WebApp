@@ -63,7 +63,7 @@ export class AuthController {
     // if (!dbId) throw new BadRequestException('Unauthenticated');
     // return this.auth.changeOwnPassword(dbId, body.currentPassword, body.newPassword, req);
 
-    const userId = req.user?.sub as string; // DB id
+    const userId = req.user?.userId as string; // DB id
     if (!userId) throw new BadRequestException('Unauthenticated');
     return this.auth.changeOwnPassword(
       userId,

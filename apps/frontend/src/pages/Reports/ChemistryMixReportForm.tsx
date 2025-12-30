@@ -262,14 +262,14 @@ export default function ChemistryMixReportForm({
     report?.actives || DEFAULT_CHEM_ACTIVES
   );
 
-  const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
-    setActives((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], ...patch };
-      return copy;
-    });
-    markDirty();
-  };
+  // const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
+  //   setActives((prev) => {
+  //     const copy = [...prev];
+  //     copy[index] = { ...copy[index], ...patch };
+  //     return copy;
+  //   });
+  //   markDirty();
+  // };
 
   // ---- comments / signatures ----
   const [comments, setComments] = useState(report?.comments || "");
@@ -446,11 +446,11 @@ export default function ChemistryMixReportForm({
     [corrections]
   );
 
-  const corrByField = useMemo(() => {
-    const m: Record<string, CorrectionItem[]> = {};
-    for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
-    return m;
-  }, [openCorrections]);
+  // const corrByField = useMemo(() => {
+  //   const m: Record<string, CorrectionItem[]> = {};
+  //   for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
+  //   return m;
+  // }, [openCorrections]);
 
   const hasCorrection = (fieldOrPrefix: string) =>
     hasOpenCorrection(fieldOrPrefix);
