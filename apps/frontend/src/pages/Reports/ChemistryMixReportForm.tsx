@@ -49,8 +49,7 @@ function useConfirmOnLeave(isDirty: boolean) {
 
 // --------- helper for date <-> input value ----------
 function formatDateForInput(value: string | null) {
-  if (!value) return "";
-  if (value === "NA") return "NA";
+  if (!value || value === "NA") return "";
   return new Date(value).toISOString().split("T")[0];
 }
 
@@ -68,7 +67,8 @@ const PrintStyles = () => (
 const DashStyles = () => (
   <style>{`
     /* moving dashed outline that doesn't affect layout */
-    .dash { position: relative; z-index: 0; }
+  .dash { position: relative; z-index: 5; isolation: isolate; }
+
     .dash::after{
       content:"";
       position:absolute;
@@ -445,13 +445,16 @@ export default function ChemistryMixReportForm({
     () => corrections.filter((c) => c.status === "OPEN"),
     [corrections]
   );
+
   const corrByField = useMemo(() => {
     const m: Record<string, CorrectionItem[]> = {};
     for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
     return m;
   }, [openCorrections]);
 
-  const hasCorrection = (field: string) => !!corrByField[field];
+  const hasCorrection = (fieldOrPrefix: string) =>
+    hasOpenCorrection(fieldOrPrefix);
+
   // const correctionText = (field: string) =>
   //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
 
@@ -543,33 +546,28 @@ export default function ChemistryMixReportForm({
   }
 
   // Tiny inline pill next to a field label/badge
-  // function ResolvePill({ field }: { field: string }) {
-  //   if (!canResolveField || !hasCorrection(field)) return null;
-  //   return (
-  //     <button
-  //       className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-[2px] text-[10px] font-medium text-white hover:bg-emerald-700"
-  //       title="Resolve all notes for this field"
-  //       onClick={() => resolveField(field)}
-  //     >
-  //       ✓
-  //     </button>
-  //   );
-  // }
+  // --- actives field keys ---
+  const activeRowKey = (rowKey: string) => `actives:${rowKey}`; // whole row
+  const activeCellKey = (
+    rowKey: string,
+    col: "checked" | "sopNo" | "formulaContent" | "result" | "dateTestedInitial"
+  ) => `actives:${rowKey}:${col}`;
 
-  // Tiny inline pill next to a field label/badge
+  // Update ResolveOverlay to support prefixes too (so row overlay works)
   function ResolveOverlay({ field }: { field: string }) {
-    if (!hasCorrection(field) || !canResolveField(field)) return null;
+    if (!hasOpenCorrection(field) || !canResolveField(field)) return null;
+
     return (
       <button
         type="button"
         title="Resolve all notes for this field"
-        onClick={() => resolveField(field)}
-        className="
-          absolute -top-2 -right-2 z-20
-          h-5 w-5 rounded-full grid place-items-center
-          bg-emerald-600 text-white shadow
-          hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400
-        "
+        onClick={(e) => {
+          e.stopPropagation();
+          resolveField(field);
+        }}
+        className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full grid place-items-center
+                 bg-emerald-600 text-white shadow hover:bg-emerald-700 focus:outline-none
+                 focus:ring-2 focus:ring-emerald-400"
       >
         ✓
       </button>
@@ -579,9 +577,8 @@ export default function ChemistryMixReportForm({
   // ------------- SAVE -------------
   const handleSave = async (): Promise<boolean> => {
     const values = makeValues();
-
-    const okFields = validateAndSetErrors(values);
-    const okRows = validateActiveRows(values.actives || [], role);
+    validateAndSetErrors(values);
+    validateActiveRows(values.actives || [], role);
 
     // if (!okFields) {
     //   alert("⚠️ Please fix the highlighted fields before saving.");
@@ -600,7 +597,7 @@ export default function ChemistryMixReportForm({
       testTypes,
       sampleCollected,
       lotBatchNo,
-      manufactureDate: manufactureDate?.trim() || "NA",
+      manufactureDate: manufactureDate?.trim() ? manufactureDate : null,
       formulaId,
       sampleSize,
       numberOfActives,
@@ -798,11 +795,33 @@ export default function ChemistryMixReportForm({
       hasCorrection(String(name)) ? "ring-2 ring-rose-500 animate-pulse" : ""
     }`;
 
-  const hasOpenCorrection = (keyOrPrefix: string) =>
-    openCorrections.some(
+  // Prefix-aware: matches exact field OR nested children
+  function hasOpenCorrectionKey(keyOrPrefix: string) {
+    return openCorrections.some(
       (c) =>
         c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
     );
+  }
+
+  // For UI highlighting, you usually want ONLY open corrections
+  const hasOpenCorrection = (keyOrPrefix: string) =>
+    hasOpenCorrectionKey(keyOrPrefix);
+
+  function pickCorrection(fieldKey: string) {
+    if (!selectingCorrections) return;
+    setAddForField(fieldKey);
+    setAddMessage("");
+  }
+
+  const corrCursor = selectingCorrections ? "cursor-pointer" : "";
+
+  function corrClick(fieldKey: string) {
+    return (e: React.MouseEvent) => {
+      if (!selectingCorrections) return;
+      e.stopPropagation();
+      pickCorrection(fieldKey);
+    };
+  }
 
   // ---------------- RENDER ----------------
   return (
@@ -879,18 +898,23 @@ export default function ChemistryMixReportForm({
             </div>
             <div
               id="f-dateSent"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("dateSent");
-                setAddMessage("");
-              }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
                 "dateSent"
               )}`}
             >
-              <div className="whitespace-nowrap font-medium">DATE SENT :</div>
+              <div
+                className={`whitespace-nowrap font-medium ${corrCursor}`}
+                onClick={corrClick("dateSent")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
+                DATE SENT :
+              </div>
+
               <FieldErrorBadge name="dateSent" errors={errors} />
               <ResolveOverlay field="dateSent" />
+
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">
                   {formatDateForInput(dateSent)}
@@ -901,6 +925,7 @@ export default function ChemistryMixReportForm({
                   type="date"
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setDateSent(e.target.value);
                     clearError("dateSent");
                     markDirty();
@@ -912,16 +937,33 @@ export default function ChemistryMixReportForm({
           </div>
 
           {/* SAMPLE DESCRIPTION line */}
-          <div className="border-b border-black flex items-center gap-2 px-2">
-            <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
+          <div
+            id="f-sampleDescription"
+            className={`border-b border-black flex items-center gap-2 px-2 relative ${dashClass(
+              "sampleDescription"
+            )}`}
+          >
+            <div
+              className={`w-40 font-medium ${corrCursor}`}
+              onClick={corrClick("sampleDescription")}
+              title={
+                selectingCorrections ? "Click to add correction" : undefined
+              }
+            >
+              SAMPLE DESCRIPTION :
+            </div>
+
             <FieldErrorBadge name="sampleDescription" errors={errors} />
+            <ResolveOverlay field="sampleDescription" />
+
             {lock("sampleDescription") ? (
-              <div className="flex-1 min-h-[14px]"> {sampleDescription}</div>
+              <div className="flex-1 min-h-[14px]">{sampleDescription}</div>
             ) : (
               <input
                 className={inputClass("sampleDescription", "flex-1")}
                 value={sampleDescription}
                 onChange={(e) => {
+                  if (selectingCorrections) return;
                   setSampleDescription(e.target.value);
                   clearError("sampleDescription");
                   markDirty();
@@ -934,26 +976,40 @@ export default function ChemistryMixReportForm({
           {/* TYPE OF TEST / SAMPLE COLLECTED */}
           <div className="grid grid-cols-[47%_53%] border-b border-black text-[11px]">
             <div className="px-2 border-r border-black flex items-center gap-2 text-[11px]">
-              <span className="font-medium mr-1 whitespace-nowrap">
+              <span
+                className={`font-medium whitespace-nowrap ${
+                  selectingCorrections ? "cursor-pointer" : ""
+                } relative ${dashClass("testTypes")}`}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+                onClick={(e) => {
+                  if (!selectingCorrections) return;
+                  e.stopPropagation();
+                  pickCorrection("testTypes");
+                }}
+              >
                 TYPE OF TEST :
+                <ResolveOverlay field="testTypes" />
               </span>
 
               <div
                 id="f-testTypes"
                 className={`
-      inline-flex items-center gap-2 whitespace-nowrap px-1
-      ${
-        errors.testTypes
-          ? "border border-red-500 ring-1 ring-red-500"
-          : "border border-transparent"
-      }
-    `}
+                    inline-flex items-center gap-2 whitespace-nowrap px-1
+                    ${
+                      errors.testTypes
+                        ? "border border-red-500 ring-1 ring-red-500"
+                        : "border border-transparent"
+                    }
+                              `}
               >
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={testTypes.includes("ID")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("testTypes")) return;
                       toggleTestType("ID");
                       clearError("testTypes");
@@ -970,6 +1026,7 @@ export default function ChemistryMixReportForm({
                     type="checkbox"
                     checked={testTypes.includes("PERCENT_ASSAY")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("testTypes")) return;
                       toggleTestType("PERCENT_ASSAY");
                       clearError("testTypes");
@@ -986,6 +1043,7 @@ export default function ChemistryMixReportForm({
                     type="checkbox"
                     checked={testTypes.includes("CONTENT_UNIFORMITY")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("testTypes")) return;
                       toggleTestType("CONTENT_UNIFORMITY");
                       clearError("testTypes");
@@ -1002,21 +1060,30 @@ export default function ChemistryMixReportForm({
             </div>
 
             <div className="px-2 flex items-center gap-2 text-[11px]">
-              <span className="font-medium mr-1 whitespace-nowrap">
+              <span
+                className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
+                  "sampleCollected"
+                )}`}
+                onClick={corrClick("sampleCollected")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 SAMPLE COLLECTED :
+                <ResolveOverlay field="sampleCollected" />
               </span>
 
               {/* 🔴 this wrapper gets the red border (doesn't change layout) */}
               <div
                 id="f-sampleCollected"
                 className={`
-      inline-flex items-center gap-2 whitespace-nowrap px-1
-      ${
-        errors.sampleCollected
-          ? "border border-red-500 ring-1 ring-red-500"
-          : "border border-transparent"
-      }
-    `}
+                        inline-flex items-center gap-2 whitespace-nowrap px-1
+                          ${
+                            errors.sampleCollected
+                              ? "border border-red-500 ring-1 ring-red-500"
+                              : "border border-transparent"
+                          }
+                        `}
               >
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
@@ -1086,7 +1153,19 @@ export default function ChemistryMixReportForm({
           {/* LOT / MFG DATE */}
           <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
             <div className="px-2 border-r border-black flex items-center gap-2">
-              <span className="font-medium">LOT / BATCH # :</span>
+              <span
+                className={`font-medium whitespace-nowrap ${corrCursor} relative ${dashClass(
+                  "lotBatchNo"
+                )}`}
+                onClick={corrClick("lotBatchNo")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
+                LOT / BATCH # :
+                <ResolveOverlay field="lotBatchNo" />
+              </span>
+
               <FieldErrorBadge name="lotBatchNo" errors={errors} />
               {lock("lotBatchNo") ? (
                 <div className="flex-1 min-h-[14px]"> {lotBatchNo}</div>
@@ -1095,6 +1174,7 @@ export default function ChemistryMixReportForm({
                   className={inputClass("lotBatchNo", "flex-1")}
                   value={lotBatchNo}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setLotBatchNo(e.target.value);
                     clearError("lotBatchNo");
                     markDirty();
@@ -1104,7 +1184,19 @@ export default function ChemistryMixReportForm({
               )}
             </div>
             <div className="px-2 flex items-center gap-2">
-              <span className="font-medium">MANUFACTURE DATE :</span>
+              <span
+                className={`font-medium whitespace-nowrap ${corrCursor} relative ${dashClass(
+                  "manufactureDate"
+                )}`}
+                onClick={corrClick("manufactureDate")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
+                MANUFACTURE DATE :
+                <ResolveOverlay field="manufactureDate" />
+              </span>
+
               <FieldErrorBadge name="manufactureDate" errors={errors} />
               {lock("manufactureDate") ? (
                 <div className="flex-1 min-h-[14px]">
@@ -1116,6 +1208,7 @@ export default function ChemistryMixReportForm({
                   type="date"
                   value={formatDateForInput(manufactureDate)}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setManufactureDate(e.target.value);
                     clearError("manufactureDate");
                     markDirty();
@@ -1129,9 +1222,19 @@ export default function ChemistryMixReportForm({
           {/* FORMULA / SAMPLE SIZE / NUMBER OF ACTIVES */}
           <div className="grid grid-cols-[35%_30%_35%] border-b border-black text-[12px]">
             <div className="px-2 border-r border-black flex items-center gap-1">
-              <span className="whitespace-nowrap font-medium">
+              <span
+                className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
+                  "formulaId"
+                )}`}
+                onClick={corrClick("formulaId")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 FORMULA # / ID # :
+                <ResolveOverlay field="formulaId" />
               </span>
+
               <FieldErrorBadge name="formulaId" errors={errors} />
               {lock("formulaId") ? (
                 <div className="flex-1 min-h-[14px]">{formulaId}</div>
@@ -1140,6 +1243,7 @@ export default function ChemistryMixReportForm({
                   className={inputClass("formulaId", "w-[140px]")}
                   value={formulaId}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setFormulaId(e.target.value);
                     clearError("formulaId");
                     markDirty();
@@ -1150,9 +1254,19 @@ export default function ChemistryMixReportForm({
             </div>
 
             <div className="px-2 border-r border-black flex items-center gap-1">
-              <span className="whitespace-nowrap font-medium">
+              <span
+                className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
+                  "sampleSize"
+                )}`}
+                onClick={corrClick("sampleSize")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 SAMPLE SIZE :
+                <ResolveOverlay field="sampleSize" />
               </span>
+
               <FieldErrorBadge name="sampleSize" errors={errors} />
               {lock("sampleSize") ? (
                 <div className="flex-1 min-h-[14px]">{sampleSize}</div>
@@ -1161,6 +1275,7 @@ export default function ChemistryMixReportForm({
                   className={inputClass("sampleSize", "w-[140px]")}
                   value={sampleSize}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setSampleSize(e.target.value);
                     clearError("sampleSize");
                     markDirty();
@@ -1171,9 +1286,19 @@ export default function ChemistryMixReportForm({
             </div>
 
             <div className="px-2 flex items-center gap-1">
-              <span className="whitespace-nowrap font-medium">
+              <span
+                className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
+                  "numberOfActives"
+                )}`}
+                onClick={corrClick("numberOfActives")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 NUMBER OF ACTIVES :
+                <ResolveOverlay field="numberOfActives" />
               </span>
+
               <FieldErrorBadge name="numberOfActives" errors={errors} />
               {lock("numberOfActives") ? (
                 <div className="flex-1 min-h-[14px]">{numberOfActives}</div>
@@ -1182,6 +1307,7 @@ export default function ChemistryMixReportForm({
                   className={inputClass("numberOfActives", "w-[125px]")}
                   value={numberOfActives}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setNumberOfActives(e.target.value);
                     clearError("numberOfActives");
                     markDirty();
@@ -1197,21 +1323,30 @@ export default function ChemistryMixReportForm({
           <div className="px-2 text-[11px] flex items-stretch gap-3">
             {/* LEFT: Sample type */}
             <div className="flex w-fit pr-7 py-1 self-stretch border-r border-black">
-              <span className="font-medium mr-4 whitespace-nowrap">
+              <span
+                className={`font-medium mr-4 whitespace-nowrap ${corrCursor} relative ${dashClass(
+                  "sampleTypes"
+                )}`}
+                onClick={corrClick("sampleTypes")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 SAMPLE TYPE :
+                <ResolveOverlay field="sampleTypes" />
               </span>
 
               {/* 🔴 group error wrapper (no layout change) */}
               <div
                 id="f-sampleTypes"
                 className={`
-        inline-flex
-        ${
-          errors.sampleTypes
-            ? "border border-red-500 ring-1 ring-red-500 rounded-[2px] px-1"
-            : "border border-transparent"
-        }
-      `}
+                      inline-flex
+                      ${
+                        errors.sampleTypes
+                          ? "border border-red-500 ring-1 ring-red-500 rounded-[2px] px-1"
+                          : "border border-transparent"
+                      }
+                    `}
               >
                 <div className="grid grid-cols-3 gap-x-1 gap-y-1 -ml-2 w-fit">
                   {sampleTypeColumns.map((col, colIdx) => (
@@ -1225,6 +1360,7 @@ export default function ChemistryMixReportForm({
                             type="checkbox"
                             checked={sampleTypes.includes(key)}
                             onChange={() => {
+                              if (selectingCorrections) return;
                               if (lock("sampleTypes")) return;
                               toggleSampleType(key);
                               clearError("sampleTypes");
@@ -1249,8 +1385,17 @@ export default function ChemistryMixReportForm({
 
             {/* RIGHT: Date received */}
             <div className="flex items-center gap-2 whitespace-nowrap ml-1 py-1">
-              <span className="whitespace-nowrap font-medium">
+              <span
+                className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
+                  "dateReceived"
+                )}`}
+                onClick={corrClick("dateReceived")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
                 DATE RECEIVED :
+                <ResolveOverlay field="dateReceived" />
               </span>
 
               {lock("dateReceived") ? (
@@ -1262,15 +1407,16 @@ export default function ChemistryMixReportForm({
                   id="f-dateReceived"
                   type="date"
                   className={`
-          w-[130px] border-0 border-b outline-none text-[11px]
-          ${
-            errors.dateReceived
-              ? "border-b-red-500 ring-1 ring-red-500"
-              : "border-b-black/60"
-          }
-        `}
+                      w-[130px] border-0 border-b outline-none text-[11px]
+                      ${
+                        errors.dateReceived
+                          ? "border-b-red-500 ring-1 ring-red-500"
+                          : "border-b-black/60"
+                      }
+                    `}
                   value={formatDateForInput(dateReceived)}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setDateReceived(e.target.value);
                     clearError("dateReceived");
                     markDirty();
@@ -1321,20 +1467,60 @@ export default function ChemistryMixReportForm({
             const inputErrClass = (hasErr?: boolean) =>
               hasErr ? "ring-1 ring-red-500" : "";
 
+            // keys
+            const rk = activeRowKey(row.key);
+            const kChecked = activeCellKey(row.key, "checked");
+            const kSop = activeCellKey(row.key, "sopNo");
+            const kFormula = activeCellKey(row.key, "formulaContent");
+            const kResult = activeCellKey(row.key, "result");
+            const kDateInit = activeCellKey(row.key, "dateTestedInitial");
+
             return (
               <div
                 key={row.key}
-                className={`grid grid-cols-[25%_15%_23%_20%_17%] border-b last:border-b-0 border-black ${
+                className={`grid grid-cols-[25%_15%_23%_20%_17%] border-b last:border-b-0 border-black relative ${
                   showRowRing ? "ring-1 ring-red-500" : ""
-                }`}
+                } `}
+                // ✅ click anywhere on row (optional) adds correction to whole row
+                onClick={(e) => {
+                  if (!selectingCorrections) return;
+                  e.stopPropagation();
+                  pickCorrection(rk);
+                }}
+                title={
+                  selectingCorrections
+                    ? "Click to add correction for this row"
+                    : undefined
+                }
               >
-                {/* active name + checkbox */}
-                <div className="flex items-center gap-2 border-r border-black px-1">
+                {/* ✅ Resolve all corrections in the whole row */}
+                {/* <ResolveOverlay field={rk} /> */}
+
+                {/* ACTIVE + checkbox */}
+                <div
+                  className={`flex items-center gap-2 border-r border-black px-1 relative ${dashClass(
+                    kChecked
+                  )}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kChecked);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  <ResolveOverlay field={kChecked} />
+
                   <input
                     type="checkbox"
                     checked={row.checked}
                     onChange={(e) => setActiveChecked(idx, e.target.checked)}
-                    disabled={lock("actives") || role !== "CLIENT"}
+                    disabled={
+                      lock("actives") ||
+                      role !== "CLIENT" ||
+                      selectingCorrections
+                    }
                     className={
                       lock("actives") || role !== "CLIENT"
                         ? "accent-black"
@@ -1346,68 +1532,152 @@ export default function ChemistryMixReportForm({
 
                 {/* SOP # */}
                 <div
-                  className={`border-r border-black px-1 ${inputErrClass(
+                  className={`border-r border-black px-1 relative ${inputErrClass(
                     !!rowErr.sopNo
-                  )}`}
+                  )} ${dashClass(kSop)} ${corrCursor}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kSop);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
                 >
+                  <ResolveOverlay field={kSop} />
+
                   <input
                     className="w-full border-none outline-none text-[11px]"
                     value={row.sopNo}
-                    onChange={(e) =>
-                      setActiveField(idx, { sopNo: e.target.value })
+                    readOnly={
+                      lock("actives") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
                     }
-                    disabled={lock("actives") || role === "CLIENT"}
+                    onChange={(e) => {
+                      if (
+                        lock("actives") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setActiveField(idx, { sopNo: e.target.value });
+                    }}
                   />
                 </div>
 
-                {/* formula content % */}
+                {/* FORMULA CONTENT */}
                 <div
-                  className={`border-r border-black px-1 flex items-center gap-1 ${inputErrClass(
+                  className={`border-r border-black px-1 flex items-center gap-1 relative ${inputErrClass(
                     !!rowErr.formulaContent
-                  )}`}
+                  )} ${dashClass(kFormula)}  ${corrCursor}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kFormula);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
                 >
+                  <ResolveOverlay field={kFormula} />
+
                   <input
                     className="flex-1 border-none outline-none text-[11px]"
                     value={row.formulaContent}
-                    onChange={(e) =>
-                      setActiveField(idx, { formulaContent: e.target.value })
+                    readOnly={
+                      lock("actives") ||
+                      role !== "CLIENT" ||
+                      selectingCorrections
                     }
-                    disabled={lock("actives") || role !== "CLIENT"}
+                    onChange={(e) => {
+                      if (
+                        lock("actives") ||
+                        role !== "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setActiveField(idx, { formulaContent: e.target.value });
+                    }}
                   />
+
                   <span>%</span>
                 </div>
 
-                {/* result % */}
+                {/* RESULTS */}
                 <div
-                  className={`border-r border-black px-1 flex items-center gap-1 ${inputErrClass(
+                  className={`border-r border-black px-1 flex items-center gap-1 relative ${inputErrClass(
                     !!rowErr.result
-                  )}`}
+                  )} ${dashClass(kResult)}  ${corrCursor}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kResult);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
                 >
+                  <ResolveOverlay field={kResult} />
+
                   <input
                     className="flex-1 border-none outline-none text-[11px]"
                     value={row.result}
-                    onChange={(e) =>
-                      setActiveField(idx, { result: e.target.value })
+                    readOnly={
+                      lock("actives") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
                     }
-                    disabled={lock("actives") || role === "CLIENT"}
+                    onChange={(e) => {
+                      if (
+                        lock("actives") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setActiveField(idx, { result: e.target.value });
+                    }}
                   />
+
                   <span>%</span>
                 </div>
 
-                {/* date tested / initials */}
+                {/* DATE TESTED / INITIAL */}
                 <div
-                  className={`px-1 ${inputErrClass(
+                  className={`px-1 relative ${inputErrClass(
                     !!rowErr.dateTestedInitial
-                  )}`}
+                  )} ${dashClass(kDateInit)} ${corrCursor}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kDateInit);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
                 >
+                  <ResolveOverlay field={kDateInit} />
+
                   <input
                     className="w-full border-none outline-none text-[11px]"
                     placeholder="MM/DD/YYYY / AB"
                     value={row.dateTestedInitial}
-                    onChange={(e) =>
-                      setActiveField(idx, { dateTestedInitial: e.target.value })
+                    readOnly={
+                      lock("actives") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
                     }
-                    disabled={lock("actives") || role === "CLIENT"}
+                    onChange={(e) => {
+                      if (
+                        lock("actives") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setActiveField(idx, {
+                        dateTestedInitial: e.target.value,
+                      });
+                    }}
                   />
                 </div>
               </div>
@@ -1425,7 +1695,19 @@ export default function ChemistryMixReportForm({
         {/* Comments + signatures */}
         <div className="mt-2 text-[12px]">
           <div className="flex items-center gap-2 mb-2">
-            <span className="font-medium">Comments :</span>
+            <span
+              className={`font-medium ${corrCursor} relative ${dashClass(
+                "comments"
+              )}`}
+              onClick={corrClick("comments")}
+              title={
+                selectingCorrections ? "Click to add correction" : undefined
+              }
+            >
+              Comments :
+              <ResolveOverlay field="comments" />
+            </span>
+
             <FieldErrorBadge name="comments" errors={errors} />
 
             {lock("comments") ? (
@@ -1435,6 +1717,7 @@ export default function ChemistryMixReportForm({
                 className={inputClass("comments", "flex-1")}
                 value={comments}
                 onChange={(e) => {
+                  if (selectingCorrections) return;
                   setComments(e.target.value);
                   clearError("comments");
                   markDirty();
@@ -1447,7 +1730,19 @@ export default function ChemistryMixReportForm({
           <div className="grid grid-cols-2 gap-4 mt-2">
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <span className="font-medium">TESTED BY :</span>
+                <span
+                  className={`font-medium ${corrCursor} relative ${dashClass(
+                    "testedBy"
+                  )}`}
+                  onClick={corrClick("testedBy")}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  TESTED BY :
+                  <ResolveOverlay field="testedBy" />
+                </span>
+
                 <FieldErrorBadge name="testedBy" errors={errors} />
                 <input
                   className={inputClass(
@@ -1456,6 +1751,7 @@ export default function ChemistryMixReportForm({
                   )}
                   value={testedBy}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setTestedBy(e.target.value.toUpperCase());
                     clearError("testedBy");
                     markDirty();
@@ -1466,7 +1762,18 @@ export default function ChemistryMixReportForm({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-medium">DATE :</span>
+                <span
+                  className={`font-medium ${corrCursor} relative ${dashClass(
+                    "testedDate"
+                  )}`}
+                  onClick={corrClick("testedDate")}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  DATE :
+                  <ResolveOverlay field="testedDate" />
+                </span>
                 <FieldErrorBadge name="testedDate" errors={errors} />
                 <input
                   className={inputClass(
@@ -1476,6 +1783,7 @@ export default function ChemistryMixReportForm({
                   type="date"
                   value={formatDateForInput(testedDate)}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setTestedDate(e.target.value);
                     clearError("testedDate");
                     markDirty();
@@ -1489,7 +1797,19 @@ export default function ChemistryMixReportForm({
 
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <span className="font-medium">REVIEWED BY :</span>
+                <span
+                  className={`font-medium ${corrCursor} relative ${dashClass(
+                    "reviewedBy"
+                  )}`}
+                  onClick={corrClick("reviewedBy")}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  REVIEWED BY :
+                  <ResolveOverlay field="reviewedBy" />
+                </span>
+
                 <FieldErrorBadge name="reviewedBy" errors={errors} />
                 <input
                   className={inputClass(
@@ -1498,6 +1818,7 @@ export default function ChemistryMixReportForm({
                   )}
                   value={reviewedBy}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setReviewedBy(e.target.value.toUpperCase());
                     clearError("reviewedBy");
                     markDirty();
@@ -1508,7 +1829,19 @@ export default function ChemistryMixReportForm({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-medium">DATE :</span>
+                <span
+                  className={`font-medium ${corrCursor} relative ${dashClass(
+                    "reviewedDate"
+                  )}`}
+                  onClick={corrClick("reviewedDate")}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  REVIEWED DATE :
+                  <ResolveOverlay field="reviewedDate" />
+                </span>
+
                 <FieldErrorBadge name="reviewedDate" errors={errors} />
                 <input
                   className={inputClass(
@@ -1518,6 +1851,7 @@ export default function ChemistryMixReportForm({
                   type="date"
                   value={formatDateForInput(reviewedDate)}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setReviewedDate(e.target.value);
                     clearError("reviewedDate");
                     markDirty();

@@ -308,7 +308,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "sampleSize",
     "numberOfActives",
     "sampleTypes",
-    // "actives", // special rules inside isEmpty()
+    "actives", // special rules inside isEmpty()
   ],
 
   // CHEMISTRY fills analytical results + signatures
