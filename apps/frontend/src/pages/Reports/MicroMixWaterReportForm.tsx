@@ -3,8 +3,9 @@ import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
 import {
   useReportValidation,
+  useMicroMixWaterReportValidation,
   FieldErrorBadge,
-  type MicroMixReportFormValues,
+  type MicroMixWaterReportFormValues,
   deriveMicroPhaseFromStatus,
   type MicroPhase,
   MICRO_PHASE_FIELDS,
@@ -34,8 +35,6 @@ function useConfirmOnLeave(isDirty: boolean) {
     }
   }, [blocker]);
 }
-
-
 
 // ---- Map each transition to buttons ----
 
@@ -144,10 +143,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateSent",
       "typeOfTest",
       "sampleType",
-      "formulaNo",
+      "idNo",
       "description",
       "lotNo",
-      "manufactureDate",
+      "samplingDate",
     ],
     MICRO: [
       "testSopNo",
@@ -171,10 +170,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateSent",
       "typeOfTest",
       "sampleType",
-      "formulaNo",
+      "idNo",
       "description",
       "lotNo",
-      "manufactureDate",
+      "samplingDate",
       "tbc_spec",
       "tmy_spec",
       "pathogens",
@@ -189,8 +188,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   if (map[role]?.includes("*")) return true;
   return map[role]?.includes(field) ?? false;
 }
-
-
 
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
@@ -279,12 +276,10 @@ export default function MicroMixReportForm({
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
-  const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
+  const [idNo, setidNo] = useState(report?.idNo || "");
   const [description, setDescription] = useState(report?.description || "");
   const [lotNo, setLotNo] = useState(report?.lotNo || "");
-  const [manufactureDate, setManufactureDate] = useState(
-    report?.manufactureDate || ""
-  );
+  const [samplingDate, setsamplingDate] = useState(report?.samplingDate || "");
   const [testSopNo, setTestSopNo] = useState(report?.testSopNo || "");
   const [dateTested, setDateTested] = useState(report?.dateTested || "");
   const [preliminaryResults, setPreliminaryResults] = useState(
@@ -325,7 +320,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "E_COLI",
         label: "E.coli",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -333,7 +328,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "P_AER",
         label: "P.aeruginosa",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -341,7 +336,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "S_AUR",
         label: "S.aureus",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -349,7 +344,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "SALM",
         label: "Salmonella",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -357,7 +352,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "CLOSTRIDIA",
         label: "Clostridia species",
-        grams: "3g",
+        grams: "3ml",
         result: "",
         spec: "",
       },
@@ -365,7 +360,15 @@ export default function MicroMixReportForm({
         checked: false,
         key: "C_ALB",
         label: "C.albicans",
-        grams: "11g",
+        grams: "11ml",
+        result: "",
+        spec: "",
+      },
+      {
+        checked: false,
+        key: "COLI",
+        label: "Coliforms",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -373,7 +376,7 @@ export default function MicroMixReportForm({
         checked: false,
         key: "B_CEP",
         label: "B.cepacia",
-        grams: "11g",
+        grams: "11ml",
         result: "",
         spec: "",
       },
@@ -389,7 +392,7 @@ export default function MicroMixReportForm({
     []
   );
 
-  const gramsFor = (p: PathRow) => p.grams ?? "11g";
+  const gramsFor = (p: PathRow) => p.grams ?? "11ml";
 
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(
@@ -533,8 +536,6 @@ export default function MicroMixReportForm({
     flashResolved(c.fieldKey); // ✅ show green halo briefly
   }
 
-
-
   // Tiny inline pill next to a field label/badge
   function ResolveOverlay({ field }: { field: string }) {
     if (!hasCorrection(field) || !canResolveField(field)) return null;
@@ -556,7 +557,7 @@ export default function MicroMixReportForm({
   }
 
   const normalizeGrams = (v: string) =>
-    v.trim() ? (/[gG]$/.test(v) ? v : v + "g") : v;
+    v.trim() ? (/[ml]$/.test(v) ? v : v + "ml") : v;
 
   const [showCorrTray, setShowCorrTray] = useState(false);
 
@@ -575,7 +576,6 @@ export default function MicroMixReportForm({
       : flash[keyOrPrefix]
       ? "dash dash-green"
       : "";
-
 
   function validatePathogenRows(
     rows: PathRow[],
@@ -706,23 +706,21 @@ export default function MicroMixReportForm({
   // use:
   const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
 
-  const { errors, clearError, validateAndSetErrors } = useReportValidation(
-    role,
-    {
+  const { errors, clearError, validateAndSetErrors } =
+    useMicroMixWaterReportValidation(role, {
       status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
-    }
-  );
+    });
 
   // Current values snapshot (use inside handlers)
-  const makeValues = (): MicroMixReportFormValues => ({
+  const makeValues = (): MicroMixWaterReportFormValues => ({
     client,
     dateSent,
     typeOfTest,
     sampleType,
-    formulaNo,
+    idNo,
     description,
     lotNo,
-    manufactureDate,
+    samplingDate,
     testSopNo,
     dateTested,
     preliminaryResults,
@@ -762,10 +760,10 @@ export default function MicroMixReportForm({
       dateSent,
       typeOfTest,
       sampleType,
-      formulaNo,
+      idNo,
       description,
       lotNo,
-      manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
+      samplingDate: samplingDate?.trim() ? samplingDate : "NA",
       testSopNo,
       dateTested,
       preliminaryResults,
@@ -812,10 +810,10 @@ export default function MicroMixReportForm({
         "dateSent",
         "typeOfTest",
         "sampleType",
-        "formulaNo",
+        "idNo",
         "description",
         "lotNo",
-        "manufactureDate",
+        "samplingDate",
       ],
       MICRO: [
         "testSopNo",
@@ -839,10 +837,10 @@ export default function MicroMixReportForm({
         "dateSent",
         "typeOfTest",
         "sampleType",
-        "formulaNo",
+        "idNo",
         "description",
         "lotNo",
-        "manufactureDate",
+        "samplingDate",
         "tbc_spec",
         "tmy_spec",
         "pathogens",
@@ -874,7 +872,10 @@ export default function MicroMixReportForm({
       } else {
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+          body: JSON.stringify({
+            ...payload,
+            formType: "MICRO_MIX_WATER",
+          }),
         });
       }
 
@@ -1116,7 +1117,7 @@ export default function MicroMixReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              Report
+              Water Report
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {reportNumber ? <> {reportNumber}</> : null}
@@ -1188,7 +1189,7 @@ export default function MicroMixReportForm({
             </div>
           </div>
 
-          {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
+          {/* TYPE OF TEST / SAMPLE TYPE / ID # */}
           <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
             <div
               id="f-typeOfTest"
@@ -1266,38 +1267,38 @@ export default function MicroMixReportForm({
               )}
             </div>
             <div
-              id="f-formulaNo"
+              id="f-idNo"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("formulaNo");
+                setAddForField("idNo");
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative
-                ${dashClass("formulaNo")}`}
+                ${dashClass("idNo")}`}
             >
-              <div className="font-medium whitespace-nowrap">FORMULA #:</div>
-              <FieldErrorBadge name="formulaNo" errors={errors} />
-              <ResolveOverlay field="formulaNo" />
-              {lock("formulaNo") ? (
-                <div className="flex-1 min-h-[14px]">{formulaNo}</div>
+              <div className="font-medium whitespace-nowrap">ID #:</div>
+              <FieldErrorBadge name="idNo" errors={errors} />
+              <ResolveOverlay field="idNo" />
+              {lock("idNo") ? (
+                <div className="flex-1 min-h-[14px]">{idNo}</div>
               ) : (
                 <input
                   className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.formulaNo
+                    errors.idNo
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   }  ${
-                    hasCorrection("formulaNo")
+                    hasCorrection("idNo")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   } `}
-                  value={formulaNo}
+                  value={idNo}
                   onChange={(e) => {
-                    setFormulaNo(e.target.value);
-                    clearError("formulaNo");
+                    setidNo(e.target.value);
+                    clearError("idNo");
                     markDirty();
                   }}
-                  aria-invalid={!!errors.formulaNo}
+                  aria-invalid={!!errors.idNo}
                 />
               )}
             </div>
@@ -1342,7 +1343,7 @@ export default function MicroMixReportForm({
             )}
           </div>
 
-          {/* LOT # / MANUFACTURE DATE */}
+          {/* LOT # / SAMPLING DATE */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
             <div
               id="f-lotNo"
@@ -1382,46 +1383,44 @@ export default function MicroMixReportForm({
               )}
             </div>
             <div
-              id="f-manufactureDate"
+              id="f-samplingDate"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("manufactureDate");
+                setAddForField("samplingDate");
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "manufactureDate"
+                "samplingDate"
               )}`}
             >
               <div className="font-medium whitespace-nowrap">
-                MANUFACTURE DATE:
+                SAMPLING DATE:
               </div>
-              <FieldErrorBadge name="manufactureDate" errors={errors} />
-              <ResolveOverlay field="manufactureDate" />
-              {lock("manufactureDate") ? (
+              <FieldErrorBadge name="samplingDate" errors={errors} />
+              <ResolveOverlay field="samplingDate" />
+              {lock("samplingDate") ? (
                 <div className="flex-1  min-h-[14px]">
-                  {manufactureDate ? formatDateForInput(manufactureDate) : "NA"}
+                  {samplingDate ? formatDateForInput(samplingDate) : "NA"}
                 </div>
               ) : (
                 <input
                   className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.manufactureDate
+                    errors.samplingDate
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("manufactureDate")
+                    hasCorrection("samplingDate")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   } `}
                   type="date"
-                  value={
-                    manufactureDate ? formatDateForInput(manufactureDate) : "NA"
-                  }
+                  value={samplingDate ? formatDateForInput(samplingDate) : "NA"}
                   onChange={(e) => {
-                    setManufactureDate(e.target.value);
+                    setsamplingDate(e.target.value);
                     markDirty();
-                    clearError("manufactureDate");
+                    clearError("samplingDate");
                   }}
-                  aria-invalid={!!errors.manufactureDate}
+                  aria-invalid={!!errors.samplingDate}
                 />
               )}
             </div>
@@ -1652,7 +1651,7 @@ export default function MicroMixReportForm({
 
             {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
+              <div className="py-1 px-2 text-center"> x 10^0</div>
             </div>
 
             {/* GRAM STAIN */}
@@ -1719,10 +1718,10 @@ export default function MicroMixReportForm({
                   clearError("tbc_result");
                 }}
                 readOnly={lock("tbc_result")}
-                placeholder="CFU/ml/g"
+                placeholder="CFU/ml"
                 aria-invalid={!!errors.tbc_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -1766,7 +1765,7 @@ export default function MicroMixReportForm({
 
             {/* DILUTION (static) */}
             <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
+              <div className="py-1 px-2 text-center"> x 10^0</div>
             </div>
 
             {/* GRAM STAIN */}
@@ -1833,10 +1832,10 @@ export default function MicroMixReportForm({
                   clearError("tmy_result");
                 }}
                 readOnly={lock("tmy_result")}
-                placeholder="CFU/ml/g"
+                placeholder="CFU/ml"
                 aria-invalid={!!errors.tmy_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">CFU/ml</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -2029,7 +2028,7 @@ export default function MicroMixReportForm({
                       in
                       <input
                         className="w-7 border px-1 text-[11px]"
-                        placeholder="__g"
+                        placeholder="__ml"
                         value={p.grams}
                         onChange={(e) => setPathogenGrams(idx, e.target.value)}
                         onBlur={(e) =>

@@ -1084,14 +1084,6 @@ export default function MicroMixReportForm({
               {reportId ? "Update Report" : "Save Report"}
             </button>
           )}
-
-          {/* <button
-            className="px-3 py-1 rounded-md border bg-blue-600 text-white"
-            onClick={handleSave}
-            disabled={role === "SYSTEMADMIN"}
-          >
-            {reportId ? "Update Report" : "Save Report"}
-          </button> */}
         </div>
 
         {/* Letterhead */}

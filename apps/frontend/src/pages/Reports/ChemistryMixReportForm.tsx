@@ -169,6 +169,8 @@ function canEdit(
   return FIELD_EDIT_MAP[role]?.includes(field) ?? false;
 }
 
+const HIDE_SAVE_FOR = new Set<ChemistryReportStatus>(["APPROVED", "LOCKED"]);
+
 export default function ChemistryMixReportForm({
   report,
   onClose,
@@ -575,20 +577,20 @@ export default function ChemistryMixReportForm({
   }
 
   // ------------- SAVE -------------
-  const handleSave = async (): Promise<SavedReport | null> => {
+  const handleSave = async (): Promise<boolean> => {
     const values = makeValues();
 
     const okFields = validateAndSetErrors(values);
     const okRows = validateActiveRows(values.actives || [], role);
 
-    if (!okFields) {
-      alert("⚠️ Please fix the highlighted fields before saving.");
-      return null;
-    }
-    if (!okRows) {
-      alert("⚠️ Please fix the highlighted actives before saving.");
-      return null;
-    }
+    // if (!okFields) {
+    //   alert("⚠️ Please fix the highlighted fields before saving.");
+    //   return null;
+    // }
+    // if (!okRows) {
+    //   alert("⚠️ Please fix the highlighted actives before saving.");
+    //   return null;
+    // }
 
     const fullPayload = {
       client,
@@ -655,6 +657,11 @@ export default function ChemistryMixReportForm({
       Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
     );
 
+    // New reports always start as DRAFT
+    if (!reportId) {
+      payload.status = "DRAFT";
+    }
+
     try {
       let saved: SavedReport;
 
@@ -673,12 +680,12 @@ export default function ChemistryMixReportForm({
       setStatus(saved.status); // in case backend changed it
       setReportNumber(String(saved.reportNumber ?? ""));
       setIsDirty(false);
-      alert("✅ Chemistry report saved");
-      return saved;
+      alert("✅ Report saved as '" + saved.status + "'");
+      return true;
     } catch (err: any) {
       console.error(err);
       alert("❌ Error saving chemistry report: " + err.message);
-      return null;
+      return false;
     }
   };
 
@@ -812,12 +819,15 @@ export default function ChemistryMixReportForm({
           >
             Close
           </button>
-          <button
-            className="px-3 py-1 rounded-md border bg-blue-600 text-white"
-            onClick={handleSave}
-          >
-            {reportId ? "Update Report" : "Save Report"}
-          </button>
+          {!HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
+            <button
+              className="px-3 py-1 rounded-md border bg-blue-600 text-white"
+              onClick={handleSave}
+              disabled={role === "SYSTEMADMIN"}
+            >
+              {reportId ? "Update Report" : "Save Report"}
+            </button>
+          )}
         </div>
 
         {/* Letterhead – same look as Micro */}

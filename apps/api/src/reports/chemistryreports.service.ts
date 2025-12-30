@@ -397,6 +397,13 @@ export class ChemistryReportsService {
   private _coerce(obj: any) {
     const copy = { ...obj };
 
+    // ✅ enums: empty string should not be sent to Prisma
+    if ('sampleCollected' in copy) {
+      if (copy.sampleCollected === '' || copy.sampleCollected == null) {
+        copy.sampleCollected = null; // requires Prisma field to be optional
+      }
+    }
+
     const dateKeys = [
       'dateSent',
       'manufactureDate',
