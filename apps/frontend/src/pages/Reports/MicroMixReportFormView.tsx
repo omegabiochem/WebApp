@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
+import pjla from "../../assets/pjla.png";
+import ilacmra from "../../assets/ilacmra.png";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -23,16 +25,6 @@ type AttachmentItem = {
 };
 
 // // one helper, at top of the file
-// const getAuthHeaders = (): HeadersInit | undefined => {
-//   const token = localStorage.getItem("token");
-//   return token ? { Authorization: `Bearer ${token}` } : undefined;
-// };
-
-// const API_BASE =
-//   (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:3000"; // set VITE_API_BASE in .env if different
-
-// const attBase = (id: string) =>
-//   `${API_BASE}/reports/micro-mix/${id}/attachments`;
 
 const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
@@ -51,23 +43,6 @@ function useAttachments(reportId?: string) {
       return;
     }
     setLoading(true);
-
-    // const url = attBase(reportId);
-    // fetch(url, { credentials: "include", headers: authHeaders() })
-    //   .then(async (r) => {
-    //     if (!r.ok) {
-    //       const msg = await r.text().catch(() => r.statusText);
-    //       throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
-    //     }
-    //     return r.json();
-    //   })
-    //   .catch((e) => {
-    //     console.error(e);
-    //     setItems([]); // keep current UI behavior
-    //   })
-    //   .then((d) => setItems(Array.isArray(d) ? d : []))
-    //   .catch(() => setItems([]))
-    //   .finally(() => setLoading(false));
     (async () => {
       try {
         const list = await api<AttachmentItem[]>(attBase(reportId));
@@ -222,32 +197,6 @@ function AttachmentPreview({
 
   useEffect(() => {
     let revoke: string | null = null;
-
-    // fetch(`${attBase(reportId)}/${attId}`, {
-    //   credentials: "include",
-    //   headers: getAuthHeaders(),
-    // })
-    //   .then((r) =>
-    //     r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
-    //   )
-    //   .then((m) => {
-    //     setMeta(m);
-    //     return fetch(`${attBase(reportId)}/${attId}/file`, {
-    //       credentials: "include",
-    //       headers: getAuthHeaders(),
-    //     });
-    //   })
-    //   .then((r) =>
-    //     r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
-    //   )
-    //   .then((blob) => {
-    //     const url = URL.createObjectURL(blob);
-    //     revoke = url;
-    //     setObjectUrl(url);
-    //   })
-    //   .catch((e) => setError(e.message))
-    //   .finally(() => {})
-    // .finally(() => setLoadingFile(false));
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(
@@ -341,6 +290,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     isBulkPrint = false,
     isSingleBulk = false,
   } = props;
+
   type PathRow = {
     checked: boolean;
     key: string;
@@ -486,6 +436,13 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     onPaneChange?.(p);
   };
 
+  const FOOTER_IMAGES = [
+    { src: pjla, alt: "FDA Registered" },
+    { src: ilacmra, alt: "ISO Certified" },
+  ];
+
+  const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
+
   return (
     <div
       className={
@@ -502,34 +459,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
         null}
 
       {/* View switcher */}
-      {/* <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
-        <div className="flex items-center gap-2 py-2">
-          <button
-            type="button"
-            onClick={() => setPane("FORM")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "FORM"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "FORM"}
-          >
-            Main form
-          </button>
-          <button
-            type="button"
-            onClick={() => setPane("ATTACHMENTS")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "ATTACHMENTS"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "ATTACHMENTS"}
-          >
-            Attachments
-          </button>
-        </div>
-      </div> */}
 
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
@@ -563,22 +492,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       )}
 
       {/* Controls (hidden on print) */}
-      {/* <div className="no-print absolute top-2 right-2 flex gap-2">
-        {activePane === "FORM" && (
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Print
-          </button>
-        )}
-        {/* <button
-          onClick={onClose}
-          className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800"
-        >
-          Close
-        </button> */}
-      {/* </div> */}
 
       {isBulk || activePane === "FORM" ? (
         <>
@@ -591,7 +504,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               OMEGA BIOLOGICAL LABORATORY, INC.
             </div>
             <div className="text-[16px]" style={{ color: "blue" }}>
-              (FDA REG.)
+              (FDA REG. | ISO 17025 ACC)
             </div>
             <div className="text-[12px]">
               56 PARK AVENUE, LYNDHURST, NJ 07071 <br></br>
@@ -605,12 +518,19 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
             <div className="mt-1 grid grid-cols-3 items-center">
-              <div /> {/* left spacer */}
-              <div className="text-[18px] font-bold text-center underline">
+              {/* Left: Form Number */}
+              <div className="text-left text-[12px] font-bold">
+                {report.formNumber && report.formNumber}
+              </div>
+
+              {/* Center: Title */}
+              <div className="text-center text-[18px] font-bold underline">
                 Report
               </div>
-              <div className="text-right text-[12px] font-bold font-medium">
-                {report.reportNumber ? <> {report.reportNumber}</> : null}
+
+              {/* Right: Report Number */}
+              <div className="text-right text-[12px] font-bold">
+                {report.reportNumber && report.reportNumber}
               </div>
             </div>
           </div>
@@ -833,12 +753,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               </div>
               <div className="py-1 px-2 border-r border-black">
                 <div className="py-1 px-2 text-center"> x 10^1</div>
-                {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tmy_dilution}
-              onChange={(e) => set_tmy_dilution(e.target.value)}
-              readOnly={lock("tmy_dilution")}
-            /> */}
               </div>
               <div className="py-1 px-2 border-r border-black flex">
                 <input
@@ -895,30 +809,36 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   />
                   <span>{p.label}</span>
                 </div>
-                <div className="py-[2px] px-2 border-r flex gap-4 justify-center text-center">
-                  <label>
-                    {/* Result radios */}
-                    <input
-                      type="radio"
-                      className="thick-box"
-                      checked={p.result === "Absent"}
-                      readOnly
-                      disabled
-                    />{" "}
-                    Absent
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      className="thick-box"
-                      checked={p.result === "Present"}
-                      readOnly
-                      disabled
-                    />{" "}
-                    Present
-                  </label>
-                  <span className="ml-2">in {gramsFor(p)} of sample</span>
+                <div className="py-[2px] px-2 border-r text-[11px]">
+                  <div className="grid grid-cols-[auto_auto_1fr] items-center gap-x-4">
+                    <label className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <input
+                        type="radio"
+                        className="thick-box"
+                        checked={p.result === "Absent"}
+                        readOnly
+                        disabled
+                      />
+                      Absent
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <input
+                        type="radio"
+                        className="thick-box"
+                        checked={p.result === "Present"}
+                        readOnly
+                        disabled
+                      />
+                      Present
+                    </label>
+
+                    <span className="justify-self-start whitespace-nowrap">
+                      in {gramsFor(p)} of sample
+                    </span>
+                  </div>
                 </div>
+
                 <div className="py-[2px] px-2 text-center">{p.spec}</div>
               </div>
             ))}
@@ -997,6 +917,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
           </div>
 
           {/* Footer: Report ID + QR */}
+          {/* Footer: Logos + Confidential text + Report ID + QR */}
           <div
             className={
               isBulk
@@ -1004,24 +925,44 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 : "mt-2 flex items-end justify-between print-footer"
             }
             style={
-              // For normal view → keep avoid
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
-                : // For bulk:
-                // - if it's MANY reports → keep avoid
-                // - if it's ONLY ONE report → let browser break (no extra page)
-                !isSingleBulk
+                : !isSingleBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
                 : undefined
             }
           >
-            <div className="text-[10px] text-slate-600">
-              This report is confidential and intended only for the recipient.
+            {/* LEFT: logos on top, then confidential text */}
+            {/* LEFT: logos + centered accreditation + confidential + footer note */}
+            <div className="flex flex-col gap-2">
+              {/* ✅ Logos row stays unchanged (no centering wrapper that can shift it) */}
+              <div className="flex items-center gap-2">
+                {FOOTER_IMAGES.map((img, idx) => (
+                  <img
+                    key={idx}
+                    src={img.src}
+                    alt={img.alt}
+                    className="w-[64px] h-[64px] object-contain border border-black/10 rounded bg-white"
+                  />
+                ))}
+              </div>
+
+              {/* ✅ Center text WITHOUT moving logos:
+      width = exact width of two logos + gap */}
+              <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+                Accreditation No: <span className="font-bold">109344</span>
+              </div>
+
+              <div className="text-[10px] text-slate-600">
+                This report is confidential and intended only for the recipient.
+              </div>
+
+              <div className="text-[10px] text-slate-600">{FOOTER_NOTE}</div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* RIGHT: Report ID + QR */}
+            <div className="flex items-end gap-3">
               <div className="text-right leading-tight">
-                {/* <div className="p-1 bg-white"> */}
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
                 {report?.reportNumber && (
@@ -1032,13 +973,11 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 <div className="mt-1 text-[10px] text-slate-600">
                   Scan to open in LIMS
                 </div>
-                {/* </div> */}
               </div>
 
               {qrSvg ? (
                 <div className="p-1 bg-white shrink-0" aria-label="Report QR">
                   <div
-                    // ~28–32mm square is a sweet spot for IDs this length
                     style={{ width: "36mm", height: "36mm" }}
                     dangerouslySetInnerHTML={{ __html: qrSvg }}
                   />
@@ -1053,6 +992,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               )}
             </div>
           </div>
+
           {/* </div> */}
         </>
       ) : (

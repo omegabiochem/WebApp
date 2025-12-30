@@ -22,6 +22,8 @@
     "start:staging": "dotenv -e .env.staging -- nest start --watch"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.958.0",
+    "@aws-sdk/lib-storage": "^3.958.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -30,7 +32,7 @@
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/platform-socket.io": "^11.1.6",
     "@nestjs/websockets": "^11.1.6",
-    "@prisma/client": "^5.19.1",
+    "@prisma/client": "^5.19.0",
     "@serialport/parser-readline": "^13.0.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
@@ -75,7 +77,7 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
-    "prisma": "^5.19.1",
+    "prisma": "^5.19.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
@@ -105,6 +107,5 @@
   "prisma": {
     "schema": "prisma/schema.prisma",
     "seed": "node prisma/seed.cjs"
-
   }
 }

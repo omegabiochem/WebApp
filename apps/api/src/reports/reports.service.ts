@@ -356,7 +356,9 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 }
 
 // Which details relation to use for a given formType
-const DETAILS_RELATION: Record<FormType, 'microMix' | 'microMixWater'> = {
+type MicroFormType = Extract<FormType, 'MICRO_MIX' | 'MICRO_MIX_WATER'>;
+
+const DETAILS_RELATION: Record<MicroFormType, 'microMix' | 'microMixWater'> = {
   MICRO_MIX: 'microMix',
   MICRO_MIX_WATER: 'microMixWater',
 };
@@ -480,11 +482,7 @@ export class ReportsService {
       );
     }
 
-    // function yymm(d: Date = new Date()): string {
-    //   const yy = String(d.getFullYear()).slice(-2);
-    //   const mm = String(d.getMonth() + 1).padStart(2, '0');
-    //   return yy + mm; // e.g. "2410"
-    // }
+ 
 
     function yyyy(d: Date = new Date()): string {
       const yyyy = String(d.getFullYear());
@@ -635,11 +633,6 @@ export class ReportsService {
         );
       }
 
-      // function yymm(d: Date = new Date()): string {
-      //   const yy = String(d.getFullYear()).slice(-2);
-      //   const mm = String(d.getMonth() + 1).padStart(2, '0');
-      //   return yy + mm; // e.g. "2410"
-      // }
 
       function yyyy(d: Date = new Date()): string {
         const yyyy = String(d.getFullYear());
@@ -784,11 +777,7 @@ export class ReportsService {
 
     const patch: any = { status: target };
 
-    // function yymm(d: Date = new Date()): string {
-    //   const yy = String(d.getFullYear()).slice(-2);
-    //   const mm = String(d.getMonth() + 1).padStart(2, '0');
-    //   return yy + mm; // e.g. "2410"
-    // }
+ 
 
     function yyyy(d: Date = new Date()): string {
       const yyyy = String(d.getFullYear());

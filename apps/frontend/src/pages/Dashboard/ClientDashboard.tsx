@@ -15,8 +15,12 @@ import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import React from "react";
 import { createPortal } from "react-dom";
-// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
-// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+import {
+  canShowChemistryUpdateButton,
+  CHEMISTRY_STATUS_COLORS,
+  type ChemistryReportStatus,
+} from "../../utils/chemistryReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -27,12 +31,15 @@ type Report = {
   client: string;
   formType: string;
   dateSent: string | null;
-  status: ReportStatus | string; // Some backends may still send raw string
+  status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
 };
 
-// Include an "ALL" pseudo-status for filtering
-const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
+// A status filter can be micro OR chemistry OR "ALL"
+type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+
+// Micro client statuses (what you already had)
+const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
   "FINAL_APPROVED",
   "DRAFT",
@@ -48,6 +55,35 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
   "LOCKED",
 ];
 
+// Chemistry client statuses – adjust to your real flow
+const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
+  "ALL",
+  "APPROVED",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "LOCKED",
+];
+
+// // Include an "ALL" pseudo-status for filtering
+// const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
+//   "ALL",
+//   "FINAL_APPROVED",
+//   "DRAFT",
+//   "SUBMITTED_BY_CLIENT",
+//   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+//   "UNDER_CLIENT_FINAL_REVIEW",
+//   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+//   "CLIENT_NEEDS_FINAL_CORRECTION",
+//   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+//   "UNDER_CLIENT_FINAL_CORRECTION",
+//   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+//   "FINAL_RESUBMISSION_BY_CLIENT",
+//   "LOCKED",
+// ];
+
 // -----------------------------
 // Utilities
 // -----------------------------
@@ -55,6 +91,7 @@ const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  CHEMISTRY_MIX: "chemistry-mix",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -86,6 +123,9 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
+  const isMicro =
+    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+  if (!isMicro) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
 
@@ -110,8 +150,40 @@ function canUpdateThisReport(r: Report, user?: any) {
   );
 }
 
+function canUpdateThisChemistryReport(r: Report, user?: any) {
+  const isChemistry = r.formType === "CHEMISTRY_MIX";
+  if (!isChemistry) return false;
+  if (user?.role !== "CLIENT") return false;
+  if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
+
+  const chemistryFieldsUsedOnForm = [
+    "client",
+    "dateSent",
+    "sampleDescription",
+    "testTypes",
+    "sampleCollected",
+    "lotBatchNo",
+    "manufactureDate",
+    "formulaId",
+    "sampleSize",
+    "numberOfActives",
+    "sampleTypes",
+    "comments",
+    "activeToBeTested",
+    "formulaContent",
+  ];
+
+  return canShowChemistryUpdateButton(
+    user?.role,
+    r.status as ChemistryReportStatus,
+    chemistryFieldsUsedOnForm
+  );
+}
+
 const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
-  status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED"
+  status === "UNDER_CLIENT_FINAL_REVIEW" ||
+  status === "FINAL_APPROVED" ||
+  status === "UNDER_CLIENT_REVIEW"
     ? "ATTACHMENTS"
     : "FORM";
 
@@ -178,6 +250,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "CHEMISTRY_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <ChemistryMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -200,7 +284,7 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
+  // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -218,6 +302,19 @@ export default function ClientDashboard() {
     null
   );
 
+  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
+    "ALL"
+  );
+
+  // status filter now uses combined type
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
+  const statusOptions =
+    formFilter === "CHEMISTRY" ? CLIENT_CHEM_STATUSES : CLIENT_MICRO_STATUSES;
+
+  // // status filter now uses combined type
+  // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -228,7 +325,10 @@ export default function ClientDashboard() {
         setLoading(true);
         setError(null);
 
-        const all = await api<Report[]>("/reports");
+        const micro = await api<Report[]>("/reports");
+        const chemistry = await api<Report[]>("/chemistry-reports");
+
+        const all = [...micro, ...chemistry];
 
         if (abort) return;
 
@@ -251,11 +351,23 @@ export default function ClientDashboard() {
 
   // Derived table data
   const processed = useMemo(() => {
+    // 1) form type filter
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) =>
+            formFilter === "MICRO"
+              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
+              : r.formType === "CHEMISTRY_MIX"
+          );
+
+    // 2) status filter – compare as strings so enums from both worlds work
     const byStatus =
       statusFilter === "ALL"
-        ? reports
-        : reports.filter((r) => r.status === statusFilter);
+        ? byForm
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
 
+    // 3) search
     const bySearch = search.trim()
       ? byStatus.filter((r) => {
           const q = search.toLowerCase();
@@ -267,20 +379,20 @@ export default function ClientDashboard() {
         })
       : byStatus;
 
+    // 4) sort (same as you already have)
     const sorted = [...bySearch].sort((a, b) => {
       if (sortBy === "formNumber") {
         const aN = a.formNumber.toLowerCase();
         const bN = b.formNumber.toLowerCase();
         return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
       }
-      // dateSent
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir]);
+  }, [reports, formFilter, statusFilter, search, sortBy, sortDir]);
 
   // Pagination
   const total = processed.length;
@@ -300,10 +412,20 @@ export default function ClientDashboard() {
     newStatus: string,
     reason = "Client correction update"
   ) {
+    const isChemistry = r.formType === "CHEMISTRY_MIX";
+
+    const url = isChemistry
+      ? `/chemistry-reports/${r.id}/status`
+      : `/reports/${r.id}/status`;
+
+    const body = isChemistry
+      ? { reason,status: newStatus }
+      : { reason, status: newStatus };
+
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
-    await api(`/reports/${r.id}/status`, {
+    await api(url, {
       method: "PATCH",
-      body: JSON.stringify({ reason, status: newStatus }),
+      body: JSON.stringify(body),
     });
 
     // Update local state immediately so the UI stays in sync
@@ -315,7 +437,11 @@ export default function ClientDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
-    navigate(`/reports/${slug}/${r.id}`);
+    if (r.formType === "CHEMISTRY_MIX") {
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}`);
+    }
   }
 
   // selection
@@ -359,40 +485,40 @@ export default function ClientDashboard() {
           <>
             <style>
               {`
-@media print {
-  /* Hide everything in the document body except our print root */
-  body > *:not(#bulk-print-root) { display: none !important; }
-  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+              @media print {
+              /* Hide everything in the document body except our print root */
+              body > *:not(#bulk-print-root) { display: none !important; }
+             #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
 
-  /* Page sizing & margins */
-  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+              /* Page sizing & margins */
+              @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
 
-  /* Make all report "sheets" fill the width without shadow/padding */
-  #bulk-print-root .sheet {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-  }
+              /* Make all report "sheets" fill the width without shadow/padding */
+              #bulk-print-root .sheet {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+              }
 
-  /* Keep each report together */
-  #bulk-print-root .report-page {
-    break-inside: avoid-page;
-    page-break-inside: avoid;
-  }
+              /* Keep each report together */
+              #bulk-print-root .report-page {
+                break-inside: avoid-page;
+                page-break-inside: avoid;
+              }
 
-  /* Start every report AFTER the first on a new page */
-  #bulk-print-root .report-page + .report-page {
-    break-before: page;
-    page-break-before: always;
-  }
+              /* Start every report AFTER the first on a new page */
+              #bulk-print-root .report-page + .report-page {
+                break-before: page;
+                page-break-before: always;
+              }
 
-  @supports (margin-trim: block) {
-    @page { margin-trim: block; }
-  }
-}
+              @supports (margin-trim: block) {
+                @page { margin-trim: block; }
+              }
+            }
         `}
             </style>
 
@@ -409,13 +535,14 @@ export default function ClientDashboard() {
           document.body
         )}
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between gap-4">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Client Dashboard
           </h1>
           <p className="text-sm text-slate-500">
-            View and manage your Micro Mix reports
+            View and manage your lab reports
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -443,11 +570,40 @@ export default function ClientDashboard() {
         </div>
       </div>
 
+      {/* Form type tabs */}
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All forms"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Chemistry"}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
       {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         {/* Status filter chips (scrollable) */}
+        {/* Status filter chips (scrollable) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {CLIENT_STATUSES.map((s) => (
+          {statusOptions.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -582,84 +738,135 @@ export default function ClientDashboard() {
                 ))}
 
               {!loading &&
-                pageRows.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={isRowSelected(r.id)}
-                        onChange={() => toggleRow(r.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium">{r.formNumber}</td>
-                    <td className="px-4 py-3">{r.client}</td>
-                    <td className="px-4 py-3">{r.formType}</td>
-                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={classNames(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_COLORS[r.status as ReportStatus] ||
-                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                        )}
-                      >
-                        {niceStatus(String(r.status))}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                          onClick={() => setSelectedReport(r)}
-                        >
-                          View
-                        </button>
+                pageRows.map((r) => {
+                  const isMicro =
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
 
-                        {canUpdateThisReport(r, user) && (
+                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  return (
+                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isRowSelected(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-medium">{r.formNumber}</td>
+                      <td className="px-4 py-3">{r.client}</td>
+                      <td className="px-4 py-3">{r.formType}</td>
+                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={classNames(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            (isChemistry
+                              ? CHEMISTRY_STATUS_COLORS[
+                                  r.status as ChemistryReportStatus
+                                ]
+                              : STATUS_COLORS[r.status as ReportStatus]) ||
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                          )}
+                        >
+                          {niceStatus(String(r.status))}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
                           <button
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            // onClick={() =>
-                            //   navigate(`/reports/${r.id}`)
-                            // }
-                            onClick={async () => {
-                              try {
-                                if (
-                                  r.status ===
-                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                    "Sent back to client for correction"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button>
+
+                          {isMicro && canUpdateThisReport(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                              // onClick={() =>
+                              //   navigate(`/reports/${r.id}`)
+                              // }
+                              onClick={async () => {
+                                try {
+                                  if (
+                                    r.status ===
+                                    "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                  ) {
+                                    await setStatus(
+                                      r,
+                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                      "Sent back to client for correction"
+                                    );
+                                    toast.success("Report status updated");
+                                  } else if (
+                                    r.status ===
+                                    "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                  ) {
+                                    await setStatus(
+                                      r,
+                                      "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                      "Resubmission under Review"
+                                    );
+                                  }
+                                  // navigate(`/reports/${r.id}`);
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  alert(
+                                    e?.message || "Failed to update status"
                                   );
-                                  toast.success("Report status updated");
-                                } else if (
-                                  r.status ===
-                                  "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                    "Resubmission under Review"
+                                  toast.error(
+                                    e?.message || "Failed to update status"
                                   );
                                 }
-                                // navigate(`/reports/${r.id}`);
-                                goToReportEditor(r);
-                              } catch (e: any) {
-                                alert(e?.message || "Failed to update status");
-                                toast.error(
-                                  e?.message || "Failed to update status"
-                                );
-                              }
-                            }}
-                          >
-                            Update
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                              }}
+                            >
+                              Update
+                            </button>
+                          )}
+
+                          {isChemistry &&
+                            canUpdateThisChemistryReport(r, user) && (
+                              <button
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                                onClick={async () => {
+                                  try {
+                                    if (
+                                      r.status === "TESTING_NEEDS_CORRECTION"
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_CLIENT_CORRECTION",
+                                        "Sent back to client for correction"
+                                      );
+                                    } else if (
+                                      r.status === "RESUBMISSION_BY_TESTING"
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_CLIENT_REVIEW",
+                                        "Resubmission under Review"
+                                      );
+                                    }
+                                    goToReportEditor(r);
+                                  } catch (e: any) {
+                                    alert(
+                                      e?.message || "Failed to update status"
+                                    );
+                                    toast.error(
+                                      e?.message || "Failed to update status"
+                                    );
+                                  }
+                                }}
+                              >
+                                Update
+                              </button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
               {!loading && pageRows.length === 0 && (
                 <tr>
@@ -785,6 +992,46 @@ export default function ClientDashboard() {
                     Update
                   </button>
                 )}
+                {canUpdateThisChemistryReport(selectedReport, user) && (
+                  <button
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                    // onClick={() => {
+                    //   const id = selectedReport.id;
+                    //   setSelectedReport(null);
+                    //   navigate(`/reports/${id}`);
+                    // }}
+                    onClick={async () => {
+                      try {
+                        // const id = selectedReport.id;
+                        const r = selectedReport;
+                        if (
+                          selectedReport.status === "TESTING_NEEDS_CORRECTION"
+                        ) {
+                          await setStatus(
+                            r,
+                            "UNDER_CLIENT_CORRECTION",
+                            "Sent back to client for correction"
+                          );
+                        } else if (
+                          selectedReport.status === "RESUBMISSION_BY_TESTING"
+                        ) {
+                          await setStatus(
+                            r,
+                            "UNDER_CLIENT_REVIEW",
+                            "Resubmission under Review"
+                          );
+                        }
+                        setSelectedReport(null);
+                        // navigate(`/reports/${id}`);
+                        goToReportEditor(r);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
+                    }}
+                  >
+                    Update
+                  </button>
+                )}
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
                   onClick={() => setSelectedReport(null)}
@@ -808,6 +1055,13 @@ export default function ClientDashboard() {
                   showSwitcher={false}
                   pane={paneFor(String(selectedReport.status))}
                 />
+              ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
+                <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
@@ -818,26 +1072,6 @@ export default function ClientDashboard() {
           </div>
         </div>
       )}
-
-      {/* bulk print hidden area */}
-      {/* {isBulkPrinting && (
-        <BulkPrintArea
-          reports={selectedReportObjects}
-          onAfterPrint={() => {
-            setIsBulkPrinting(false);
-          }}
-        />
-      )} */}
-
-      {/* ✅ single-report print hidden area */}
-      {/* {singlePrintReport && (
-        <BulkPrintArea
-          reports={[singlePrintReport]}
-          onAfterPrint={() => {
-            setSinglePrintReport(null);
-          }}
-        />
-      )} */}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
+import pjla from "../../assets/pjla.png";
+import ilacmra from "../../assets/ilacmra.png";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -52,22 +54,6 @@ function useAttachments(reportId?: string) {
     }
     setLoading(true);
 
-    // const url = attBase(reportId);
-    // fetch(url, { credentials: "include", headers: authHeaders() })
-    //   .then(async (r) => {
-    //     if (!r.ok) {
-    //       const msg = await r.text().catch(() => r.statusText);
-    //       throw new Error(`Attachments fetch failed ${r.status}: ${msg}`);
-    //     }
-    //     return r.json();
-    //   })
-    //   .catch((e) => {
-    //     console.error(e);
-    //     setItems([]); // keep current UI behavior
-    //   })
-    //   .then((d) => setItems(Array.isArray(d) ? d : []))
-    //   .catch(() => setItems([]))
-    //   .finally(() => setLoading(false));
     (async () => {
       try {
         const list = await api<AttachmentItem[]>(attBase(reportId));
@@ -223,31 +209,6 @@ function AttachmentPreview({
   useEffect(() => {
     let revoke: string | null = null;
 
-    // fetch(`${attBase(reportId)}/${attId}`, {
-    //   credentials: "include",
-    //   headers: getAuthHeaders(),
-    // })
-    //   .then((r) =>
-    //     r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`))
-    //   )
-    //   .then((m) => {
-    //     setMeta(m);
-    //     return fetch(`${attBase(reportId)}/${attId}/file`, {
-    //       credentials: "include",
-    //       headers: getAuthHeaders(),
-    //     });
-    //   })
-    //   .then((r) =>
-    //     r.ok ? r.blob() : Promise.reject(new Error(`file ${r.status}`))
-    //   )
-    //   .then((blob) => {
-    //     const url = URL.createObjectURL(blob);
-    //     revoke = url;
-    //     setObjectUrl(url);
-    //   })
-    //   .catch((e) => setError(e.message))
-    //   .finally(() => {})
-    // .finally(() => setLoadingFile(false));
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(
@@ -516,6 +477,13 @@ export default function MicroMixWaterReportFormView(
     onPaneChange?.(p);
   };
 
+  const FOOTER_IMAGES = [
+    { src: pjla, alt: "FDA Registered" },
+    { src: ilacmra, alt: "ISO Certified" },
+  ];
+
+  const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
+
   return (
     <div
       className={
@@ -621,7 +589,7 @@ export default function MicroMixWaterReportFormView(
               OMEGA BIOLOGICAL LABORATORY, INC.
             </div>
             <div className="text-[16px]" style={{ color: "blue" }}>
-              (FDA REG.)
+              (FDA REG. | ISO 17025 ACC)
             </div>
             <div className="text-[12px]">
               56 PARK AVENUE, LYNDHURST, NJ 07071 <br></br>
@@ -635,12 +603,19 @@ export default function MicroMixWaterReportFormView(
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
             <div className="mt-1 grid grid-cols-3 items-center">
-              <div /> {/* left spacer */}
-              <div className="text-[18px] font-bold text-center underline">
+              {/* Left: Form Number */}
+              <div className="text-left text-[12px] font-bold">
+                {report.formNumber && report.formNumber}
+              </div>
+
+              {/* Center: Title */}
+              <div className="text-center text-[18px] font-bold underline">
                 Water Report
               </div>
-              <div className="text-right text-[12px] font-bold font-medium">
-                {report.reportNumber ? <> {report.reportNumber}</> : null}
+
+              {/* Right: Report Number */}
+              <div className="text-right text-[12px] font-bold">
+                {report.reportNumber && report.reportNumber}
               </div>
             </div>
           </div>
@@ -927,13 +902,12 @@ export default function MicroMixWaterReportFormView(
                   <span>{p.label}</span>
                 </div>
 
-                <div className="py-[2px] px-2 border-r flex items-center justify-center">
-                  {/* fixed columns so radios line up perfectly across rows */}
-                  <div className="inline-grid grid-cols-[88px_88px_auto] items-center">
-                    <label className="inline-flex items-center gap-1 w-[88px]">
+                <div className="py-[2px] px-2 border-r text-[11px]">
+                  <div className="grid grid-cols-[auto_auto_1fr] items-center gap-x-4">
+                    <label className="inline-flex items-center gap-2 whitespace-nowrap">
                       <input
                         type="radio"
-                        className="thick-box align-middle"
+                        className="thick-box"
                         checked={p.result === "Absent"}
                         readOnly
                         disabled
@@ -941,10 +915,10 @@ export default function MicroMixWaterReportFormView(
                       Absent
                     </label>
 
-                    <label className="inline-flex items-center gap-1 w-[88px]">
+                    <label className="inline-flex items-center gap-2 whitespace-nowrap">
                       <input
                         type="radio"
-                        className="thick-box align-middle"
+                        className="thick-box"
                         checked={p.result === "Present"}
                         readOnly
                         disabled
@@ -952,7 +926,7 @@ export default function MicroMixWaterReportFormView(
                       Present
                     </label>
 
-                    <span className="ml-2 whitespace-nowrap">
+                    <span className="justify-self-start whitespace-nowrap">
                       in {mlFor(p)} of sample
                     </span>
                   </div>
@@ -1034,31 +1008,51 @@ export default function MicroMixWaterReportFormView(
               </div>
             </div>
           </div>
-
-          {/* Footer: Report ID + QR */}
+          {/* Footer: Logos + Confidential text + Report ID + QR */}
           <div
             className={
               isBulk
-                ? "mt-2 flex items-end justify-between"
-                : "mt-2 flex items-end justify-between avoid-break"
+                ? "mt-2 flex items-end justify-between print-footer"
+                : "mt-2 flex items-end justify-between print-footer"
             }
             style={
-              // For normal view → keep avoid
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
-                : // For bulk:
-                // - if it's MANY reports → keep avoid
-                // - if it's ONLY ONE report → let browser break (no extra page)
-                !isSingleBulk
+                : !isSingleBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
                 : undefined
             }
           >
-            <div className="text-[10px] text-slate-600">
-              This report is confidential and intended only for the recipient.
+            {/* LEFT: logos on top, then confidential text */}
+            {/* LEFT: logos + centered accreditation + confidential + footer note */}
+            <div className="flex flex-col gap-2">
+              {/* ✅ Logos row stays unchanged (no centering wrapper that can shift it) */}
+              <div className="flex items-center gap-2">
+                {FOOTER_IMAGES.map((img, idx) => (
+                  <img
+                    key={idx}
+                    src={img.src}
+                    alt={img.alt}
+                    className="w-[64px] h-[64px] object-contain border border-black/10 rounded bg-white"
+                  />
+                ))}
+              </div>
+
+              {/* ✅ Center text WITHOUT moving logos:
+      width = exact width of two logos + gap */}
+              <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+                Accreditation No: <span className="font-bold">109344</span>
+              </div>
+
+              <div className="text-[10px] text-slate-600">
+                This report is confidential and intended only for the recipient.
+              </div>
+
+              <div className="text-[10px] text-slate-600">{FOOTER_NOTE}</div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* RIGHT: Report ID + QR */}
+            <div className="flex items-end gap-3">
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
@@ -1072,12 +1066,9 @@ export default function MicroMixWaterReportFormView(
                 </div>
               </div>
 
-              {/* QR code (prints nicely; includeMargin helps scanners) */}
-              {/* QR code (prints nicely; margin helps scanners) */}
               {qrSvg ? (
                 <div className="p-1 bg-white shrink-0" aria-label="Report QR">
                   <div
-                    // ~28–32mm square is a sweet spot for IDs this length
                     style={{ width: "36mm", height: "36mm" }}
                     dangerouslySetInnerHTML={{ __html: qrSvg }}
                   />

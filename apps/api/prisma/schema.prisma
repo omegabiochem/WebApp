@@ -24,9 +24,10 @@ model Report {
   attachments              Attachment[]
   microMix                 MicroMixDetails?
   microMixWater            MicroMixWaterDetails?
+  
   statusHistory            StatusHistory[]
 }
-
+ 
 model MicroMixDetails {
   reportId               String       @id
   client                 String?
@@ -183,6 +184,8 @@ model Attachment {
   kind       AttachmentKind
   filename   String
   storageKey String
+  storageDriver String         @default("local") // "local" | "s3"
+  storageBucket String?
   checksum   String
   pages      Int?
   source     String
@@ -224,6 +227,7 @@ model MachineClient {
 enum FormType {
   MICRO_MIX
   MICRO_MIX_WATER
+  CHEMISTRY_MIX
 }
 
 enum ReportStatus {
@@ -276,3 +280,176 @@ enum AttachmentKind {
   RAW_SCAN
   OTHER
 }
+
+
+
+
+
+
+model ChemistryReport {
+  id                       String                    @id @default(cuid())
+  formNumber               String                    @unique
+  reportNumber             String?                   @unique
+  prefix                   String                    @default("BC")
+  status                   ChemistryReportStatus           @default(DRAFT)
+  lockedAt                 DateTime?
+  createdBy                String?
+  updatedBy                String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  formType                 FormType                  @default(CHEMISTRY_MIX)
+  attachments              ChemistryAttachment[]
+
+  
+  chemistryMix             ChemistryMixDetails?
+  statusHistory            ChemistryReportStatusHistory[]
+}
+
+
+// ---------------------------
+// CHEMISTRY MIX (full form)
+// ---------------------------
+model ChemistryMixDetails {
+  // follow same pattern as Micro: 1:1 with Report using reportId as PK
+  chemistryId          String        @id
+  chemistryReport            ChemistryReport        @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  // Header / sample info
+  client            String?
+  dateSent          DateTime?
+  sampleDescription String?
+
+  // TYPE OF TEST – multiple checkboxes
+  testTypes         TestType[]    // ID, PERCENT_ASSAY, CONTENT_UNIFORMITY
+
+  // SAMPLE COLLECTED – single choice
+  sampleCollected   SampleCollected?
+
+  // LOT / MFG / FORMULA / SAMPLE SIZE / NUMBER OF ACTIVES
+  lotBatchNo        String?
+  manufactureDate   DateTime?
+  formulaId         String?
+  sampleSize        String?
+  numberOfActives   String?
+
+  // SAMPLE TYPE – multiple checkboxes across the row
+  sampleTypes       SampleType[]  // BULK / FINISHED_GOOD / etc.
+
+  dateReceived      DateTime?
+
+  // “ACTIVE TO BE TESTED” rows
+  actives           Json?
+
+  // Comments + signatures block
+  comments          String?
+  testedBy          String?
+  testedDate        DateTime?
+  reviewedBy        String?
+  reviewedDate      DateTime?
+
+  // Per-form status, like MicroMixDetails
+  status            ChemistryReportStatus  @default(DRAFT)
+  lockedAt          DateTime?
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  corrections       Json?
+}
+
+
+
+
+
+
+enum ChemistryReportStatus {
+  DRAFT
+  SUBMITTED_BY_CLIENT
+  CLIENT_NEEDS_CORRECTION
+  UNDER_CLIENT_CORRECTION
+  RESUBMISSION_BY_CLIENT
+  UNDER_RESUBMISSION_TESTING_REVIEW
+  RECEIVED_BY_FRONTDESK
+  FRONTDESK_ON_HOLD
+  FRONTDESK_NEEDS_CORRECTION
+  UNDER_CLIENT_REVIEW
+  UNDER_TESTING_REVIEW 
+  TESTING_ON_HOLD
+  TESTING_NEEDS_CORRECTION
+  RESUBMISSION_BY_TESTING
+  UNDER_QA_REVIEW
+  QA_NEEDS_CORRECTION
+  UNDER_ADMIN_REVIEW
+  ADMIN_NEEDS_CORRECTION
+  ADMIN_REJECTED
+  UNDER_RESUBMISSION_ADMIN_REVIEW
+  APPROVED
+  LOCKED
+}
+
+model ChemistryReportStatusHistory {
+  id           String           @id @default(cuid())
+  chemistryId  String
+  from         ChemistryReportStatus
+  to           ChemistryReportStatus
+  reason       String?
+  createdAt    DateTime         @default(now())
+  userId       String?
+  role         UserRole?
+  ipAddress    String?
+
+  report    ChemistryReport  @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@index([chemistryId, createdAt])
+}
+
+
+model ChemistryAttachment {
+  id         String          @id @default(cuid())
+  chemistryId   String
+  filename   String
+  kind       AttachmentKind
+  storageKey String
+  storageDriver String          @default("local")
+  storageBucket String?
+  checksum   String
+  pages      Int?
+  source     String
+  meta       Json?
+  createdAt  DateTime        @default(now())
+  createdBy  String?
+
+  report     ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@unique([chemistryId, checksum])
+  @@index([chemistryId])
+}
+
+
+enum TestType {
+  ID
+  PERCENT_ASSAY
+  CONTENT_UNIFORMITY
+}
+
+enum SampleCollected {
+  TOP_BEG
+  MID
+  BOTTOM_END
+}
+
+enum SampleType {
+  BULK
+  FINISHED_GOOD
+  RAW_MATERIAL
+  PROCESS_VALIDATION
+  CLEANING_VALIDATION
+  COMPOSITE
+  DI_WATER_SAMPLE
+}
+
+
+
+
+
+

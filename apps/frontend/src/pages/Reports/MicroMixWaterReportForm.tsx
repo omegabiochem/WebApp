@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
 import {
   useReportValidation,
+  useMicroMixWaterReportValidation,
   FieldErrorBadge,
   type MicroMixWaterReportFormValues,
   deriveMicroPhaseFromStatus,
@@ -12,7 +13,7 @@ import {
   getCorrections,
   resolveCorrection,
   createCorrections,
-} from "../../utils/microMixWaterReportValidation";
+} from "../../utils/microMixReportValidation";
 import {
   STATUS_TRANSITIONS,
   type ReportStatus,
@@ -188,38 +189,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-// // Simple input wrapper that locks by role
-// function Field({
-//   label,
-//   value,
-//   onChange,
-//   readOnly,
-//   className = "",
-//   inputClass = "",
-//   placeholder = " ", // placeholder space keeps boxes visible when empty
-// }: {
-//   label: string;
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-//   inputClass?: string;
-//   placeholder?: string;
-// }) {
-//   return (
-//     <div className={`flex gap-2 items-center ${className}`}>
-//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-//       <input
-//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-//         value={value}
-//         onChange={(e) => onChange(e.target.value)}
-//         readOnly={readOnly}
-//         placeholder={placeholder}
-//       />
-//     </div>
-//   );
-// }
-
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
   <style>{`
@@ -272,7 +241,7 @@ const DashStyles = () => (
 
 const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
 
-export default function MicroMixWaterReportForm({
+export default function MicroMixReportForm({
   report,
   onClose,
 }: {
@@ -389,6 +358,14 @@ export default function MicroMixWaterReportForm({
       },
       {
         checked: false,
+        key: "C_ALB",
+        label: "C.albicans",
+        grams: "11ml",
+        result: "",
+        spec: "",
+      },
+      {
+        checked: false,
         key: "COLI",
         label: "Coliforms",
         grams: "11ml",
@@ -415,7 +392,7 @@ export default function MicroMixWaterReportForm({
     []
   );
 
-  const mlFor = (p: PathRow) => p.grams ?? "11ml";
+  const gramsFor = (p: PathRow) => p.grams ?? "11ml";
 
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(
@@ -560,20 +537,6 @@ export default function MicroMixWaterReportForm({
   }
 
   // Tiny inline pill next to a field label/badge
-  // function ResolvePill({ field }: { field: string }) {
-  //   if (!canResolveField || !hasCorrection(field)) return null;
-  //   return (
-  //     <button
-  //       className="ml-1 inline-flex items-center rounded-full bg-emerald-600 px-2 py-[2px] text-[10px] font-medium text-white hover:bg-emerald-700"
-  //       title="Resolve all notes for this field"
-  //       onClick={() => resolveField(field)}
-  //     >
-  //       ✓
-  //     </button>
-  //   );
-  // }
-
-  // Tiny inline pill next to a field label/badge
   function ResolveOverlay({ field }: { field: string }) {
     if (!hasCorrection(field) || !canResolveField(field)) return null;
     return (
@@ -593,6 +556,9 @@ export default function MicroMixWaterReportForm({
     );
   }
 
+  const normalizeGrams = (v: string) =>
+    v.trim() ? (/[ml]$/.test(v) ? v : v + "ml") : v;
+
   const [showCorrTray, setShowCorrTray] = useState(false);
 
   // fields to briefly show as "resolved" (green halo)
@@ -610,12 +576,6 @@ export default function MicroMixWaterReportForm({
       : flash[keyOrPrefix]
       ? "dash dash-green"
       : "";
-  // const dashClass = (field: string) =>
-  //   hasOpenCorrection(field)
-  //     ? "dash dash-red"
-  //     : flash[field]
-  //     ? "dash dash-green"
-  //     : "";
 
   function validatePathogenRows(
     rows: PathRow[],
@@ -727,9 +687,6 @@ export default function MicroMixWaterReportForm({
     markDirty();
   }
 
-  const normalizeGrams = (v: string) =>
-    v.trim() ? (/[gG]$/.test(v) ? v : v + "ml") : v;
-
   function setPathogenGrams(idx: number, grams: string) {
     setPathogens((prev) => {
       const copy = [...prev];
@@ -749,12 +706,10 @@ export default function MicroMixWaterReportForm({
   // use:
   const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
 
-  const { errors, clearError, validateAndSetErrors } = useReportValidation(
-    role,
-    {
+  const { errors, clearError, validateAndSetErrors } =
+    useMicroMixWaterReportValidation(role, {
       status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
-    }
-  );
+    });
 
   // Current values snapshot (use inside handlers)
   const makeValues = (): MicroMixWaterReportFormValues => ({
@@ -808,7 +763,7 @@ export default function MicroMixWaterReportForm({
       idNo,
       description,
       lotNo,
-      samplingDate,
+      samplingDate: samplingDate?.trim() ? samplingDate : "NA",
       testSopNo,
       dateTested,
       preliminaryResults,
@@ -910,34 +865,17 @@ export default function MicroMixWaterReportForm({
       let saved: SavedReport;
 
       if (reportId) {
-        // console.log("Updating report", reportId);
-        // update
-        // res = await fetch(`${API_BASE}/reports/${reportId}`, {
-        //   method: "PATCH",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify({ ...payload, reason: "Saving" }),
-        // });
-        // console.log(res);
         saved = await api<SavedReport>(`/reports/${reportId}`, {
           method: "PATCH",
           body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
       } else {
-        // create
-        // res = await fetch(`${API_BASE}/reports`, {
-        //   method: "POST",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify(payload),
-        // });
         saved = await api(`/reports`, {
           method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX_WATER" }),
+          body: JSON.stringify({
+            ...payload,
+            formType: "MICRO_MIX_WATER",
+          }),
         });
       }
 
@@ -1069,6 +1007,7 @@ export default function MicroMixWaterReportForm({
 
   function formatDateForInput(value: string | null) {
     if (!value) return "";
+    if (value === "NA") return "NA";
     // Convert ISO to yyyy-MM-dd
     return new Date(value).toISOString().split("T")[0];
   }
@@ -1206,24 +1145,6 @@ export default function MicroMixWaterReportForm({
                 />
               )}
             </div>
-            {/* <div id="f-dateSent" className="px-2 flex items-center gap-1">
-              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-               <FieldError name="dateSent"  errors={errors}/>
-              {lock("dateSent") || role === "CLIENT" ? (
-                <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
-              ) : (
-                <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  type="date"
-                  value={formatDateForInput(dateSent)}
-                  onChange={(e) => {
-                    setDateSent(e.target.value);
-                    markDirty();
-                  }}
-                />
-              )}
-            </div> */}
-
             <div
               id="f-dateSent"
               onClick={() => {
@@ -1239,11 +1160,6 @@ export default function MicroMixWaterReportForm({
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
               <FieldErrorBadge name="dateSent" errors={errors} />
               <ResolveOverlay field="dateSent" />
-
-              {/* tiny floating badge; does not affect layout */}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" /> */}
 
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">
@@ -1270,21 +1186,10 @@ export default function MicroMixWaterReportForm({
                   aria-invalid={!!errors.dateSent}
                 />
               )}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              // <ResolvePill field="dateSent" /> */}
-              {/* <ResolvePill field="dateSent" /> */}
             </div>
-
-            {/* absolutely positioned; doesn't affect layout */}
-            {/* <div className="overlay-actions">
-              <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" />
-            </div> */}
           </div>
 
-          {/* TYPE OF TEST / SAMPLE TYPE / ID NO # */}
+          {/* TYPE OF TEST / SAMPLE TYPE / ID # */}
           <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
             <div
               id="f-typeOfTest"
@@ -1371,7 +1276,7 @@ export default function MicroMixWaterReportForm({
               className={`px-2 flex items-center gap-1 relative
                 ${dashClass("idNo")}`}
             >
-              <div className="font-medium whitespace-nowrap">ID NO #:</div>
+              <div className="font-medium whitespace-nowrap">ID #:</div>
               <FieldErrorBadge name="idNo" errors={errors} />
               <ResolveOverlay field="idNo" />
               {lock("idNo") ? (
@@ -1438,7 +1343,7 @@ export default function MicroMixWaterReportForm({
             )}
           </div>
 
-          {/* LOT # / MANUFACTURE DATE */}
+          {/* LOT # / SAMPLING DATE */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
             <div
               id="f-lotNo"
@@ -1495,7 +1400,7 @@ export default function MicroMixWaterReportForm({
               <ResolveOverlay field="samplingDate" />
               {lock("samplingDate") ? (
                 <div className="flex-1  min-h-[14px]">
-                  {formatDateForInput(samplingDate)}
+                  {samplingDate ? formatDateForInput(samplingDate) : "NA"}
                 </div>
               ) : (
                 <input
@@ -1509,7 +1414,7 @@ export default function MicroMixWaterReportForm({
                       : ""
                   } `}
                   type="date"
-                  value={formatDateForInput(samplingDate)}
+                  value={samplingDate ? formatDateForInput(samplingDate) : "NA"}
                   onChange={(e) => {
                     setsamplingDate(e.target.value);
                     markDirty();
@@ -2041,6 +1946,14 @@ export default function MicroMixWaterReportForm({
                     disabled={lock("pathogens") || role !== "CLIENT"}
                   />
                   <span className="font-bold">{p.label}</span>
+                  {/* {p.key === "OTHER" && (
+                    <input
+                      className="input-editable leading-tight"
+                      placeholder="(specify)"
+                      readOnly
+                    />
+                  )} */}
+
                   {p.key === "OTHER" && (
                     <input
                       className="input-editable leading-tight border px-1 text-[8px]"
@@ -2126,7 +2039,7 @@ export default function MicroMixWaterReportForm({
                       of sample
                     </span>
                   ) : (
-                    <span className="ml-2">in {mlFor(p)} of sample</span>
+                    <span className="ml-2">in {gramsFor(p)} of sample</span>
                   )}
 
                   {/* optional row error */}
@@ -2208,12 +2121,14 @@ export default function MicroMixWaterReportForm({
             }}
             className={`p2 col-span-2 flex relative ${dashClass("comments")}`}
           >
-            <div className="mb-1 font-medium">Comments:</div>
+            <div className=" font-medium  mb-1 flex items-center gap-5">
+              Comments :{" "}
+            </div>
             <FieldErrorBadge name="comments" errors={errors} />
             <ResolveOverlay field="comments" />
             <input
-              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0  pl-2 ${
-                errors.testedBy ? "border-b-red-500" : "border-b-black/70"
+              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 pl-2 ${
+                errors.comments ? "border-b-red-500" : "border-b-black/70"
               } ${
                 hasCorrection("comments")
                   ? "ring-2 ring-rose-500 animate-pulse"

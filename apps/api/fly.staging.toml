@@ -21,4 +21,3 @@ primary_region = "ewr"
 [deploy]
   # Run Prisma migrations then seed on deploy
   release_command = "sh -c 'npx prisma migrate deploy && npx prisma db seed'"
-

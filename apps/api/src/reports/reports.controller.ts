@@ -90,6 +90,11 @@ export class ReportsController {
     return this.svc.get(id);
   }
 
+  @Get()
+  findAll() {
+    return this.svc.findAll();
+  }
+
   @Patch(':id')
   patch(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     const reasonFromHeader = req.headers['x-change-reason'] as
@@ -108,11 +113,6 @@ export class ReportsController {
     });
 
     return this.svc.update(req.user, id, body);
-  }
-
-  @Get()
-  findAll() {
-    return this.svc.findAll();
   }
 
   @Patch(':id/status')

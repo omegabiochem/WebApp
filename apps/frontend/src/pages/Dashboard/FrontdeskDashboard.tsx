@@ -13,6 +13,12 @@ import {
 import { api } from "../../lib/api";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+import {
+  canShowChemistryUpdateButton,
+  CHEMISTRY_STATUS_COLORS,
+  type ChemistryReportStatus,
+} from "../../utils/chemistryReportFormWorkflow";
 // import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 // import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
@@ -40,6 +46,7 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  CHEMISTRY_MIX: "chemistry-mix",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -64,7 +71,12 @@ function formatDate(iso: string | null) {
 function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
-  return canShowUpdateButton(user?.role as Role, r.status as ReportStatus);
+
+  const isChem = r.formType === "CHEMISTRY_MIX";
+
+  return isChem
+    ? canShowChemistryUpdateButton(user.role, r.status as ChemistryReportStatus)
+    : canShowUpdateButton(user.role as Role, r.status as ReportStatus);
 }
 
 // --------------- Bulk print helper (renders selected reports + window.print) ---------------
@@ -131,6 +143,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "CHEMISTRY_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <ChemistryMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -173,6 +197,13 @@ export default function FrontDeskDashboard() {
     null
   );
 
+  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
+    "ALL"
+  );
+
+  // // status filter now uses combined type
+  // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -183,7 +214,10 @@ export default function FrontDeskDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const all = await api<Report[]>("/reports");
+        const micro = await api<Report[]>("/reports");
+        const chemistry = await api<Report[]>("/chemistry-reports");
+
+        const all = [...micro, ...chemistry];
 
         const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
         const filtered = all.filter((r) => keep.has(r.status as any));
@@ -203,10 +237,20 @@ export default function FrontDeskDashboard() {
 
   // Derived table data
   const processed = useMemo(() => {
+    // 1) form type filter
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) =>
+            formFilter === "MICRO"
+              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
+              : r.formType === "CHEMISTRY_MIX"
+          );
+
     const byStatus =
       statusFilter === "ALL"
-        ? reports
-        : reports.filter((r) => r.status === statusFilter);
+        ? byForm
+        : byForm.filter((r) => r.status === statusFilter);
 
     const bySearch = search.trim()
       ? byStatus.filter((r) => {
@@ -231,7 +275,7 @@ export default function FrontDeskDashboard() {
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir]);
+  }, [reports, formFilter, statusFilter, search, sortBy, sortDir]);
 
   // Pagination
   const total = processed.length;
@@ -251,16 +295,35 @@ export default function FrontDeskDashboard() {
     newStatus: string,
     reason = "Common Status Change"
   ) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    await api(`/reports/${slug}/${r.id}/status`, {
+    // const slug = formTypeToSlug[r.formType] || "micro-mix";
+    // await api(`/reports/${slug}/${r.id}/status`, {
+    //   method: "PATCH",
+    //   body: JSON.stringify({ reason, status: newStatus }),
+    // });
+    const isChemistry = r.formType === "CHEMISTRY_MIX";
+
+    const url = isChemistry
+      ? `/chemistry-reports/${r.id}/status`
+      : `/reports/${r.id}/status`;
+
+    const body = isChemistry
+      ? { status: newStatus }
+      : { reason, status: newStatus };
+
+    // const slug = formTypeToSlug[r.formType] || "micro-mix";
+    await api(url, {
       method: "PATCH",
-      body: JSON.stringify({ reason, status: newStatus }),
+      body: JSON.stringify(body),
     });
   }
 
   function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    navigate(`/reports/${slug}/${r.id}`);
+    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
+    if (r.formType === "CHEMISTRY_MIX") {
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}`);
+    }
   }
 
   // checkbox helpers
@@ -367,7 +430,7 @@ export default function FrontDeskDashboard() {
             Frontdesk Dashboard
           </h1>
           <p className="text-sm text-slate-500">
-            View and manage your Micro Mix reports
+            View and manage your lab reports
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -394,6 +457,34 @@ export default function FrontDeskDashboard() {
             ↻ Refresh
           </button>
         </div>
+      </div>
+
+      {/* Form type tabs */}
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All forms"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Chemistry"}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Controls Card */}
@@ -531,64 +622,77 @@ export default function FrontDeskDashboard() {
                 ))}
 
               {!loading &&
-                pageRows.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={isRowSelected(r.id)}
-                        onChange={() => toggleRow(r.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium">{r.reportNumber}</td>
-                    <td className="px-4 py-3">{r.formNumber}</td>
-                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={classNames(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_COLORS[r.status as ReportStatus] ||
-                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                        )}
-                      >
-                        {niceStatus(String(r.status))}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                          onClick={() => setSelectedReport(r)}
-                        >
-                          View
-                        </button>
+                pageRows.map((r) => {
+                  // const isMicro =
+                  //   r.formType === "MICRO_MIX" ||
+                  //   r.formType === "MICRO_MIX_WATER";
 
-                        <button
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                          onClick={async () => {
-                            try {
-                              if (
-                                r.status ===
-                                "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                              ) {
-                                await setStatus(
-                                  r,
-                                  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                  "Sent back to formNumber for correction"
-                                );
-                              }
-                              goToReportEditor(r);
-                            } catch (e: any) {
-                              alert(e?.message || "Failed to update status");
-                            }
-                          }}
+                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  return (
+                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isRowSelected(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {r.reportNumber}
+                      </td>
+                      <td className="px-4 py-3">{r.formNumber}</td>
+                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={classNames(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            (isChemistry
+                              ? CHEMISTRY_STATUS_COLORS[
+                                  r.status as ChemistryReportStatus
+                                ]
+                              : STATUS_COLORS[r.status as ReportStatus]) ||
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                          )}
                         >
-                          Update
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {niceStatus(String(r.status))}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button>
+
+                          <button
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                            onClick={async () => {
+                              try {
+                                if (
+                                  r.status ===
+                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                ) {
+                                  await setStatus(
+                                    r,
+                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                    "Sent back to formNumber for correction"
+                                  );
+                                }
+                                goToReportEditor(r);
+                              } catch (e: any) {
+                                alert(e?.message || "Failed to update status");
+                              }
+                            }}
+                          >
+                            Update
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
               {!loading && pageRows.length === 0 && (
                 <tr>
@@ -752,23 +856,15 @@ export default function FrontDeskDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
+              ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
+                <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
               ) : (
-                // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-                //   <MicroGeneralReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane={modalPane}
-                //     onPaneChange={setModalPane}
-                //   />
-                // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-                //   <MicroGeneralWaterReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane={modalPane}
-                //     onPaneChange={setModalPane}
-                //   />
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
                   viewer yet.

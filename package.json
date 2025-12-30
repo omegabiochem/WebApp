@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "sharp": "^0.34.4"
+  },
+  "dependencies": {
+    "lucide-react": "^0.561.0"
   }
 }

@@ -26,8 +26,9 @@ import { ESignService } from './auth/esign.service';
 import { AuditModule } from './audit/audit.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { HealthController } from './health.controller';
-
-
+import { ChemistryReportsModule } from './reports/chemistryreports.module';
+import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.module';
+import { RequestContextMiddleware } from './common/context.middleware';
 
 
 @Module({
@@ -40,13 +41,20 @@ import { HealthController } from './health.controller';
     BalanceModule,
     AuditModule,
     AttachmentsModule,
+    ChemistryReportsModule,
+    ChemistryAttachmentsModule,
   ],
   controllers: [HealthController],
   providers: [
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard }, PrismaService, ESignService
+    { provide: APP_GUARD, useClass: RolesGuard },
+    PrismaService,
+    ESignService,
   ],
 })
-export class AppModule { }
-
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}
