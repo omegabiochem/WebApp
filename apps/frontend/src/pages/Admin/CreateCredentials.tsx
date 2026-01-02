@@ -6,7 +6,7 @@ import Modal from "../../components/common/Modal";
 import { useAuth } from "../../context/AuthContext";
 import { zodResolver } from "@hookform/resolvers/zod";
 import toast from "react-hot-toast";
-import { Check, Clipboard, Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 
 const roles: Role[] = [
   "SYSTEMADMIN",
