@@ -435,30 +435,6 @@ export default function MicroMixWaterReportFormView(
     };
   }, [qrValue]);
 
-  //   const [qrDataUrl, setQrDataUrl] = useState<string>("");
-
-  //   useEffect(() => {
-  //     let alive = true;
-  //     if (!qrValue) {
-  //       setQrDataUrl("");
-  //       return;
-  //     }
-  //     QRCode.toDataURL(qrValue, {
-  //       margin: 1,
-  //       scale: 6,
-  //       errorCorrectionLevel: "M",
-  //     })
-  //       .then((url) => {
-  //         if (alive) setQrDataUrl(url);
-  //       })
-  //       .catch(() => {
-  //         if (alive) setQrDataUrl("");
-  //       });
-  //     return () => {
-  //       alive = false;
-  //     };
-  //   }, [qrValue]);
-
   // ...
   useEffect(() => {
     if (isBulkPrint) return;
@@ -499,34 +475,6 @@ export default function MicroMixWaterReportFormView(
         null}
 
       {/* View switcher */}
-      {/* <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
-        <div className="flex items-center gap-2 py-2">
-          <button
-            type="button"
-            onClick={() => setPane("FORM")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "FORM"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "FORM"}
-          >
-            Main form
-          </button>
-          <button
-            type="button"
-            onClick={() => setPane("ATTACHMENTS")}
-            className={`px-3 py-1 rounded-full text-sm transition ${
-              pane === "ATTACHMENTS"
-                ? "bg-blue-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
-            }`}
-            aria-pressed={pane === "ATTACHMENTS"}
-          >
-            Attachments
-          </button>
-        </div>
-      </div> */}
 
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
@@ -558,25 +506,6 @@ export default function MicroMixWaterReportFormView(
           </div>
         </div>
       )}
-
-      {/* Controls (hidden on print) */}
-      {/* Controls (hidden on print) */}
-      {/* <div className="no-print absolute top-2 right-2 flex gap-2">
-        {activePane === "FORM" && (
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Print
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800"
-        >
-          Close
-        </button>
-      </div> */}
 
       {isBulk || activePane === "FORM" ? (
         <>
@@ -621,7 +550,7 @@ export default function MicroMixWaterReportFormView(
           </div>
 
           {/* Top meta block */}
-          <div className="w-full border border-black text-[15px]">
+          <div className="w-full border border-black text-[15px] ">
             {/* CLIENT / DATE SENT */}
             <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
               <div className="px-2 border-r border-black flex items-center gap-1">

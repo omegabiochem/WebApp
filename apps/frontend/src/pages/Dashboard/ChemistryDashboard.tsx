@@ -731,7 +731,7 @@ export default function ChemistryDashboard() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto px-6 py-4">
+            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport}

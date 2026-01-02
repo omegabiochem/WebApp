@@ -1,7 +1,7 @@
 // src/pages/Audit/AuditTrailPage.tsx
-import  { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
-import { api } from "../../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { Download, RefreshCcw, Search } from "lucide-react";
+import { api, API_URL } from "../../lib/api";
 
 type AuditRecord = {
   id: string;
@@ -9,40 +9,363 @@ type AuditRecord = {
   entity: string;
   entityId: string | null;
   details: string;
+  changes?: any | null;
   role: string | null;
   ipAddress: string | null;
   createdAt: string;
   userId: string | null;
 };
 
-// const API_BASE = "http://localhost:3000";
+type PagedResponse = { items: AuditRecord[]; total: number } | AuditRecord[];
+
+const PAGE_SIZES = [10, 20, 50, 100] as const;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function safeText(v: string | null | undefined) {
+  return v && v.trim().length ? v : "-";
+}
+
+// Badge colors for actions
+const badgeColor = (action: string) => {
+  switch (action) {
+    case "CREATE":
+      return "bg-green-100 text-green-800";
+    case "UPDATE":
+      return "bg-blue-100 text-blue-800";
+    case "DELETE":
+      return "bg-red-100 text-red-800";
+    case "LOGIN":
+      return "bg-emerald-100 text-emerald-800";
+    case "LOGOUT":
+      return "bg-slate-100 text-slate-800";
+    case "LOGIN_FAILED":
+      return "bg-orange-100 text-orange-800";
+    case "PASSWORD_CHANGE":
+      return "bg-purple-100 text-purple-800";
+    case "INVITE_ISSUED":
+      return "bg-cyan-100 text-cyan-800";
+    case "FIRST_CREDENTIALS_SET":
+      return "bg-indigo-100 text-indigo-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
+type DiffRow = {
+  path: string;
+  oldValue: unknown;
+  newValue: unknown;
+};
+
+function isPlainObject(x: any) {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+function tryParseJsonAny(input: unknown): any | null {
+  if (input == null) return null;
+  if (typeof input === "object") return input; // already json from API
+  if (typeof input !== "string") return null;
+
+  const t = input.trim();
+  const looksJson =
+    (t.startsWith("{") && t.endsWith("}")) ||
+    (t.startsWith("[") && t.endsWith("]"));
+  if (!looksJson) return null;
+
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
+  }
+}
+
+function toShort(v: unknown) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v instanceof Date) return v.toISOString();
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function looksLikeLeafDiff(
+  obj: any
+): { oldKey: string; newKey: string } | null {
+  if (!isPlainObject(obj)) return null;
+
+  const pairs: Array<[string, string]> = [
+    ["from", "to"],
+    ["old", "new"],
+    ["before", "after"],
+    ["prev", "next"],
+    ["previous", "current"],
+  ];
+
+  for (const [a, b] of pairs) {
+    if (a in obj && b in obj) return { oldKey: a, newKey: b };
+  }
+  return null;
+}
+
+function flattenDiff(value: any, basePath = ""): DiffRow[] {
+  if (value == null) return [];
+
+  // ✅ Special case: root or nested { before: {...}, after: {...} }
+  if (isPlainObject(value) && "before" in value && "after" in value) {
+    const before = (value as any).before;
+    const after = (value as any).after;
+
+    // If before/after are objects, generate rows by comparing keys
+    if (isPlainObject(before) && isPlainObject(after)) {
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      const out: DiffRow[] = [];
+
+      for (const k of keys) {
+        const nextPath = basePath ? `${basePath}.${k}` : k;
+        const b = (before as any)[k];
+        const a = (after as any)[k];
+
+        // recurse if nested objects
+        if (isPlainObject(b) && isPlainObject(a)) {
+          out.push(...flattenDiff({ before: b, after: a }, nextPath));
+        } else {
+          out.push({ path: nextPath, oldValue: b, newValue: a });
+        }
+      }
+      return out;
+    }
+
+    // If before/after are scalar, just show one row
+    return basePath
+      ? [{ path: basePath, oldValue: before, newValue: after }]
+      : [];
+  }
+
+  // ✅ case: [old, new]
+  if (Array.isArray(value) && value.length === 2 && basePath) {
+    return [{ path: basePath, oldValue: value[0], newValue: value[1] }];
+  }
+
+  // ✅ case: leaf diff { from,to } etc
+  const leaf = looksLikeLeafDiff(value);
+  if (leaf && basePath) {
+    return [
+      {
+        path: basePath,
+        oldValue: value[leaf.oldKey],
+        newValue: value[leaf.newKey],
+      },
+    ];
+  }
+
+  // ✅ plain object: recurse
+  if (isPlainObject(value)) {
+    const out: DiffRow[] = [];
+    for (const [k, v] of Object.entries(value)) {
+      const nextPath = basePath ? `${basePath}.${k}` : k;
+
+      if (Array.isArray(v) && v.length === 2) {
+        out.push({ path: nextPath, oldValue: v[0], newValue: v[1] });
+      } else if (looksLikeLeafDiff(v)) {
+        const leaf2 = looksLikeLeafDiff(v)!;
+        out.push({
+          path: nextPath,
+          oldValue: (v as any)[leaf2.oldKey],
+          newValue: (v as any)[leaf2.newKey],
+        });
+      } else if (isPlainObject(v) || Array.isArray(v)) {
+        out.push(...flattenDiff(v, nextPath));
+      } else {
+        out.push({ path: nextPath, oldValue: "", newValue: v });
+      }
+    }
+    return out;
+  }
+
+  return basePath ? [{ path: basePath, oldValue: "", newValue: value }] : [];
+}
+
+function DiffTable({ json }: { json: any }) {
+  const rows = useMemo(() => {
+    const flat = flattenDiff(json);
+    // keep stable order
+    return flat.sort((a, b) => a.path.localeCompare(b.path));
+  }, [json]);
+
+  if (!rows.length) {
+    return (
+      <div className="text-xs text-gray-500 italic">No structured changes.</div>
+    );
+  }
+
+  return (
+    <div className="mt-2 border rounded-lg overflow-hidden">
+      <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 border-b">
+        Changes
+      </div>
+      <div className="overflow-auto max-h-72">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-white border-b">
+              <th className="text-left p-2 w-[40%]">Field</th>
+              <th className="text-left p-2 w-[30%]">Before</th>
+              <th className="text-left p-2 w-[30%]">After</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.path} className="border-b last:border-b-0">
+                <td className="p-2 font-mono break-words">{r.path}</td>
+                <td className="p-2 break-words text-gray-700">
+                  {toShort(r.oldValue)}
+                </td>
+                <td className="p-2 break-words text-gray-900 font-medium">
+                  {toShort(r.newValue)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DetailsCell({ details, changes }: { details: string; changes?: any }) {
+  const [open, setOpen] = useState(false);
+
+  const parsedChanges = useMemo(() => tryParseJsonAny(changes), [changes]);
+  const hasChanges =
+    parsedChanges != null &&
+    (isPlainObject(parsedChanges) || Array.isArray(parsedChanges));
+
+  const parsedDetailsJson = useMemo(() => tryParseJsonAny(details), [details]);
+  const detailsIsJson =
+    parsedDetailsJson != null && isPlainObject(parsedDetailsJson);
+
+  // choose what to show as table:
+  // 1) changes (preferred)
+  // 2) else details if it contains JSON
+  const tableJson = hasChanges
+    ? parsedChanges
+    : detailsIsJson
+    ? parsedDetailsJson
+    : null;
+
+  const isLongText = (details || "").length > 160;
+
+  return (
+    <div className="max-w-[520px]">
+      {tableJson ? (
+        <>
+          <button
+            className="text-xs text-indigo-600 hover:underline"
+            onClick={() => setOpen((s) => !s)}
+          >
+            {open ? "Hide changes" : "View changes"}
+          </button>
+          {open && <DiffTable json={tableJson} />}
+          {!open && (
+            <div className="mt-1 text-[11px] text-gray-500">
+              (tap “View changes” to see field-level diff)
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div
+            className={`whitespace-pre-wrap break-words ${
+              open ? "" : "line-clamp-3"
+            }`}
+          >
+            {details || "-"}
+          </div>
+          {isLongText && (
+            <button
+              className="mt-1 text-xs text-indigo-600 hover:underline"
+              onClick={() => setOpen((s) => !s)}
+            >
+              {open ? "Show less" : "Show more"}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function AuditTrailPage() {
-    
   const [records, setRecords] = useState<AuditRecord[]>([]);
+  const [total, setTotal] = useState<number>(0);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   // filters
   const [filterEntity, setFilterEntity] = useState("");
-  const [filterUser, setFilterUser] = useState("");
+  const [filterUserId, setFilterUserId] = useState("");
+  const [filterEntityId, setFilterEntityId] = useState(""); // reportId/entityId search
+  const [filterAction, setFilterAction] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // Build query string from filters
+  // sort + pagination
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filterEntity,
+    filterUserId,
+    filterEntityId,
+    filterAction,
+    dateFrom,
+    dateTo,
+    sortOrder,
+    pageSize,
+  ]);
+
+  // Build query string
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (filterEntity) params.append("entity", filterEntity);
-    if (filterUser) params.append("userId", filterUser);
+    if (filterUserId) params.append("userId", filterUserId);
+    if (filterEntityId) params.append("entityId", filterEntityId);
+    if (filterAction) params.append("action", filterAction);
     if (dateFrom) params.append("from", dateFrom);
     if (dateTo) params.append("to", dateTo);
+
+    // pagination + sort
+    params.append("page", String(page));
+    params.append("pageSize", String(pageSize));
+    params.append("sort", "createdAt");
+    params.append("order", sortOrder);
+
     const qs = params.toString();
     return qs ? `?${qs}` : "";
-  }, [filterEntity, filterUser, dateFrom, dateTo]);
+  }, [
+    filterEntity,
+    filterUserId,
+    filterEntityId,
+    filterAction,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize,
+    sortOrder,
+  ]);
 
-  
-
-  // Auto-fetch on mount and whenever filters change (debounced)
+  // Fetch data (debounced)
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -55,38 +378,21 @@ export default function AuditTrailPage() {
     setErr(null);
 
     const ctrl = new AbortController();
-  //   const t = setTimeout(async () => {
-  //     try {
-  //       const res = await fetch(`${API_BASE}/audit${queryString}`, {
-  //         headers: { Authorization: `Bearer ${token}` },
-  //         signal: ctrl.signal,
-  //       });
-  //       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  //       const data: AuditRecord[] = await res.json();
-  //       setRecords(data);
-  //     } catch (e: any) {
-  //       if (e.name !== "AbortError") {
-  //         console.error("Audit fetch failed", e);
-  //         setErr(e.message || "Failed to fetch audit trail");
-  //       }
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   }, 400); // debounce
 
-  //   return () => {
-  //     clearTimeout(t);
-  //     ctrl.abort();
-  //   };
-  // }, [queryString]);
-
-  const t = setTimeout(async () => {
+    const t = setTimeout(async () => {
       try {
-        const data = await api<AuditRecord[]>(`/audit${queryString}`, {
+        const data = await api<PagedResponse>(`/audit${queryString}`, {
           signal: ctrl.signal,
         });
-        
-        setRecords(data);
+
+        // Support both array and {items,total}
+        if (Array.isArray(data)) {
+          setRecords(data);
+          setTotal(data.length); // fallback: unknown true total
+        } else {
+          setRecords(data.items);
+          setTotal(data.total);
+        }
       } catch (e: any) {
         if (e.name !== "AbortError") {
           console.error("Audit fetch failed", e);
@@ -95,13 +401,40 @@ export default function AuditTrailPage() {
       } finally {
         setLoading(false);
       }
-    }, 400); // debounce
+    }, 350);
 
     return () => {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [queryString]);
+  }, [queryString, refreshKey]);
+
+  const totalPages = useMemo(() => {
+    if (!total || total < 0) return 1;
+    return Math.max(1, Math.ceil(total / pageSize));
+  }, [total, pageSize]);
+
+  // Build entity options from current dataset (works even with pagination)
+  const entityOptions = useMemo(
+    () => Array.from(new Set(records.map((r) => r.entity))).sort(),
+    [records]
+  );
+
+  const actionOptions = useMemo(
+    () => Array.from(new Set(records.map((r) => r.action))).sort(),
+    [records]
+  );
+
+  const clearFilters = () => {
+    setFilterEntity("");
+    setFilterUserId("");
+    setFilterEntityId("");
+    setFilterAction("");
+    setDateFrom("");
+    setDateTo("");
+    setSortOrder("desc");
+    setPage(1);
+  };
 
   const downloadCSV = async () => {
     const token = localStorage.getItem("token");
@@ -109,150 +442,262 @@ export default function AuditTrailPage() {
       alert("Please log in first.");
       return;
     }
+
+    // build QS (no pagination)
+    const params = new URLSearchParams();
+    if (filterEntity) params.append("entity", filterEntity);
+    if (filterUserId) params.append("userId", filterUserId);
+    if (filterEntityId) params.append("entityId", filterEntityId);
+    if (filterAction) params.append("action", filterAction);
+    if (dateFrom) params.append("from", dateFrom);
+    if (dateTo) params.append("to", dateTo);
+    params.append("order", sortOrder);
+
+    const qs = params.toString();
+    const url = `${API_URL}/audit/export.csv${qs ? `?${qs}` : ""}`;
+    // ^ if you don't have api.baseUrl, use API_URL from lib/api, see below
+
     try {
-      const res = await api(`/audit/export.csv${queryString}`, {
+      const resp = await fetch(url, {
+        method: "GET",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const response = res as Response;
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(
+          `CSV export failed (${resp.status}): ${txt || resp.statusText}`
+        );
+      }
+
+      const blob = await resp.blob();
+      const dl = URL.createObjectURL(blob);
+
       const a = document.createElement("a");
-      a.href = url;
+      a.href = dl;
       a.download = "audit.csv";
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(dl);
     } catch (e) {
       console.error("CSV download failed", e);
       alert("CSV download failed. Check console for details.");
     }
   };
 
-  // Build entity options from the current dataset
-  const entityOptions = useMemo(
-    () => Array.from(new Set(records.map((r) => r.entity))).sort(),
-    [records]
-  );
-
-  // Badge colors for actions
-  const badgeColor = (action: string) => {
-    switch (action) {
-      case "CREATE":
-        return "bg-green-100 text-green-800";
-      case "UPDATE":
-        return "bg-blue-100 text-blue-800";
-      case "DELETE":
-        return "bg-red-100 text-red-800";
-      case "LOGIN":
-        return "bg-emerald-100 text-emerald-800";
-      case "LOGOUT":
-        return "bg-slate-100 text-slate-800";
-      case "LOGIN_FAILED":
-        return "bg-orange-100 text-orange-800";
-      case "PASSWORD_CHANGE":
-        return "bg-purple-100 text-purple-800";
-      case "INVITE_ISSUED":
-        return "bg-cyan-100 text-cyan-800";
-      case "FIRST_CREDENTIALS_SET":
-        return "bg-indigo-100 text-indigo-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+  const showingFrom = total ? (page - 1) * pageSize + 1 : 0;
+  const showingTo = total ? Math.min(page * pageSize, total) : records.length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-4 gap-2">
-        <h1 className="text-2xl font-bold">Audit Trail</h1>
-        <button
-          onClick={downloadCSV}
-          className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700"
-          title="Download CSV for current filters"
-        >
-          <Download size={16} className="inline-block mr-1" />
-          Download CSV
-        </button>
-      </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-2xl font-bold">Audit Trail</h1>
+          <div className="text-sm text-gray-600">
+            Track logins, changes, deletes, and workflow events.
+          </div>
+        </div>
 
-      {/* Filters (auto-applied) */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <select
-          value={filterEntity}
-          onChange={(e) => setFilterEntity(e.target.value)}
-          className="border rounded px-3 py-2"
-        >
-          <option value="">All Entities</option>
-          {entityOptions.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="text"
-          placeholder="Search by User ID"
-          value={filterUser}
-          onChange={(e) => setFilterUser(e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-
-        {(filterEntity || filterUser || dateFrom || dateTo) ? (
+        <div className="flex gap-2">
           <button
-            className="text-sm border rounded px-3 py-2 hover:bg-gray-50"
-            onClick={() => {
-              setFilterEntity("");
-              setFilterUser("");
-              setDateFrom("");
-              setDateTo("");
-            }}
-            title="Clear all filters"
+            onClick={() => setRefreshKey((k) => k + 1)}
+            className="border px-3 py-2 rounded-lg hover:bg-gray-50 inline-flex items-center gap-2"
+            title="Refresh"
           >
-            Clear Filters
+            <RefreshCcw size={16} />
+            Refresh
           </button>
-        ) : (
-          <div />
-        )}
+
+          <button
+            onClick={downloadCSV}
+            className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2"
+            title="Download CSV for current filters"
+          >
+            <Download size={16} />
+            Download CSV
+          </button>
+        </div>
       </div>
 
-      {loading && <div className="text-sm text-gray-500 pb-2">Loading audit trail…</div>}
+      {/* Filters */}
+      <div className="bg-white border rounded-xl p-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Entity
+            </label>
+            <select
+              value={filterEntity}
+              onChange={(e) => setFilterEntity(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            >
+              <option value="">All</option>
+              {entityOptions.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Action
+            </label>
+            <select
+              value={filterAction}
+              onChange={(e) => setFilterAction(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            >
+              <option value="">All</option>
+              {actionOptions.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              User ID
+            </label>
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-3 text-gray-400"
+              />
+              <input
+                type="text"
+                placeholder="e.g. usr_..."
+                value={filterUserId}
+                onChange={(e) => setFilterUserId(e.target.value)}
+                className="w-full border rounded-lg pl-9 pr-3 py-2"
+              />
+            </div>
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Report ID (Entity ID)
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. cmjt4..."
+              value={filterEntityId}
+              onChange={(e) => setFilterEntityId(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              From
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              To
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-600">Sort</label>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+              className="border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="desc">Newest first</option>
+              <option value="asc">Oldest first</option>
+            </select>
+
+            <label className="text-xs font-medium text-gray-600 ml-2">
+              Rows
+            </label>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) as any)}
+              className="border rounded-lg px-3 py-2 text-sm"
+            >
+              {PAGE_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s} / page
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {filterEntity ||
+            filterUserId ||
+            filterEntityId ||
+            filterAction ||
+            dateFrom ||
+            dateTo ? (
+              <button
+                className="text-sm border rounded-lg px-3 py-2 hover:bg-gray-50"
+                onClick={clearFilters}
+                title="Clear all filters"
+              >
+                Clear Filters
+              </button>
+            ) : (
+              <div />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-sm text-gray-500 pb-2">Loading audit trail…</div>
+      )}
       {err && <div className="text-sm text-red-600 pb-2">Error: {err}</div>}
 
-      <div className="overflow-x-auto border rounded-lg">
+      {/* Table */}
+      <div className="overflow-x-auto border rounded-xl bg-white">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Time</th>
-              <th className="p-2 text-left">Entity</th>
-              <th className="p-2 text-left">Entity ID</th>
-              <th className="p-2 text-left">Action</th>
-              <th className="p-2 text-left">User</th>
-              <th className="p-2 text-left">Role</th>
-              <th className="p-2 text-left">IP</th>
-              <th className="p-2 text-left">Details</th>
+            <tr className="bg-gray-50 border-b">
+              <th className="p-3 text-left whitespace-nowrap">Time</th>
+              <th className="p-3 text-left whitespace-nowrap">Entity</th>
+              <th className="p-3 text-left whitespace-nowrap">Entity ID</th>
+              <th className="p-3 text-left whitespace-nowrap">Action</th>
+              <th className="p-3 text-left whitespace-nowrap">User</th>
+              <th className="p-3 text-left whitespace-nowrap">Role</th>
+              <th className="p-3 text-left whitespace-nowrap">IP</th>
+              <th className="p-3 text-left">Details</th>
             </tr>
           </thead>
+
           <tbody>
             {records.map((r) => (
-              <tr key={r.id} className="border-t hover:bg-gray-50">
-                <td className="p-2">{new Date(r.createdAt).toLocaleString()}</td>
-                <td className="p-2">{r.entity}</td>
-                <td className="p-2">{r.entityId}</td>
-                <td className="p-2">
+              <tr key={r.id} className="border-t hover:bg-gray-50 align-top">
+                <td className="p-3 whitespace-nowrap">
+                  {new Date(r.createdAt).toLocaleString()}
+                </td>
+                <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
+                <td className="p-3 font-mono text-xs whitespace-nowrap">
+                  {safeText(r.entityId)}
+                </td>
+                <td className="p-3 whitespace-nowrap">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
                       r.action
@@ -261,15 +706,28 @@ export default function AuditTrailPage() {
                     {r.action}
                   </span>
                 </td>
-                <td className="p-2">{r.userId || "-"}</td>
-                <td className="p-2">{r.role || "-"}</td>
-                <td className="p-2">{r.ipAddress || "-"}</td>
-                <td className="p-2">{r.details}</td>
+                <td className="p-3 whitespace-nowrap font-mono text-xs">
+                  {safeText(r.userId)}
+                </td>
+                <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
+                <td className="p-3 whitespace-nowrap font-mono text-xs">
+                  {safeText(r.ipAddress)}
+                </td>
+                <td className="p-3">
+                  <DetailsCell
+                    details={r.details || ""}
+                    changes={(r as any).changes}
+                  />
+                </td>
               </tr>
             ))}
+
             {!loading && records.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-4 text-gray-500 italic">
+                <td
+                  colSpan={8}
+                  className="text-center py-10 text-gray-500 italic"
+                >
                   No audit records match filters.
                 </td>
               </tr>
@@ -277,345 +735,60 @@ export default function AuditTrailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination footer */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
+        <div className="text-sm text-gray-600">
+          {total ? (
+            <>
+              Showing <span className="font-medium">{showingFrom}</span>–{" "}
+              <span className="font-medium">{showingTo}</span> of{" "}
+              <span className="font-medium">{total}</span>
+            </>
+          ) : (
+            <>
+              Showing <span className="font-medium">{records.length}</span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => setPage(1)}
+            disabled={page <= 1 || loading}
+          >
+            First
+          </button>
+          <button
+            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading}
+          >
+            Prev
+          </button>
+
+          <div className="text-sm px-2">
+            Page <span className="font-medium">{page}</span> /{" "}
+            <span className="font-medium">{totalPages}</span>
+          </div>
+
+          <button
+            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages || loading}
+          >
+            Next
+          </button>
+          <button
+            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => setPage(totalPages)}
+            disabled={page >= totalPages || loading}
+          >
+            Last
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
-
-
-
-
-// // src/pages/Audit/AuditTrailPage.tsx
-// import React, { useEffect, useState } from "react";
-// import { ChevronDown, ChevronRight, Download } from "lucide-react";
-
-// type AuditRecord = {
-//   id: string;
-//   action: string;
-//   entity: string;
-//   entityId: string | null;
-//   changes: any;
-//   details: string;
-//   role: string | null;
-//   ipAddress: string | null;
-//   createdAt: string; // ISO string from API
-//   userId: string | null;
-// };
-
-// interface Props {
-//   entity: string;
-//   entityId: string;
-// }
-
-// const API_BASE = "http://localhost:3000";
-
-// export default function AuditTrailPage({ entity, entityId }: Props) {
-//   const [records, setRecords] = useState<AuditRecord[]>([]);
-//   const [expanded, setExpanded] = useState<string | null>(null);
-//   const [loading, setLoading] = useState<boolean>(true);
-//   const [err, setErr] = useState<string | null>(null);
-//   const [busy, setBusy] = useState(false);
-
-//   // ---- fetch audit like AdminDashboard does ----
-//   useEffect(() => {
-//     async function fetchAudit() {
-//       setLoading(true);
-//       setErr(null);
-
-//       const token = localStorage.getItem("token");
-//       if (!token) {
-//         setErr("Please log in first.");
-//         setLoading(false);
-//         return;
-//       }
-
-//       try {
-//         const res = await fetch(
-//           `${API_BASE}/audit/${encodeURIComponent(entity)}/${encodeURIComponent(
-//             entityId
-//           )}`,
-//           { headers: { Authorization: `Bearer ${token}` } }
-//         );
-
-//         if (!res.ok) {
-//           setErr(`Failed to fetch audit trail (HTTP ${res.status})`);
-//           setRecords([]);
-//           return;
-//         }
-
-//         const data = (await res.json()) as AuditRecord[];
-//         setRecords(data);
-//       } catch (e: any) {
-//         console.error("Audit fetch failed", e);
-//         setErr(e?.message || "Failed to fetch audit trail");
-//       } finally {
-//         setLoading(false);
-//       }
-//     }
-
-//     fetchAudit();
-//   }, [entity, entityId]);
-
-//   const toggleExpand = (id: string) => {
-//     setExpanded((prev) => (prev === id ? null : id));
-//   };
-
-//   const downloadCSV = async () => {
-//     const token = localStorage.getItem("token");
-//     if (!token) {
-//       alert("Please log in first.");
-//       return;
-//     }
-//     try {
-//       const res = await fetch(
-//         `${API_BASE}/audit/${encodeURIComponent(entity)}/${encodeURIComponent(
-//           entityId
-//         )}/export.csv`,
-//         { headers: { Authorization: `Bearer ${token}` } }
-//       );
-//       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-//       const blob = await res.blob();
-//       const url = URL.createObjectURL(blob);
-//       const a = document.createElement("a");
-//       a.href = url;
-//       a.download = `audit_${entity}_${entityId}.csv`;
-//       document.body.appendChild(a);
-//       a.click();
-//       a.remove();
-//       URL.revokeObjectURL(url);
-//     } catch (e) {
-//       console.error("CSV download failed", e);
-//       alert("CSV download failed. Check console for details.");
-//     }
-//   };
-
-//   // keep a simple approve action that matches your AdminDashboard style
-//   const approve = async () => {
-//     const token = localStorage.getItem("token");
-//     if (!token) {
-//       alert("Please log in first.");
-//       return;
-//     }
-
-//     const reason =
-//       prompt("Reason for change (required):", "Final approval") || "";
-//     if (!reason.trim()) {
-//       alert("Reason is required.");
-//       return;
-//     }
-//     const eSignPassword =
-//       prompt("Re-enter your password for e-signature") || undefined;
-
-//     try {
-//       setBusy(true);
-//       const res = await fetch(
-//         `${API_BASE}/reports/${encodeURIComponent(entityId)}/status`,
-//         {
-//           method: "PATCH",
-//           headers: {
-//             "Content-Type": "application/json",
-//             "X-Change-Reason": reason,
-//             Authorization: `Bearer ${token}`,
-//           },
-//           body: JSON.stringify({
-//             status: "APPROVED",
-//             ...(eSignPassword ? { eSignPassword } : {}),
-//           }),
-//         }
-//       );
-
-//       if (!res.ok) {
-//         const txt = await res.text();
-//         throw new Error(`Status change failed (HTTP ${res.status}): ${txt}`);
-//       }
-
-//       // refresh audit after approve
-//       const refresh = await fetch(
-//         `${API_BASE}/audit/${encodeURIComponent(entity)}/${encodeURIComponent(
-//           entityId
-//         )}`,
-//         { headers: { Authorization: `Bearer ${token}` } }
-//       );
-//       if (refresh.ok) {
-//         setRecords((await refresh.json()) as AuditRecord[]);
-//       }
-//     } catch (e: any) {
-//       alert(e?.message || "Status change failed");
-//     } finally {
-//       setBusy(false);
-//     }
-//   };
-
-//   const badgeColor = (action: string) => {
-//     switch (action) {
-//       case "CREATE":
-//         return "bg-green-100 text-green-800";
-//       case "UPDATE":
-//         return "bg-blue-100 text-blue-800";
-//       case "DELETE":
-//         return "bg-red-100 text-red-800";
-//       case "LOGIN":
-//         return "bg-emerald-100 text-emerald-800";
-//       case "LOGOUT":
-//         return "bg-slate-100 text-slate-800";
-//       case "LOGIN_FAILED":
-//         return "bg-orange-100 text-orange-800";
-//       case "PASSWORD_CHANGE":
-//         return "bg-purple-100 text-purple-800";
-//       case "INVITE_ISSUED":
-//         return "bg-cyan-100 text-cyan-800";
-//       case "FIRST_CREDENTIALS_SET":
-//         return "bg-indigo-100 text-indigo-800";
-//       default:
-//         return "bg-gray-100 text-gray-800";
-//     }
-//   };
-
-//   const parseReason = (details?: string) => {
-//     if (!details) return null;
-//     const m = details.match(/\s\|\sreason:\s(.+)$/);
-//     return m ? m[1] : null;
-//   };
-
-//   return (
-//     <div className="p-6 max-w-6xl mx-auto">
-//       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-//         <h1 className="text-2xl font-bold">
-//           Audit Trail for {entity} #{entityId}
-//         </h1>
-//         <div className="flex gap-2">
-//           <button
-//             onClick={downloadCSV}
-//             className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700"
-//           >
-//             <Download size={16} /> Download CSV
-//           </button>
-//           <button
-//             onClick={approve}
-//             disabled={busy}
-//             className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-//             title="Set status to APPROVED (requires reason + e-sign)"
-//           >
-//             {busy ? "Approving…" : "Approve"}
-//           </button>
-//         </div>
-//       </div>
-
-//       {loading && (
-//         <div className="text-sm text-gray-500 pb-2">Loading audit trail…</div>
-//       )}
-//       {err && (
-//         <div className="text-sm text-red-600 pb-2">
-//           Error loading audit trail: {err}
-//         </div>
-//       )}
-
-//       <div className="overflow-x-auto bg-white shadow rounded-lg">
-//         <table className="min-w-full border-collapse">
-//           <thead>
-//             <tr className="bg-gray-100 text-left text-sm font-medium">
-//               <th className="px-4 py-2">Time</th>
-//               <th className="px-4 py-2">Action</th>
-//               <th className="px-4 py-2">User</th>
-//               <th className="px-4 py-2">Role</th>
-//               <th className="px-4 py-2">IP</th>
-//               <th className="px-4 py-2">Details</th>
-//               <th className="px-4 py-2">Changes</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {records.map((r) => {
-//               const reason = parseReason(r.details);
-//               return (
-//                 <React.Fragment key={r.id}>
-//                   <tr
-//                     className="border-t text-sm hover:bg-gray-50 cursor-pointer"
-//                     onClick={() => toggleExpand(r.id)}
-//                   >
-//                     <td className="px-4 py-2 whitespace-nowrap">
-//                       {new Date(r.createdAt).toLocaleString()}
-//                     </td>
-//                     <td className="px-4 py-2">
-//                       <span
-//                         className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
-//                           r.action
-//                         )}`}
-//                       >
-//                         {r.action}
-//                       </span>
-//                     </td>
-//                     <td className="px-4 py-2">{r.userId || "-"}</td>
-//                     <td className="px-4 py-2">{r.role || "-"}</td>
-//                     <td className="px-4 py-2">{r.ipAddress || "-"}</td>
-//                     <td className="px-4 py-2">
-//                       <div className="flex flex-wrap items-center gap-2">
-//                         <span className="break-words">{r.details}</span>
-//                         {reason && (
-//                           <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-//                             Reason: {reason}
-//                           </span>
-//                         )}
-//                       </div>
-//                     </td>
-//                     <td className="px-4 py-2">
-//                       <button
-//                         className="text-indigo-600 flex items-center gap-1"
-//                         onClick={(e) => {
-//                           e.stopPropagation();
-//                           toggleExpand(r.id);
-//                         }}
-//                       >
-//                         {expanded === r.id ? (
-//                           <ChevronDown size={16} />
-//                         ) : (
-//                           <ChevronRight size={16} />
-//                         )}
-//                         View
-//                       </button>
-//                     </td>
-//                   </tr>
-
-//                   {expanded === r.id && (
-//                     <tr className="bg-gray-50 text-xs">
-//                       <td colSpan={7} className="px-6 py-4">
-//                         {r?.changes &&
-//                         (Object.prototype.hasOwnProperty.call(r.changes, "before") ||
-//                           Object.prototype.hasOwnProperty.call(r.changes, "after")) ? (
-//                           <div className="grid md:grid-cols-2 gap-4">
-//                             <div>
-//                               <div className="font-semibold mb-1">Before</div>
-//                               <pre className="whitespace-pre-wrap bg-gray-100 p-3 rounded-md overflow-x-auto">
-//                                 {JSON.stringify(r.changes?.before ?? {}, null, 2)}
-//                               </pre>
-//                             </div>
-//                             <div>
-//                               <div className="font-semibold mb-1">After</div>
-//                               <pre className="whitespace-pre-wrap bg-gray-100 p-3 rounded-md overflow-x-auto">
-//                                 {JSON.stringify(r.changes?.after ?? {}, null, 2)}
-//                               </pre>
-//                             </div>
-//                           </div>
-//                         ) : (
-//                           <pre className="whitespace-pre-wrap bg-gray-100 p-3 rounded-md overflow-x-auto">
-//                             {JSON.stringify(r.changes ?? {}, null, 2)}
-//                           </pre>
-//                         )}
-//                       </td>
-//                     </tr>
-//                   )}
-//                 </React.Fragment>
-//               );
-//             })}
-
-//             {!loading && records.length === 0 && (
-//               <tr>
-//                 <td colSpan={7} className="text-center text-gray-500 py-4 italic">
-//                   No audit trail found.
-//                 </td>
-//               </tr>
-//             )}
-//           </tbody>
-//         </table>
-//       </div>
-//     </div>
-//   );
-// }
