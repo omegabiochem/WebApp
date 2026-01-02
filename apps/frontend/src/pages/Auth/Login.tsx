@@ -5,8 +5,16 @@ import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
-type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "CHEMISTRY" | "QA" | "CLIENT";
+type Role =
+  | "SYSTEMADMIN"
+  | "ADMIN"
+  | "FRONTDESK"
+  | "MICRO"
+  | "CHEMISTRY"
+  | "QA"
+  | "CLIENT";
 
 const roleHomePath: Record<Role, string> = {
   ADMIN: "/adminDashboard",
@@ -25,14 +33,22 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function Login() {
-  const { register, handleSubmit, setError, formState: { isSubmitting, errors } } =
-    useForm<FormData>({ defaultValues: { userId: "", password: "" } });
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { isSubmitting, errors },
+  } = useForm<FormData>({ defaultValues: { userId: "", password: "" } });
 
   const { login } = useAuth();
   const navigate = useNavigate();
 
   // banner message (success / error)
-  const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [banner, setBanner] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const onSubmit = async (data: FormData) => {
     setBanner(null); // clear previous
@@ -40,7 +56,13 @@ export default function Login() {
       const res = await api<{
         accessToken?: string;
         requiresPasswordReset?: boolean;
-        user?: { id: string; email: string; role: Role; name?: string; mustChangePassword?: boolean };
+        user?: {
+          id: string;
+          email: string;
+          role: Role;
+          name?: string;
+          mustChangePassword?: boolean;
+        };
       }>("/auth/login", { method: "POST", body: JSON.stringify(data) });
 
       // password reset flow
@@ -48,7 +70,10 @@ export default function Login() {
         if (res.accessToken && res.user) {
           login(res.accessToken, res.user);
         }
-        setBanner({ type: "success", text: "Login successful. Please reset your password." });
+        setBanner({
+          type: "success",
+          text: "Login successful. Please reset your password.",
+        });
         navigate("/auth/change-password", { replace: true });
         return;
       }
@@ -57,7 +82,10 @@ export default function Login() {
       if (!res.accessToken || !res.user) {
         setBanner({ type: "error", text: "Invalid user ID or password." });
         // Also mark password field as error (optional):
-        setError("password", { type: "server", message: "Invalid credentials" });
+        setError("password", {
+          type: "server",
+          message: "Invalid credentials",
+        });
         return;
       }
 
@@ -68,7 +96,7 @@ export default function Login() {
     } catch (err: any) {
       // If your api() throws on non-2xx, handle status-based messages here
       const msg =
-        (err?.status === 401 || err?.message?.includes("401"))
+        err?.status === 401 || err?.message?.includes("401")
           ? "Invalid user ID or password."
           : "Unable to sign in. Please try again.";
       setBanner({ type: "error", text: msg });
@@ -97,7 +125,11 @@ export default function Login() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3" autoComplete="on">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-3"
+        autoComplete="on"
+      >
         <div className="flex flex-col gap-1">
           <input
             className={field}
@@ -106,26 +138,49 @@ export default function Login() {
             autoComplete="username"
             {...register("userId", { required: "User ID is required" })}
           />
-          {errors.userId && <span className="text-xs text-red-600">{errors.userId.message}</span>}
+          {errors.userId && (
+            <span className="text-xs text-red-600">
+              {errors.userId.message}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col gap-1">
-          <input
-            className={field}
-            id="password"
-            type="password"
-            placeholder="Password"
-            autoComplete="current-password"
-            {...register("password", { required: "Password is required" })}
-          />
-          {errors.password && <span className="text-xs text-red-600">{errors.password.message}</span>}
+          <div className="relative">
+            <input
+              className={`${field} pr-10 w-full`}
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              autoComplete="current-password"
+              {...register("password", { required: "Password is required" })}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-2 flex items-center text-gray-500 hover:text-gray-700"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+
+          {errors.password && (
+            <span className="text-xs text-red-600">
+              {errors.password.message}
+            </span>
+          )}
         </div>
 
-        <button disabled={isSubmitting} className="bg-[var(--brand)] text-white px-4 py-2 rounded-md">
+        <button
+          disabled={isSubmitting}
+          className="bg-[var(--brand)] text-white px-4 py-2 rounded-md"
+        >
           {isSubmitting ? "Signing in..." : "Sign in"}
         </button>
       </form>
     </div>
   );
 }
-
