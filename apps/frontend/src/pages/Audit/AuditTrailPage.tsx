@@ -20,9 +20,9 @@ type PagedResponse = { items: AuditRecord[]; total: number } | AuditRecord[];
 
 const PAGE_SIZES = [10, 20, 50, 100] as const;
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
+// function clamp(n: number, min: number, max: number) {
+//   return Math.max(min, Math.min(max, n));
+// }
 
 function safeText(v: string | null | undefined) {
   return v && v.trim().length ? v : "-";

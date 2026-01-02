@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 import { api } from "../../lib/api";
-import toast from "react-hot-toast";
 
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
@@ -49,11 +48,11 @@ const formTypeToSlug: Record<string, string> = {
   CHEMISTRY_MIX: "chemistry-mix",
 };
 
-function getFormPrefix(formNumber?: string): string | null {
-  if (!formNumber) return null;
-  const m = formNumber.trim().match(/^[A-Za-z]{3}/);
-  return m ? m[0].toUpperCase() : null;
-}
+// function getFormPrefix(formNumber?: string): string | null {
+//   if (!formNumber) return null;
+//   const m = formNumber.trim().match(/^[A-Za-z]{3}/);
+//   return m ? m[0].toUpperCase() : null;
+// }
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
