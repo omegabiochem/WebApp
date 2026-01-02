@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from 'prisma/prisma.service';
+import { setRequestContext } from 'src/common/request-context';
 
 const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 
@@ -268,10 +269,15 @@ export class AuthService {
       };
       const accessToken = this.jwt.sign(payload, { expiresIn: '15m' });
 
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
-      });
+      setRequestContext({ skipAudit: true });
+      try {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
+        });
+      } finally {
+        setRequestContext({ skipAudit: false });
+      }
 
       // You may also log a "LOGIN" here, but many teams wait until full login
       return {
@@ -286,6 +292,17 @@ export class AuthService {
           clientCode: user.clientCode ?? null,
         },
       };
+    }
+
+    // Normal login:
+    setRequestContext({ skipAudit: true });
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
+      });
+    } finally {
+      setRequestContext({ skipAudit: false });
     }
 
     // Issue JWT

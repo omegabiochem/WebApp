@@ -1,3 +1,4 @@
+// audit.controller.ts
 import { Controller, Get, Param, Res, Query } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import type { Response } from 'express';
@@ -6,26 +7,42 @@ import type { Response } from 'express';
 export class AuditController {
   constructor(private audit: AuditService) {}
 
-  // ✅ NEW: list all (with optional filters)
   @Get()
   async listAll(
     @Query('entity') entity?: string,
     @Query('entityId') entityId?: string,
     @Query('userId') userId?: string,
     @Query('action') action?: string,
-    @Query('from') from?: string, // ISO date/time, e.g. 2025-09-18 or 2025-09-18T00:00:00Z
+    @Query('from') from?: string,
     @Query('to') to?: string,
+
+    // ✅ pagination
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+
+    // ✅ sorting
+    @Query('order') order: 'asc' | 'desc' = 'desc',
   ) {
-    return this.audit.listAll({ entity, entityId, userId, action, from, to });
+    return this.audit.listAllPaged({
+      entity,
+      entityId,
+      userId,
+      action,
+      from,
+      to,
+      page: Number(page),
+      pageSize: Number(pageSize),
+      order,
+    });
   }
 
-  // ✅ existing per-entity route (kept)
+  // kept
   @Get(':entity/:id')
   async list(@Param('entity') entity: string, @Param('id') id: string) {
     return this.audit.listForEntity(entity, id);
   }
 
-  // ✅ NEW: export ALL as CSV (same optional filters)
+  // kept (export should NOT paginate)
   @Get('export.csv')
   async exportAllCSV(
     @Res() res: Response,
@@ -35,20 +52,17 @@ export class AuditController {
     @Query('action') action?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('order') order: 'asc' | 'desc' = 'desc',
   ) {
-    const csv = await this.audit.exportAllCSV({ entity, entityId, userId, action, from, to });
+    const csv = await this.audit.exportAllCSV({ entity, entityId, userId, action, from, to, order });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="audit_all.csv"`);
     res.send(csv);
   }
 
-  // ✅ existing per-entity CSV (kept)
+  // kept
   @Get(':entity/:id/export.csv')
-  async exportCSV(
-    @Param('entity') entity: string,
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
+  async exportCSV(@Param('entity') entity: string, @Param('id') id: string, @Res() res: Response) {
     const csv = await this.audit.exportCSV(entity, id);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="audit_${entity}_${id}.csv"`);

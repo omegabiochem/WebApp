@@ -12,6 +12,11 @@ import {
 import { api, API_URL, getToken } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import {
+  canShowChemistryUpdateButton,
+  type ChemistryReportStatus,
+} from "../../utils/chemistryReportFormWorkflow";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 // import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
 // import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
@@ -36,8 +41,7 @@ type Report = {
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
-  MICRO_GENERAL: "micro-general",
-  MICRO_GENERAL_WATER: "micro-general-water",
+  CHEMISTRY_MIX: "chemistry-mix",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -76,6 +80,70 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "ADMIN_REJECTED",
   "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
+  "LOCKED",
+];
+
+// A status filter can be micro OR chemistry OR "ALL"
+type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+
+const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
+  "ALL",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "UNDER_CLIENT_FINAL_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_ON_HOLD",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "FINAL_RESUBMISSION_BY_TESTING",
+  "PRELIMINARY_APPROVED",
+  "UNDER_FINAL_TESTING_REVIEW",
+  "FINAL_TESTING_ON_HOLD",
+  "FINAL_TESTING_NEEDS_CORRECTION",
+  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  "FINAL_APPROVED",
+  "LOCKED",
+];
+
+const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  "APPROVED",
   "LOCKED",
 ];
 
@@ -130,7 +198,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  // const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [searchClient, setSearchClient] = useState("");
   const [searchReport, setSearchReport] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -148,6 +216,16 @@ export default function AdminDashboard() {
   const [saving, setSaving] = useState<boolean>(false);
 
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+
+  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
+    "ALL"
+  );
+
+  // status filter now uses combined type
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
+  const statusOptions =
+    formFilter === "CHEMISTRY" ? ADMIN_CHEM_STATUSES : ADMIN_MICRO_STATUSES;
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -190,8 +268,12 @@ export default function AdminDashboard() {
     newStatus: string,
     reason = "Common Status Change"
   ) {
+    const endpoint =
+      r.formType === "CHEMISTRY_MIX"
+        ? `/chemistry-reports/${r.id}/status`
+        : `/reports/${r.id}/status`;
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
-    await api(`/reports/${r.id}/status`, {
+    await api(endpoint, {
       method: "PATCH",
       body: JSON.stringify({ reason, status: newStatus }),
     });
@@ -203,8 +285,12 @@ export default function AdminDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const data = await api<Report[]>("/reports");
-        if (!abort) setReports(data);
+        // const data = await api<Report[]>("/reports");
+
+        const microReports = await api<Report[]>("/reports");
+        const chemistryReports = await api<Report[]>("/chemistry-reports");
+        const allReports = [...microReports, ...chemistryReports];
+        if (!abort) setReports(allReports);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -218,9 +304,20 @@ export default function AdminDashboard() {
 
   // Derived rows (filter → search → sort)
   const processed = useMemo(() => {
-    const byStatus = reports.filter((r) =>
-      filterStatus === "ALL" ? true : r.status === filterStatus
-    );
+    // 1) form type filter
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) =>
+            formFilter === "MICRO"
+              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
+              : r.formType === "CHEMISTRY_MIX"
+          );
+
+    const byStatus =
+      statusFilter === "ALL"
+        ? byForm
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
 
     const byClient = searchClient.trim()
       ? byStatus.filter((r) =>
@@ -229,7 +326,11 @@ export default function AdminDashboard() {
       : byStatus;
 
     const byReport = searchReport.trim()
-      ? byClient.filter((r) => displayReportNo(r))
+      ? byClient.filter((r) =>
+          String(displayReportNo(r))
+            .toLowerCase()
+            .includes(searchReport.toLowerCase())
+        )
       : byClient;
 
     const byDateFrom = dateFrom
@@ -249,7 +350,15 @@ export default function AdminDashboard() {
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return bT - aT;
     });
-  }, [reports, filterStatus, searchClient, searchReport, dateFrom, dateTo]);
+  }, [
+    reports,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+  ]);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -263,13 +372,21 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [filterStatus, searchClient, searchReport, dateFrom, dateTo, perPage]);
+  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage]);
 
   // Permissions
   function canUpdateThisReport(r: Report, user?: any) {
     return canShowUpdateButton(
       user?.role as Role,
       r.status as ReportStatus,
+      ADMIN_FIELDS_ON_FORM
+    );
+  }
+
+  function canUpdateThisChemistryReport(r: Report, user?: any) {
+    return canShowChemistryUpdateButton(
+      user?.role,
+      r.status as ChemistryReportStatus,
       ADMIN_FIELDS_ON_FORM
     );
   }
@@ -302,7 +419,12 @@ export default function AdminDashboard() {
         return;
       }
 
-      await api(`/reports/${report.id}/change-status`, {
+      const endpoint =
+        report.formType === "CHEMISTRY_MIX"
+          ? `/chemistry-reports/${report.id}/change-status`
+          : `/reports/${report.id}/change-status`;
+
+      await api(endpoint, {
         method: "PATCH",
         body: JSON.stringify({
           status: nextStatus,
@@ -343,7 +465,11 @@ export default function AdminDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
-    navigate(`/reports/${slug}/${r.id}`);
+    if (r.formType === "CHEMISTRY_MIX") {
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}`);
+    }
   }
 
   return (
@@ -353,7 +479,7 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Oversee all Micro Mix reports and manage status transitions.
+            Oversee all View and manage lab reports and status transitions.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -368,13 +494,64 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Form type tabs */}
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All forms"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Chemistry"}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Controls Card */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        {/* Status filter chips (scrollable) */}
+        {/* Status filter chips (scrollable) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {statusOptions.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={classNames(
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
+                statusFilter === s
+                  ? "bg-blue-600 text-white ring-blue-600"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
+              )}
+              aria-pressed={statusFilter === s}
+            >
+              {niceStatus(String(s))}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex flex-wrap gap-3">
           {/* Status filter */}
           <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
             className="w-44 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
                  ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
@@ -467,80 +644,131 @@ export default function AdminDashboard() {
                 ))}
 
               {!loading &&
-                pageRows.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">
-                      {displayReportNo(r)}
-                    </td>
-                    <td className="px-4 py-3">{r.formNumber}</td>
-                    {/* <td className="px-4 py-3">{r.formType}</td> */}
-                    <td className="px-4 py-3">{r.client}</td>
-                    <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={classNames(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          STATUS_COLORS[r.status as ReportStatus] ||
-                            "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-                        )}
-                      >
-                        {niceStatus(String(r.status))}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                          onClick={() => setSelectedReport(r)}
-                        >
-                          View
-                        </button>
+                pageRows.map((r) => {
+                  const isMicro =
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
 
-                        {canUpdateThisReport(r, user) && (
+                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  return (
+                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium">
+                        {displayReportNo(r)}
+                      </td>
+                      <td className="px-4 py-3">{r.formNumber}</td>
+                      {/* <td className="px-4 py-3">{r.formType}</td> */}
+                      <td className="px-4 py-3">{r.client}</td>
+                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={classNames(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            STATUS_COLORS[r.status as ReportStatus] ||
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                          )}
+                        >
+                          {niceStatus(String(r.status))}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
                           <button
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            onClick={async () => {
-                              try {
-                                if (
-                                  r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
-                                ) {
-                                  await setStatus(
-                                    r,
-                                    "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
-                                    "set by admin"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button>
+
+                          {isMicro && canUpdateThisReport(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                              onClick={async () => {
+                                try {
+                                  if (
+                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                  ) {
+                                    await setStatus(
+                                      r,
+                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+                                      "set by admin"
+                                    );
+                                    toast.success("Report Status Updated");
+                                  }
+                                  // navigate(`/reports/${r.id}`);
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  alert(
+                                    e?.message || "Failed to update status"
                                   );
-                                  toast.success("Report Status Updated");
+                                  toast.error(
+                                    e?.message || "Failed to update status"
+                                  );
                                 }
-                                // navigate(`/reports/${r.id}`);
-                                goToReportEditor(r);
-                              } catch (e: any) {
-                                alert(e?.message || "Failed to update status");
-                                toast.error(
-                                  e?.message || "Failed to update status"
-                                );
-                              }
+                              }}
+                            >
+                              Update
+                            </button>
+                          )}
+
+                          {isChemistry &&
+                            canUpdateThisChemistryReport(r, user) && (
+                              <button
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                                onClick={async () => {
+                                  try {
+                                    if (
+                                      r.status === "CLIENT_NEEDS_CORRECTION"
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_RESUBMISSION_TESTING_REVIEW",
+                                        "set by admin"
+                                      );
+                                      toast.success("Report Status Updated");
+                                    }
+                                    // navigate(`/reports/${r.id}`);
+                                    goToReportEditor(r);
+                                  } catch (e: any) {
+                                    alert(
+                                      e?.message || "Failed to update status"
+                                    );
+                                    toast.error(
+                                      e?.message || "Failed to update status"
+                                    );
+                                  }
+                                }}
+                              >
+                                Update
+                              </button>
+                            )}
+
+                          <button
+                            className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
+                            onClick={() => {
+                              setChangeStatusReport(r);
+                              const options =
+                                r.formType === "CHEMISTRY_MIX"
+                                  ? ADMIN_CHEM_STATUSES
+                                  : ADMIN_MICRO_STATUSES;
+
+                              const current = String(r.status);
+                              setNewStatus(
+                                options.includes(current as any)
+                                  ? current
+                                  : String(options[0])
+                              );
+                              setReason("");
+                              setESignPassword("");
+                              setESignError("");
                             }}
                           >
-                            Update
+                            Change Status
                           </button>
-                        )}
-
-                        <button
-                          className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
-                          onClick={() => {
-                            setChangeStatusReport(r);
-                            setNewStatus(String(r.status));
-                            setReason("");
-                            setESignPassword("");
-                            setESignError("");
-                          }}
-                        >
-                          Change Status
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
               {!loading && pageRows.length === 0 && (
                 <tr>
@@ -689,14 +917,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
-              {/* <MicroMixReportFormView
-                report={selectedReport}
-                onClose={() => setSelectedReport(null)}
-                pane={modalPane} // 👈 controlled by dashboard header
-                showSwitcher={false} // 👈 hide internal switcher
-                onPaneChange={setModalPane} // (optional) keeps them in sync if needed
-              /> */}
+            <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
@@ -713,23 +934,15 @@ export default function AdminDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
+              ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
+                <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
               ) : (
-                // ) : selectedReport?.formType === "MICRO_GENERAL" ? (
-                //   <MicroGeneralReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane={modalPane}
-                //     onPaneChange={setModalPane}
-                //   />
-                // ) : selectedReport?.formType === "MICRO_GENERAL_WATER" ? (
-                //   <MicroGeneralWaterReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane={modalPane}
-                //     onPaneChange={setModalPane}
-                //   />
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
                   viewer yet.
@@ -749,7 +962,9 @@ export default function AdminDashboard() {
           aria-label="Change status"
         >
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">Change Status</h2>
+            <h2 className="text-lg font-semibold mb-2">
+              Change Status of {changeStatusReport.formType}{" "}
+            </h2>
             <p className="mb-3 text-sm text-slate-600">
               <strong>Current:</strong>{" "}
               {niceStatus(String(changeStatusReport.status))}
@@ -774,11 +989,16 @@ export default function AdminDashboard() {
                 }}
                 className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
               >
-                {ALL_STATUSES.filter((s) => s !== "ALL").map((s) => (
-                  <option key={s} value={s}>
-                    {niceStatus(String(s))}
-                  </option>
-                ))}
+                {(changeStatusReport.formType === "CHEMISTRY_MIX"
+                  ? ["ALL", ...ADMIN_CHEM_STATUSES] // add ALL if you want
+                  : ADMIN_MICRO_STATUSES
+                )
+                  .filter((s) => s !== "ALL") // remove ALL inside modal
+                  .map((s) => (
+                    <option key={String(s)} value={String(s)}>
+                      {niceStatus(String(s))}
+                    </option>
+                  ))}
               </select>
 
               <input

@@ -85,6 +85,38 @@ export type MicroMixReportFormValues = {
   pathogens: PathRow[];
 };
 
+export type MicroMixWaterReportFormValues = {
+  client: string;
+  dateSent: string;
+  typeOfTest: string;
+  sampleType: string;
+  idNo: string;
+  description: string;
+  lotNo: string;
+  samplingDate: string;
+
+  testSopNo: string;
+  dateTested: string;
+  preliminaryResults: string;
+  preliminaryResultsDate: string;
+
+  tbc_gram: string;
+  tbc_result: string;
+  tbc_spec: string;
+  tmy_gram: string;
+  tmy_result: string;
+  tmy_spec: string;
+
+  comments: string;
+  testedBy: string;
+  testedDate: string;
+  dateCompleted: string;
+  reviewedBy: string;
+  reviewedDate: string;
+
+  pathogens: PathRow[];
+};
+
 // Centralized field requirements per role (no layout impact)
 export const ROLE_FIELDS: Record<Role, string[]> = {
   SYSTEMADMIN: [],
@@ -270,19 +302,6 @@ export async function createCorrections(
   targetStatus?: string,
   reason?: string
 ) {
-  // const res = await fetch(
-  //   `${API_BASE}/reports/${reportId}/corrections`,
-  //   {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ items, targetStatus, reason }),
-  //   }
-  // );
-  // if (!res.ok) throw new Error("Failed to create corrections");
-  // return res.json();
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -295,19 +314,6 @@ export async function resolveCorrection(
   cid: string,
   resolutionNote?: string
 ) {
-  // const res = await fetch(
-  //   `${API_BASE}/reports/${reportId}/corrections/${cid}`,
-  //   {
-  //     method: "PATCH",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ resolutionNote }),
-  //   }
-  // );
-  // if (!res.ok) throw new Error("Failed to resolve correction");
-  // return res.json();
   return api<CorrectionItem>(`/reports/${reportId}/corrections/${cid}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -362,7 +368,8 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
           return !v.description?.trim();
         case "lotNo":
           return !v.lotNo?.trim();
-        case "manufactureDate": { // return !v.manufactureDate;
+        case "manufactureDate": {
+          // return !v.manufactureDate;
           // Treat blank as acceptable (will be saved as "NA" in handleSave)
           // Also allow explicit "NA".
           if (!v.manufactureDate || v.manufactureDate === "NA") return false;
@@ -459,6 +466,161 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
   /** returns true when valid; sets errors + scrolls to first error */
   const validateAndSetErrors = useCallback(
     (values: MicroMixReportFormValues): boolean => {
+      const next: Record<string, string> = {};
+      requiredList.forEach((f) => {
+        if (isEmpty(f, values)) next[f] = "Required";
+      });
+      setErrors(next);
+
+      const firstKey = Object.keys(next)[0];
+      if (firstKey) {
+        // try to scroll to the field if it exists
+        const el = document.getElementById("f-" + firstKey);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return Object.keys(next).length === 0;
+    },
+    [isEmpty, requiredList]
+  );
+
+  return { errors, clearError, validateAndSetErrors };
+}
+
+// Hook that validates based on ROLE_FIELDS and returns boolean
+export function useMicroMixWaterReportValidation(
+  role?: Role,
+  opts?: ValidationOpts
+) {
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearError = useCallback((name: string) => {
+    setErrors((prev) => {
+      if (!(name in prev)) return prev;
+      const { [name]: _omit, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const currentPhase = useMemo(
+    () => opts?.phase ?? deriveMicroPhaseFromStatus(opts?.status),
+    [opts?.phase, opts?.status]
+  );
+
+  // How to check emptiness using provided values
+  const isEmpty = useCallback(
+    (field: string, v: MicroMixWaterReportFormValues): boolean => {
+      switch (field) {
+        // case "client": return !v.client?.trim();
+        case "dateSent":
+          return !v.dateSent;
+        case "typeOfTest":
+          return !v.typeOfTest?.trim();
+        case "sampleType":
+          return !v.sampleType?.trim();
+        case "idNo":
+          return !v.idNo?.trim();
+        case "description":
+          return !v.description?.trim();
+        case "lotNo":
+          return !v.lotNo?.trim();
+        case "samplingDate": {
+          // return !v.manufactureDate;
+          // Treat blank as acceptable (will be saved as "NA" in handleSave)
+          // Also allow explicit "NA".
+          if (!v.samplingDate || v.samplingDate === "NA") return false;
+
+          // If you want to only allow valid dates when provided:
+          const t = Date.parse(v.samplingDate);
+          if (Number.isNaN(t)) return false; // don't block as "Required"; format is handled elsewhere
+          return false;
+        }
+
+        case "testSopNo":
+          return !v.testSopNo?.trim();
+        case "dateTested":
+          return !v.dateTested;
+        case "preliminaryResults":
+          return !v.preliminaryResults?.trim();
+        case "preliminaryResultsDate":
+          return !v.preliminaryResultsDate;
+        case "tbc_gram":
+          return !v.tbc_gram?.trim();
+        case "tbc_result":
+          return !v.tbc_result?.trim();
+        case "tbc_spec":
+          return !v.tbc_spec?.trim();
+        case "tmy_gram":
+          return !v.tmy_gram?.trim();
+        case "tmy_result":
+          return !v.tmy_result?.trim();
+        case "tmy_spec":
+          return !v.tmy_spec?.trim();
+        case "comments":
+          return !v.comments?.trim();
+        case "testedBy":
+          return !v.testedBy?.trim();
+        case "testedDate":
+          return !v.testedDate;
+
+        case "dateCompleted":
+          return !v.dateCompleted;
+        case "reviewedBy":
+          return !v.reviewedBy?.trim();
+        case "reviewedDate":
+          return !v.reviewedDate;
+
+        case "pathogens": {
+          const rows = v.pathogens || [];
+          const anyChecked = rows.some((r) => r.checked);
+          if (!anyChecked) return false; // 👉 not required if nothing selected
+
+          // Only enforce results for MICRO/ADMIN in FINAL
+          if (
+            (role === "MICRO" || role === "ADMIN") &&
+            currentPhase === "FINAL"
+          ) {
+            const missingResult = rows.some(
+              (r) =>
+                r.checked && r.result !== "Absent" && r.result !== "Present"
+            );
+            return missingResult;
+          }
+          return false;
+        }
+        default:
+          return false;
+      }
+    },
+    []
+  );
+
+  const requiredList = useMemo(() => {
+    // Base role requireds (fallback)
+    const base = (ROLE_FIELDS[(role as Role) || "CLIENT"] ?? []).filter(
+      (f) => f !== "*"
+    );
+
+    // 1) Absolute override wins
+    if (opts?.requiredOverride) return opts.requiredOverride;
+
+    // 2) If MICRO and explicit phase was provided, use phase lists
+    if (role === "MICRO" && opts?.phase) {
+      return MICRO_PHASE_FIELDS[opts.phase];
+    }
+
+    // 3) If MICRO and status provided, infer phase from status
+    if (role === "MICRO" && opts?.status) {
+      const phase = deriveMicroPhaseFromStatus(opts.status);
+      if (phase) return MICRO_PHASE_FIELDS[phase];
+    }
+
+    // 4) Fallback to role defaults
+    return base;
+  }, [role, opts?.requiredOverride, opts?.phase, opts?.status]);
+
+  /** returns true when valid; sets errors + scrolls to first error */
+  const validateAndSetErrors = useCallback(
+    (values: MicroMixWaterReportFormValues): boolean => {
       const next: Record<string, string> = {};
       requiredList.forEach((f) => {
         if (isEmpty(f, values)) next[f] = "Required";

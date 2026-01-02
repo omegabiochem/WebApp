@@ -31,14 +31,6 @@ function isMix(r: AnyReportDTO): r is BaseReport & MicroMixReportDTO {
 function isMixWater(r: AnyReportDTO): r is BaseReport & MicroMixWaterReportDTO {
   return r.formType === "MICRO_MIX_WATER";
 }
-// function isGeneral(r: AnyReportDTO): r is BaseReport & MicroGeneralReportDTO {
-//   return r.formType === "MICRO_GENERAL";
-// }
-// function isGeneralWater(
-//   r: AnyReportDTO
-// ): r is BaseReport & MicroGeneralWaterReportDTO {
-//   return r.formType === "MICRO_GENERAL_WATER";
-// }
 
 export default function MicroMixReportFormWrapper() {
   const { id } = useParams<{ id: string }>();
@@ -72,8 +64,7 @@ export default function MicroMixReportFormWrapper() {
   // Render the correct editor based on formType
   if (isMix(report)) return <MicroMixReportForm report={report} />;
   if (isMixWater(report)) return <MicroMixWaterReportForm report={report} />;
-  // if (isGeneral(report)) return <MicroReportForm report={report} />;
-  // if (isGeneralWater(report)) return <MicroWaterReportForm report={report} />;
+
 
   return (
     <div className="p-4 text-sm text-slate-600">

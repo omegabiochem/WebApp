@@ -188,38 +188,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   return map[role]?.includes(field) ?? false;
 }
 
-// // Simple input wrapper that locks by role
-// function Field({
-//   label,
-//   value,
-//   onChange,
-//   readOnly,
-//   className = "",
-//   inputClass = "",
-//   placeholder = " ", // placeholder space keeps boxes visible when empty
-// }: {
-//   label: string;
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-//   inputClass?: string;
-//   placeholder?: string;
-// }) {
-//   return (
-//     <div className={`flex gap-2 items-center ${className}`}>
-//       <div className="w-48 shrink-0 text-[12px] font-medium">{label}</div>
-//       <input
-//         className={`flex-1 border border-black/70 px-2 py-1 text-[12px] leading-tight ${inputClass}`}
-//         value={value}
-//         onChange={(e) => onChange(e.target.value)}
-//         readOnly={readOnly}
-//         placeholder={placeholder}
-//       />
-//     </div>
-//   );
-// }
-
 // Print styles: A4-ish, monochrome borders, hide controls when printing
 const PrintStyles = () => (
   <style>{`
@@ -912,40 +880,16 @@ export default function MicroMixReportForm({
       let saved: SavedReport;
 
       if (reportId) {
-        // console.log("Updating report", reportId);
-        // update
-        // res = await fetch(`${API_BASE}/reports/${reportId}`, {
-        //   method: "PATCH",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify({ ...payload, reason: "Saving" }),
-        // });
-        // console.log(res);
         saved = await api<SavedReport>(`/reports/${reportId}`, {
           method: "PATCH",
           body: JSON.stringify({ ...payload, reason: "Saving" }),
         });
       } else {
-        // create
-        // res = await fetch(`${API_BASE}/reports`, {
-        //   method: "POST",
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //     Authorization: `Bearer ${token}`,
-        //   },
-        //   body: JSON.stringify(payload),
-        // });
         saved = await api(`/reports`, {
           method: "POST",
           body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
         });
       }
-
-      // if (!res.ok) throw new Error("Failed to save draft");
-      // const saved = await res.json();
-      // setIsDirty(false);
 
       setReportId(saved.id); // 👈 keep the new id
       setStatus(saved.status); // in case backend changed it
@@ -1140,14 +1084,6 @@ export default function MicroMixReportForm({
               {reportId ? "Update Report" : "Save Report"}
             </button>
           )}
-
-          {/* <button
-            className="px-3 py-1 rounded-md border bg-blue-600 text-white"
-            onClick={handleSave}
-            disabled={role === "SYSTEMADMIN"}
-          >
-            {reportId ? "Update Report" : "Save Report"}
-          </button> */}
         </div>
 
         {/* Letterhead */}
@@ -1209,23 +1145,6 @@ export default function MicroMixReportForm({
                 />
               )}
             </div>
-            {/* <div id="f-dateSent" className="px-2 flex items-center gap-1">
-              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-               <FieldError name="dateSent"  errors={errors}/>
-              {lock("dateSent") || role === "CLIENT" ? (
-                <div className="flex-1 min-h-[14px]">{formatDateForInput(dateSent)}</div>
-              ) : (
-                <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  type="date"
-                  value={formatDateForInput(dateSent)}
-                  onChange={(e) => {
-                    setDateSent(e.target.value);
-                    markDirty();
-                  }}
-                />
-              )}
-            </div> */}
 
             <div
               id="f-dateSent"
@@ -1242,11 +1161,6 @@ export default function MicroMixReportForm({
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
               <FieldErrorBadge name="dateSent" errors={errors} />
               <ResolveOverlay field="dateSent" />
-
-              {/* tiny floating badge; does not affect layout */}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" /> */}
 
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">

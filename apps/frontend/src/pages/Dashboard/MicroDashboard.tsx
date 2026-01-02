@@ -12,8 +12,6 @@ import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
-// import MicroGeneralReportFormView from "../Reports/MicroGeneralReportFormView";
-// import MicroGeneralWaterReportFormView from "../Reports/MicroGeneralWaterReportFormView";
 
 // -----------------------------
 // Types
@@ -395,7 +393,7 @@ export default function MicroDashboard() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Micro Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Queue of Micro Mix / Water / General reports for micro team.
+            Queue of Micro Mix / Water reports for micro team.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -765,7 +763,8 @@ export default function MicroDashboard() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto px-6 py-4">
+            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
@@ -781,20 +780,7 @@ export default function MicroDashboard() {
                   pane="FORM"
                 />
               ) : (
-                // ) : selectedReport.formType === "MICRO_GENERAL" ? (
-                //   <MicroGeneralReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane="FORM"
-                //   />
-                // ) : selectedReport.formType === "MICRO_GENERAL_WATER" ? (
-                //   <MicroGeneralWaterReportFormView
-                //     report={selectedReport}
-                //     onClose={() => setSelectedReport(null)}
-                //     showSwitcher={false}
-                //     pane="FORM"
-                //   />
+               
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport.formType}) doesn’t have a
                   viewer yet.
