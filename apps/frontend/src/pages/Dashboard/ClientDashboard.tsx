@@ -1040,7 +1040,7 @@ export default function ClientDashboard() {
                 </button>
               </div>
             </div>
-            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4">
+            <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}

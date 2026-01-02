@@ -4,8 +4,9 @@ export type RequestContext = {
   userId?: string;
   role?: string;
   ip?: string;
-  reason?: string;        // optional “reason for change”
+  reason?: string; // optional “reason for change”
   eSignPassword?: string; // optional: for e-sign (X-ESign-Password)
+  skipAudit?: boolean; // optional: skip audit logging
 };
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
@@ -17,7 +18,6 @@ export function withRequestContext<T>(ctx: RequestContext, fn: () => T) {
 export function getRequestContext(): RequestContext | undefined {
   return requestContext.getStore();
 }
-
 
 export function setRequestContext(patch: RequestContext) {
   const store = requestContext.getStore();

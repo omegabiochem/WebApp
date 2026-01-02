@@ -763,7 +763,8 @@ export default function MicroDashboard() {
                 </button>
               </div>
             </div>
-            <div className="overflow-auto px-6 py-4">
+            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}

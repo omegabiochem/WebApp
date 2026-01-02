@@ -104,9 +104,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       }
 
       const ctx = getRequestContext() || {};
+
+      // ✅ do not write audit trail rows for this prisma operation
+      if ((ctx as any).skipAudit === true) {
+        return next(params);
+      }
+
       const where = params.args?.where || {};
       let entityId: string | null =
         where?.id ??
+        where?.reportId ?? // ✅ for MicroMixDetails / MicroMixWaterDetails
+        where?.chemistryId ?? // ✅ for ChemistryReportStatusHistory, etc (if used)
         where?.clientCode ?? // ✅ for ClientSequence
         null;
 
@@ -126,6 +134,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       const result = await next(params);
 
       if (!entityId && result?.id) entityId = result.id;
+      if (!entityId && result?.reportId) entityId = result.reportId;
+      if (!entityId && result?.chemistryId) entityId = result.chemistryId;
       if (!entityId && result?.clientCode) entityId = result.clientCode;
 
       // -------- BUILD AUDIT ROW --------
@@ -163,6 +173,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
       if ((ctx as any).reason) {
         details = `${details} | reason: ${(ctx as any).reason}`;
+      }
+
+      // ✅ If saving report + details together, skip base Report audit (keep details audit)
+      if (
+        entity === 'Report' ||
+        (entity === 'ChemistryReport' && action === 'update')
+      ) {
+        const patch = params.args?.data || {};
+        const keys = Object.keys(patch);
+
+        // your ReportsService always sets updatedBy in base update
+        const onlyMeta = keys.length === 1 && keys[0] === 'updatedBy';
+
+        // If the base update is just "updatedBy", it's a split-save bookkeeping update.
+        // We skip its audit so you only see MicroMixDetails audit.
+        if (onlyMeta) {
+          return result;
+        }
       }
 
       // -------- WRITE AUDIT (BEST EFFORT) --------
