@@ -92,6 +92,8 @@ export class ChemistryAttachmentsService {
           kind: input.kind,
           filename: input.file.originalname,
           storageKey,
+          storageDriver: 's3',
+          storageBucket: process.env.S3_BUCKET ?? null,
           checksum,
           source: input.source,
           pages: input.pages,
@@ -141,9 +143,7 @@ export class ChemistryAttachmentsService {
     return { ...a, size: st?.size ?? null };
   }
 
-  async stream(
-    id: string,
-  ): Promise<{
+  async stream(id: string): Promise<{
     stream: NodeJS.ReadableStream;
     mime: string;
     filename: string;
