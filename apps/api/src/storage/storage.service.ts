@@ -16,6 +16,14 @@ type PutInput = { filePath: string; filename: string; subdir?: string };
 
 @Injectable()
 export class StorageService {
+  constructor() {
+    console.log('=== S3 CONFIG (StorageService) ===');
+    console.log('STORAGE_DRIVER:', process.env.STORAGE_DRIVER);
+    console.log('AWS_REGION:', process.env.AWS_REGION);
+    console.log('S3_BUCKET:', process.env.S3_BUCKET);
+    console.log('S3_PREFIX:', process.env.S3_PREFIX);
+    console.log('===============================');
+  }
   private readonly driver = (
     process.env.STORAGE_DRIVER ?? 'local'
   ).toLowerCase();
@@ -67,6 +75,18 @@ export class StorageService {
     return key; // store S3 key in DB as storageKey
   }
 
+  private candidates(storageKey: string) {
+    const k = storageKey.replace(/^\/+/, '');
+    const withPrefix = this.prefix ? `${this.prefix}/${k}` : k;
+    return [
+      k,
+      withPrefix,
+      // common fallback if you previously used local prefix
+      `local/${k}`,
+      `staging/${k}`,
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+  }
+
   async createReadStream(storageKey: string): Promise<Readable> {
     if (this.driver !== 's3') {
       const fullPath = path.isAbsolute(storageKey)
@@ -75,13 +95,41 @@ export class StorageService {
       return createReadStream(fullPath);
     }
 
-    const out = await this.s3.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-    );
+    let lastErr: any;
 
-    if (!out.Body) throw new Error('S3 GetObject returned empty Body');
-    return out.Body as Readable; // has .pipe(res) ✅
+    for (const key of this.candidates(storageKey)) {
+      try {
+        const out = await this.s3.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+        );
+        if (!out.Body) throw new Error('S3 GetObject returned empty Body');
+        return out.Body as Readable;
+      } catch (e: any) {
+        lastErr = e;
+        if (e?.name !== 'NoSuchKey' && e?.$metadata?.httpStatusCode !== 404) {
+          throw e; // real error (auth/region/etc)
+        }
+      }
+    }
+
+    throw lastErr;
   }
+
+  // async createReadStream(storageKey: string): Promise<Readable> {
+  //   if (this.driver !== 's3') {
+  //     const fullPath = path.isAbsolute(storageKey)
+  //       ? storageKey
+  //       : path.join(this.ROOT, storageKey);
+  //     return createReadStream(fullPath);
+  //   }
+
+  //   const out = await this.s3.send(
+  //     new GetObjectCommand({ Bucket: this.bucket, Key: storageKey }),
+  //   );
+
+  //   if (!out.Body) throw new Error('S3 GetObject returned empty Body');
+  //   return out.Body as Readable; // has .pipe(res) ✅
+  // }
 
   async stat(storageKey: string): Promise<{ size: number }> {
     if (this.driver !== 's3') {
@@ -126,54 +174,3 @@ export class StorageService {
     return path.relative(this.ROOT, outPath).split(path.sep).join('/');
   }
 }
-
-// import { Injectable } from '@nestjs/common';
-// import * as path from 'path';
-// import * as fs from 'fs/promises';
-// import { createReadStream, ReadStream } from 'fs';
-// import { randomUUID } from 'crypto';
-
-// type PutInput = { filePath: string; filename: string; subdir?: string };
-
-// @Injectable()
-// export class StorageService {
-//   // Use FILES_DIR as the storage root (as you already do)
-//   private readonly ROOT = path.resolve(process.env.FILES_DIR ?? 'dev_uploads');
-
-//   async put({ filePath, filename, subdir }: PutInput): Promise<string> {
-//     const targetDir = path.join(this.ROOT, subdir ?? 'misc');
-//     await fs.mkdir(targetDir, { recursive: true });
-
-//     const ext = path.extname(filename) || '.bin';
-//     const base = path.basename(filename, ext).replace(/[^\w.\-]/g, '_');
-//     const outPath = path.join(targetDir, `${base}.${randomUUID()}${ext}`);
-
-//     try {
-//       await fs.rename(filePath, outPath); // fast move if same volume/root
-//     } catch (e: any) {
-//       if (e.code === 'EXDEV') {
-//         await fs.copyFile(filePath, outPath);
-//         await fs.unlink(filePath).catch(() => {});
-//       } else {
-//         throw e;
-//       }
-//     }
-
-//     return path.relative(this.ROOT, outPath).split(path.sep).join('/');
-//   }
-
-//   resolvePath(storageKey: string) {
-//     return path.isAbsolute(storageKey)
-//       ? storageKey
-//       : path.join(this.ROOT, storageKey);
-//   }
-
-//   createReadStream(storageKey: string): ReadStream {
-//     const fullPath = this.resolvePath(storageKey);
-//     return createReadStream(fullPath);
-//   }
-
-//   async stat(storageKey: string) {
-//     return fs.stat(this.resolvePath(storageKey));
-//   }
-// }
