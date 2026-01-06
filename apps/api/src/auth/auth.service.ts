@@ -223,6 +223,7 @@ export class AuthService {
         name: true,
         active: true,
         mustChangePassword: true,
+        tempPasswordExpiresAt: true,
         passwordHash: true,
         userId: true,
         clientCode: true,
@@ -244,6 +245,7 @@ export class AuthService {
     }
 
     // Verify password
+    // Verify password
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       await this.logAuthEvent({
@@ -256,6 +258,27 @@ export class AuthService {
         meta: { userAgent: ua },
       });
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // ✅ ADD THIS BLOCK RIGHT HERE
+    if (user.mustChangePassword) {
+      if (
+        user.tempPasswordExpiresAt &&
+        user.tempPasswordExpiresAt < new Date()
+      ) {
+        await this.logAuthEvent({
+          action: 'LOGIN_FAILED',
+          userId: user.id,
+          role: user.role as any,
+          ip,
+          entityId: user.userId ?? user.email,
+          details: 'Temporary password expired',
+          meta: { userAgent: ua },
+        });
+        throw new UnauthorizedException(
+          'Temporary password expired. Contact admin.',
+        );
+      }
     }
 
     // First-login flow (force change)
