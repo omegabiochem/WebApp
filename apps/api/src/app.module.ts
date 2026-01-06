@@ -29,6 +29,7 @@ import { HealthController } from './health.controller';
 import { ChemistryReportsModule } from './reports/chemistryreports.module';
 import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.module';
 import { RequestContextMiddleware } from './common/context.middleware';
+import { FaviconController } from './favicon.controller';
 
 @Module({
   imports: [
@@ -43,7 +44,7 @@ import { RequestContextMiddleware } from './common/context.middleware';
     ChemistryReportsModule,
     ChemistryAttachmentsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, FaviconController],
   providers: [
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

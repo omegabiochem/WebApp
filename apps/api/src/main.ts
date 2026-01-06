@@ -10,6 +10,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'https://www.omegabiochemlab.com',
+      'https://omegabiochemlab.com',
       'https://omega-lims.fly.dev',
       'https://omega-lims-staging.fly.dev',
     ],
