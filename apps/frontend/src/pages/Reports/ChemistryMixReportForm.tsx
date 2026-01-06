@@ -213,8 +213,8 @@ export default function ChemistryMixReportForm({
   // sample collected position: top / mid / bottom
   type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
 
-  const [sampleCollected, setSampleCollected] = useState<SampleCollected | "">(
-    report?.sampleCollected ?? ""
+  const [sampleCollected, setSampleCollected] = useState<SampleCollected[]>(
+    report?.sampleCollected || []
   );
 
   const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
@@ -252,6 +252,13 @@ export default function ChemistryMixReportForm({
 
   const toggleTestType = (key: TestType) => {
     setTestTypes((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+    markDirty();
+  };
+
+  const toggleSampleCollected = (key: SampleCollected) => {
+    setSampleCollected((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
     markDirty();
@@ -452,16 +459,77 @@ export default function ChemistryMixReportForm({
   //   return m;
   // }, [openCorrections]);
 
-  const hasCorrection = (fieldOrPrefix: string) =>
-    hasOpenCorrection(fieldOrPrefix);
+  const hasCorrection = (keyOrPrefix: string) =>
+    hasOpenCorrectionKey(keyOrPrefix);
 
   // const correctionText = (field: string) =>
   //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string }[]
+    { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  function stringify(v: any) {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function getFieldDisplayValue(fieldKey: string) {
+    const base = fieldKey.split(":")[0];
+
+    switch (base) {
+      case "client":
+        return client;
+      case "dateSent":
+        return formatDateForInput(dateSent);
+      case "sampleDescription":
+        return sampleDescription;
+      case "testTypes":
+        return stringify(testTypes);
+      case "sampleCollected":
+        return stringify(sampleCollected);
+      case "lotBatchNo":
+        return lotBatchNo;
+      case "manufactureDate":
+        return formatDateForInput(manufactureDate);
+      case "formulaId":
+        return formulaId;
+      case "sampleSize":
+        return sampleSize;
+      case "numberOfActives":
+        return numberOfActives;
+      case "sampleTypes":
+        return stringify(sampleTypes);
+      case "dateReceived":
+        return formatDateForInput(dateReceived);
+      case "comments":
+        return comments;
+      case "testedBy":
+        return testedBy;
+      case "testedDate":
+        return formatDateForInput(testedDate);
+      case "reviewedBy":
+        return reviewedBy;
+      case "reviewedDate":
+        return formatDateForInput(reviewedDate);
+
+      case "actives": {
+        // actives:ROWKEY:col
+        const [, rowKey, col] = fieldKey.split(":");
+        const row = actives.find((r) => r.key === rowKey);
+        if (!row) return "";
+        if (!col) return stringify(row);
+        return stringify((row as any)[col]);
+      }
+
+      default:
+        return "";
+    }
+  }
+
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
@@ -1087,12 +1155,12 @@ export default function ChemistryMixReportForm({
               >
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "TOP_BEG"}
+                    checked={sampleCollected.includes("TOP_BEG")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("TOP_BEG");
+                      toggleSampleCollected("TOP_BEG");
                       clearError("sampleCollected");
                       markDirty();
                     }}
@@ -1107,12 +1175,12 @@ export default function ChemistryMixReportForm({
 
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "MID"}
+                    checked={sampleCollected.includes("MID")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("MID");
+                      toggleSampleCollected("MID");
                       clearError("sampleCollected");
                       markDirty();
                     }}
@@ -1127,12 +1195,12 @@ export default function ChemistryMixReportForm({
 
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "BOTTOM_END"}
+                    checked={sampleCollected.includes("BOTTOM_END")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("BOTTOM_END");
+                      toggleSampleCollected("BOTTOM_END");
                       clearError("sampleCollected");
                       markDirty();
                     }}
@@ -2027,6 +2095,21 @@ export default function ChemistryMixReportForm({
                 setCorrections(fresh);
                 setStatus(pendingStatus!);
                 setPendingStatus(null);
+                if (role === "CLIENT") {
+                  navigate("/clientDashboard");
+                } else if (role === "FRONTDESK") {
+                  navigate("/frontdeskDashboard");
+                } else if (role === "CHEMISTRY") {
+                  navigate("/chemistryDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                } else if (role === "QA") {
+                  navigate("/qaDashboard");
+                } else if (role === "ADMIN") {
+                  navigate("/adminDashboard");
+                } else if (role === "SYSTEMADMIN") {
+                  navigate("/systemAdminDashboard");
+                }
               }}
             >
               Send corrections
@@ -2066,8 +2149,13 @@ export default function ChemistryMixReportForm({
                 onClick={() => {
                   setPendingCorrections((prev) => [
                     ...prev,
-                    { fieldKey: addForField!, message: addMessage.trim() },
+                    {
+                      fieldKey: addForField!,
+                      message: addMessage.trim(),
+                      oldValue: getFieldDisplayValue(addForField!),
+                    },
                   ]);
+
                   setAddForField(null);
                   setAddMessage("");
                 }}
@@ -2114,10 +2202,21 @@ export default function ChemistryMixReportForm({
             ) : (
               openCorrections.map((c) => (
                 <div key={c.id} className="p-3 text-sm">
-                  <div className="text-[11px] font-medium text-slate-500">
+                  <div className="text-[11px] font-bold text-black">
                     {c.fieldKey}
                   </div>
-                  <div className="mt-1">{c.message}</div>
+                  <div className="mt-1"> Reason : {c.message}</div>
+                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                    <div className="mt-1 text-xs text-slate-600">
+                      <span className="font-medium">Old Value :</span>{" "}
+                      <span className="break-words">
+                        {typeof c.oldValue === "string"
+                          ? c.oldValue
+                          : JSON.stringify(c.oldValue)}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="mt-2 flex gap-2">
                     <button
                       className="text-xs font-medium text-emerald-700 hover:underline"

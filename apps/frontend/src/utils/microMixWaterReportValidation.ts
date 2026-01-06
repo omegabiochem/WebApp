@@ -244,12 +244,16 @@ export function FieldErrorBadge({
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
-  message: "OPEN" | "RESOLVED" extends never ? never : string; // (keep)
+  message: string;
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
-  resolvedAt?: string;
-  resolvedByUserId?: string;
+
+  // ✅ add
+  oldValue?: string | null;
+  resolvedAt?: string | null;
+  resolvedByRole?: Role | null;
+  resolutionNote?: string | null;
 };
 
 export async function getCorrections(reportId: string) {
