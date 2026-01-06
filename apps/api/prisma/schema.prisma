@@ -322,8 +322,8 @@ model ChemistryMixDetails {
   // TYPE OF TEST – multiple checkboxes
   testTypes         TestType[]    // ID, PERCENT_ASSAY, CONTENT_UNIFORMITY
 
-  // SAMPLE COLLECTED – single choice
-  sampleCollected   SampleCollected?
+  // SAMPLE COLLECTED –  multiple checkboxes
+  sampleCollected   SampleCollected[]
 
   // LOT / MFG / FORMULA / SAMPLE SIZE / NUMBER OF ACTIVES
   lotBatchNo        String?

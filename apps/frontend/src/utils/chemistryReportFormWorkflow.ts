@@ -1,3 +1,5 @@
+
+
 // src/permissions/reportWorkflow.ts
 export type Role =
   | "SYSTEMADMIN"
@@ -14,6 +16,11 @@ export type CorrectionItem = {
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  resolvedAt?: string | null;
+  resolvedByRole?: Role | null;
+  resolutionNote?: string | null;
 };
 
 export type ChemistryReportStatus =
@@ -308,3 +315,4 @@ export function canShowChemistryUpdateButton(
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
 }
+

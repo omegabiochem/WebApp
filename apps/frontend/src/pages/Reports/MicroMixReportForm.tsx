@@ -446,8 +446,128 @@ export default function MicroMixReportForm({
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string }[]
+    { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  function stringify(v: any) {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function getFieldDisplayValue(fieldKey: string) {
+    const [base, key, col] = fieldKey.split(":");
+
+    // ---- top-level MicroMix fields ----
+    switch (base) {
+      case "client":
+        return client;
+
+      case "dateSent":
+        return formatDateForInput(dateSent);
+
+      case "typeOfTest":
+        return typeOfTest;
+
+      case "sampleType":
+        return sampleType;
+
+      case "formulaNo":
+        return formulaNo;
+
+      case "description":
+        return description;
+
+      case "lotNo":
+        return lotNo;
+
+      case "manufactureDate":
+        // you show NA when empty; keep the same here
+        return manufactureDate ? formatDateForInput(manufactureDate) : "NA";
+
+      case "testSopNo":
+        return testSopNo;
+
+      case "dateTested":
+        return formatDateForInput(dateTested);
+
+      case "preliminaryResults":
+        return preliminaryResults;
+
+      case "preliminaryResultsDate":
+        return formatDateForInput(preliminaryResultsDate);
+
+      case "dateCompleted":
+        return formatDateForInput(dateCompleted);
+
+      case "tbc_gram":
+        return tbc_gram;
+
+      case "tbc_result":
+        return tbc_result;
+
+      case "tbc_spec":
+        return tbc_spec;
+
+      case "tmy_gram":
+        return tmy_gram;
+
+      case "tmy_result":
+        return tmy_result;
+
+      case "tmy_spec":
+        return tmy_spec;
+
+      case "comments":
+        return comments;
+
+      case "testedBy":
+        return testedBy;
+
+      case "testedDate":
+        return formatDateForInput(testedDate);
+
+      case "reviewedBy":
+        return reviewedBy;
+
+      case "reviewedDate":
+        return formatDateForInput(reviewedDate);
+
+      // ---- nested pathogens ----
+      // fieldKey format you use: "pathogens:KEY:checked|result|spec|label|grams"
+      case "pathogens": {
+        // if they just click "pathogens" (no key/col), store whole table snapshot
+        if (!key) return stringify(pathogens);
+
+        const row = pathogens.find((p) => p.key === key);
+        if (!row) return "";
+
+        // if they didn't specify col, store whole row snapshot
+        if (!col) return stringify(row);
+
+        switch (col) {
+          case "checked":
+            return row.checked ? "Checked" : "Unchecked";
+          case "result":
+            return row.result || "";
+          case "spec":
+            return row.spec || "";
+          case "label":
+            return row.label || "";
+          case "grams":
+            return row.grams || "";
+          default:
+            // fallback: allow anything else safely
+            return stringify((row as any)[col]);
+        }
+      }
+
+      default:
+        return "";
+    }
+  }
+
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
@@ -2459,6 +2579,21 @@ export default function MicroMixReportForm({
                 setCorrections(fresh);
                 setStatus(pendingStatus!);
                 setPendingStatus(null);
+                if (role === "CLIENT") {
+                  navigate("/clientDashboard");
+                } else if (role === "FRONTDESK") {
+                  navigate("/frontdeskDashboard");
+                } else if (role === "MICRO") {
+                  navigate("/microDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                } else if (role === "QA") {
+                  navigate("/qaDashboard");
+                } else if (role === "ADMIN") {
+                  navigate("/adminDashboard");
+                } else if (role === "SYSTEMADMIN") {
+                  navigate("/systemAdminDashboard");
+                }
               }}
             >
               Send corrections
@@ -2498,8 +2633,13 @@ export default function MicroMixReportForm({
                 onClick={() => {
                   setPendingCorrections((prev) => [
                     ...prev,
-                    { fieldKey: addForField!, message: addMessage.trim() },
+                    {
+                      fieldKey: addForField!,
+                      message: addMessage.trim(),
+                      oldValue: getFieldDisplayValue(addForField!),
+                    },
                   ]);
+
                   setAddForField(null);
                   setAddMessage("");
                 }}
@@ -2549,7 +2689,18 @@ export default function MicroMixReportForm({
                   <div className="text-[11px] font-medium text-slate-500">
                     {c.fieldKey}
                   </div>
-                  <div className="mt-1">{c.message}</div>
+                  <div className="mt-1"> Reason : {c.message}</div>
+                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                    <div className="mt-1 text-xs text-slate-600">
+                      <span className="font-medium">Old Value :</span>{" "}
+                      <span className="break-words">
+                        {typeof c.oldValue === "string"
+                          ? c.oldValue
+                          : JSON.stringify(c.oldValue)}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="mt-2 flex gap-2">
                     <button
                       className="text-xs font-medium text-emerald-700 hover:underline"

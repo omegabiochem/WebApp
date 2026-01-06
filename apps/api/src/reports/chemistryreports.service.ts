@@ -303,14 +303,18 @@ const CRITICAL_FIELDS = new Set<string>([
 
 type CorrectionItem = {
   id: string;
-  fieldKey: string; // e.g. "dateSent", "tbc_result"
-  message: string; // reason text
+  fieldKey: string;
+  message: string;
   status: 'OPEN' | 'RESOLVED';
   requestedByUserId: string;
   requestedByRole: UserRole;
-  createdAt: Date;
-  resolvedAt?: Date | null;
+
+  createdAt: string; // ✅ keep as ISO string (you already store string)
+  oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
+  resolvedAt?: string | null; // ✅ ISO
   resolvedByUserId?: string | null;
+
+  resolutionNote?: string | null; // optional
 };
 
 function _getCorrectionsArray(r: any): CorrectionItem[] {
@@ -328,8 +332,10 @@ export class ChemistryReportsService {
 
   // 👇 add this inside the class
   private _getCorrectionsArray(r: any): CorrectionItem[] {
-    const raw = (r?.corrections ?? []) as CorrectionItem[];
-    return Array.isArray(raw) ? raw : [];
+    const raw = r?.corrections;
+    if (!raw) return [];
+    if (!Array.isArray(raw)) return [];
+    return raw as CorrectionItem[];
   }
 
   async createChemistryReportDraft(
@@ -727,7 +733,7 @@ export class ChemistryReportsService {
     user: { userId: string; role: UserRole },
     id: string,
     body: {
-      items: { fieldKey: string; message: string }[];
+      items: { fieldKey: string; message: string; oldValue?: any | null }[];
       targetStatus?: ChemistryReportStatus;
       reason?: string;
     },
@@ -772,8 +778,10 @@ export class ChemistryReportsService {
       requestedByUserId: user.userId,
       requestedByRole: user.role,
       createdAt: nowIso,
+      oldValue: it.oldValue ?? null,
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
+      resolutionNote: null as string | null,
     }));
     const nextCorrections = [...existing, ...toAdd];
 
@@ -834,8 +842,9 @@ export class ChemistryReportsService {
     arr[idx] = {
       ...arr[idx],
       status: 'RESOLVED',
-      resolvedAt: new Date(),
+      resolvedAt: new Date().toISOString(),
       resolvedByUserId: user.userId,
+      resolutionNote: body?.resolutionNote ?? null,
     };
 
     await updateDetailsByType(this.prisma, report.formType, id, {
