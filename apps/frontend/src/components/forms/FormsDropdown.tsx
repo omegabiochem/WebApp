@@ -39,10 +39,10 @@ type FormDef = {
 
 const FORMS: FormDef[] = [
   // ---- Micro ----
-  { id: "MICRO_MIX", name: "Micro Mix", category: "MICRO", emoji: "🧫" },
+  { id: "MICRO_MIX", name: "Micro", category: "MICRO", emoji: "🧫" },
   {
     id: "MICRO_MIX_WATER",
-    name: "Micro Mix (Water)",
+    name: "Micro Water",
     category: "MICRO",
     emoji: "💧",
   },
