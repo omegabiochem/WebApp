@@ -14,6 +14,11 @@ export type CorrectionItem = {
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  resolvedAt?: string | null;
+  resolvedByRole?: Role | null;
+  resolutionNote?: string | null;
 };
 
 export type ChemistryReportStatus =

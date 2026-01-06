@@ -7,6 +7,7 @@ export type Role =
   | "QA"
   | "CLIENT";
 
+
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
@@ -15,6 +16,7 @@ export type CorrectionItem = {
   requestedByRole: Role;
   createdAt: string;
 };
+
 
 export type ReportStatus =
   | "DRAFT"
