@@ -213,8 +213,8 @@ export default function ChemistryMixReportForm({
   // sample collected position: top / mid / bottom
   type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
 
-  const [sampleCollected, setSampleCollected] = useState<SampleCollected | "">(
-    report?.sampleCollected ?? ""
+  const [sampleCollected, setSampleCollected] = useState<SampleCollected[]>(
+    report?.sampleCollected || []
   );
 
   const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
@@ -252,6 +252,13 @@ export default function ChemistryMixReportForm({
 
   const toggleTestType = (key: TestType) => {
     setTestTypes((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+    markDirty();
+  };
+
+  const toggleSampleCollected = (key: SampleCollected) => {
+    setSampleCollected((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
     markDirty();
@@ -1087,12 +1094,12 @@ export default function ChemistryMixReportForm({
               >
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "TOP_BEG"}
+                    checked={sampleCollected.includes("TOP_BEG")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("TOP_BEG");
+                      toggleSampleCollected("TOP_BEG");
                       clearError("sampleCollected");
                       markDirty();
                     }}
@@ -1107,12 +1114,12 @@ export default function ChemistryMixReportForm({
 
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "MID"}
+                    checked={sampleCollected.includes("MID")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("MID");
+                      toggleSampleCollected("MID");
                       clearError("sampleCollected");
                       markDirty();
                     }}
@@ -1127,12 +1134,12 @@ export default function ChemistryMixReportForm({
 
                 <label className="flex items-center gap-1 whitespace-nowrap">
                   <input
-                    type="radio"
+                    type="checkbox"
                     name="sampleCollected"
-                    checked={sampleCollected === "BOTTOM_END"}
+                    checked={sampleCollected.includes("BOTTOM_END")}
                     onChange={() => {
                       if (lock("sampleCollected")) return;
-                      setSampleCollected("BOTTOM_END");
+                      toggleSampleCollected("BOTTOM_END");
                       clearError("sampleCollected");
                       markDirty();
                     }}

@@ -257,7 +257,7 @@ export type ChemistryMixReportFormValues = {
   sampleDescription?: string;
 
   testTypes?: Array<"ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY">;
-  sampleCollected?: "TOP_BEG" | "MID" | "BOTTOM_END" | "";
+  sampleCollected?: Array<"TOP_BEG" | "MID" | "BOTTOM_END" | "">;
 
   lotBatchNo?: string;
   manufactureDate?: string; // allow "" or "NA"
@@ -554,7 +554,9 @@ export type CorrectionItem = {
 };
 
 export async function getCorrections(reportId: string) {
-  return await api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`);
+  return await api<CorrectionItem[]>(
+    `/chemistry-reports/${reportId}/corrections`
+  );
 }
 
 export async function createCorrections(
@@ -575,9 +577,12 @@ export async function resolveCorrection(
   cid: string,
   resolutionNote?: string
 ) {
-  return api<CorrectionItem>(`/chemistry-reports/${reportId}/corrections/${cid}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resolutionNote }),
-  });
+  return api<CorrectionItem>(
+    `/chemistry-reports/${reportId}/corrections/${cid}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resolutionNote }),
+    }
+  );
 }
