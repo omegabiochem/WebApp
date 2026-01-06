@@ -2095,6 +2095,21 @@ export default function ChemistryMixReportForm({
                 setCorrections(fresh);
                 setStatus(pendingStatus!);
                 setPendingStatus(null);
+                if (role === "CLIENT") {
+                  navigate("/clientDashboard");
+                } else if (role === "FRONTDESK") {
+                  navigate("/frontdeskDashboard");
+                } else if (role === "CHEMISTRY") {
+                  navigate("/chemistryDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                } else if (role === "QA") {
+                  navigate("/qaDashboard");
+                } else if (role === "ADMIN") {
+                  navigate("/adminDashboard");
+                } else if (role === "SYSTEMADMIN") {
+                  navigate("/systemAdminDashboard");
+                }
               }}
             >
               Send corrections

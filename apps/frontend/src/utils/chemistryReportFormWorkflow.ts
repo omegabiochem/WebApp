@@ -1,3 +1,5 @@
+
+
 // src/permissions/reportWorkflow.ts
 export type Role =
   | "SYSTEMADMIN"
@@ -313,3 +315,4 @@ export function canShowChemistryUpdateButton(
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
 }
+

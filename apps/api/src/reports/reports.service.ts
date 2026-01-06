@@ -346,8 +346,11 @@ type CorrectionItem = {
   requestedByUserId: string;
   requestedByRole: UserRole;
   createdAt: Date;
-  resolvedAt?: Date | null;
+  oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
+  resolvedAt?: string | null; // ✅ ISO
   resolvedByUserId?: string | null;
+
+  resolutionNote?: string | null;
 };
 
 function _getCorrectionsArray(r: any): CorrectionItem[] {
@@ -455,8 +458,10 @@ export class ReportsService {
 
   // 👇 add this inside the class
   private _getCorrectionsArray(r: any): CorrectionItem[] {
-    const raw = (r?.corrections ?? []) as CorrectionItem[];
-    return Array.isArray(raw) ? raw : [];
+    const raw = r?.corrections;
+    if (!raw) return [];
+    if (!Array.isArray(raw)) return [];
+    return raw as CorrectionItem[];
   }
 
   async createDraft(
@@ -481,8 +486,6 @@ export class ReportsService {
         'Client code is required to create a report',
       );
     }
-
- 
 
     function yyyy(d: Date = new Date()): string {
       const yyyy = String(d.getFullYear());
@@ -633,7 +636,6 @@ export class ReportsService {
         );
       }
 
-
       function yyyy(d: Date = new Date()): string {
         const yyyy = String(d.getFullYear());
         return yyyy; // e.g. "2410"
@@ -777,8 +779,6 @@ export class ReportsService {
 
     const patch: any = { status: target };
 
- 
-
     function yyyy(d: Date = new Date()): string {
       const yyyy = String(d.getFullYear());
       return yyyy; // e.g. "2410"
@@ -866,7 +866,7 @@ export class ReportsService {
     user: { userId: string; role: UserRole },
     id: string,
     body: {
-      items: { fieldKey: string; message: string }[];
+      items: { fieldKey: string; message: string; oldValue?: any | null }[];
       targetStatus?: ReportStatus;
       reason?: string;
     },
@@ -912,8 +912,13 @@ export class ReportsService {
       requestedByUserId: user.userId,
       requestedByRole: user.role,
       createdAt: nowIso,
+
+      // ✅ store snapshot
+      oldValue: it.oldValue ?? null,
+
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
+      resolutionNote: null as string | null,
     }));
     const nextCorrections = [...existing, ...toAdd];
 
@@ -972,12 +977,12 @@ export class ReportsService {
     ];
     if (!allowedResolvers.includes(user.role))
       throw new ForbiddenException('Not allowed to resolve');
-
     arr[idx] = {
       ...arr[idx],
       status: 'RESOLVED',
-      resolvedAt: new Date(),
+      resolvedAt: new Date().toISOString(), // ✅ ISO
       resolvedByUserId: user.userId,
+      resolutionNote: body?.resolutionNote ?? null, // ✅ store note
     };
 
     await updateDetailsByType(this.prisma, report.formType, id, {

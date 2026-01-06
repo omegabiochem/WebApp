@@ -452,8 +452,127 @@ export default function MicroMixReportForm({
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string }[]
+    { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  // function stringify(v: any) {
+  //   if (v === null || v === undefined) return "";
+  //   if (Array.isArray(v)) return v.join(", ");
+  //   if (typeof v === "object") return JSON.stringify(v);
+  //   return String(v);
+  // }
+
+  function getFieldDisplayValue(fieldKey: string) {
+    const base = fieldKey.split(":")[0];
+
+    // helper: stringify safely
+    const str = (v: any) => {
+      if (v === null || v === undefined) return "";
+      if (typeof v === "string") return v;
+      return JSON.stringify(v);
+    };
+
+    switch (base) {
+      case "client":
+        return client;
+
+      case "dateSent":
+        return formatDateForInput(dateSent);
+
+      case "typeOfTest":
+        return typeOfTest;
+
+      case "sampleType":
+        return sampleType;
+
+      case "idNo":
+        return idNo;
+
+      case "description":
+        return description;
+
+      case "lotNo":
+        return lotNo;
+
+      case "samplingDate":
+        // you use NA behavior in UI; keep same idea here
+        return samplingDate ? formatDateForInput(samplingDate) : "NA";
+
+      case "testSopNo":
+        return testSopNo;
+
+      case "dateTested":
+        return formatDateForInput(dateTested);
+
+      case "preliminaryResults":
+        return preliminaryResults;
+
+      case "preliminaryResultsDate":
+        return formatDateForInput(preliminaryResultsDate);
+
+      case "dateCompleted":
+        return formatDateForInput(dateCompleted);
+
+      case "tbc_gram":
+        return tbc_gram;
+
+      case "tbc_result":
+        return tbc_result;
+
+      case "tbc_spec":
+        return tbc_spec;
+
+      case "tmy_gram":
+        return tmy_gram;
+
+      case "tmy_result":
+        return tmy_result;
+
+      case "tmy_spec":
+        return tmy_spec;
+
+      case "comments":
+        return comments;
+
+      case "testedBy":
+        return testedBy;
+
+      case "testedDate":
+        return formatDateForInput(testedDate);
+
+      case "reviewedBy":
+        return reviewedBy;
+
+      case "reviewedDate":
+        return formatDateForInput(reviewedDate);
+
+      case "pathogens": {
+        // supported formats:
+        // - "pathogens" (whole table)
+        // - "pathogens:E_COLI:result"
+        // - "pathogens:OTHER:label"
+        const parts = fieldKey.split(":");
+        // parts[0] = "pathogens"
+        const rowKey = parts[1]; // e.g. "E_COLI"
+        const col = parts[2]; // e.g. "result"
+
+        // if they clicked "pathogens" as a whole table
+        if (!rowKey) return str(pathogens);
+
+        const row = pathogens.find((r) => r.key === rowKey);
+        if (!row) return "";
+
+        if (!col) return str(row);
+
+        // return just that cell value
+        return str((row as any)[col]);
+      }
+
+      default:
+        return "";
+    }
+  }
+
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
@@ -1045,6 +1164,7 @@ export default function MicroMixReportForm({
         c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
     );
   // let Admin/Micro resolve even if the key is nested under "pathogens:*"
+
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -2444,6 +2564,21 @@ export default function MicroMixReportForm({
                 setCorrections(fresh);
                 setStatus(pendingStatus!);
                 setPendingStatus(null);
+                if (role === "CLIENT") {
+                  navigate("/clientDashboard");
+                } else if (role === "FRONTDESK") {
+                  navigate("/frontdeskDashboard");
+                } else if (role === "MICRO") {
+                  navigate("/microDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                } else if (role === "QA") {
+                  navigate("/qaDashboard");
+                } else if (role === "ADMIN") {
+                  navigate("/adminDashboard");
+                } else if (role === "SYSTEMADMIN") {
+                  navigate("/systemAdminDashboard");
+                }
               }}
             >
               Send corrections
@@ -2483,8 +2618,13 @@ export default function MicroMixReportForm({
                 onClick={() => {
                   setPendingCorrections((prev) => [
                     ...prev,
-                    { fieldKey: addForField!, message: addMessage.trim() },
+                    {
+                      fieldKey: addForField!,
+                      message: addMessage.trim(),
+                      oldValue: getFieldDisplayValue(addForField!),
+                    },
                   ]);
+
                   setAddForField(null);
                   setAddMessage("");
                 }}
@@ -2534,7 +2674,18 @@ export default function MicroMixReportForm({
                   <div className="text-[11px] font-medium text-slate-500">
                     {c.fieldKey}
                   </div>
-                  <div className="mt-1">{c.message}</div>
+                  <div className="mt-1"> Reason : {c.message}</div>
+                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                    <div className="mt-1 text-xs text-slate-600">
+                      <span className="font-medium">Old Value :</span>{" "}
+                      <span className="break-words">
+                        {typeof c.oldValue === "string"
+                          ? c.oldValue
+                          : JSON.stringify(c.oldValue)}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="mt-2 flex gap-2">
                     <button
                       className="text-xs font-medium text-emerald-700 hover:underline"

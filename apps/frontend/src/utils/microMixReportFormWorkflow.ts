@@ -7,7 +7,6 @@ export type Role =
   | "QA"
   | "CLIENT";
 
-
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
@@ -15,8 +14,12 @@ export type CorrectionItem = {
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
-};
+  oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
+  resolvedAt?: string | null; // ✅ ISO
+  resolvedByUserId?: string | null;
 
+  resolutionNote?: string | null; // optional
+};
 
 export type ReportStatus =
   | "DRAFT"
@@ -418,5 +421,3 @@ export function canShowUpdateButton(
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
 }
-
-
