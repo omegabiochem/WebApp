@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker } from "react-router-dom";
@@ -170,6 +170,25 @@ function canEdit(
 }
 
 const HIDE_SAVE_FOR = new Set<ChemistryReportStatus>(["APPROVED", "LOCKED"]);
+
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+// use for non-brand buttons (dark text)
+function SpinnerDark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black/70 ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
 
 export default function ChemistryMixReportForm({
   report,
@@ -591,26 +610,30 @@ export default function ChemistryMixReportForm({
   // Resolve ALL corrections for a field
   async function resolveField(fieldKey: string) {
     if (!reportId) return;
-    // const token = localStorage.getItem("token")!;
-    const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
-    if (!items.length) return;
+    return runBusy("RESOLVE", async () => {
+      // const token = localStorage.getItem("token")!;
+      const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
+      if (!items.length) return;
 
-    await Promise.all(
-      items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
-    );
-    const fresh = await getCorrections(reportId!);
-    setCorrections(fresh);
-    flashResolved(fieldKey); // ✅ show green halo briefly
+      await Promise.all(
+        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
+      );
+      const fresh = await getCorrections(reportId!);
+      setCorrections(fresh);
+      flashResolved(fieldKey); // ✅ show green halo briefly
+    });
   }
 
   // Resolve a single correction
   async function resolveOne(c: CorrectionItem) {
     if (!reportId) return;
-    // const token = localStorage.getItem("token")!;
-    await resolveCorrection(reportId!, c.id, "Fixed");
-    const fresh = await getCorrections(reportId!);
-    setCorrections(fresh);
-    flashResolved(c.fieldKey); // ✅ show green halo briefly
+    return runBusy("RESOLVE", async () => {
+      // const token = localStorage.getItem("token")!;
+      await resolveCorrection(reportId!, c.id, "Fixed");
+      const fresh = await getCorrections(reportId!);
+      setCorrections(fresh);
+      flashResolved(c.fieldKey); // ✅ show green halo briefly
+    });
   }
 
   // Tiny inline pill next to a field label/badge
@@ -644,114 +667,118 @@ export default function ChemistryMixReportForm({
 
   // ------------- SAVE -------------
   const handleSave = async (): Promise<boolean> => {
-    const values = makeValues();
-    validateAndSetErrors(values);
-    validateActiveRows(values.actives || [], role);
+    return (
+      (await runBusy("SAVE", async () => {
+        const values = makeValues();
+        validateAndSetErrors(values);
+        validateActiveRows(values.actives || [], role);
 
-    // if (!okFields) {
-    //   alert("⚠️ Please fix the highlighted fields before saving.");
-    //   return null;
-    // }
-    // if (!okRows) {
-    //   alert("⚠️ Please fix the highlighted actives before saving.");
-    //   return null;
-    // }
+        // if (!okFields) {
+        //   alert("⚠️ Please fix the highlighted fields before saving.");
+        //   return null;
+        // }
+        // if (!okRows) {
+        //   alert("⚠️ Please fix the highlighted actives before saving.");
+        //   return null;
+        // }
 
-    const fullPayload = {
-      client,
-      dateSent,
-      formType: "CHEMISTRY_MIX" as const, // important for backend
-      sampleDescription,
-      testTypes,
-      sampleCollected,
-      lotBatchNo,
-      manufactureDate: manufactureDate?.trim() ? manufactureDate : null,
-      formulaId,
-      sampleSize,
-      numberOfActives,
-      sampleTypes,
-      dateReceived,
-      actives,
-      comments,
-      testedBy,
-      testedDate,
-      reviewedBy,
-      reviewedDate,
-    };
+        const fullPayload = {
+          client,
+          dateSent,
+          formType: "CHEMISTRY_MIX" as const, // important for backend
+          sampleDescription,
+          testTypes,
+          sampleCollected,
+          lotBatchNo,
+          manufactureDate: manufactureDate?.trim() ? manufactureDate : null,
+          formulaId,
+          sampleSize,
+          numberOfActives,
+          sampleTypes,
+          dateReceived,
+          actives,
+          comments,
+          testedBy,
+          testedDate,
+          reviewedBy,
+          reviewedDate,
+        };
 
-    const BASE_ALLOWED: Record<Role, string[]> = {
-      ADMIN: ["*"],
-      SYSTEMADMIN: [],
-      FRONTDESK: [],
-      CHEMISTRY: [
-        "dateReceived",
-        "sop",
-        "results",
-        "dateTested",
-        "initial",
-        "comments",
-        "testedBy",
-        "testedDate",
-        "actives",
-      ],
-      QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-      CLIENT: [
-        "client",
-        "dateSent",
-        "sampleDescription",
-        "testTypes",
-        "sampleCollected",
-        "lotBatchNo",
-        "manufactureDate",
-        "formulaId",
-        "sampleSize",
-        "numberOfActives",
-        "sampleTypes",
-        "comments",
-        "actives",
-        "formulaContent",
-      ],
-    };
+        const BASE_ALLOWED: Record<Role, string[]> = {
+          ADMIN: ["*"],
+          SYSTEMADMIN: [],
+          FRONTDESK: [],
+          CHEMISTRY: [
+            "dateReceived",
+            "sop",
+            "results",
+            "dateTested",
+            "initial",
+            "comments",
+            "testedBy",
+            "testedDate",
+            "actives",
+          ],
+          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          CLIENT: [
+            "client",
+            "dateSent",
+            "sampleDescription",
+            "testTypes",
+            "sampleCollected",
+            "lotBatchNo",
+            "manufactureDate",
+            "formulaId",
+            "sampleSize",
+            "numberOfActives",
+            "sampleTypes",
+            "comments",
+            "actives",
+            "formulaContent",
+          ],
+        };
 
-    const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
-    const allowed = allowedBase.includes("*")
-      ? Object.keys(fullPayload)
-      : allowedBase;
+        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowed = allowedBase.includes("*")
+          ? Object.keys(fullPayload)
+          : allowedBase;
 
-    const payload = Object.fromEntries(
-      Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+        const payload = Object.fromEntries(
+          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+        );
+
+        // New reports always start as DRAFT
+        if (!reportId) {
+          payload.status = "DRAFT";
+        }
+
+        try {
+          let saved: SavedReport;
+
+          if (reportId) {
+            saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
+              method: "PATCH",
+              body: JSON.stringify({ ...payload, reason: "Saving" }),
+            });
+          } else {
+            saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
+              method: "POST",
+              body: JSON.stringify({ ...payload, formType: "CHEMISTRY_MIX" }),
+            });
+          }
+          setReportId(saved.id); // 👈 keep the new id
+          setStatus(saved.status); // in case backend changed it
+          setReportNumber(String(saved.reportNumber ?? ""));
+          setIsDirty(false);
+          alert("✅ Report saved as '" + saved.status + "'");
+          return true;
+        } catch (err: any) {
+          console.error(err);
+          alert("❌ Error saving chemistry report: " + err.message);
+          return false;
+        }
+      })) ?? false
     );
-
-    // New reports always start as DRAFT
-    if (!reportId) {
-      payload.status = "DRAFT";
-    }
-
-    try {
-      let saved: SavedReport;
-
-      if (reportId) {
-        saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ ...payload, reason: "Saving" }),
-        });
-      } else {
-        saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
-          method: "POST",
-          body: JSON.stringify({ ...payload, formType: "CHEMISTRY_MIX" }),
-        });
-      }
-      setReportId(saved.id); // 👈 keep the new id
-      setStatus(saved.status); // in case backend changed it
-      setReportNumber(String(saved.reportNumber ?? ""));
-      setIsDirty(false);
-      alert("✅ Report saved as '" + saved.status + "'");
-      return true;
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error saving chemistry report: " + err.message);
-      return false;
-    }
   };
 
   type UpdatedReport = {
@@ -763,76 +790,78 @@ export default function ChemistryMixReportForm({
     newStatus: ChemistryReportStatus,
     opts?: { reason?: string; eSignPassword?: string }
   ) {
-    const values = makeValues();
+    return await runBusy("STATUS", async () => {
+      const values = makeValues();
 
-    const okFields = validateAndSetErrors(values);
-    const okRows = validateActiveRows(values.actives || [], role);
+      const okFields = validateAndSetErrors(values);
+      const okRows = validateActiveRows(values.actives || [], role);
 
-    if (
-      newStatus === "SUBMITTED_BY_CLIENT" ||
-      newStatus === "RECEIVED_BY_FRONTDESK" ||
-      newStatus === "UNDER_TESTING_REVIEW" ||
-      newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
-      newStatus === "UNDER_CLIENT_REVIEW" ||
-      newStatus === "RESUBMISSION_BY_CLIENT" ||
-      newStatus === "UNDER_ADMIN_REVIEW" ||
-      newStatus === "QA_NEEDS_CORRECTION" ||
-      newStatus === "ADMIN_NEEDS_CORRECTION" ||
-      newStatus === "ADMIN_REJECTED" ||
-      newStatus === "CLIENT_NEEDS_CORRECTION" ||
-      newStatus === "TESTING_ON_HOLD" ||
-      newStatus === "TESTING_NEEDS_CORRECTION" ||
-      newStatus === "FRONTDESK_ON_HOLD" ||
-      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-      newStatus === "LOCKED" ||
-      newStatus === "APPROVED"
-    ) {
-      if (!okFields) {
-        alert("⚠️ Please fix the highlighted fields before changing status.");
-        return;
-      }
-      if (!okRows) {
-        alert("⚠️ Please fix the highlighted rows before changing status.");
-        return;
-      }
-    }
-
-    // 3) Ensure latest edits are saved
-    if (!reportId || isDirty) {
-      const saved = await handleSave(); // <-- your chemistry save (POST/PATCH /reports)
-      if (!saved) return;
-    }
-    // 4) PATCH status (THIS is where your 400 reason/header issue matters)
-    try {
-      const updated = await api<UpdatedReport>(
-        `/chemistry-reports/${reportId}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: newStatus,
-            reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
-            eSignPassword: opts?.eSignPassword ?? undefined,
-          }),
-          // If your API supports header alternative:
-          // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
+      if (
+        newStatus === "SUBMITTED_BY_CLIENT" ||
+        newStatus === "RECEIVED_BY_FRONTDESK" ||
+        newStatus === "UNDER_TESTING_REVIEW" ||
+        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        newStatus === "UNDER_CLIENT_REVIEW" ||
+        newStatus === "RESUBMISSION_BY_CLIENT" ||
+        newStatus === "UNDER_ADMIN_REVIEW" ||
+        newStatus === "QA_NEEDS_CORRECTION" ||
+        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        newStatus === "ADMIN_REJECTED" ||
+        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        newStatus === "TESTING_ON_HOLD" ||
+        newStatus === "TESTING_NEEDS_CORRECTION" ||
+        newStatus === "FRONTDESK_ON_HOLD" ||
+        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        newStatus === "LOCKED" ||
+        newStatus === "APPROVED"
+      ) {
+        if (!okFields) {
+          alert("⚠️ Please fix the highlighted fields before changing status.");
+          return;
         }
-      );
+        if (!okRows) {
+          alert("⚠️ Please fix the highlighted rows before changing status.");
+          return;
+        }
+      }
 
-      setStatus(updated.status ?? newStatus);
-      setIsDirty(false);
-      alert(`✅ Status changed to ${newStatus}`);
+      // 3) Ensure latest edits are saved
+      if (!reportId || isDirty) {
+        const saved = await handleSave(); // <-- your chemistry save (POST/PATCH /reports)
+        if (!saved) return;
+      }
+      // 4) PATCH status (THIS is where your 400 reason/header issue matters)
+      try {
+        const updated = await api<UpdatedReport>(
+          `/chemistry-reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: newStatus,
+              reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
+              eSignPassword: opts?.eSignPassword ?? undefined,
+            }),
+            // If your API supports header alternative:
+            // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
+          }
+        );
 
-      // navigate per role (same as micro)
-      if (role === "CLIENT") navigate("/clientDashboard");
-      else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
-      else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
-      else if (role === "QA") navigate("/qaDashboard");
-      else if (role === "ADMIN") navigate("/adminDashboard");
-      else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error changing status: " + err.message);
-    }
+        setStatus(updated.status ?? newStatus);
+        setIsDirty(false);
+        alert(`✅ Status changed to ${newStatus}`);
+
+        // navigate per role (same as micro)
+        if (role === "CLIENT") navigate("/clientDashboard");
+        else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
+        else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
+        else if (role === "QA") navigate("/qaDashboard");
+        else if (role === "ADMIN") navigate("/adminDashboard");
+        else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+      } catch (err: any) {
+        console.error(err);
+        alert("❌ Error changing status: " + err.message);
+      }
+    });
   }
 
   const handleClose = () => {
@@ -891,6 +920,36 @@ export default function ChemistryMixReportForm({
     };
   }
 
+  type BusyAction =
+    | null
+    | "SAVE"
+    | "STATUS"
+    | "ESIGN_CONFIRM"
+    | "SEND_CORRECTIONS"
+    | "ADD_CORRECTION"
+    | "RESOLVE";
+
+  const [busy, setBusy] = useState<BusyAction>(null);
+  const busyRef = useRef(false);
+
+  const isBusy = busy !== null;
+
+  async function runBusy<T>(
+    action: Exclude<BusyAction, null>,
+    fn: () => Promise<T>
+  ): Promise<T | undefined> {
+    if (busyRef.current) return; // 🚫 prevent double click
+    busyRef.current = true;
+    setBusy(action);
+
+    try {
+      return await fn();
+    } finally {
+      setBusy(null);
+      busyRef.current = false;
+    }
+  }
+
   // ---------------- RENDER ----------------
   return (
     <>
@@ -901,17 +960,20 @@ export default function ChemistryMixReportForm({
         {/* Top buttons */}
         <div className="no-print mb-4 flex justify-end gap-2">
           <button
-            className="px-3 py-1 rounded-md border bg-gray-600 text-white"
+            className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
             onClick={handleClose}
+            disabled={isBusy}
           >
-            Close
+            {isBusy ? "Working..." : "Close"}
           </button>
+
           {!HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
             <button
-              className="px-3 py-1 rounded-md border bg-blue-600 text-white"
+              className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
-              disabled={role === "SYSTEMADMIN"}
+              disabled={role === "SYSTEMADMIN" || isBusy}
             >
+              {busy === "SAVE" && <Spinner />}
               {reportId ? "Update Report" : "Save Report"}
             </button>
           )}
@@ -1950,12 +2012,11 @@ export default function ChemistryMixReportForm({
                 return (
                   <button
                     key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color}`}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                     onClick={() => requestStatusChange(targetStatus)}
-                    // onClick={() => handleStatusChange(targetStatus)}
-
-                    // disabled={role === "SYSTEMADMIN"}
+                    disabled={role === "SYSTEMADMIN" || isBusy}
                   >
+                    {busy === "STATUS" && <Spinner />}
                     {label}
                   </button>
                 );
@@ -2010,8 +2071,9 @@ export default function ChemistryMixReportForm({
                 Cancel
               </button>
               <button
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
+                  isBusy ||
                   !pendingStatus ||
                   !changeReason.trim() ||
                   !eSignPassword.trim()
@@ -2027,6 +2089,7 @@ export default function ChemistryMixReportForm({
                   });
                 }}
               >
+                {busy === "STATUS" && <Spinner />}
                 Confirm
               </button>
             </div>
@@ -2080,38 +2143,41 @@ export default function ChemistryMixReportForm({
               disabled={
                 !pendingCorrections.length || !pendingStatus || !reportId
               }
-              onClick={async () => {
-                // const token = localStorage.getItem("token")!;
-                await createCorrections(
-                  reportId!,
-                  pendingCorrections,
-                  pendingStatus!, // MOVE status in same call
-                  "Corrections requested" // audit reason
-                );
-                setSelectingCorrections(false);
-                setPendingCorrections([]);
-                // refresh corrections list and status
-                const fresh = await getCorrections(reportId!);
-                setCorrections(fresh);
-                setStatus(pendingStatus!);
-                setPendingStatus(null);
-                if (role === "CLIENT") {
-                  navigate("/clientDashboard");
-                } else if (role === "FRONTDESK") {
-                  navigate("/frontdeskDashboard");
-                } else if (role === "CHEMISTRY") {
-                  navigate("/chemistryDashboard");
-                  // } else if (role === "CHEMISTRY") {
-                  //   navigate("/chemistryDashboard");
-                } else if (role === "QA") {
-                  navigate("/qaDashboard");
-                } else if (role === "ADMIN") {
-                  navigate("/adminDashboard");
-                } else if (role === "SYSTEMADMIN") {
-                  navigate("/systemAdminDashboard");
-                }
-              }}
+              onClick={() =>
+                runBusy("SEND_CORRECTIONS", async () => {
+                  await createCorrections(
+                    reportId!,
+                    pendingCorrections,
+                    pendingStatus!,
+                    "Corrections requested"
+                  );
+
+                  setSelectingCorrections(false);
+                  setPendingCorrections([]);
+
+                  const fresh = await getCorrections(reportId!);
+                  setCorrections(fresh);
+                  setStatus(pendingStatus!);
+                  setPendingStatus(null);
+                  if (role === "CLIENT") {
+                    navigate("/clientDashboard");
+                  } else if (role === "FRONTDESK") {
+                    navigate("/frontdeskDashboard");
+                  } else if (role === "CHEMISTRY") {
+                    navigate("/chemistryDashboard");
+                    // } else if (role === "CHEMISTRY") {
+                    //   navigate("/chemistryDashboard");
+                  } else if (role === "QA") {
+                    navigate("/qaDashboard");
+                  } else if (role === "ADMIN") {
+                    navigate("/adminDashboard");
+                  } else if (role === "SYSTEMADMIN") {
+                    navigate("/systemAdminDashboard");
+                  }
+                })
+              }
             >
+              {busy === "SEND_CORRECTIONS" && <Spinner />}
               Send corrections
             </button>
           </div>
@@ -2146,20 +2212,23 @@ export default function ChemistryMixReportForm({
               <button
                 className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                 disabled={!addMessage.trim()}
-                onClick={() => {
-                  setPendingCorrections((prev) => [
-                    ...prev,
-                    {
-                      fieldKey: addForField!,
-                      message: addMessage.trim(),
-                      oldValue: getFieldDisplayValue(addForField!),
-                    },
-                  ]);
+                onClick={() =>
+                  runBusy("ADD_CORRECTION", async () => {
+                    setPendingCorrections((prev) => [
+                      ...prev,
+                      {
+                        fieldKey: addForField!,
+                        message: addMessage.trim(),
+                        oldValue: getFieldDisplayValue(addForField!),
+                      },
+                    ]);
 
-                  setAddForField(null);
-                  setAddMessage("");
-                }}
+                    setAddForField(null);
+                    setAddMessage("");
+                  })
+                }
               >
+                {busy === "ADD_CORRECTION" && <Spinner />}
                 Add
               </button>
             </div>
@@ -2222,7 +2291,7 @@ export default function ChemistryMixReportForm({
                       className="text-xs font-medium text-emerald-700 hover:underline"
                       onClick={() => resolveOne(c)}
                     >
-                      ✓ Mark resolved
+                      {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
                     </button>
                     <button
                       className="text-xs text-slate-500 hover:underline"

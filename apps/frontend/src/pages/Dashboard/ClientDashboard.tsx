@@ -275,6 +275,24 @@ function BulkPrintArea({
   );
 }
 
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+function SpinnerDark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700 ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -314,6 +332,19 @@ export default function ClientDashboard() {
 
   // // status filter now uses combined type
   // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
+  // per-row update loading (table buttons)
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // modal update loading
+  const [modalUpdating, setModalUpdating] = useState(false);
+
+  // print loading (bulk + single)
+  const [printingBulk, setPrintingBulk] = useState(false);
+  const [printingSingle, setPrintingSingle] = useState(false);
+
+  // optional: refresh loading
+  const [refreshing, setRefreshing] = useState(false);
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -419,7 +450,7 @@ export default function ClientDashboard() {
       : `/reports/${r.id}/status`;
 
     const body = isChemistry
-      ? { reason,status: newStatus }
+      ? { reason, status: newStatus }
       : { reason, status: newStatus };
 
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
@@ -470,7 +501,10 @@ export default function ClientDashboard() {
   };
 
   const handlePrintSelected = () => {
+    if (printingBulk) return; // 🚫 prevent double
     if (!selectedIds.length) return;
+
+    setPrintingBulk(true);
     setIsBulkPrinting(true);
   };
 
@@ -529,6 +563,8 @@ export default function ClientDashboard() {
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 if (singlePrintReport) setSinglePrintReport(null);
+                setPrintingBulk(false);
+                setPrintingSingle(false);
               }}
             />
           </>,
@@ -549,23 +585,32 @@ export default function ClientDashboard() {
           <button
             type="button"
             onClick={handlePrintSelected}
-            disabled={!selectedIds.length}
+            disabled={!selectedIds.length || printingBulk}
             className={classNames(
-              "inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium shadow-sm",
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
               selectedIds.length
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                : "bg-slate-200 text-slate-500"
             )}
           >
-            🖨️ Print selected ({selectedIds.length})
+            {printingBulk ? <Spinner /> : "🖨️"}
+            {printingBulk
+              ? "Preparing..."
+              : `Print selected (${selectedIds.length})`}
           </button>
+
           <button
             type="button"
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
-            aria-label="Refresh"
+            onClick={() => {
+              if (refreshing) return;
+              setRefreshing(true);
+              window.location.reload();
+            }}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60"
           >
-            ↻ Refresh
+            {refreshing ? <SpinnerDark /> : "↻"}
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -783,11 +828,11 @@ export default function ClientDashboard() {
 
                           {isMicro && canUpdateThisReport(r, user) && (
                             <button
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                              // onClick={() =>
-                              //   navigate(`/reports/${r.id}`)
-                              // }
+                              disabled={updatingId === r.id}
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                               onClick={async () => {
+                                if (updatingId === r.id) return; // 🚫 prevent double
+                                setUpdatingId(r.id);
                                 try {
                                   if (
                                     r.status ===
@@ -809,27 +854,29 @@ export default function ClientDashboard() {
                                       "Resubmission under Review"
                                     );
                                   }
-                                  // navigate(`/reports/${r.id}`);
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  alert(
-                                    e?.message || "Failed to update status"
-                                  );
                                   toast.error(
                                     e?.message || "Failed to update status"
                                   );
+                                } finally {
+                                  setUpdatingId(null);
                                 }
                               }}
                             >
-                              Update
+                              {updatingId === r.id ? <Spinner /> : null}
+                              {updatingId === r.id ? "Updating..." : "Update"}
                             </button>
                           )}
 
                           {isChemistry &&
                             canUpdateThisChemistryReport(r, user) && (
                               <button
-                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                                disabled={updatingId === r.id}
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 onClick={async () => {
+                                  if (updatingId === r.id) return; // 🚫 prevent double
+                                  setUpdatingId(r.id);
                                   try {
                                     if (
                                       r.status === "TESTING_NEEDS_CORRECTION"
@@ -850,16 +897,16 @@ export default function ClientDashboard() {
                                     }
                                     goToReportEditor(r);
                                   } catch (e: any) {
-                                    alert(
-                                      e?.message || "Failed to update status"
-                                    );
                                     toast.error(
                                       e?.message || "Failed to update status"
                                     );
+                                  } finally {
+                                    setUpdatingId(null);
                                   }
                                 }}
                               >
-                                Update
+                                {updatingId === r.id ? <Spinner /> : null}
+                                {updatingId === r.id ? "Updating..." : "Update"}
                               </button>
                             )}
                         </div>
@@ -945,26 +992,29 @@ export default function ClientDashboard() {
               <div className="flex items-center gap-2">
                 {/* ✅ NEW: Print this report */}
                 <button
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                  onClick={() => setSinglePrintReport(selectedReport)}
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  disabled={printingSingle}
+                  onClick={() => {
+                    if (printingSingle) return;
+                    setPrintingSingle(true);
+                    setSinglePrintReport(selectedReport);
+                  }}
                 >
-                  🖨️ Print
+                  {printingSingle ? <SpinnerDark /> : "🖨️"}
+                  {printingSingle ? "Preparing..." : "Print"}
                 </button>
+
                 {canUpdateThisReport(selectedReport, user) && (
                   <button
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                    // onClick={() => {
-                    //   const id = selectedReport.id;
-                    //   setSelectedReport(null);
-                    //   navigate(`/reports/${id}`);
-                    // }}
+                    disabled={modalUpdating}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     onClick={async () => {
+                      if (modalUpdating) return;
+                      setModalUpdating(true);
                       try {
-                        // const id = selectedReport.id;
-                        const r = selectedReport;
+                        const r = selectedReport!;
                         if (
-                          selectedReport.status ===
-                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           await setStatus(
                             r,
@@ -972,8 +1022,7 @@ export default function ClientDashboard() {
                             "Sent back to client for correction"
                           );
                         } else if (
-                          selectedReport.status ===
-                          "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                          r.status === "PRELIMINARY_RESUBMISSION_BY_TESTING"
                         ) {
                           await setStatus(
                             r,
@@ -982,28 +1031,27 @@ export default function ClientDashboard() {
                           );
                         }
                         setSelectedReport(null);
-                        // navigate(`/reports/${id}`);
                         goToReportEditor(r);
                       } catch (e: any) {
-                        alert(e?.message || "Failed to update status");
+                        toast.error(e?.message || "Failed to update status");
+                      } finally {
+                        setModalUpdating(false);
                       }
                     }}
                   >
-                    Update
+                    {modalUpdating ? <Spinner /> : null}
+                    {modalUpdating ? "Updating..." : "Update"}
                   </button>
                 )}
                 {canUpdateThisChemistryReport(selectedReport, user) && (
                   <button
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                    // onClick={() => {
-                    //   const id = selectedReport.id;
-                    //   setSelectedReport(null);
-                    //   navigate(`/reports/${id}`);
-                    // }}
+                    disabled={modalUpdating}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     onClick={async () => {
+                      if (modalUpdating) return;
+                      setModalUpdating(true);
                       try {
-                        // const id = selectedReport.id;
-                        const r = selectedReport;
+                        const r = selectedReport!;
                         if (
                           selectedReport.status === "TESTING_NEEDS_CORRECTION"
                         ) {
@@ -1022,14 +1070,16 @@ export default function ClientDashboard() {
                           );
                         }
                         setSelectedReport(null);
-                        // navigate(`/reports/${id}`);
                         goToReportEditor(r);
                       } catch (e: any) {
-                        alert(e?.message || "Failed to update status");
+                        toast.error(e?.message || "Failed to update status");
+                      } finally {
+                        setModalUpdating(false);
                       }
                     }}
                   >
-                    Update
+                    {modalUpdating ? <Spinner /> : null}
+                    {modalUpdating ? "Updating..." : "Update"}
                   </button>
                 )}
                 <button
