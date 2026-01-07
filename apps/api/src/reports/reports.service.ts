@@ -1035,4 +1035,9 @@ export class ReportsService {
       meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
     });
   }
+
+  // reports.service.ts
+  async listAttachments(id: string) {
+    return this.attachments.listForReport(id);
+  }
 }

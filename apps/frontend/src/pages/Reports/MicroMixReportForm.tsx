@@ -1245,6 +1245,38 @@ export default function MicroMixReportForm({
     }
   }
 
+  const [hasAttachment, setHasAttachment] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  async function refreshHasAttachment(id: string) {
+    setAttachmentsLoading(true);
+    try {
+      // ✅ Use the endpoint you already have for listing attachments.
+      // Examples (pick the one your API actually supports):
+      //   GET /reports/:id/attachments
+      //   GET /reports/:id/attachments/meta
+      //   GET /reports/:id/attachments/list
+      const list = await api<any[]>(`/reports/${id}/attachments`, {
+        method: "GET",
+      });
+      setHasAttachment(Array.isArray(list) && list.length > 0);
+    } catch {
+      // fail closed (treat as no attachment)
+      setHasAttachment(false);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!reportId) return;
+    refreshHasAttachment(reportId);
+  }, [reportId]);
+
+  function isApproveAction(targetStatus: ReportStatus) {
+    return statusButtons[targetStatus]?.label === "Approve";
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   return (
@@ -1273,7 +1305,9 @@ export default function MicroMixReportForm({
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
-              disabled={role === "SYSTEMADMIN" || isBusy}
+              disabled={
+                role === "SYSTEMADMIN" || role === "FRONTDESK" || isBusy
+              }
             >
               {busy === "SAVE" && <Spinner />}
               {reportId ? "Update Report" : "Save Report"}
@@ -2499,7 +2533,7 @@ export default function MicroMixReportForm({
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
         <div className="flex flex-wrap gap-2">
-          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+          {/* {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
             (targetStatus: ReportStatus) => {
               if (
                 STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
@@ -2517,6 +2551,49 @@ export default function MicroMixReportForm({
                   >
                     {busy === "STATUS" && <Spinner />}
                     {label}
+                  </button>
+                );
+              }
+              return null;
+            }
+          )} */}
+
+          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+            (targetStatus: ReportStatus) => {
+              if (
+                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
+                  role!
+                ) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
+
+                const approveNeedsAttachment = isApproveAction(targetStatus);
+                const disableApproveForNoAttachment =
+                  approveNeedsAttachment && !hasAttachment;
+
+                const disabled =
+                  role === "SYSTEMADMIN" ||
+                  isBusy ||
+                  attachmentsLoading ||
+                  disableApproveForNoAttachment;
+
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                    onClick={() => requestStatusChange(targetStatus)}
+                    disabled={disabled}
+                    title={
+                      disableApproveForNoAttachment
+                        ? "Upload at least 1 attachment to enable Approve"
+                        : undefined
+                    }
+                  >
+                    {busy === "STATUS" && <Spinner />}
+                    {attachmentsLoading && label === "Approve"
+                      ? "Checking..."
+                      : label}
                   </button>
                 );
               }
