@@ -20,6 +20,7 @@ import {
   type CorrectionItem,
   type Role,
 } from "../../utils/chemistryReportFormWorkflow";
+import { todayISO } from "../../utils/microMixReportFormWorkflow";
 
 // ---------- tiny hook to warn on unsaved ----------
 function useConfirmOnLeave(isDirty: boolean) {
@@ -553,7 +554,10 @@ export default function ChemistryMixReportForm({
   const [addMessage, setAddMessage] = useState("");
 
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK" || role === "QA") &&
+    (role === "ADMIN" ||
+      role === "SYSTEMADMIN" ||
+      role === "FRONTDESK" ||
+      role === "QA") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ChemistryReportStatus) {
@@ -1053,6 +1057,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass("dateSent", "flex-1")}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     if (selectingCorrections) return;
@@ -1336,6 +1341,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass("manufactureDate", "flex-1")}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(manufactureDate)}
                   onChange={(e) => {
                     if (selectingCorrections) return;
@@ -1536,6 +1542,7 @@ export default function ChemistryMixReportForm({
                 <input
                   id="f-dateReceived"
                   type="date"
+                  min={todayISO()}
                   className={`
                       w-[130px] border-0 border-b outline-none text-[11px]
                       ${
@@ -1911,6 +1918,7 @@ export default function ChemistryMixReportForm({
                     "flex-1 border-0 border-b border-black/60 outline-none"
                   )}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(testedDate)}
                   onChange={(e) => {
                     if (selectingCorrections) return;
@@ -1979,6 +1987,7 @@ export default function ChemistryMixReportForm({
                     "flex-1 border-0 border-b border-black/60 outline-none"
                   )}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(reviewedDate)}
                   onChange={(e) => {
                     if (selectingCorrections) return;

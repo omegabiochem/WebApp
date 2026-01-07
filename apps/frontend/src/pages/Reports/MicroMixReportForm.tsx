@@ -15,6 +15,7 @@ import {
 } from "../../utils/microMixReportValidation";
 import {
   STATUS_TRANSITIONS,
+  todayISO,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
@@ -1273,8 +1274,12 @@ export default function MicroMixReportForm({
     refreshHasAttachment(reportId);
   }, [reportId]);
 
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
+    "UNDER_CLIENT_FINAL_REVIEW",
+  ]);
+
   function isApproveAction(targetStatus: ReportStatus) {
-    return statusButtons[targetStatus]?.label === "Approve";
+    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1295,18 +1300,17 @@ export default function MicroMixReportForm({
             {isBusy ? "Working..." : "Close"}
           </button>
           {/* <button
-            className="px-3 py-1 rounded-md border"
-            onClick={() => window.print()}
-            disabled={role === "SYSTEMADMIN"}
-          >
-            Print
           </button> */}
           {!HIDE_SAVE_FOR.has(status as ReportStatus) && (
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
               disabled={
-                role === "SYSTEMADMIN" || role === "FRONTDESK" || isBusy
+                role === "SYSTEMADMIN" ||
+                role === "FRONTDESK" ||
+                isBusy ||
+                status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                status === "LOCKED"
               }
             >
               {busy === "SAVE" && <Spinner />}
@@ -1407,6 +1411,7 @@ export default function MicroMixReportForm({
                       : ""
                   }`}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
@@ -1416,18 +1421,7 @@ export default function MicroMixReportForm({
                   aria-invalid={!!errors.dateSent}
                 />
               )}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              // <ResolvePill field="dateSent" /> */}
-              {/* <ResolvePill field="dateSent" /> */}
             </div>
-
-            {/* absolutely positioned; doesn't affect layout */}
-            {/* <div className="overlay-actions">
-              <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" />
-            </div> */}
           </div>
 
           {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
@@ -1655,6 +1649,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={
                     manufactureDate ? formatDateForInput(manufactureDate) : "NA"
                   }
@@ -1738,6 +1733,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateTested)}
                   onChange={(e) => {
                     setDateTested(e.target.value);
@@ -1819,6 +1815,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(preliminaryResultsDate)}
                   onChange={(e) => {
                     setPreliminaryResultsDate(e.target.value);
@@ -1862,6 +1859,7 @@ export default function MicroMixReportForm({
                     : ""
                 } `}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(dateCompleted)}
                 onChange={(e) => {
                   setDateCompleted(e.target.value);
@@ -2447,6 +2445,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(testedDate)}
                 onChange={(e) => {
                   setTestedDate(e.target.value);
@@ -2515,6 +2514,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(reviewedDate)}
                 onChange={(e) => {
                   setReviewedDate(e.target.value);

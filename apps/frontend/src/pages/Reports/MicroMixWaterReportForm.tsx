@@ -15,6 +15,7 @@ import {
 } from "../../utils/microMixReportValidation";
 import {
   STATUS_TRANSITIONS,
+  todayISO,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
@@ -1362,6 +1363,7 @@ export default function MicroMixReportForm({
                       : ""
                   }`}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
@@ -1599,6 +1601,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={samplingDate ? formatDateForInput(samplingDate) : "NA"}
                   onChange={(e) => {
                     setsamplingDate(e.target.value);
@@ -1680,6 +1683,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateTested)}
                   onChange={(e) => {
                     setDateTested(e.target.value);
@@ -1761,6 +1765,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(preliminaryResultsDate)}
                   onChange={(e) => {
                     setPreliminaryResultsDate(e.target.value);
@@ -1804,6 +1809,7 @@ export default function MicroMixReportForm({
                     : ""
                 } `}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(dateCompleted)}
                 onChange={(e) => {
                   setDateCompleted(e.target.value);
@@ -2389,6 +2395,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(testedDate)}
                 onChange={(e) => {
                   setTestedDate(e.target.value);
@@ -2457,6 +2464,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(reviewedDate)}
                 onChange={(e) => {
                   setReviewedDate(e.target.value);

@@ -430,3 +430,12 @@ export function canShowUpdateButton(
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
 }
+
+export function todayISO() {
+  const d = new Date();
+  // local date (not UTC)
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
