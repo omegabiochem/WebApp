@@ -168,6 +168,12 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['CHEMISTRY'],
     canEdit: [],
   },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    canSet: ['ADMIN'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['ADMIN'],
+  },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],

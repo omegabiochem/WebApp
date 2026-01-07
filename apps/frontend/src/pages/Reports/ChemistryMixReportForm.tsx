@@ -389,7 +389,7 @@ export default function ChemistryMixReportForm({
       });
     }
 
-    if (who === "CHEMISTRY" || who === "ADMIN") {
+    if (who === "CHEMISTRY" || who === "ADMIN" || who === "QA") {
       rows.forEach((r, i) => {
         if (!r.checked) return;
 
@@ -553,7 +553,7 @@ export default function ChemistryMixReportForm({
   const [addMessage, setAddMessage] = useState("");
 
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
+    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK" || role === "QA") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ChemistryReportStatus) {

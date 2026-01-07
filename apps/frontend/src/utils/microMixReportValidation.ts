@@ -40,6 +40,7 @@ export type ReportStatus =
   | "UNDER_ADMIN_REVIEW"
   | "ADMIN_NEEDS_CORRECTION"
   | "ADMIN_REJECTED"
+  | "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
   | "FINAL_APPROVED"
   | "LOCKED";
@@ -152,11 +153,11 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
-    "comments",
-    "testedBy",
-    "testedDate",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
   ],
-  QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+  QA: ["dateCompleted"],
   CLIENT: [
     "dateSent",
     "typeOfTest",
@@ -190,9 +191,9 @@ export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
     "tmy_gram",
     "tmy_result",
     "pathogens",
-    "comments",
-    "testedBy",
-    "testedDate",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
   ],
 };
 
@@ -287,7 +288,6 @@ export type CorrectionItem = {
   resolvedByRole?: Role | null;
   resolutionNote?: string | null;
 };
-
 
 export async function getCorrections(reportId: string) {
   // const res = await fetch(
