@@ -11,6 +11,7 @@ import {
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
+import toast from "react-hot-toast";
 
 // -----------------------------
 // Types
@@ -330,6 +331,32 @@ export default function ChemistryDashboard() {
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
+  async function autoAdvanceAndOpen(r: Report, actor: string) {
+    let nextStatus: string | null = null;
+
+    if (r.status === "SUBMITTED_BY_CLIENT") {
+      nextStatus = "UNDER_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Move to testing");
+    } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
+      nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Move to RESUBMISSION");
+    } else if (r.status === "RESUBMISSION_BY_CLIENT") {
+      nextStatus = "UNDER_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Resubmitted by client");
+    } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
+      nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+      await setStatus(r, nextStatus, `Set by ${actor}`);
+    }
+
+    if (nextStatus) {
+      setReports((prev) =>
+        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x))
+      );
+    }
+
+    goToReportEditor(r);
+  }
+
   return (
     <div className="p-6">
       {(isBulkPrinting || !!singlePrintReport) &&
@@ -611,57 +638,10 @@ export default function ChemistryDashboard() {
                               onClick={async () => {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
-
                                 try {
-                                  let newStatus: string | null = null;
-
-                                  if (r.status === "SUBMITTED_BY_CLIENT") {
-                                    newStatus = "UNDER_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Move to testing review"
-                                    );
-                                  } else if (
-                                    r.status === "CLIENT_NEEDS_CORRECTION"
-                                  ) {
-                                    newStatus =
-                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Move to resubmission testing review"
-                                    );
-                                  } else if (
-                                    r.status === "RESUBMISSION_BY_CLIENT"
-                                  ) {
-                                    newStatus = "UNDER_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Resubmitted by client"
-                                    );
-                                  } else if (
-                                    r.status === "TESTING_NEEDS_CORRECTION"
-                                  ) {
-                                    // If you want a testing-team flow, change this as needed.
-                                    // Keeping no-op unless you define the transition.
-                                    newStatus = null;
-                                  }
-
-                                  if (newStatus) {
-                                    setReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: newStatus! }
-                                          : x
-                                      )
-                                    );
-                                  }
-
-                                  goToReportEditor(r);
+                                  await autoAdvanceAndOpen(r, "micro");
                                 } catch (e: any) {
-                                  alert(
+                                  toast.error(
                                     e?.message || "Failed to update status"
                                   );
                                 } finally {
@@ -768,13 +748,18 @@ export default function ChemistryDashboard() {
                   <button
                     disabled={modalUpdating}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    onClick={() => {
+                    onClick={async () => {
                       if (modalUpdating) return;
                       setModalUpdating(true);
                       try {
                         const r = selectedReport;
+
+                        // optional: close modal first
                         setSelectedReport(null);
-                        goToReportEditor(r);
+
+                        await autoAdvanceAndOpen(r, "micro");
+                      } catch (e: any) {
+                        toast.error(e?.message || "Failed to update status");
                       } finally {
                         setModalUpdating(false);
                       }

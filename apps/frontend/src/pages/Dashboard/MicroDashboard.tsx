@@ -348,6 +348,35 @@ export default function MicroDashboard() {
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
+  async function autoAdvanceAndOpen(r: Report, actor: string) {
+    let nextStatus: string | null = null;
+
+    if (r.status === "SUBMITTED_BY_CLIENT") {
+      nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Move to prelim testing");
+    } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
+      nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Move to RESUBMISSION");
+    } else if (r.status === "PRELIMINARY_APPROVED") {
+      nextStatus = "UNDER_FINAL_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Move to final testing");
+    } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
+      nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+      await setStatus(r, nextStatus, "Resubmitted by client");
+    } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
+      nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+      await setStatus(r, nextStatus, `Set by ${actor}`);
+    }
+
+    if (nextStatus) {
+      setReports((prev) =>
+        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x))
+      );
+    }
+
+    goToReportEditor(r);
+  }
+
   return (
     <div className="p-6">
       {(isBulkPrinting || !!singlePrintReport) &&
@@ -625,72 +654,7 @@ export default function MicroDashboard() {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
                                 try {
-                                  let newStatus: string | null = null;
-
-                                  if (r.status === "SUBMITTED_BY_CLIENT") {
-                                    newStatus =
-                                      "UNDER_PRELIMINARY_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Move to prelim testing"
-                                    );
-                                  } else if (
-                                    r.status ===
-                                    "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
-                                  ) {
-                                    newStatus =
-                                      "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Move to RESUBMISSION"
-                                    );
-                                  } else if (
-                                    r.status === "PRELIMINARY_APPROVED"
-                                  ) {
-                                    newStatus = "UNDER_FINAL_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Move to final testing"
-                                    );
-                                  } else if (
-                                    r.status ===
-                                    "PRELIMINARY_RESUBMISSION_BY_CLIENT"
-                                  ) {
-                                    newStatus =
-                                      "UNDER_PRELIMINARY_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Resubmitted by client"
-                                    );
-                                  } else if (
-                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
-                                  ) {
-                                    newStatus =
-                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(
-                                      r,
-                                      newStatus,
-                                      "Set by admin"
-                                    );
-                                    toast.success("Report Status Updated");
-                                  }
-
-                                  // ✅ update local state only if we computed a newStatus
-                                  if (newStatus) {
-                                    setReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: newStatus! }
-                                          : x
-                                      )
-                                    );
-                                  }
-
-                                  goToReportEditor(r);
+                                  await autoAdvanceAndOpen(r, "micro");
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status"
@@ -800,15 +764,19 @@ export default function MicroDashboard() {
                   <button
                     disabled={modalUpdating}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    onClick={() => {
+                    onClick={async () => {
                       if (modalUpdating) return;
                       setModalUpdating(true);
                       try {
                         const r = selectedReport;
+
+                        // optional: close modal first
                         setSelectedReport(null);
-                        goToReportEditor(r);
+
+                        await autoAdvanceAndOpen(r, "micro");
+                      } catch (e: any) {
+                        toast.error(e?.message || "Failed to update status");
                       } finally {
-                        // navigation happens immediately; still release
                         setModalUpdating(false);
                       }
                     }}
