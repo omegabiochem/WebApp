@@ -142,7 +142,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["QA"],
     next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["QA"],
     canEdit: ["QA"],

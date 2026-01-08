@@ -826,6 +826,7 @@ export default function ChemistryMixReportForm({
         newStatus === "UNDER_CLIENT_REVIEW" ||
         newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
+        newStatus === "UNDER_QA_REVIEW" ||
         newStatus === "QA_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||

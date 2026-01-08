@@ -341,13 +341,13 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   CHEMISTRY: [
     "dateReceived",
     "actives", // special rules inside isEmpty()
-    "comments",
-    "testedBy",
-    "testedDate",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
   ],
 
   // QA signs/reviews
-  QA: ["reviewedBy", "reviewedDate"],
+  QA: [],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
   ADMIN: [
