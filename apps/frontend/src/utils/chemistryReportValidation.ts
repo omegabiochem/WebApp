@@ -299,7 +299,10 @@ export type ChemistryMixReportFormValues = {
     | "CLEANING_VALIDATION"
     | "COMPOSITE"
     | "DI_WATER_SAMPLE"
+    | "STABILITY"
   >;
+
+  stabilityNote?: string;
 
   dateReceived?: string;
 
@@ -341,13 +344,13 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   CHEMISTRY: [
     "dateReceived",
     "actives", // special rules inside isEmpty()
-    "comments",
-    "testedBy",
-    "testedDate",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
   ],
 
   // QA signs/reviews
-  QA: ["reviewedBy", "reviewedDate"],
+  QA: [],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
   ADMIN: [
@@ -551,6 +554,13 @@ export function useChemistryReportValidation(
           }
         }
       });
+
+      if (
+        values.sampleTypes?.includes("STABILITY") &&
+        !(values as any).stabilityNote?.trim()
+      ) {
+        next["stabilityNote"] = "Required when STABILITY is selected";
+      }
 
       setErrors(next);
 

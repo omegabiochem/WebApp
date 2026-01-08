@@ -86,26 +86,26 @@ const STATUS_TRANSITIONS: Record<
   UNDER_CLIENT_REVIEW: {
     canSet: ['CLIENT'],
     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['ADMIN', 'QA'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ['CHEMISTRY'],
     next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ['CLIENT'],
     next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
     canEdit: ['CLIENT'],
   },
 
   RESUBMISSION_BY_CLIENT: {
     canSet: ['CHEMISTRY'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'CHEMISTRY'],
+    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
@@ -121,21 +121,21 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
     next: ['SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
     canSet: ['CHEMISTRY'],
-    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['CHEMISTRY'],
-    canEdit: ['CHEMISTRY', 'ADMIN'],
+    canEdit: ['CHEMISTRY', 'ADMIN', 'QA'],
   },
   TESTING_ON_HOLD: {
     canSet: ['CHEMISTRY'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
@@ -148,17 +148,17 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['CHEMISTRY'],
     next: ['RESUBMISSION_BY_TESTING'],
     nextEditableBy: ['CLIENT'],
-    canEdit: ['CHEMISTRY', 'ADMIN'],
+    canEdit: ['CHEMISTRY', 'ADMIN', 'QA'],
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ['CLIENT'],
-    next: ['UNDER_CLIENT_REVIEW'],
+    next: ['UNDER_RESUBMISSION_QA_REVIEW'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['CHEMISTRY'],
-    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    canSet: ['QA'],
+    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA'],
     canEdit: ['QA'],
   },
@@ -167,12 +167,6 @@ const STATUS_TRANSITIONS: Record<
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['CHEMISTRY'],
     canEdit: [],
-  },
-  UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['ADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['ADMIN'],
   },
 
   UNDER_ADMIN_REVIEW: {
@@ -192,6 +186,12 @@ const STATUS_TRANSITIONS: Record<
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA'],
     canEdit: [],
+  },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    canSet: ['QA'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['QA'],
   },
   UNDER_RESUBMISSION_ADMIN_REVIEW: {
     canSet: ['ADMIN'],
@@ -241,6 +241,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'sampleSize',
     'numberOfActives',
     'sampleTypes',
+    'stabilityNote',
     'comments',
     'actives',
     'formulaContent',
