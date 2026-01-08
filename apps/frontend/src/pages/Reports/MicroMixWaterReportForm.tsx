@@ -1229,6 +1229,42 @@ export default function MicroMixReportForm({
     }
   }
 
+  const [hasAttachment, setHasAttachment] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  async function refreshHasAttachment(id: string) {
+    setAttachmentsLoading(true);
+    try {
+      // ✅ Use the endpoint you already have for listing attachments.
+      // Examples (pick the one your API actually supports):
+      //   GET /reports/:id/attachments
+      //   GET /reports/:id/attachments/meta
+      //   GET /reports/:id/attachments/list
+      const list = await api<any[]>(`/reports/${id}/attachments`, {
+        method: "GET",
+      });
+      setHasAttachment(Array.isArray(list) && list.length > 0);
+    } catch {
+      // fail closed (treat as no attachment)
+      setHasAttachment(false);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!reportId) return;
+    refreshHasAttachment(reportId);
+  }, [reportId]);
+
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
+    "UNDER_CLIENT_FINAL_REVIEW",
+  ]);
+
+  function isApproveAction(targetStatus: ReportStatus) {
+    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
+  }
+
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -1256,20 +1292,18 @@ export default function MicroMixReportForm({
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
-              disabled={role === "SYSTEMADMIN" || isBusy}
+              disabled={
+                role === "SYSTEMADMIN" ||
+                role === "FRONTDESK" ||
+                isBusy ||
+                status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                status === "LOCKED"
+              }
             >
               {busy === "SAVE" && <Spinner />}
               {reportId ? "Update Report" : "Save Report"}
             </button>
           )}
-
-          {/* <button
-            className="px-3 py-1 rounded-md border bg-blue-600 text-white"
-            onClick={handleSave}
-            disabled={role === "SYSTEMADMIN"}
-          >
-            {reportId ? "Update Report" : "Save Report"}
-          </button> */}
         </div>
 
         {/* Letterhead */}
@@ -2492,15 +2526,33 @@ export default function MicroMixReportForm({
                 statusButtons[targetStatus]
               ) {
                 const { label, color } = statusButtons[targetStatus];
+
+                const approveNeedsAttachment = isApproveAction(targetStatus);
+                const disableApproveForNoAttachment =
+                  approveNeedsAttachment && !hasAttachment;
+
+                const disabled =
+                  role === "SYSTEMADMIN" ||
+                  isBusy ||
+                  attachmentsLoading ||
+                  disableApproveForNoAttachment;
+
                 return (
                   <button
                     key={targetStatus}
                     className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                     onClick={() => requestStatusChange(targetStatus)}
-                    disabled={role === "SYSTEMADMIN" || isBusy}
+                    disabled={disabled}
+                    title={
+                      disableApproveForNoAttachment
+                        ? "Upload at least 1 attachment to enable Approve"
+                        : undefined
+                    }
                   >
                     {busy === "STATUS" && <Spinner />}
-                    {label}
+                    {attachmentsLoading && label === "Approve"
+                      ? "Checking..."
+                      : label}
                   </button>
                 );
               }

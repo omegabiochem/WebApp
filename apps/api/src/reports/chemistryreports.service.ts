@@ -734,6 +734,11 @@ export class ChemistryReportsService {
     });
   }
 
+  // reports.service.ts
+  async listAttachments(id: string) {
+    return this.attachments.listForReport(id);
+  }
+
   // POST /reports/:id/corrections
   async createCorrections(
     user: { userId: string; role: UserRole },

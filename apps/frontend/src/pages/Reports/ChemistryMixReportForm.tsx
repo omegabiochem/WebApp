@@ -341,6 +341,7 @@ export default function ChemistryMixReportForm({
     !canEdit(role, f, status as ChemistryReportStatus);
 
   type ActiveRowError = {
+    bulkActiveLot?: string;
     formulaContent?: string;
     sopNo?: string;
     result?: string;
@@ -389,6 +390,13 @@ export default function ChemistryMixReportForm({
         }
       });
     }
+    if (who === "CLIENT") {
+      rows.forEach((r, i) => {
+        if (r.checked && !r.bulkActiveLot?.trim()) {
+          rowErrs[i].bulkActiveLot = "Required";
+        }
+      });
+    }
 
     if (who === "CHEMISTRY" || who === "ADMIN" || who === "QA") {
       rows.forEach((r, i) => {
@@ -408,7 +416,11 @@ export default function ChemistryMixReportForm({
       !tableErr &&
       rowErrs.every(
         (e) =>
-          !e.formulaContent && !e.sopNo && !e.result && !e.dateTestedInitial
+          !e.bulkActiveLot &&
+          !e.formulaContent &&
+          !e.sopNo &&
+          !e.result &&
+          !e.dateTestedInitial
       )
     );
   }
@@ -558,7 +570,7 @@ export default function ChemistryMixReportForm({
       role === "SYSTEMADMIN" ||
       role === "FRONTDESK" ||
       role === "QA") &&
-    (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+    (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ChemistryReportStatus) {
     const isNeeds =
@@ -645,7 +657,13 @@ export default function ChemistryMixReportForm({
   const activeRowKey = (rowKey: string) => `actives:${rowKey}`; // whole row
   const activeCellKey = (
     rowKey: string,
-    col: "checked" | "sopNo" | "formulaContent" | "result" | "dateTestedInitial"
+    col:
+      | "checked"
+      | "bulkActiveLot"
+      | "sopNo"
+      | "formulaContent"
+      | "result"
+      | "dateTestedInitial"
   ) => `actives:${rowKey}:${col}`;
 
   // Update ResolveOverlay to support prefixes too (so row overlay works)
@@ -954,6 +972,42 @@ export default function ChemistryMixReportForm({
     }
   }
 
+  const [hasAttachment, setHasAttachment] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  async function refreshHasAttachment(id: string) {
+    setAttachmentsLoading(true);
+    try {
+      // ✅ Use the endpoint you already have for listing attachments.
+      // Examples (pick the one your API actually supports):
+      //   GET /reports/:id/attachments
+      //   GET /reports/:id/attachments/meta
+      //   GET /reports/:id/attachments/list
+      const list = await api<any[]>(`/chemistry-reports/${id}/attachments`, {
+        method: "GET",
+      });
+      setHasAttachment(Array.isArray(list) && list.length > 0);
+    } catch {
+      // fail closed (treat as no attachment)
+      setHasAttachment(false);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!reportId) return;
+    refreshHasAttachment(reportId);
+  }, [reportId]);
+
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<ChemistryReportStatus>([
+    "UNDER_CLIENT_REVIEW",
+  ]);
+
+  function isApproveAction(targetStatus: ChemistryReportStatus) {
+    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
+  }
+
   // ---------------- RENDER ----------------
   return (
     <>
@@ -975,7 +1029,13 @@ export default function ChemistryMixReportForm({
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
-              disabled={role === "SYSTEMADMIN" || isBusy}
+              disabled={
+                role === "SYSTEMADMIN" ||
+                role === "FRONTDESK" ||
+                isBusy ||
+                status === "UNDER_CLIENT_REVIEW" ||
+                status === "LOCKED"
+              }
             >
               {busy === "SAVE" && <Spinner />}
               {reportId ? "Update Report" : "Save Report"}
@@ -1584,8 +1644,9 @@ export default function ChemistryMixReportForm({
             </div>
           )}
 
-          <div className="grid grid-cols-[25%_15%_23%_20%_17%] font-semibold text-center border-b border-black">
+          <div className="grid grid-cols-[23%_15%_12%_14%_16%_20%] font-semibold text-center border-b border-black">
             <div className="p-1 border-r border-black">ACTIVE TO BE TESTED</div>
+            <div className="p-1 border-r border-black">BULK ACTIVE LOT #</div>
             <div className="p-1 border-r border-black">SOP #</div>
             <div className="p-1 border-r border-black">FORMULA CONTENT</div>
             <div className="p-1 border-r border-black">RESULTS</div>
@@ -1596,6 +1657,7 @@ export default function ChemistryMixReportForm({
             const rowErr = activeRowErrors[idx] || {};
             const showRowRing = !!(
               rowErr.formulaContent ||
+              rowErr.bulkActiveLot ||
               rowErr.sopNo ||
               rowErr.result ||
               rowErr.dateTestedInitial
@@ -1607,6 +1669,7 @@ export default function ChemistryMixReportForm({
             // keys
             const rk = activeRowKey(row.key);
             const kChecked = activeCellKey(row.key, "checked");
+            const kBulkActiveLot = activeCellKey(row.key, "bulkActiveLot");
             const kSop = activeCellKey(row.key, "sopNo");
             const kFormula = activeCellKey(row.key, "formulaContent");
             const kResult = activeCellKey(row.key, "result");
@@ -1615,7 +1678,7 @@ export default function ChemistryMixReportForm({
             return (
               <div
                 key={row.key}
-                className={`grid grid-cols-[25%_15%_23%_20%_17%] border-b last:border-b-0 border-black relative ${
+                className={`grid grid-cols-[23%_15%_12%_14%_16%_20%] border-b last:border-b-0 border-black relative ${
                   showRowRing ? "ring-1 ring-red-500" : ""
                 } `}
                 // ✅ click anywhere on row (optional) adds correction to whole row
@@ -1667,6 +1730,44 @@ export default function ChemistryMixReportForm({
                   <span>{row.label}</span>
                 </div>
 
+                {/* BULK ACTIVE LOT # */}
+
+                <div
+                  className={`border-r border-black px-1 relative ${inputErrClass(
+                    !!rowErr.bulkActiveLot
+                  )} ${dashClass(kBulkActiveLot)} ${corrCursor}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kBulkActiveLot);
+                  }}
+                >
+                  <ResolveOverlay field={kBulkActiveLot} />
+
+                  <input
+                    className="w-full pr-4 border-none outline-none text-[11px]"
+                    value={row.bulkActiveLot}
+                    readOnly={
+                      lock("actives") ||
+                      role !== "CLIENT" ||
+                      selectingCorrections
+                    }
+                    onChange={(e) => {
+                      if (
+                        lock("actives") ||
+                        role !== "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setActiveField(idx, { bulkActiveLot: e.target.value });
+                    }}
+                  />
+
+                  {/* <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
+                    %
+                  </span> */}
+                </div>
+
                 {/* SOP # */}
                 <div
                   className={`border-r border-black px-1 relative ${inputErrClass(
@@ -1705,22 +1806,19 @@ export default function ChemistryMixReportForm({
 
                 {/* FORMULA CONTENT */}
                 <div
-                  className={`border-r border-black px-1 flex items-center gap-1 relative ${inputErrClass(
+                  className={`border-r border-black px-1 relative ${inputErrClass(
                     !!rowErr.formulaContent
-                  )} ${dashClass(kFormula)}  ${corrCursor}`}
+                  )} ${dashClass(kFormula)} ${corrCursor}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
                     e.stopPropagation();
                     pickCorrection(kFormula);
                   }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
                 >
                   <ResolveOverlay field={kFormula} />
 
                   <input
-                    className="flex-1 border-none outline-none text-[11px]"
+                    className="w-full pr-4 border-none outline-none text-[11px]"
                     value={row.formulaContent}
                     readOnly={
                       lock("actives") ||
@@ -1738,12 +1836,14 @@ export default function ChemistryMixReportForm({
                     }}
                   />
 
-                  <span>%</span>
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
+                    %
+                  </span>
                 </div>
 
                 {/* RESULTS */}
                 <div
-                  className={`border-r border-black px-1 flex items-center gap-1 relative ${inputErrClass(
+                  className={`border-r border-black px-1  relative ${inputErrClass(
                     !!rowErr.result
                   )} ${dashClass(kResult)}  ${corrCursor}`}
                   onClick={(e) => {
@@ -1758,7 +1858,7 @@ export default function ChemistryMixReportForm({
                   <ResolveOverlay field={kResult} />
 
                   <input
-                    className="flex-1 border-none outline-none text-[11px]"
+                    className="w-full pr-4 border-none outline-none text-[11px]"
                     value={row.result}
                     readOnly={
                       lock("actives") ||
@@ -1776,7 +1876,9 @@ export default function ChemistryMixReportForm({
                     }}
                   />
 
-                  <span>%</span>
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
+                    %
+                  </span>
                 </div>
 
                 {/* DATE TESTED / INITIAL */}
@@ -2009,7 +2111,7 @@ export default function ChemistryMixReportForm({
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
         <div className="flex flex-wrap gap-2">
-          {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
+          {/* {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
             (targetStatus: ChemistryReportStatus) => {
               if (
                 STATUS_TRANSITIONS[
@@ -2027,6 +2129,49 @@ export default function ChemistryMixReportForm({
                   >
                     {busy === "STATUS" && <Spinner />}
                     {label}
+                  </button>
+                );
+              }
+              return null;
+            }
+          )} */}
+
+          {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
+            (targetStatus: ChemistryReportStatus) => {
+              if (
+                STATUS_TRANSITIONS[
+                  status as ChemistryReportStatus
+                ].canSet.includes(role!) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
+
+                const approveNeedsAttachment = isApproveAction(targetStatus);
+                const disableApproveForNoAttachment =
+                  approveNeedsAttachment && !hasAttachment;
+
+                const disabled =
+                  role === "SYSTEMADMIN" ||
+                  isBusy ||
+                  attachmentsLoading ||
+                  disableApproveForNoAttachment;
+
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                    onClick={() => requestStatusChange(targetStatus)}
+                    disabled={disabled}
+                    title={
+                      disableApproveForNoAttachment
+                        ? "Upload at least 1 attachment to enable Approve"
+                        : undefined
+                    }
+                  >
+                    {busy === "STATUS" && <Spinner />}
+                    {attachmentsLoading && label === "Approve"
+                      ? "Checking..."
+                      : label}
                   </button>
                 );
               }

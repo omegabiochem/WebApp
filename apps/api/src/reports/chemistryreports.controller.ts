@@ -159,6 +159,14 @@ export class ChemistryReportsController {
     return this.svc.addAttachment(req.user, id, file, body);
   }
 
+
+
+  @Get(':id/attachments')
+async listAttachments(@Param('id') id: string) {
+  return this.svc.listAttachments(id);
+}
+
+
   // Corrections
   @Post(':id/corrections')
   createCorrections(
@@ -183,4 +191,6 @@ export class ChemistryReportsController {
   ) {
     return this.svc.resolveCorrection(req.user, id, cid, body);
   }
+
+
 }
