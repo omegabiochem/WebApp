@@ -21,6 +21,9 @@ async function bootstrap() {
   });
 
   const port = Number(process.env.PORT) || 3000;
+  console.log('JWT_SECRET present?', !!process.env.JWT_SECRET);
+  console.log('JWT_SECRET length:', process.env.JWT_SECRET?.length);
+
   await app.listen(port, '0.0.0.0'); // 👈 important on Fly
   console.log(`API listening on 0.0.0.0:${port}`);
 }
