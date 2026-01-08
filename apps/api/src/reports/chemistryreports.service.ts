@@ -168,6 +168,12 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['CHEMISTRY'],
     canEdit: [],
   },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    canSet: ['ADMIN'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['ADMIN'],
+  },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
@@ -726,6 +732,11 @@ export class ChemistryReportsService {
       createdBy: body.createdBy ?? user?.userId ?? 'web',
       meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
     });
+  }
+
+  // reports.service.ts
+  async listAttachments(id: string) {
+    return this.attachments.listForReport(id);
   }
 
   // POST /reports/:id/corrections
