@@ -718,9 +718,12 @@ export default function ChemistryMixReportFormView(
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
           <div className="mt-4 border border-black text-[11px]">
-            <div className="grid grid-cols-[25%_15%_23%_17%_20%] font-semibold text-center border-b border-black">
+            <div className="grid grid-cols-[24%_15%_12%_14%_15%_20%] font-semibold text-center border-b border-black">
               <div className="p-1 border-r border-black">
                 ACTIVE TO BE TESTED
+              </div>
+              <div className="p-1 border-r border-black">
+                BULK ACTIVBE LOT #
               </div>
               <div className="p-1 border-r border-black">SOP #</div>
               <div className="p-1 border-r border-black">FORMULA CONTENT</div>
@@ -731,7 +734,7 @@ export default function ChemistryMixReportFormView(
             {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
               <div
                 key={row.key}
-                className="grid grid-cols-[25%_15%_23%_17%_20%] border-b last:border-b-0 border-black"
+                className="grid grid-cols-[24%_15%_12%_14%_15%_20%] border-b last:border-b-0 border-black"
               >
                 {/* active name + checkbox */}
                 <div className="flex items-center gap-2 border-r border-black px-1 ">
@@ -743,6 +746,15 @@ export default function ChemistryMixReportFormView(
                     disabled
                   />
                   <span>{row.label}</span>
+                </div>
+                {/* BULK ACTIVE LOT # */}
+                <div className="border-r border-black px-1 ">
+                  <input
+                    className="w-full border-none outline-none text-[11px]"
+                    value={row.bulkActiveLot}
+                    readOnly
+                    disabled
+                  />
                 </div>
 
                 {/* SOP # */}
