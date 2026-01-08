@@ -257,6 +257,7 @@ enum ReportStatus {
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
+  UNDER_FINAL_RESUBMISSION_QA_REVIEW
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
   ADMIN_REJECTED
@@ -335,6 +336,7 @@ model ChemistryMixDetails {
   // SAMPLE TYPE – multiple checkboxes across the row
   sampleTypes       SampleType[]  // BULK / FINISHED_GOOD / etc.
 
+  stabilityNote String?
   dateReceived      DateTime?
 
   // “ACTIVE TO BE TESTED” rows
@@ -379,6 +381,7 @@ enum ChemistryReportStatus {
   RESUBMISSION_BY_TESTING
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
+  UNDER_RESUBMISSION_QA_REVIEW
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
   ADMIN_REJECTED
@@ -446,6 +449,7 @@ enum SampleType {
   CLEANING_VALIDATION
   COMPOSITE
   DI_WATER_SAMPLE
+  STABILITY
 }
 
 

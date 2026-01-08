@@ -7,6 +7,7 @@ export type ChemActiveRow = {
   key: string; // internal key, unique
   label: string; // what shows on the form
   checked: boolean; // "ACTIVE TO BE TESTED" checkbox
+  bulkActiveLot: string;
   sopNo: string;
   formulaContent: string; // %
   result: string; // %
@@ -19,6 +20,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "ACID_VALUE",
     label: "ACID VALUE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -28,6 +30,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "ALCONOX",
     label: "ALCONOX",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -37,6 +40,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "ALCONOX_RESIDUAL",
     label: "ALCONOX RESIDUAL",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -46,6 +50,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "ALLANTOIN",
     label: "ALLANTOIN",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -55,6 +60,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "AVOBENZONE",
     label: "AVOBENZONE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -64,6 +70,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "BISACODYL",
     label: "BISACODYL",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -73,6 +80,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "BENZOPHENONE_3",
     label: "BENZOPHENONE - 3",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -82,6 +90,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "COLLOIDAL_OATMEAL",
     label: "COLLOIDAL OATMEAL",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -91,6 +100,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "DIMETHICONE",
     label: "DIMETHICONE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -100,6 +110,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "DRIED_EXTRACT",
     label: "DRIED EXTRACT",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -109,6 +120,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "HOMOSALATE",
     label: "HOMOSALATE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -118,6 +130,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "HYDRO_CORTISONE",
     label: "HYDRO CORTISONE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -127,6 +140,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "OCTOCRYLENE",
     label: "OCTOCRYLENE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -136,6 +150,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "OCTYL_METHOXYCINNAMATE",
     label: "OCTYL METHOXYCINNAMATE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -145,6 +160,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "OCTYL_SALICYLATE",
     label: "OCTYL SALICYLATE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -154,6 +170,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "SALICYLIC_ACID",
     label: "SALICYLIC ACID",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -163,6 +180,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "SULFUR",
     label: "SULFUR",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -172,6 +190,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "TITANIUM_DIOXIDE",
     label: "TITANIUM DIOXIDE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -181,6 +200,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "TITER",
     label: "TITER",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -190,6 +210,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "TOC",
     label: "TOC",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -199,6 +220,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "PERCENT_TRANSMISSION",
     label: "% TRANSMISSION",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -208,6 +230,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "VISCOSITY",
     label: "VISCOSITY",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -217,6 +240,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "WATER_CONTENT",
     label: "WATER CONTENT",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -226,6 +250,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "ZINC_OXIDE",
     label: "ZINC OXIDE",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -235,6 +260,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     key: "OTHER",
     label: "OTHER",
     checked: false,
+    bulkActiveLot: "",
     sopNo: "",
     formulaContent: "",
     result: "",
@@ -273,7 +299,10 @@ export type ChemistryMixReportFormValues = {
     | "CLEANING_VALIDATION"
     | "COMPOSITE"
     | "DI_WATER_SAMPLE"
+    | "STABILITY"
   >;
+
+  stabilityNote?: string;
 
   dateReceived?: string;
 
@@ -315,13 +344,13 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   CHEMISTRY: [
     "dateReceived",
     "actives", // special rules inside isEmpty()
-    "comments",
-    "testedBy",
-    "testedDate",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
   ],
 
   // QA signs/reviews
-  QA: ["reviewedBy", "reviewedDate"],
+  QA: [],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
   ADMIN: [
@@ -525,6 +554,13 @@ export function useChemistryReportValidation(
           }
         }
       });
+
+      if (
+        values.sampleTypes?.includes("STABILITY") &&
+        !(values as any).stabilityNote?.trim()
+      ) {
+        next["stabilityNote"] = "Required when STABILITY is selected";
+      }
 
       setErrors(next);
 

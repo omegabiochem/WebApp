@@ -53,6 +53,7 @@ export type ReportStatus =
   | "ADMIN_NEEDS_CORRECTION"
   | "ADMIN_REJECTED"
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
+  | "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
   | "FINAL_APPROVED"
   | "LOCKED";
 
@@ -87,43 +88,43 @@ export const STATUS_TRANSITIONS: Record<
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
     canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "ADMIN"],
+    nextEditableBy: ["MICRO", "ADMIN", "QA"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["PRELIMINARY_RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["MICRO", "ADMIN"],
+    nextEditableBy: ["MICRO", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["FINAL_RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["MICRO", "ADMIN"],
+    nextEditableBy: ["MICRO", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
     canSet: ["CLIENT"],
     next: ["FINAL_APPROVED", "CLIENT_NEEDS_FINAL_CORRECTION"],
-    nextEditableBy: ["ADMIN"],
+    nextEditableBy: ["ADMIN", "QA"],
     canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
     canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "MICRO"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO"],
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ["ADMIN", "MICRO"],
+    canSet: ["ADMIN", "QA", "MICRO"],
     next: ["UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN"],
+    nextEditableBy: ["ADMIN", "QA"],
     canEdit: [],
   },
   FINAL_RESUBMISSION_BY_CLIENT: {
     canSet: ["CLIENT"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "MICRO"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO"],
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
@@ -145,7 +146,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ["FRONTDESK", "ADMIN"],
+    canSet: ["FRONTDESK", "ADMIN", "QA"],
     next: ["SUBMITTED_BY_CLIENT"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
@@ -158,12 +159,12 @@ export const STATUS_TRANSITIONS: Record<
       "UNDER_CLIENT_PRELIMINARY_REVIEW",
     ],
     nextEditableBy: ["MICRO"],
-    canEdit: ["MICRO", "ADMIN"],
+    canEdit: ["MICRO", "ADMIN", "QA"],
   },
   PRELIMINARY_TESTING_ON_HOLD: {
     canSet: ["MICRO"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "ADMIN"],
+    nextEditableBy: ["MICRO", "ADMIN", "QA"],
     canEdit: [],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
@@ -176,7 +177,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["MICRO"],
     next: ["PRELIMINARY_RESUBMISSION_BY_TESTING"],
     nextEditableBy: ["CLIENT"],
-    canEdit: ["MICRO", "ADMIN"],
+    canEdit: ["MICRO", "ADMIN", "QA"],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
     canSet: ["CLIENT"],
@@ -189,7 +190,7 @@ export const STATUS_TRANSITIONS: Record<
     next: [
       "FINAL_TESTING_ON_HOLD",
       "FINAL_TESTING_NEEDS_CORRECTION",
-      "UNDER_ADMIN_REVIEW",
+      "UNDER_QA_REVIEW",
     ],
     nextEditableBy: ["QA", "ADMIN"],
     canEdit: ["MICRO"],
@@ -201,26 +202,26 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ["MICRO", "ADMIN"],
+    canSet: ["MICRO", "ADMIN", "QA"],
     next: ["UNDER_CLIENT_FINAL_CORRECTION"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO", "ADMIN"],
-    next: ["UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"],
-    nextEditableBy: ["ADMIN"],
-    canEdit: ["MICRO", "ADMIN"],
+    canSet: ["MICRO", "ADMIN", "QA"],
+    next: ["UNDER_FINAL_RESUBMISSION_QA_REVIEW"],
+    nextEditableBy: ["QA"],
+    canEdit: ["MICRO", "ADMIN", "QA"],
   },
   FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ["MICRO", "ADMIN"],
-    next: ["UNDER_ADMIN_REVIEW"],
+    canSet: ["MICRO", "ADMIN", "QA"],
+    next: ["UNDER_QA_REVIEW"],
     nextEditableBy: [],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ["MICRO"],
-    next: ["QA_NEEDS_CORRECTION", "UNDER_ADMIN_REVIEW"],
+    canSet: ["MICRO", "QA"],
+    next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["QA"],
     canEdit: ["QA"],
   },
@@ -230,11 +231,17 @@ export const STATUS_TRANSITIONS: Record<
     nextEditableBy: ["MICRO"],
     canEdit: [],
   },
+  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
+    canSet: ["QA"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["CLIENT"],
+    canEdit: ["ADMIN", "QA"],
+  },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
+    nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN"],
   },
   ADMIN_NEEDS_CORRECTION: {
@@ -332,6 +339,8 @@ export const STATUS_COLORS: Record<ReportStatus, string> = {
   ADMIN_REJECTED: "bg-red-100 text-red-800 ring-1 ring-red-200",
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW:
     "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
+  UNDER_FINAL_RESUBMISSION_QA_REVIEW:
+    "bg-violet-100 text-violet-900 ring-1 ring-violet-400",
 
   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
@@ -356,7 +365,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "testedBy",
     "testedDate",
   ],
-  QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+  QA: ["*"],
   CLIENT: [
     "client",
     "dateSent",
@@ -420,4 +429,13 @@ export function canShowUpdateButton(
     effective.length > 0 &&
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
+}
+
+export function todayISO() {
+  const d = new Date();
+  // local date (not UTC)
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }

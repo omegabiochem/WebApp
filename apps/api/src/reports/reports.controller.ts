@@ -195,4 +195,9 @@ export class ReportsController {
     if (!file) throw new BadRequestException('file is required');
     return this.svc.addAttachment(req.user, id, file, body);
   }
+
+  @Get(':id/attachments')
+  async listAttachments(@Param('id') id: string) {
+    return this.svc.listAttachments(id);
+  }
 }

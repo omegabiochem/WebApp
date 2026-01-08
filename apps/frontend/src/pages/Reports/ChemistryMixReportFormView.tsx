@@ -260,24 +260,37 @@ type SampleTypeKey =
   | "FINISHED_GOOD"
   | "RAW_MATERIAL"
   | "PROCESS_VALIDATION"
-  | "CLEANING_VALIDATION"
   | "COMPOSITE"
-  | "DI_WATER_SAMPLE";
+  | "DI_WATER_SAMPLE"
+  | "STABILITY";
 
 // Above component body (or inside, before return)
-const sampleTypeColumns: [SampleTypeKey, string][][] = [
-  [
-    ["BULK", "BULK"],
-    ["FINISHED_GOOD", "FINISHED GOOD"],
-  ],
-  [
-    ["RAW_MATERIAL", "RAW MATERIAL"],
-    ["COMPOSITE", "COMPOSITE"],
-  ],
-  [
-    ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
-    ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-  ],
+// const sampleTypeColumns: [SampleTypeKey, string][][] = [
+//   [
+//     ["BULK", "BULK"],
+//     ["FINISHED_GOOD", "FINISHED GOOD"],
+//   ],
+//   [
+//     ["RAW_MATERIAL", "RAW MATERIAL"],
+//     ["COMPOSITE", "COMPOSITE"],
+//   ],
+//   [
+//     ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
+//     ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
+//   ],
+//   [
+//     ["STABILITY", "STABILITY"], // ✅ add this column/row wherever you want
+//   ],
+// ];
+
+const sampleTypeItems: [SampleTypeKey, string][] = [
+  ["BULK", "BULK"],
+  ["FINISHED_GOOD", "FINISHED GOOD"],
+  ["RAW_MATERIAL", "RAW MATERIAL"],
+  ["COMPOSITE", "COMPOSITE"],
+  ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
+  ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
+  ["STABILITY", "STABILITY"],
 ];
 
 const PrintStyles = () => (
@@ -518,7 +531,7 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* TYPE OF TEST / SAMPLE COLLECTED */}
-            <div className="grid grid-cols-[47%_53%] border-b border-black text-[11px] min-h-[20px]">
+            <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px] min-h-[20px]">
               {/* LEFT */}
               <div className="px-2 border-r border-black grid items-center">
                 <div className="flex items-center gap-2 whitespace-nowrap">
@@ -565,17 +578,17 @@ export default function ChemistryMixReportFormView(
 
               {/* RIGHT */}
               <div className="px-2 grid items-center">
-                <div className="flex items-center gap-2 whitespace-nowrap">
+                <div className="flex items-center gap-3 whitespace-nowrap">
                   <span className="font-medium mr-1 shrink-0">
                     SAMPLE COLLECTED :
                   </span>
 
                   <label className="inline-flex items-center gap-1 shrink-0">
                     <input
-                      type="radio"
+                      type="checkbox"
+                      className="thick-box2"
                       name="sampleCollected"
-                      className="thick-radio"
-                      checked={report?.sampleCollected === "TOP_BEG"}
+                      checked={report?.sampleCollected?.includes("TOP_BEG")}
                       readOnly
                       disabled
                     />
@@ -584,10 +597,10 @@ export default function ChemistryMixReportFormView(
 
                   <label className="inline-flex items-center gap-1 shrink-0">
                     <input
-                      type="radio"
+                      type="checkbox"
                       name="sampleCollected"
-                      className="thick-radio"
-                      checked={report?.sampleCollected === "MID"}
+                      className="thick-box2"
+                      checked={report?.sampleCollected?.includes("MID")}
                       readOnly
                       disabled
                     />
@@ -596,10 +609,10 @@ export default function ChemistryMixReportFormView(
 
                   <label className="inline-flex items-center gap-1 shrink-0">
                     <input
-                      type="radio"
+                      type="checkbox"
                       name="sampleCollected"
-                      className="thick-radio"
-                      checked={report?.sampleCollected === "BOTTOM_END"}
+                      className="thick-box2"
+                      checked={report?.sampleCollected?.includes("BOTTOM_END")}
                       readOnly
                       disabled
                     />
@@ -672,42 +685,54 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE TYPE checkboxes */}
-            <div className="px-2  text-[11px] flex items-stretch gap-3">
-              {/* Left label */}
-              <div className="flex w-fit pr-7 py-1 self-stretch border-r border-black">
-                <span className="font-medium mr-4 whitespace-nowrap">
+            <div className="px-2 text-[12px] grid grid-cols-[auto_1fr] items-stretch">
+              {/* LEFT: Sample type */}
+              <div className="flex max-w-[600px]   self-stretch border-r border-black">
+                <span className="font-medium mr-1 whitespace-nowrap">
                   SAMPLE TYPE :
                 </span>
 
-                {/* Right side: 3 columns, 2 rows */}
-                <div className="grid grid-cols-3 gap-x-1 gap-y-1 -ml-2 w-fit">
-                  {sampleTypeColumns.map((col, colIdx) => (
-                    <div key={colIdx} className="flex flex-col gap-[2px] w-fit">
-                      {col.map(([key, label]) => (
-                        <label
-                          key={key}
-                          className="flex items-center gap-1 whitespace-nowrap"
-                        >
+                <div className="inline-flex border border-transparent">
+                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                    {sampleTypeItems.map(([key, label]) => (
+                      <label
+                        key={key}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <input
+                          type="checkbox"
+                          className="thick-box2"
+                          checked={report?.sampleTypes?.includes(key) ?? false}
+                          readOnly
+                          disabled
+                        />
+                        <span className="text-[11px]">{label}</span>
+
+                        {/* ✅ STABILITY writing line (view mode) */}
+                        {key === "STABILITY" && (
                           <input
-                            type="checkbox"
-                            className="thick-box2"
-                            checked={report?.sampleTypes.includes(key)}
+                            type="text"
+                            value={report?.stabilityNote ?? ""} // <-- use your field name here
                             readOnly
                             disabled
+                            className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
                           />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  ))}
+                        )}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
-              {/* RIGHT */}
-              <div className="flex items-center gap-2 whitespace-nowrap ml-1 py-1">
-                <span className="font-medium">DATE RECEIVED :</span>
+
+              {/* RIGHT: Date received */}
+              <div className="flex items-center gap-2 whitespace-nowrap pl-2">
+                <span className="whitespace-nowrap font-medium">
+                  DATE RECEIVED :
+                </span>
+
                 <input
                   type="date"
-                  className="w-[130px] border-0 border-b border-black/60 outline-none text-[11px]"
+                  className="w-[80px] border-0 border-b border-black/60 outline-none text-[11px]"
                   value={formatDateForInput(report?.dateReceived ?? "")}
                   readOnly
                   disabled
@@ -717,21 +742,32 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-          <div className="mt-4 border border-black text-[11px]">
-            <div className="grid grid-cols-[25%_15%_23%_17%_20%] font-semibold text-center border-b border-black">
-              <div className="p-1 border-r border-black">
+          <div className="mt-2 border border-black text-[11px]">
+            <div className="grid grid-cols-[24%_15%_12%_14%_15%_20%] font-semibold text-center border-b border-black">
+              <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
-              <div className="p-1 border-r border-black">SOP #</div>
-              <div className="p-1 border-r border-black">FORMULA CONTENT</div>
-              <div className="p-1 border-r border-black">RESULTS</div>
-              <div className="p-1 whitespace-nowrap">DATE TESTED / INITIAL</div>
+              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+                RAW / BULK ACTIVE LOT #
+              </div>
+              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              SOP # / VALIDATED
+              </div>
+              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+                FORMULA CONTENT
+              </div>
+              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+                RESULTS
+              </div>
+              <div className="p-1 whitespace-nowrap h-full flex items-center justify-center">
+                DATE TESTED / INITIAL
+              </div>
             </div>
 
             {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
               <div
                 key={row.key}
-                className="grid grid-cols-[25%_15%_23%_17%_20%] border-b last:border-b-0 border-black"
+                className="grid grid-cols-[24%_15%_12%_14%_15%_20%] border-b last:border-b-0 border-black"
               >
                 {/* active name + checkbox */}
                 <div className="flex items-center gap-2 border-r border-black px-1 ">
@@ -743,6 +779,15 @@ export default function ChemistryMixReportFormView(
                     disabled
                   />
                   <span>{row.label}</span>
+                </div>
+                {/* BULK ACTIVE LOT # */}
+                <div className="border-r border-black px-1 ">
+                  <input
+                    className="w-full border-none outline-none text-[11px]"
+                    value={row.bulkActiveLot}
+                    readOnly
+                    disabled
+                  />
                 </div>
 
                 {/* SOP # */}

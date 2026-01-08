@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../../utils/microMixReportValidation";
 import {
   STATUS_TRANSITIONS,
+  todayISO,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
@@ -88,6 +89,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     label: "Resubmit",
     color: "bg-blue-600",
   },
+  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
+    label: "Resubmit",
+    color: "bg-blue-700",
+  },
   UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
   QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
@@ -160,10 +165,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tmy_result",
       "pathogens",
       "comments",
-      "testedBy",
-      "testedDate",
+      // "testedBy",
+      // "testedDate",
     ],
-    QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+    QA: ["dateCompleted"],
     CLIENT: [
       "client",
       "dateSent",
@@ -239,6 +244,30 @@ const DashStyles = () => (
 );
 
 const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
+
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+// use for non-brand buttons (dark text)
+function SpinnerDark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black/70 ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Main component
 
 export default function MicroMixReportForm({
   report,
@@ -627,26 +656,28 @@ export default function MicroMixReportForm({
   // Resolve ALL corrections for a field
   async function resolveField(fieldKey: string) {
     if (!reportId) return;
-    // const token = localStorage.getItem("token")!;
-    const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
-    if (!items.length) return;
+    return runBusy("RESOLVE", async () => {
+      const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
+      if (!items.length) return;
 
-    await Promise.all(
-      items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
-    );
-    const fresh = await getCorrections(reportId!);
-    setCorrections(fresh);
-    flashResolved(fieldKey); // ✅ show green halo briefly
+      await Promise.all(
+        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
+      );
+      const fresh = await getCorrections(reportId!);
+      setCorrections(fresh);
+      flashResolved(fieldKey);
+    });
   }
 
   // Resolve a single correction
   async function resolveOne(c: CorrectionItem) {
     if (!reportId) return;
-    // const token = localStorage.getItem("token")!;
-    await resolveCorrection(reportId!, c.id, "Fixed");
-    const fresh = await getCorrections(reportId!);
-    setCorrections(fresh);
-    flashResolved(c.fieldKey); // ✅ show green halo briefly
+    return runBusy("RESOLVE", async () => {
+      await resolveCorrection(reportId!, c.id, "Fixed");
+      const fresh = await getCorrections(reportId!);
+      setCorrections(fresh);
+      flashResolved(c.fieldKey);
+    });
   }
 
   // Tiny inline pill next to a field label/badge
@@ -884,144 +915,152 @@ export default function MicroMixReportForm({
   };
 
   const handleSave = async (): Promise<boolean> => {
-    const values = makeValues();
+    return (
+      (await runBusy("SAVE", async () => {
+        const values = makeValues();
 
-    validateAndSetErrors(values);
-    validatePathogenRows(values.pathogens, role, phase);
+        validateAndSetErrors(values);
+        validatePathogenRows(values.pathogens, role, phase);
 
-    // Build full payload
-    const fullPayload: any = {
-      client,
-      dateSent,
-      typeOfTest,
-      sampleType,
-      formulaNo,
-      description,
-      lotNo,
-      manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
-      testSopNo,
-      dateTested,
-      preliminaryResults,
-      preliminaryResultsDate,
-      dateCompleted,
-      tbc_gram,
-      tbc_result,
-      tbc_spec,
-      tmy_gram,
-      tmy_result,
-      tmy_spec,
-      pathogens,
-      comments,
-      testedBy,
-      reviewedBy,
-      testedDate,
-      reviewedDate,
-    };
+        // Build full payload
+        const fullPayload: any = {
+          client,
+          dateSent,
+          typeOfTest,
+          sampleType,
+          formulaNo,
+          description,
+          lotNo,
+          manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
+          testSopNo,
+          dateTested,
+          preliminaryResults,
+          preliminaryResultsDate,
+          dateCompleted,
+          tbc_gram,
+          tbc_result,
+          tbc_spec,
+          tmy_gram,
+          tmy_result,
+          tmy_spec,
+          pathogens,
+          comments,
+          testedBy,
+          reviewedBy,
+          testedDate,
+          reviewedDate,
+        };
 
-    // added to control overwrite of fields based on phase
-    // MicroPhase-based field guard
-    // During PRELIM, MICRO & ADMIN cannot write FINAL-only fields
-    // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
+        // added to control overwrite of fields based on phase
+        // MicroPhase-based field guard
+        // During PRELIM, MICRO & ADMIN cannot write FINAL-only fields
+        // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
 
-    const PHASE_WRITE_GUARD = (fields: string[]) => {
-      if (role === "MICRO" || role === "ADMIN") {
-        if (phase === "PRELIM") {
-          // drop FINAL-only fields during PRELIM
-          return fields.filter((f) => !MICRO_PHASE_FIELDS.FINAL.includes(f));
+        const PHASE_WRITE_GUARD = (fields: string[]) => {
+          if (role === "MICRO" || role === "ADMIN") {
+            if (phase === "PRELIM") {
+              // drop FINAL-only fields during PRELIM
+              return fields.filter(
+                (f) => !MICRO_PHASE_FIELDS.FINAL.includes(f)
+              );
+            }
+            // (Optional) once in FINAL, drop PRELIM-only fields:
+            if (phase === "FINAL") {
+              return fields.filter(
+                (f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f)
+              );
+            }
+          }
+          return fields;
+        };
+
+        const BASE_ALLOWED: Record<Role, string[]> = {
+          ADMIN: ["*"],
+          SYSTEMADMIN: [],
+          FRONTDESK: [
+            "client",
+            "dateSent",
+            "typeOfTest",
+            "sampleType",
+            "formulaNo",
+            "description",
+            "lotNo",
+            "manufactureDate",
+          ],
+          MICRO: [
+            "testSopNo",
+            "tbc_dilution",
+            "tbc_gram",
+            "tbc_result",
+            "tmy_dilution",
+            "tmy_gram",
+            "tmy_result",
+            "pathogens",
+            "dateTested",
+            "preliminaryResults",
+            "preliminaryResultsDate",
+            // "testedBy",
+            // "testedDate",
+            "comments",
+          ],
+          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          CLIENT: [
+            "client",
+            "dateSent",
+            "typeOfTest",
+            "sampleType",
+            "formulaNo",
+            "description",
+            "lotNo",
+            "manufactureDate",
+            "tbc_spec",
+            "tmy_spec",
+            "pathogens",
+          ],
+        };
+
+        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowed = allowedBase.includes("*")
+          ? Object.keys(fullPayload)
+          : PHASE_WRITE_GUARD(allowedBase);
+
+        const payload = Object.fromEntries(
+          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+        );
+
+        // New reports always start as DRAFT
+        if (!reportId) {
+          payload.status = "DRAFT";
         }
-        // (Optional) once in FINAL, drop PRELIM-only fields:
-        if (phase === "FINAL") {
-          return fields.filter((f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f));
+
+        try {
+          let saved: SavedReport;
+
+          if (reportId) {
+            saved = await api<SavedReport>(`/reports/${reportId}`, {
+              method: "PATCH",
+              body: JSON.stringify({ ...payload, reason: "Saving" }),
+            });
+          } else {
+            saved = await api(`/reports`, {
+              method: "POST",
+              body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+            });
+          }
+
+          setReportId(saved.id); // 👈 keep the new id
+          setStatus(saved.status); // in case backend changed it
+          setReportNumber(String(saved.reportNumber ?? ""));
+          setIsDirty(false);
+          alert("✅ Report saved as '" + saved.status + "'");
+          return true;
+        } catch (err: any) {
+          console.error(err);
+          alert("❌ Error saving draft: " + err.message);
+          return false;
         }
-      }
-      return fields;
-    };
-
-    const BASE_ALLOWED: Record<Role, string[]> = {
-      ADMIN: ["*"],
-      SYSTEMADMIN: [],
-      FRONTDESK: [
-        "client",
-        "dateSent",
-        "typeOfTest",
-        "sampleType",
-        "formulaNo",
-        "description",
-        "lotNo",
-        "manufactureDate",
-      ],
-      MICRO: [
-        "testSopNo",
-        "tbc_dilution",
-        "tbc_gram",
-        "tbc_result",
-        "tmy_dilution",
-        "tmy_gram",
-        "tmy_result",
-        "pathogens",
-        "dateTested",
-        "preliminaryResults",
-        "preliminaryResultsDate",
-        "testedBy",
-        "testedDate",
-        "comments",
-      ],
-      QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
-      CLIENT: [
-        "client",
-        "dateSent",
-        "typeOfTest",
-        "sampleType",
-        "formulaNo",
-        "description",
-        "lotNo",
-        "manufactureDate",
-        "tbc_spec",
-        "tmy_spec",
-        "pathogens",
-      ],
-    };
-
-    const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
-    const allowed = allowedBase.includes("*")
-      ? Object.keys(fullPayload)
-      : PHASE_WRITE_GUARD(allowedBase);
-
-    const payload = Object.fromEntries(
-      Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+      })) ?? false
     );
-
-    // New reports always start as DRAFT
-    if (!reportId) {
-      payload.status = "DRAFT";
-    }
-
-    try {
-      let saved: SavedReport;
-
-      if (reportId) {
-        saved = await api<SavedReport>(`/reports/${reportId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ ...payload, reason: "Saving" }),
-        });
-      } else {
-        saved = await api(`/reports`, {
-          method: "POST",
-          body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
-        });
-      }
-
-      setReportId(saved.id); // 👈 keep the new id
-      setStatus(saved.status); // in case backend changed it
-      setReportNumber(String(saved.reportNumber ?? ""));
-      setIsDirty(false);
-      alert("✅ Report saved as '" + saved.status + "'");
-      return true;
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error saving draft: " + err.message);
-      return false;
-    }
   };
 
   type UpdatedReport = {
@@ -1033,100 +1072,102 @@ export default function MicroMixReportForm({
     newStatus: ReportStatus,
     opts?: { reason?: string; eSignPassword?: string }
   ) {
-    // const token = localStorage.getItem("token");
-    // const API_BASE = "http://localhost:3000";
+    return await runBusy("STATUS", async () => {
+      // const token = localStorage.getItem("token");
+      // const API_BASE = "http://localhost:3000";
 
-    const values = makeValues();
-    const okFields = validateAndSetErrors(values);
-    const okRows = validatePathogenRows(values.pathogens, role, phase);
+      const values = makeValues();
+      const okFields = validateAndSetErrors(values);
+      const okRows = validatePathogenRows(values.pathogens, role, phase);
 
-    if (
-      newStatus === "SUBMITTED_BY_CLIENT" ||
-      newStatus === "RECEIVED_BY_FRONTDESK" ||
-      newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
-      newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
-      newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-      newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
-      newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
-      newStatus === "UNDER_QA_REVIEW" ||
-      newStatus === "UNDER_ADMIN_REVIEW" ||
-      newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
-      newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
-      newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
-      newStatus === "PRELIMINARY_APPROVED" ||
-      newStatus === "FINAL_TESTING_ON_HOLD" ||
-      newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-      newStatus === "QA_NEEDS_CORRECTION" ||
-      newStatus === "ADMIN_NEEDS_CORRECTION" ||
-      newStatus === "ADMIN_REJECTED" ||
-      newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-      newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-      newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
-      newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
-      newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-      newStatus === "FRONTDESK_ON_HOLD" ||
-      newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-      newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
-      newStatus === "LOCKED" ||
-      newStatus === "FINAL_APPROVED"
-    ) {
-      if (!okFields) {
-        alert("⚠️ Please fix the highlighted fields before changing status.");
-        return;
+      if (
+        newStatus === "SUBMITTED_BY_CLIENT" ||
+        newStatus === "RECEIVED_BY_FRONTDESK" ||
+        newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
+        newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
+        newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
+        newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
+        newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
+        newStatus === "UNDER_QA_REVIEW" ||
+        newStatus === "UNDER_ADMIN_REVIEW" ||
+        newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
+        newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
+        newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
+        newStatus === "PRELIMINARY_APPROVED" ||
+        newStatus === "FINAL_TESTING_ON_HOLD" ||
+        newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+        newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
+        newStatus === "QA_NEEDS_CORRECTION" ||
+        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        newStatus === "ADMIN_REJECTED" ||
+        newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+        newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
+        newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
+        newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
+        newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+        newStatus === "FRONTDESK_ON_HOLD" ||
+        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
+        newStatus === "LOCKED" ||
+        newStatus === "FINAL_APPROVED"
+      ) {
+        if (!okFields) {
+          alert("⚠️ Please fix the highlighted fields before changing status.");
+          return;
+        }
+        if (!okRows) {
+          alert("⚠️ Please fix the highlighted rows before changing status.");
+          return;
+        }
       }
-      if (!okRows) {
-        alert("⚠️ Please fix the highlighted rows before changing status.");
-        return;
+
+      // ensure latest edits are saved
+      if (!reportId || isDirty) {
+        const saved = await handleSave();
+        if (!saved) return;
       }
-    }
 
-    // ensure latest edits are saved
-    if (!reportId || isDirty) {
-      const saved = await handleSave();
-      if (!saved) return;
-    }
+      try {
+        let updated: UpdatedReport;
+        updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
+          method: "PATCH",
+          // Server expects: status (always), reason (required for critical fields incl. status),
+          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
+          body: JSON.stringify({
+            status: newStatus,
+            reason: opts?.reason ?? "Changing Status",
+            eSignPassword: opts?.eSignPassword ?? undefined,
+          }),
+        });
 
-    try {
-      let updated: UpdatedReport;
-      updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
-        method: "PATCH",
-        // Server expects: status (always), reason (required for critical fields incl. status),
-        // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
-        body: JSON.stringify({
-          status: newStatus,
-          reason: opts?.reason ?? "Changing Status",
-          eSignPassword: opts?.eSignPassword ?? undefined,
-        }),
-      });
+        // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
+        // const updated: { status?: ReportStatus; reportNumber?: string } =
+        //   await res.json();
 
-      // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-      // const updated: { status?: ReportStatus; reportNumber?: string } =
-      //   await res.json();
-
-      setStatus(updated.status ?? newStatus);
-      setReportNumber(updated.reportNumber || reportNumber);
-      setIsDirty(false);
-      alert(`✅ Status changed to ${newStatus}`);
-      if (role === "CLIENT") {
-        navigate("/clientDashboard");
-      } else if (role === "FRONTDESK") {
-        navigate("/frontdeskDashboard");
-      } else if (role === "MICRO") {
-        navigate("/microDashboard");
-        // } else if (role === "CHEMISTRY") {
-        //   navigate("/chemistryDashboard");
-      } else if (role === "QA") {
-        navigate("/qaDashboard");
-      } else if (role === "ADMIN") {
-        navigate("/adminDashboard");
-      } else if (role === "SYSTEMADMIN") {
-        navigate("/systemAdminDashboard");
+        setStatus(updated.status ?? newStatus);
+        setReportNumber(updated.reportNumber || reportNumber);
+        setIsDirty(false);
+        alert(`✅ Status changed to ${newStatus}`);
+        if (role === "CLIENT") {
+          navigate("/clientDashboard");
+        } else if (role === "FRONTDESK") {
+          navigate("/frontdeskDashboard");
+        } else if (role === "MICRO") {
+          navigate("/microDashboard");
+          // } else if (role === "CHEMISTRY") {
+          //   navigate("/chemistryDashboard");
+        } else if (role === "QA") {
+          navigate("/qaDashboard");
+        } else if (role === "ADMIN") {
+          navigate("/adminDashboard");
+        } else if (role === "SYSTEMADMIN") {
+          navigate("/systemAdminDashboard");
+        }
+      } catch (err: any) {
+        console.error(err);
+        alert("❌ Error changing status: " + err.message);
       }
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Error changing status: " + err.message);
-    }
+    });
   }
 
   function markDirty() {
@@ -1174,6 +1215,75 @@ export default function MicroMixReportForm({
         c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
     );
   // let Admin/Micro resolve even if the key is nested under "pathogens:*"
+
+  type BusyAction =
+    | null
+    | "SAVE"
+    | "STATUS"
+    | "ESIGN_CONFIRM"
+    | "SEND_CORRECTIONS"
+    | "ADD_CORRECTION"
+    | "RESOLVE";
+
+  const [busy, setBusy] = useState<BusyAction>(null);
+  const busyRef = useRef(false);
+
+  const isBusy = busy !== null;
+
+  async function runBusy<T>(
+    action: Exclude<BusyAction, null>,
+    fn: () => Promise<T>
+  ): Promise<T | undefined> {
+    if (busyRef.current) return; // 🚫 prevent double click
+    busyRef.current = true;
+    setBusy(action);
+
+    try {
+      return await fn();
+    } finally {
+      setBusy(null);
+      busyRef.current = false;
+    }
+  }
+
+  const [hasAttachment, setHasAttachment] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  async function refreshHasAttachment(id: string) {
+    setAttachmentsLoading(true);
+    try {
+      // ✅ Use the endpoint you already have for listing attachments.
+      // Examples (pick the one your API actually supports):
+      //   GET /reports/:id/attachments
+      //   GET /reports/:id/attachments/meta
+      //   GET /reports/:id/attachments/list
+      const list = await api<any[]>(`/reports/${id}/attachments`, {
+        method: "GET",
+      });
+      setHasAttachment(Array.isArray(list) && list.length > 0);
+    } catch {
+      // fail closed (treat as no attachment)
+      setHasAttachment(false);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!reportId) return;
+    refreshHasAttachment(reportId);
+  }, [reportId]);
+
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
+    "UNDER_CLIENT_FINAL_REVIEW",
+  ]);
+
+  function isApproveAction(targetStatus: ReportStatus) {
+    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -1185,22 +1295,25 @@ export default function MicroMixReportForm({
           <button
             className="px-3 py-1 rounded-md border bg-gray-600 text-white"
             onClick={handleClose}
+            disabled={isBusy}
           >
-            Close
+            {isBusy ? "Working..." : "Close"}
           </button>
           {/* <button
-            className="px-3 py-1 rounded-md border"
-            onClick={() => window.print()}
-            disabled={role === "SYSTEMADMIN"}
-          >
-            Print
           </button> */}
           {!HIDE_SAVE_FOR.has(status as ReportStatus) && (
             <button
-              className="px-3 py-1 rounded-md border bg-blue-600 text-white"
+              className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
-              disabled={role === "SYSTEMADMIN"}
+              disabled={
+                role === "SYSTEMADMIN" ||
+                role === "FRONTDESK" ||
+                isBusy ||
+                status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                status === "LOCKED"
+              }
             >
+              {busy === "SAVE" && <Spinner />}
               {reportId ? "Update Report" : "Save Report"}
             </button>
           )}
@@ -1298,6 +1411,7 @@ export default function MicroMixReportForm({
                       : ""
                   }`}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
@@ -1307,18 +1421,7 @@ export default function MicroMixReportForm({
                   aria-invalid={!!errors.dateSent}
                 />
               )}
-              {/* <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              // <ResolvePill field="dateSent" /> */}
-              {/* <ResolvePill field="dateSent" /> */}
             </div>
-
-            {/* absolutely positioned; doesn't affect layout */}
-            {/* <div className="overlay-actions">
-              <FieldErrorBadge name="dateSent" errors={errors} />
-              <CorrectionBadge title={correctionText("dateSent") || ""} />
-              <ResolvePill field="dateSent" />
-            </div> */}
           </div>
 
           {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
@@ -1546,6 +1649,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={
                     manufactureDate ? formatDateForInput(manufactureDate) : "NA"
                   }
@@ -1629,6 +1733,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(dateTested)}
                   onChange={(e) => {
                     setDateTested(e.target.value);
@@ -1710,6 +1815,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
+                  min={todayISO()}
                   value={formatDateForInput(preliminaryResultsDate)}
                   onChange={(e) => {
                     setPreliminaryResultsDate(e.target.value);
@@ -1753,6 +1859,7 @@ export default function MicroMixReportForm({
                     : ""
                 } `}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(dateCompleted)}
                 onChange={(e) => {
                   setDateCompleted(e.target.value);
@@ -2338,6 +2445,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(testedDate)}
                 onChange={(e) => {
                   setTestedDate(e.target.value);
@@ -2406,6 +2514,7 @@ export default function MicroMixReportForm({
                     : ""
                 }`}
                 type="date"
+                min={todayISO()}
                 value={formatDateForInput(reviewedDate)}
                 onChange={(e) => {
                   setReviewedDate(e.target.value);
@@ -2424,7 +2533,7 @@ export default function MicroMixReportForm({
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
         <div className="flex flex-wrap gap-2">
-          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+          {/* {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
             (targetStatus: ReportStatus) => {
               if (
                 STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
@@ -2436,12 +2545,55 @@ export default function MicroMixReportForm({
                 return (
                   <button
                     key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color}`}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                     onClick={() => requestStatusChange(targetStatus)}
-                    // disabled={isDirty || !reportId}
-                    disabled={role === "SYSTEMADMIN"}
+                    disabled={role === "SYSTEMADMIN" || isBusy}
                   >
+                    {busy === "STATUS" && <Spinner />}
                     {label}
+                  </button>
+                );
+              }
+              return null;
+            }
+          )} */}
+
+          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+            (targetStatus: ReportStatus) => {
+              if (
+                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
+                  role!
+                ) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
+
+                const approveNeedsAttachment = isApproveAction(targetStatus);
+                const disableApproveForNoAttachment =
+                  approveNeedsAttachment && !hasAttachment;
+
+                const disabled =
+                  role === "SYSTEMADMIN" ||
+                  isBusy ||
+                  attachmentsLoading ||
+                  disableApproveForNoAttachment;
+
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                    onClick={() => requestStatusChange(targetStatus)}
+                    disabled={disabled}
+                    title={
+                      disableApproveForNoAttachment
+                        ? "Upload at least 1 attachment to enable Approve"
+                        : undefined
+                    }
+                  >
+                    {busy === "STATUS" && <Spinner />}
+                    {attachmentsLoading && label === "Approve"
+                      ? "Checking..."
+                      : label}
                   </button>
                 );
               }
@@ -2494,8 +2646,9 @@ export default function MicroMixReportForm({
                 Cancel
               </button>
               <button
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
+                  isBusy ||
                   !pendingStatus ||
                   !changeReason.trim() ||
                   !eSignPassword.trim()
@@ -2511,6 +2664,7 @@ export default function MicroMixReportForm({
                   });
                 }}
               >
+                {busy === "STATUS" && <Spinner />}
                 Confirm
               </button>
             </div>
@@ -2564,38 +2718,41 @@ export default function MicroMixReportForm({
               disabled={
                 !pendingCorrections.length || !pendingStatus || !reportId
               }
-              onClick={async () => {
-                // const token = localStorage.getItem("token")!;
-                await createCorrections(
-                  reportId!,
-                  pendingCorrections,
-                  pendingStatus!, // MOVE status in same call
-                  "Corrections requested" // audit reason
-                );
-                setSelectingCorrections(false);
-                setPendingCorrections([]);
-                // refresh corrections list and status
-                const fresh = await getCorrections(reportId!);
-                setCorrections(fresh);
-                setStatus(pendingStatus!);
-                setPendingStatus(null);
-                if (role === "CLIENT") {
-                  navigate("/clientDashboard");
-                } else if (role === "FRONTDESK") {
-                  navigate("/frontdeskDashboard");
-                } else if (role === "MICRO") {
-                  navigate("/microDashboard");
-                  // } else if (role === "CHEMISTRY") {
-                  //   navigate("/chemistryDashboard");
-                } else if (role === "QA") {
-                  navigate("/qaDashboard");
-                } else if (role === "ADMIN") {
-                  navigate("/adminDashboard");
-                } else if (role === "SYSTEMADMIN") {
-                  navigate("/systemAdminDashboard");
-                }
-              }}
+              onClick={() =>
+                runBusy("SEND_CORRECTIONS", async () => {
+                  await createCorrections(
+                    reportId!,
+                    pendingCorrections,
+                    pendingStatus!,
+                    "Corrections requested"
+                  );
+
+                  setSelectingCorrections(false);
+                  setPendingCorrections([]);
+
+                  const fresh = await getCorrections(reportId!);
+                  setCorrections(fresh);
+                  setStatus(pendingStatus!);
+                  setPendingStatus(null);
+                  if (role === "CLIENT") {
+                    navigate("/clientDashboard");
+                  } else if (role === "FRONTDESK") {
+                    navigate("/frontdeskDashboard");
+                  } else if (role === "MICRO") {
+                    navigate("/microDashboard");
+                    // } else if (role === "CHEMISTRY") {
+                    //   navigate("/chemistryDashboard");
+                  } else if (role === "QA") {
+                    navigate("/qaDashboard");
+                  } else if (role === "ADMIN") {
+                    navigate("/adminDashboard");
+                  } else if (role === "SYSTEMADMIN") {
+                    navigate("/systemAdminDashboard");
+                  }
+                })
+              }
             >
+              {busy === "SEND_CORRECTIONS" && <Spinner />}
               Send corrections
             </button>
           </div>
@@ -2630,20 +2787,23 @@ export default function MicroMixReportForm({
               <button
                 className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                 disabled={!addMessage.trim()}
-                onClick={() => {
-                  setPendingCorrections((prev) => [
-                    ...prev,
-                    {
-                      fieldKey: addForField!,
-                      message: addMessage.trim(),
-                      oldValue: getFieldDisplayValue(addForField!),
-                    },
-                  ]);
+                onClick={() =>
+                  runBusy("ADD_CORRECTION", async () => {
+                    setPendingCorrections((prev) => [
+                      ...prev,
+                      {
+                        fieldKey: addForField!,
+                        message: addMessage.trim(),
+                        oldValue: getFieldDisplayValue(addForField!),
+                      },
+                    ]);
 
-                  setAddForField(null);
-                  setAddMessage("");
-                }}
+                    setAddForField(null);
+                    setAddMessage("");
+                  })
+                }
               >
+                {busy === "ADD_CORRECTION" && <Spinner />}
                 Add
               </button>
             </div>
@@ -2706,7 +2866,7 @@ export default function MicroMixReportForm({
                       className="text-xs font-medium text-emerald-700 hover:underline"
                       onClick={() => resolveOne(c)}
                     >
-                      ✓ Mark resolved
+                      {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
                     </button>
                     <button
                       className="text-xs text-slate-500 hover:underline"

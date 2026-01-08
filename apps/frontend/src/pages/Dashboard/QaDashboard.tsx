@@ -1,157 +1,1144 @@
-import { useEffect, useState } from "react";
-import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import { useAuth } from "../../context/AuthContext";
+import io from "socket.io-client";
+import {
+  canShowUpdateButton,
+  STATUS_COLORS,
+  type ReportStatus,
+  type Role,
+} from "../../utils/microMixReportFormWorkflow";
+import { api, API_URL, getToken } from "../../lib/api";
+import toast from "react-hot-toast";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import {
+  canShowChemistryUpdateButton,
+  CHEMISTRY_STATUS_COLORS,
+  type ChemistryReportStatus,
+} from "../../utils/chemistryReportFormWorkflow";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
+// ---------------------------------
+// Types
+// ---------------------------------
 type Report = {
   id: string;
   client: string;
+  formType: string;
   dateSent: string | null;
-  status: string;
+  status: ReportStatus | ChemistryReportStatus | string;
   reportNumber: number;
-  prefix?: string;
+  formNumber: string | null;
 };
 
-const CLIENT_STATUSES = [
-  "ALL", // 👈 added ALL option
+// ---------------------------------
+// Constants
+// ---------------------------------
+const formTypeToSlug: Record<string, string> = {
+  MICRO_MIX: "micro-mix",
+  MICRO_MIX_WATER: "micro-mix-water",
+  CHEMISTRY_MIX: "chemistry-mix",
+};
+
+const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
+  "ALL",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "UNDER_CLIENT_FINAL_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_ON_HOLD",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "FINAL_RESUBMISSION_BY_TESTING",
+  "PRELIMINARY_APPROVED",
+  "UNDER_FINAL_TESTING_REVIEW",
+  "FINAL_TESTING_ON_HOLD",
+  "FINAL_TESTING_NEEDS_CORRECTION",
+  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  'QA_NEEDS_CORRECTION',
-  'QA_REJECTED'
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  "FINAL_APPROVED",
+  "LOCKED",
 ];
 
-export default function QADashboard() {
+// A status filter can be micro OR chemistry OR "ALL"
+type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+
+const QA_MICRO_STATUSES: DashboardStatus[] = [
+  "ALL",
+  ...ALL_STATUSES.filter((s) => s !== "ALL"),
+];
+
+const QA_CHEM_STATUSES: DashboardStatus[] = [
+  "ALL",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  "APPROVED",
+  "LOCKED",
+];
+
+// ---------------------------------
+// Utilities
+// ---------------------------------
+function classNames(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
+}
+function niceStatus(s: string) {
+  return s.replace(/_/g, " ");
+}
+function formatDate(iso: string | null) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+function displayReportNo(r: Report) {
+  return r.reportNumber || "-";
+}
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+function SpinnerDark({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700 ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+// QA fields edited in Update view
+const QA_FIELDS_ON_FORM = [
+  "comments",
+  "reviewedBy",
+  "reviewedDate",
+  "approvedBy",
+  "approvedDate",
+  "adminNotes",
+];
+
+// ---------------------------------
+// Component
+// ---------------------------------
+export default function QaDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
-  const [filter, setFilter] = useState("UNDER_QA_REVIEW");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filters
+  const [searchClient, setSearchClient] = useState("");
+  const [searchReport, setSearchReport] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [changeStatusReport, setChangeStatusReport] = useState<Report | null>(
+    null
+  );
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [reason, setReason] = useState<string>("");
+  const [eSignPassword, setESignPassword] = useState<string>("");
+  const [eSignError, setESignError] = useState<string>("");
+  const [saving, setSaving] = useState<boolean>(false);
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+
+  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
+    "ALL"
+  );
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+
+  const statusOptions =
+    formFilter === "CHEMISTRY" ? QA_CHEM_STATUSES : QA_MICRO_STATUSES;
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+
+  // UX guards
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Socket (live updates)
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   useEffect(() => {
-    async function fetchReports() {
-      const token = localStorage.getItem("token");
-      if (!token) return;
+    const t = getToken();
+    const url =
+      window.location.protocol === "https:"
+        ? API_URL.replace(/^http:/, "https:")
+        : API_URL;
 
-      const res = await fetch("http://localhost:3000/reports", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+    socketRef.current = io(url, {
+      transports: ["websocket"],
+      auth: t ? { token: t } : undefined,
+      path: "/socket.io",
+    });
 
-      if (res.ok) {
-        const all = await res.json();
-        // Only keep reports in the 3 statuses (ignore others from backend)
-        setReports(
-          all.filter((r: Report) =>
-            [
-              "UNDER_QA_REVIEW",
-              'QA_NEEDS_CORRECTION',
-              'QA_REJECTED'
-            ].includes(r.status)
+    socketRef.current.on(
+      "microMix:statusChanged",
+      (payload: { id: string; status: any }) => {
+        setReports((prev) =>
+          prev.map((r) =>
+            r.id === payload.id ? { ...r, status: payload.status } : r
           )
         );
-      } else {
-        console.error("Failed to fetch reports", res.status);
       }
-    }
-    fetchReports();
+    );
+
+    socketRef.current.on("microMix:created", (payload: Report) => {
+      setReports((prev) => [payload, ...prev]);
+    });
+
+    // OPTIONAL: chemistry events (if your backend emits them)
+    socketRef.current.on(
+      "chemistryMix:statusChanged",
+      (payload: { id: string; status: any }) => {
+        setReports((prev) =>
+          prev.map((r) =>
+            r.id === payload.id ? { ...r, status: payload.status } : r
+          )
+        );
+      }
+    );
+    socketRef.current.on("chemistryMix:created", (payload: Report) => {
+      setReports((prev) => [payload, ...prev]);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
   }, []);
 
-  // 👇 filtering logic with ALL option
-  const filtered =
-    filter === "ALL" ? reports : reports.filter((r) => r.status === filter);
+  // ✅ IMPORTANT: chemistry /status endpoint usually does NOT require reason
+  async function setStatus(
+    r: Report,
+    nextStatus: string,
+    reasonText = "Common Status Change"
+  ) {
+    const isChem = r.formType === "CHEMISTRY_MIX";
+    const endpoint = isChem
+      ? `/chemistry-reports/${r.id}/status`
+      : `/reports/${r.id}/status`;
 
+    const body = isChem
+      ? { status: nextStatus }
+      : { reason: reasonText, status: nextStatus };
+
+    await api(endpoint, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }
+
+  const fetchAll = async () => {
+    const microReports = await api<Report[]>("/reports");
+    const chemistryReports = await api<Report[]>("/chemistry-reports");
+    return [...microReports, ...chemistryReports];
+  };
+
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const allReports = await fetchAll();
+        if (!abort) setReports(allReports);
+      } catch (e: any) {
+        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+      } finally {
+        if (!abort) setLoading(false);
+      }
+    })();
+    return () => {
+      abort = true;
+    };
+  }, []);
+
+  // ✅ Reset invalid status when switching formFilter
+  useEffect(() => {
+    const opts = statusOptions.map(String);
+    if (statusFilter !== "ALL" && !opts.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formFilter]);
+
+  // Derived rows (filter → search → sort)
+  const processed = useMemo(() => {
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) =>
+            formFilter === "MICRO"
+              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
+              : r.formType === "CHEMISTRY_MIX"
+          );
+
+    const byStatus =
+      statusFilter === "ALL"
+        ? byForm
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
+
+    const byClient = searchClient.trim()
+      ? byStatus.filter((r) =>
+          r.client.toLowerCase().includes(searchClient.toLowerCase())
+        )
+      : byStatus;
+
+    const byReport = searchReport.trim()
+      ? byClient.filter((r) =>
+          String(displayReportNo(r))
+            .toLowerCase()
+            .includes(searchReport.toLowerCase())
+        )
+      : byClient;
+
+    const byDateFrom = dateFrom
+      ? byReport.filter(
+          (r) => !r.dateSent || new Date(r.dateSent) >= new Date(dateFrom)
+        )
+      : byReport;
+
+    const byDateTo = dateTo
+      ? byDateFrom.filter(
+          (r) => !r.dateSent || new Date(r.dateSent) <= new Date(dateTo)
+        )
+      : byDateFrom;
+
+    return [...byDateTo].sort((a, b) => {
+      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+      return bT - aT;
+    });
+  }, [
+    reports,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+  ]);
+
+  const total = processed.length;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const pageClamped = Math.min(page, totalPages);
+  const start = (pageClamped - 1) * perPage;
+  const end = start + perPage;
+  const pageRows = processed.slice(start, end);
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    formFilter,
+  ]);
+
+  // Permissions
+  function canUpdateThisMicro(r: Report, userObj?: any) {
+    return canShowUpdateButton(
+      userObj?.role as Role,
+      r.status as ReportStatus,
+      QA_FIELDS_ON_FORM
+    );
+  }
+  function canUpdateThisChem(r: Report, userObj?: any) {
+    return canShowChemistryUpdateButton(
+      userObj?.role,
+      r.status as ChemistryReportStatus,
+      QA_FIELDS_ON_FORM
+    );
+  }
+
+  const needsESign = (_s: string) => true;
+
+  async function handleChangeStatus(report: Report, nextStatus: string) {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Missing auth token");
+      return;
+    }
+
+    setSaving(true);
+    setESignError("");
+
+    try {
+      if (!reason.trim()) {
+        setSaving(false);
+        alert("Reason for change is required.");
+        return;
+      }
+      if (needsESign(nextStatus) && !eSignPassword) {
+        setSaving(false);
+        setESignError("E-signature password is required.");
+        return;
+      }
+
+      const endpoint =
+        report.formType === "CHEMISTRY_MIX"
+          ? `/chemistry-reports/${report.id}/change-status`
+          : `/reports/${report.id}/change-status`;
+
+      await api(endpoint, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: nextStatus,
+          reason,
+          eSignPassword,
+        }),
+      });
+
+      setReports((prev) =>
+        prev.map((r) => (r.id === report.id ? { ...r, status: nextStatus } : r))
+      );
+      setChangeStatusReport(null);
+      setReason("");
+      setESignPassword("");
+      toast.success("Status updated successfully");
+    } catch (err: any) {
+      const backendMsg =
+        err?.message ||
+        err?.response?.data?.message ||
+        err?.error ||
+        err?.toString() ||
+        "";
+
+      if (backendMsg.toLowerCase().includes("electronic")) {
+        setESignError("❌ Invalid e-signature password. Please try again.");
+      } else if (backendMsg.toLowerCase().includes("reason")) {
+        setESignError("⚠️ Please provide a valid reason for this change.");
+      } else {
+        setESignError("⚠️ Something went wrong while changing status.");
+        console.error("Status change error:", err);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function goToReportEditor(r: Report) {
+    const slug = formTypeToSlug[r.formType] || "micro-mix";
+    if (r.formType === "CHEMISTRY_MIX") {
+      navigate(`/chemistry-reports/${slug}/${r.id}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}`);
+    }
+  }
+
+  const badgeClasses = (r: Report) => {
+    const isChem = r.formType === "CHEMISTRY_MIX";
+    return (
+      (isChem
+        ? CHEMISTRY_STATUS_COLORS?.[r.status as ChemistryReportStatus]
+        : STATUS_COLORS?.[r.status as ReportStatus]) ||
+      "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+    );
+  };
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">QA Dashboard</h1>
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">QA Dashboard</h1>
+          <p className="text-sm text-slate-500">
+            Oversee all reports and manage status transitions.
+          </p>
+        </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        {CLIENT_STATUSES.map((s) => (
+        <div className="flex items-center gap-2">
           <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`px-4 py-2 rounded-md border ${filter === s ? "bg-blue-600 text-white" : "bg-gray-100"
-              }`}
+            type="button"
+            disabled={refreshing}
+            onClick={() => {
+              if (refreshing) return;
+              setRefreshing(true);
+              window.location.reload();
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            aria-label="Refresh"
           >
-            {s.replace(/_/g, " ")}
+            {refreshing ? <SpinnerDark /> : "↻"}
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
-        ))}
+        </div>
+      </div>
+
+      {/* Form type tabs */}
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All forms"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Chemistry"}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Status chips */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {statusOptions.map((s) => (
+            <button
+              key={String(s)}
+              onClick={() => setStatusFilter(s)}
+              className={classNames(
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
+                statusFilter === s
+                  ? "bg-blue-600 text-white ring-blue-600"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
+              )}
+              aria-pressed={statusFilter === s}
+            >
+              {niceStatus(String(s))}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap gap-3">
+          {/* ✅ dropdown options match form filter */}
+          <select
+            value={String(statusFilter)}
+            onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
+            className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
+                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          >
+            {statusOptions.map((s) => (
+              <option key={String(s)} value={String(s)}>
+                {niceStatus(String(s))}
+              </option>
+            ))}
+          </select>
+
+          <input
+            placeholder="Search by client"
+            value={searchClient}
+            onChange={(e) => setSearchClient(e.target.value)}
+            className="flex-1 min-w-[140px] rounded-lg border px-3 py-2 text-sm 
+                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
+
+          <input
+            placeholder="Search by report #"
+            value={searchReport}
+            onChange={(e) => setSearchReport(e.target.value)}
+            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
+                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
+
+          <div className="flex gap-2 min-w-[200px]">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-40 rounded-lg border px-3 py-2 text-sm 
+                   ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-40 rounded-lg border px-3 py-2 text-sm 
+                   ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-100 border-b">
-              <th className="p-2 text-left">Report #</th>
-              <th className="p-2 text-left">Client</th>
-              <th className="p-2 text-left">Date Sent</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.id} className="border-b hover:bg-gray-50">
-                <td className="p-2">
-                  {r.reportNumber}
-                </td>
-                <td className="p-2">{r.client}</td>
-                <td className="p-2">
-                  {r.dateSent ? new Date(r.dateSent).toLocaleDateString() : "-"}
-                </td>
-                <td className="p-2">{r.status.replace(/_/g, " ")}</td>
-                <td className="p-2 flex gap-2">
-                  <button
-                    className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-                    onClick={() => {
+      <div className="rounded-2xl border bg-white shadow-sm">
+        {error && (
+          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
 
-                      setSelectedReport(r);
-                    }}
+        <div className="overflow-x-auto">
+          <table className="w-full border-separate border-spacing-0 text-sm">
+            <thead className="sticky top-0 z-10 bg-slate-50">
+              <tr className="text-left text-slate-600">
+                <th className="px-4 py-3 font-medium">Report #</th>
+                <th className="px-4 py-3 font-medium">Form #</th>
+                <th className="px-4 py-3 font-medium">Client</th>
+                <th className="px-4 py-3 font-medium">Date Sent</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading &&
+                [...Array(6)].map((_, i) => (
+                  <tr key={`skel-${i}`} className="border-t">
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
+                    </td>
+                  </tr>
+                ))}
+
+              {!loading &&
+                pageRows.map((r) => {
+                  const isMicro =
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
+                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const rowBusy = updatingId === r.id;
+
+                  return (
+                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium">
+                        {displayReportNo(r)}
+                      </td>
+                      <td className="px-4 py-3">{r.formNumber}</td>
+                      <td className="px-4 py-3">{r.client}</td>
+                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={classNames(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            badgeClasses(r)
+                          )}
+                        >
+                          {niceStatus(String(r.status))}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={() => setSelectedReport(r)}
+                            disabled={rowBusy}
+                          >
+                            View
+                          </button>
+
+                          {isMicro && canUpdateThisMicro(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              disabled={rowBusy}
+                              onClick={async () => {
+                                if (rowBusy) return;
+                                setUpdatingId(r.id);
+                                try {
+                                  if (
+                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                  ) {
+                                    const next =
+                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                    await setStatus(r, next, "set by qa");
+                                    setReports((prev) =>
+                                      prev.map((x) =>
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x
+                                      )
+                                    );
+                                    toast.success("Report Status Updated");
+                                  }
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  toast.error(
+                                    e?.message || "Failed to update status"
+                                  );
+                                } finally {
+                                  setUpdatingId(null);
+                                }
+                              }}
+                            >
+                              {rowBusy ? <Spinner /> : null}
+                              {rowBusy ? "Updating..." : "Update"}
+                            </button>
+                          )}
+
+                          {isChemistry && canUpdateThisChem(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              disabled={rowBusy}
+                              onClick={async () => {
+                                if (rowBusy) return;
+                                setUpdatingId(r.id);
+                                try {
+                                  if (r.status === "CLIENT_NEEDS_CORRECTION") {
+                                    const next =
+                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                    await setStatus(r, next, "set by qa");
+                                    setReports((prev) =>
+                                      prev.map((x) =>
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x
+                                      )
+                                    );
+                                    toast.success("Report Status Updated");
+                                  }
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  toast.error(
+                                    e?.message || "Failed to update status"
+                                  );
+                                } finally {
+                                  setUpdatingId(null);
+                                }
+                              }}
+                            >
+                              {rowBusy ? <Spinner /> : null}
+                              {rowBusy ? "Updating..." : "Update"}
+                            </button>
+                          )}
+
+                          <button
+                            className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
+                            onClick={() => {
+                              setChangeStatusReport(r);
+
+                              const options =
+                                r.formType === "CHEMISTRY_MIX"
+                                  ? QA_CHEM_STATUSES
+                                  : QA_MICRO_STATUSES;
+
+                              const current = String(r.status);
+                              setNewStatus(
+                                options.map(String).includes(current)
+                                  ? current
+                                  : String(options[0] ?? "DRAFT")
+                              );
+
+                              setReason("");
+                              setESignPassword("");
+                              setESignError("");
+                            }}
+                          >
+                            Change Status
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+              {!loading && pageRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-12 text-center text-slate-500"
                   >
-                    View
-                  </button>
-                  <button
-                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded"
-                    onClick={() => {
+                    No reports match filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                      navigate(`/reports/${r.id}`);
-                    }} >
-                    Update
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={5} className="p-4 text-center text-gray-500">
-                  No reports found for {filter.replace(/_/g, " ")}.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {/* Pagination */}
+        {!loading && total > 0 && (
+          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
+            <div className="text-slate-600">
+              Showing <span className="font-medium">{start + 1}</span>–
+              <span className="font-medium">{Math.min(end, total)}</span> of
+              <span className="font-medium"> {total}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="perPage" className="sr-only">
+                Rows
+              </label>
+              <select
+                id="perPage"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="rounded-lg border bg-white px-3 py-1.5 text-sm ring-1 ring-inset ring-slate-200"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={pageClamped === 1}
+              >
+                Prev
+              </button>
+
+              <span className="tabular-nums">
+                {pageClamped} / {totalPages}
+              </span>
+
+              <button
+                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={pageClamped === totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Modal with full form in read-only */}
+      {/* Modal: read-only full form */}
       {selectedReport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6 m-4 overflow-x-auto">
-            <h2 className="text-lg font-bold mb-4 sticky top-0 bg-white z-10 border-b pb-2">
-              Report
-              {selectedReport.reportNumber}
-            </h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Report details"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedReport(null);
+          }}
+        >
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+            <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
+              <h2 className="text-lg font-semibold">
+                Report #{displayReportNo(selectedReport)}
+              </h2>
 
-            <MicroMixReportFormView
-              report={selectedReport}
-              onClose={() => setSelectedReport(null)}
-            />
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setModalPane("FORM")}
+                    className={`px-3 py-1 rounded-full transition ${
+                      modalPane === "FORM"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-700 hover:bg-white"
+                    }`}
+                    aria-pressed={modalPane === "FORM"}
+                  >
+                    Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalPane("ATTACHMENTS")}
+                    className={`px-3 py-1 rounded-full transition ${
+                      modalPane === "ATTACHMENTS"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-700 hover:bg-white"
+                    }`}
+                    aria-pressed={modalPane === "ATTACHMENTS"}
+                  >
+                    Attachments
+                  </button>
+                </div>
+              </div>
 
-            <div className="flex justify-end mt-6">
-              {/* <button
-                onClick={() => setSelectedReport(null)}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Close
-              </button> */}
+              <div className="flex items-center gap-2 justify-self-end">
+                {/* ✅ show Update in modal for micro OR chem */}
+                {(selectedReport.formType === "CHEMISTRY_MIX"
+                  ? canUpdateThisChem(selectedReport, user)
+                  : canUpdateThisMicro(selectedReport, user)) && (
+                  <button
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                    onClick={async () => {
+                      try {
+                        const r = selectedReport;
+
+                        // keep your existing micro transition
+                        if (
+                          r.formType !== "CHEMISTRY_MIX" &&
+                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                        ) {
+                          const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
+                          await setStatus(
+                            r,
+                            next,
+                            "Sent back to client for correction"
+                          );
+                          setReports((prev) =>
+                            prev.map((x) =>
+                              x.id === r.id ? { ...x, status: next } : x
+                            )
+                          );
+                        }
+
+                        setSelectedReport(null);
+                        goToReportEditor(r);
+                      } catch (e: any) {
+                        alert(e?.message || "Failed to update status");
+                      }
+                    }}
+                  >
+                    Update
+                  </button>
+                )}
+
+                <button
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+                  onClick={() => setSelectedReport(null)}
+                >
+                  Close
+                </button>
+              </div>
             </div>
+
+            <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+              {selectedReport?.formType === "MICRO_MIX" ? (
+                <MicroMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
+                <MicroMixWaterReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
+                <ChemistryMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : (
+                <div className="text-sm text-slate-600">
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Status Dialog */}
+      {changeStatusReport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Change status"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-2">
+              Change Status of {changeStatusReport.formType}
+            </h2>
+            <p className="mb-3 text-sm text-slate-600">
+              <strong>Current:</strong>{" "}
+              {niceStatus(String(changeStatusReport.status))}
+            </p>
+
+            <form
+              autoComplete="off"
+              name="status-change-form"
+              action="about:blank"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleChangeStatus(changeStatusReport, newStatus);
+              }}
+            >
+              <select
+                value={newStatus}
+                onChange={(e) => {
+                  setNewStatus(e.target.value);
+                  setESignError("");
+                }}
+                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {(changeStatusReport.formType === "CHEMISTRY_MIX"
+                  ? QA_CHEM_STATUSES
+                  : QA_MICRO_STATUSES
+                )
+                  .filter((s) => s !== "ALL")
+                  .map((s) => (
+                    <option key={String(s)} value={String(s)}>
+                      {niceStatus(String(s))}
+                    </option>
+                  ))}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Reason for change"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              />
+
+              {needsESign(newStatus) && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>E-signature password</span>
+                  </div>
+
+                  {/* Decoys */}
+                  <input
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
+                  />
+                  <input
+                    type="password"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
+                  />
+
+                  <div className="mb-2 flex items-stretch gap-2">
+                    <input
+                      type="password"
+                      placeholder="Enter e-signature password"
+                      value={eSignPassword}
+                      onChange={(e) => {
+                        setESignPassword(e.target.value);
+                        setESignError("");
+                      }}
+                      className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                      aria-invalid={!!eSignError}
+                      autoComplete="off"
+                      name="esign_pwd_manual_only"
+                      inputMode="text"
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                    />
+                  </div>
+
+                  {eSignError && (
+                    <p className="mb-2 text-xs text-rose-600">{eSignError}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => setChangeStatusReport(null)}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  disabled={
+                    saving ||
+                    !reason.trim() ||
+                    (needsESign(newStatus) && !eSignPassword)
+                  }
+                >
+                  {saving ? <Spinner /> : null}
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

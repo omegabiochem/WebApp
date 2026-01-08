@@ -120,43 +120,43 @@ const STATUS_TRANSITIONS: Record<
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
     canSet: ['MICRO'],
     next: ['UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'ADMIN'],
+    nextEditableBy: ['MICRO', 'ADMIN', 'QA'],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
     canSet: ['CLIENT'],
     next: ['PRELIMINARY_RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'ADMIN'],
+    nextEditableBy: ['MICRO', 'ADMIN', 'QA'],
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
     canSet: ['CLIENT'],
     next: ['FINAL_RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'ADMIN'],
+    nextEditableBy: ['MICRO', 'ADMIN', 'QA'],
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
-    canSet: ['FRONTDESK', 'CLIENT'],
+    canSet: ['CLIENT'],
     next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
-    nextEditableBy: ['ADMIN'],
+    nextEditableBy: ['ADMIN', 'QA'],
     canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
     canSet: ['MICRO'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'MICRO'],
+    nextEditableBy: ['ADMIN', 'QA', 'MICRO'],
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ['ADMIN', 'MICRO'],
+    canSet: ['ADMIN', 'QA', 'MICRO'],
     next: ['UNDER_FINAL_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN'],
+    nextEditableBy: ['ADMIN', 'QA'],
     canEdit: [],
   },
   FINAL_RESUBMISSION_BY_CLIENT: {
     canSet: ['CLIENT'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'MICRO'],
+    nextEditableBy: ['ADMIN', 'QA', 'MICRO'],
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
@@ -178,7 +178,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
     next: ['SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
@@ -191,16 +191,16 @@ const STATUS_TRANSITIONS: Record<
       'UNDER_CLIENT_PRELIMINARY_REVIEW',
     ],
     nextEditableBy: ['MICRO'],
-    canEdit: ['MICRO', 'ADMIN'],
+    canEdit: ['MICRO', 'ADMIN', 'QA'],
   },
   PRELIMINARY_TESTING_ON_HOLD: {
     canSet: ['MICRO'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'ADMIN'],
+    nextEditableBy: ['MICRO', 'ADMIN', 'QA'],
     canEdit: [],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT', 'ADMIN'],
+    canSet: ['CLIENT'],
     next: ['UNDER_CLIENT_PRELIMINARY_CORRECTION'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
@@ -209,7 +209,7 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['MICRO'],
     next: ['PRELIMINARY_RESUBMISSION_BY_TESTING'],
     nextEditableBy: ['CLIENT'],
-    canEdit: ['MICRO', 'ADMIN'],
+    canEdit: ['MICRO', 'ADMIN', 'QA'],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
     canSet: ['CLIENT'],
@@ -220,9 +220,9 @@ const STATUS_TRANSITIONS: Record<
   UNDER_FINAL_TESTING_REVIEW: {
     canSet: ['MICRO'],
     next: [
+      'FINAL_TESTING_ON_HOLD',
       'FINAL_TESTING_NEEDS_CORRECTION',
-      'FINAL_TESTING_NEEDS_CORRECTION',
-      'UNDER_ADMIN_REVIEW',
+      'UNDER_QA_REVIEW',
     ],
     nextEditableBy: ['QA', 'ADMIN'],
     canEdit: ['MICRO'],
@@ -234,26 +234,26 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'ADMIN'],
+    canSet: ['MICRO', 'ADMIN', 'QA'],
     next: ['UNDER_CLIENT_FINAL_CORRECTION'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'ADMIN'],
-    next: ['UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW'],
-    nextEditableBy: ['ADMIN'],
-    canEdit: ['MICRO', 'ADMIN'],
+    canSet: ['MICRO', 'ADMIN', 'QA'],
+    next: ['UNDER_FINAL_RESUBMISSION_QA_REVIEW'],
+    nextEditableBy: ['QA'],
+    canEdit: ['MICRO', 'ADMIN', 'QA'],
   },
   FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ['MICRO', 'ADMIN'],
-    next: ['UNDER_ADMIN_REVIEW'],
+    canSet: ['MICRO', 'ADMIN', 'QA'],
+    next: ['UNDER_QA_REVIEW'],
     nextEditableBy: [],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['MICRO'],
-    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    canSet: ['MICRO', 'QA'],
+    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA'],
     canEdit: ['QA'],
   },
@@ -263,11 +263,17 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['MICRO'],
     canEdit: [],
   },
+  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
+    canSet: ['QA'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['ADMIN', 'QA'],
+  },
 
   UNDER_ADMIN_REVIEW: {
-    canSet: ['MICRO', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
@@ -289,7 +295,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['ADMIN'],
   },
   FINAL_APPROVED: {
-    canSet: ['CLIENT'],
+    canSet: [],
     next: [],
     nextEditableBy: [],
     canEdit: [],
@@ -733,7 +739,7 @@ export class ReportsService {
   ) {
     const current = await this.get(id);
 
-    if (!['ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
         'Only ADMIN/SYSTEMADMIN can Change Status this directly',
       );
@@ -974,6 +980,7 @@ export class ReportsService {
       'MICRO',
       'FRONTDESK',
       'ADMIN',
+      'QA',
     ];
     if (!allowedResolvers.includes(user.role))
       throw new ForbiddenException('Not allowed to resolve');
@@ -1027,5 +1034,10 @@ export class ReportsService {
       createdBy: body.createdBy ?? user?.userId ?? 'web',
       meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
     });
+  }
+
+  // reports.service.ts
+  async listAttachments(id: string) {
+    return this.attachments.listForReport(id);
   }
 }
