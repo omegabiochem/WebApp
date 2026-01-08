@@ -299,7 +299,10 @@ export type ChemistryMixReportFormValues = {
     | "CLEANING_VALIDATION"
     | "COMPOSITE"
     | "DI_WATER_SAMPLE"
+    | "STABILITY"
   >;
+
+  stabilityNote?: string;
 
   dateReceived?: string;
 
@@ -551,6 +554,13 @@ export function useChemistryReportValidation(
           }
         }
       });
+
+      if (
+        values.sampleTypes?.includes("STABILITY") &&
+        !(values as any).stabilityNote?.trim()
+      ) {
+        next["stabilityNote"] = "Required when STABILITY is selected";
+      }
 
       setErrors(next);
 

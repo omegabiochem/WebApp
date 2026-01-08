@@ -244,6 +244,10 @@ export default function ChemistryMixReportForm({
 
   const [formulaId, setFormulaId] = useState(report?.formulaId || "");
   const [sampleSize, setSampleSize] = useState(report?.sampleSize || "");
+  const [stabilityNote, setStabilityNote] = useState(
+    report?.stabilityNote || ""
+  );
+
   const [numberOfActives, setNumberOfActives] = useState(
     report?.numberOfActives || ""
   );
@@ -257,7 +261,8 @@ export default function ChemistryMixReportForm({
     | "PROCESS_VALIDATION"
     | "CLEANING_VALIDATION"
     | "COMPOSITE"
-    | "DI_WATER_SAMPLE";
+    | "DI_WATER_SAMPLE"
+    | "STABILITY";
 
   const [sampleTypes, setSampleTypes] = useState<SampleTypeKey[]>(
     report?.sampleTypes || []
@@ -322,6 +327,7 @@ export default function ChemistryMixReportForm({
     sampleSize,
     numberOfActives,
     sampleTypes,
+    stabilityNote,
     dateReceived,
     actives,
     comments,
@@ -717,6 +723,9 @@ export default function ChemistryMixReportForm({
           sampleSize,
           numberOfActives,
           sampleTypes,
+          stabilityNote: sampleTypes.includes("STABILITY")
+            ? stabilityNote
+            : null,
           dateReceived,
           actives,
           comments,
@@ -754,6 +763,7 @@ export default function ChemistryMixReportForm({
             "sampleSize",
             "numberOfActives",
             "sampleTypes",
+            "stabilityNote",
             "comments",
             "actives",
             "formulaContent",
@@ -893,19 +903,14 @@ export default function ChemistryMixReportForm({
   };
 
   // Above component body (or inside, before return)
-  const sampleTypeColumns: [SampleTypeKey, string][][] = [
-    [
-      ["BULK", "BULK"],
-      ["FINISHED_GOOD", "FINISHED GOOD"],
-    ],
-    [
-      ["RAW_MATERIAL", "RAW MATERIAL"],
-      ["COMPOSITE", "COMPOSITE"],
-    ],
-    [
-      ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
-      ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-    ],
+  const sampleTypeItems: [SampleTypeKey, string][] = [
+    ["BULK", "BULK"],
+    ["FINISHED_GOOD", "FINISHED GOOD"],
+    ["RAW_MATERIAL", "RAW MATERIAL"],
+    ["COMPOSITE", "COMPOSITE"],
+    ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
+    ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
+    ["STABILITY", "STABILITY"],
   ];
 
   const inputClass = (name: keyof typeof errors, extra = "") =>
@@ -1170,8 +1175,8 @@ export default function ChemistryMixReportForm({
           </div>
 
           {/* TYPE OF TEST / SAMPLE COLLECTED */}
-          <div className="grid grid-cols-[47%_53%] border-b border-black text-[11px]">
-            <div className="px-2 border-r border-black flex items-center gap-2 text-[11px]">
+          <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
+            <div className="px-2 border-r border-black flex items-center gap-2 text-[12px]">
               <span
                 className={`font-medium whitespace-nowrap ${
                   selectingCorrections ? "cursor-pointer" : ""
@@ -1255,7 +1260,7 @@ export default function ChemistryMixReportForm({
               <FieldErrorBadge name="testTypes" errors={errors} />
             </div>
 
-            <div className="px-2 flex items-center gap-2 text-[11px]">
+            <div className="px-2 flex items-center gap-3 text-[12px]">
               <span
                 className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
                   "sampleCollected"
@@ -1517,11 +1522,11 @@ export default function ChemistryMixReportForm({
 
           {/* SAMPLE TYPE checkboxes */}
           {/* SAMPLE TYPE checkboxes */}
-          <div className="px-2 text-[11px] flex items-stretch gap-3">
+          <div className="px-2 text-[12px] grid grid-cols-[auto_1fr] items-stretch">
             {/* LEFT: Sample type */}
-            <div className="flex w-fit pr-7 py-1 self-stretch border-r border-black">
+            <div className="flex max-w-[600px] pr-1 py-1 self-stretch border-r border-black">
               <span
-                className={`font-medium mr-4 whitespace-nowrap ${corrCursor} relative ${dashClass(
+                className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
                   "sampleTypes"
                 )}`}
                 onClick={corrClick("sampleTypes")}
@@ -1545,34 +1550,49 @@ export default function ChemistryMixReportForm({
                       }
                     `}
               >
-                <div className="grid grid-cols-3 gap-x-1 gap-y-1 -ml-2 w-fit">
-                  {sampleTypeColumns.map((col, colIdx) => (
-                    <div key={colIdx} className="flex flex-col gap-[2px] w-fit">
-                      {col.map(([key, label]) => (
-                        <label
-                          key={key}
-                          className="flex items-center gap-1 whitespace-nowrap"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={sampleTypes.includes(key)}
-                            onChange={() => {
-                              if (selectingCorrections) return;
-                              if (lock("sampleTypes")) return;
-                              toggleSampleType(key);
-                              clearError("sampleTypes");
-                              markDirty();
-                            }}
-                            className={
-                              lock("sampleTypes")
-                                ? "accent-black"
-                                : "accent-blue-600"
-                            }
-                          />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-1">
+                  {sampleTypeItems.map(([key, label]) => (
+                    <label
+                      key={key}
+                      className="flex items-center gap-1 whitespace-nowrap"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sampleTypes.includes(key)}
+                        onChange={() => {
+                          if (selectingCorrections) return;
+                          if (lock("sampleTypes")) return;
+                          toggleSampleType(key);
+                          clearError("sampleTypes");
+                          markDirty();
+                        }}
+                        className={
+                          lock("sampleTypes")
+                            ? "accent-black"
+                            : "accent-blue-600"
+                        }
+                      />
+                      <span className="text-[11px]">{label}</span>
+
+                      {/* ✅ only STABILITY gets a small writing line */}
+                      {key === "STABILITY" && (
+                        <input
+                          type="text"
+                          value={stabilityNote}
+                          onChange={(e) => {
+                            if (selectingCorrections) return;
+                            if (lock("sampleTypes")) return;
+                            setStabilityNote(e.target.value);
+                            markDirty();
+                          }}
+                          className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
+                          disabled={
+                            !sampleTypes.includes("STABILITY") ||
+                            lock("sampleTypes")
+                          }
+                        />
+                      )}
+                    </label>
                   ))}
                 </div>
               </div>
@@ -1581,7 +1601,7 @@ export default function ChemistryMixReportForm({
             </div>
 
             {/* RIGHT: Date received */}
-            <div className="flex items-center gap-2 whitespace-nowrap ml-1 py-1">
+            <div className="flex items-center gap-2 whitespace-nowrap pl-2 py-1">
               <span
                 className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
                   "dateReceived"
@@ -1605,7 +1625,7 @@ export default function ChemistryMixReportForm({
                   type="date"
                   min={todayISO()}
                   className={`
-                      w-[130px] border-0 border-b outline-none text-[11px]
+                      w-[80px] border-0 border-b outline-none text-[11px]
                       ${
                         errors.dateReceived
                           ? "border-b-red-500 ring-1 ring-red-500"
@@ -1645,13 +1665,25 @@ export default function ChemistryMixReportForm({
             </div>
           )}
 
-          <div className="grid grid-cols-[23%_15%_12%_14%_16%_20%] font-semibold text-center border-b border-black">
-            <div className="p-1 border-r border-black">ACTIVE TO BE TESTED</div>
-            <div className="p-1 border-r border-black">BULK ACTIVE LOT #</div>
-            <div className="p-1 border-r border-black">SOP #</div>
-            <div className="p-1 border-r border-black">FORMULA CONTENT</div>
-            <div className="p-1 border-r border-black">RESULTS</div>
-            <div className="p-1">DATE TESTED / INITIAL</div>
+          <div className="grid grid-cols-[23%_15%_12%_14%_16%_20%] font-semibold text-center border-b border-black min-h-[24px]">
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              ACTIVE TO BE TESTED
+            </div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              RAW / BULK ACTIVE LOT #
+            </div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              SOP # / VALIDATED
+            </div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              FORMULA CONTENT
+            </div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              RESULTS
+            </div>
+            <div className="p-1  h-full flex items-center justify-center">
+              DATE TESTED / INITIAL
+            </div>
           </div>
 
           {actives.map((row, idx) => {

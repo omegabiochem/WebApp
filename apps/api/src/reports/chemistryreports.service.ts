@@ -241,6 +241,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'sampleSize',
     'numberOfActives',
     'sampleTypes',
+    'stabilityNote',
     'comments',
     'actives',
     'formulaContent',
