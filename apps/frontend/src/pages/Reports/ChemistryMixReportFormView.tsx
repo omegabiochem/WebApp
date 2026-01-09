@@ -693,7 +693,7 @@ export default function ChemistryMixReportFormView(
                 </span>
 
                 <div className="inline-flex border border-transparent">
-                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  <div className="grid grid-cols-4 grid-rows-2 gap-x-7 gap-y-1">
                     {sampleTypeItems.map(([key, label]) => (
                       <label
                         key={key}
@@ -706,7 +706,7 @@ export default function ChemistryMixReportFormView(
                           readOnly
                           disabled
                         />
-                        <span className="text-[11px]">{label}</span>
+                        <span className="text-[10px]">{label}</span>
 
                         {/* ✅ STABILITY writing line (view mode) */}
                         {key === "STABILITY" && (
@@ -743,7 +743,7 @@ export default function ChemistryMixReportFormView(
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
           <div className="mt-2 border border-black text-[11px]">
-            <div className="grid grid-cols-[24%_15%_12%_14%_15%_20%] font-semibold text-center border-b border-black">
+            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-semibold text-center border-b border-black">
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
@@ -751,7 +751,7 @@ export default function ChemistryMixReportFormView(
                 RAW / BULK ACTIVE LOT #
               </div>
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              SOP # / VALIDATED
+                SOP # / VALIDATED
               </div>
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 FORMULA CONTENT
@@ -767,7 +767,7 @@ export default function ChemistryMixReportFormView(
             {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
               <div
                 key={row.key}
-                className="grid grid-cols-[24%_15%_12%_14%_15%_20%] border-b last:border-b-0 border-black"
+                className="grid grid-cols-[25%_15%_11%_14%_15%_20%] border-b last:border-b-0 border-black"
               >
                 {/* active name + checkbox */}
                 <div className="flex items-center gap-2 border-r border-black px-1 ">
@@ -783,7 +783,7 @@ export default function ChemistryMixReportFormView(
                 {/* BULK ACTIVE LOT # */}
                 <div className="border-r border-black px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     value={row.bulkActiveLot}
                     readOnly
                     disabled
@@ -793,7 +793,7 @@ export default function ChemistryMixReportFormView(
                 {/* SOP # */}
                 <div className="border-r border-black px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     value={row.sopNo}
                     readOnly
                     disabled
@@ -804,7 +804,7 @@ export default function ChemistryMixReportFormView(
                 <div className="border-r border-black px-1 flex items-center">
                   <div className="flex w-full items-center gap-1 whitespace-nowrap">
                     <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
+                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
                       value={row.formulaContent}
                       readOnly
                       disabled
@@ -817,7 +817,7 @@ export default function ChemistryMixReportFormView(
                 <div className="border-r border-black px-1 flex items-center">
                   <div className="flex w-full items-center gap-1 whitespace-nowrap">
                     <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
+                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
                       value={row.result}
                       readOnly
                       disabled
@@ -829,7 +829,7 @@ export default function ChemistryMixReportFormView(
                 {/* date tested / initials */}
                 <div className="px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     placeholder="MM/DD/YYYY / AB"
                     value={row.dateTestedInitial}
                     readOnly

@@ -52,8 +52,6 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
-    'testedBy',
-    'testedDate',
     'comments',
   ],
   CHEMISTRY: [
@@ -68,11 +66,23 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
-    'testedBy',
-    'testedDate',
     'comments',
   ],
-  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate'],
+  QA: [
+    'testSopNo',
+    'tbc_dilution',
+    'tbc_gram',
+    'tbc_result',
+    'tmy_dilution',
+    'tmy_gram',
+    'tmy_result',
+    'pathogens',
+    'dateTested',
+    'preliminaryResults',
+    'preliminaryResultsDate',
+    'comments',
+    'dateCompleted',
+  ],
   CLIENT: [
     'client',
     'dateSent',
@@ -741,7 +751,7 @@ export class ReportsService {
 
     if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN can Change Status this directly',
+        'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
       );
     }
 

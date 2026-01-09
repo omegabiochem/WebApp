@@ -15,6 +15,8 @@ import {
 } from "../../utils/chemistryReportValidation";
 import {
   FIELD_EDIT_MAP,
+  joinDateInitial,
+  splitDateInitial,
   STATUS_TRANSITIONS,
   type ChemistryReportStatus,
   type CorrectionItem,
@@ -1706,7 +1708,8 @@ export default function ChemistryMixReportForm({
             const kSop = activeCellKey(row.key, "sopNo");
             const kFormula = activeCellKey(row.key, "formulaContent");
             const kResult = activeCellKey(row.key, "result");
-            const kDateInit = activeCellKey(row.key, "dateTestedInitial");
+            // const kDateInit = activeCellKey(row.key, "dateTestedInitial");
+            const { date, initial } = splitDateInitial(row.dateTestedInitial);
 
             return (
               <div
@@ -1778,7 +1781,7 @@ export default function ChemistryMixReportForm({
                   <ResolveOverlay field={kBulkActiveLot} />
 
                   <input
-                    className="w-full pr-4 border-none outline-none text-[11px]"
+                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
                     value={row.bulkActiveLot}
                     readOnly={
                       lock("actives") ||
@@ -1818,7 +1821,7 @@ export default function ChemistryMixReportForm({
                   <ResolveOverlay field={kSop} />
 
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     value={row.sopNo}
                     readOnly={
                       lock("actives") ||
@@ -1851,7 +1854,7 @@ export default function ChemistryMixReportForm({
                   <ResolveOverlay field={kFormula} />
 
                   <input
-                    className="w-full pr-4 border-none outline-none text-[11px]"
+                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
                     value={row.formulaContent}
                     readOnly={
                       lock("actives") ||
@@ -1869,7 +1872,7 @@ export default function ChemistryMixReportForm({
                     }}
                   />
 
-                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px] text-center">
                     %
                   </span>
                 </div>
@@ -1891,7 +1894,7 @@ export default function ChemistryMixReportForm({
                   <ResolveOverlay field={kResult} />
 
                   <input
-                    className="w-full pr-4 border-none outline-none text-[11px]"
+                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
                     value={row.result}
                     readOnly={
                       lock("actives") ||
@@ -1915,41 +1918,52 @@ export default function ChemistryMixReportForm({
                 </div>
 
                 {/* DATE TESTED / INITIAL */}
-                <div
-                  className={`px-1 relative ${inputErrClass(
-                    !!rowErr.dateTestedInitial
-                  )} ${dashClass(kDateInit)} ${corrCursor}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kDateInit);
-                  }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  <ResolveOverlay field={kDateInit} />
+                <div className="flex items-center  w-full">
+                  {/* 📅 Date picker */}
+                  <div className="relative flex items-center">
+                    <input
+                      type="date"
+                      className="border-none outline-none text-[11px] pr-1"
+                      value={date}
+                      readOnly={
+                        lock("actives") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      }
+                      onChange={(e) =>
+                        setActiveField(idx, {
+                          dateTestedInitial: joinDateInitial(
+                            e.target.value,
+                            initial
+                          ),
+                        })
+                      }
+                    />
+                  </div>
 
+                  {/* slash */}
+                  <span className="text-[11px] px-[2px]">/</span>
+
+                  {/* initials */}
                   <input
-                    className="w-full border-none outline-none text-[11px]"
-                    placeholder="MM/DD/YYYY / AB"
-                    value={row.dateTestedInitial}
+                    type="text"
+                    maxLength={3}
+                    placeholder="AB"
+                    className="w-[28px] border-0 border-b border-black/60 bg-transparent text-[11px] text-center outline-none"
+                    value={initial}
                     readOnly={
                       lock("actives") ||
                       role === "CLIENT" ||
                       selectingCorrections
                     }
-                    onChange={(e) => {
-                      if (
-                        lock("actives") ||
-                        role === "CLIENT" ||
-                        selectingCorrections
-                      )
-                        return;
+                    onChange={(e) =>
                       setActiveField(idx, {
-                        dateTestedInitial: e.target.value,
-                      });
-                    }}
+                        dateTestedInitial: joinDateInitial(
+                          date,
+                          e.target.value.toUpperCase()
+                        ),
+                      })
+                    }
                   />
                 </div>
               </div>

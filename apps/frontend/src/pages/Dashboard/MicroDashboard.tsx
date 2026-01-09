@@ -213,6 +213,9 @@ export default function MicroDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
+  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER";
+  const [formFilter, setFormFilter] = useState<FormFilter>("ALL");
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -241,11 +244,24 @@ export default function MicroDashboard() {
 
   // derived
   const processed = useMemo(() => {
+    // ✅ 0) form filter (MICRO vs MICRO WATER)
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) => {
+            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+            if (formFilter === "MICRO_WATER")
+              return r.formType === "MICRO_MIX_WATER";
+            return true;
+          });
+
+    // ✅ 1) status filter
     const byStatus =
       statusFilter === "ALL"
-        ? reports
-        : reports.filter((r) => r.status === statusFilter);
+        ? byForm
+        : byForm.filter((r) => r.status === statusFilter);
 
+    // ✅ 2) search
     const q = search.trim().toLowerCase();
     const bySearch = q
       ? byStatus.filter((r) => {
@@ -253,11 +269,14 @@ export default function MicroDashboard() {
           return (
             combinedNo.includes(q) ||
             r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
+            String(r.status).toLowerCase().includes(q) ||
+            r.formNumber.toLowerCase().includes(q) ||
+            r.formType.toLowerCase().includes(q)
           );
         })
       : byStatus;
 
+    // ✅ 3) sort
     const sorted = [...bySearch].sort((a, b) => {
       if (sortBy === "reportNumber") {
         const aK = (a.reportNumber || "").toLowerCase();
@@ -270,7 +289,7 @@ export default function MicroDashboard() {
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir]);
+  }, [reports, formFilter, statusFilter, search, sortBy, sortDir]);
 
   // pagination
   const total = processed.length;
@@ -282,7 +301,7 @@ export default function MicroDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage]);
+  }, [formFilter, statusFilter, search, perPage]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
     const fieldsUsedOnForm = [
@@ -471,6 +490,34 @@ export default function MicroDashboard() {
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
+      </div>
+
+      {/* Form Type filter */}
+      <div className="mb-3 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "MICRO", "MICRO_WATER"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                )}
+              >
+                {ft === "ALL"
+                  ? "All"
+                  : ft === "MICRO"
+                  ? "Micro"
+                  : "Micro Water"}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Controls */}

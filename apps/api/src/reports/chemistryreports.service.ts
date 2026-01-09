@@ -228,7 +228,16 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedDate',
     'actives',
   ],
-  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate'],
+  QA: [
+    'dateReceived',
+    'sop',
+    'results',
+    'dateTested',
+    'initial',
+    'comments',
+    'actives',
+    'dateCompleted',
+  ],
   CLIENT: [
     'client',
     'dateSent',
@@ -627,9 +636,9 @@ export class ChemistryReportsService {
   ) {
     const current = await this.get(id);
 
-    if (!['ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN can Change Status this directly',
+        'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
       );
     }
 
@@ -846,6 +855,7 @@ export class ChemistryReportsService {
       'CLIENT',
       'MICRO',
       'FRONTDESK',
+      'QA',
       'ADMIN',
     ];
     if (!allowedResolvers.includes(user.role))

@@ -186,9 +186,9 @@ export default function QaDashboard() {
   const [saving, setSaving] = useState<boolean>(false);
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
-  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
-    "ALL"
-  );
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+  >("ALL");
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
 
   const statusOptions =
@@ -316,11 +316,14 @@ export default function QaDashboard() {
     const byForm =
       formFilter === "ALL"
         ? reports
-        : reports.filter((r) =>
-            formFilter === "MICRO"
-              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
-              : r.formType === "CHEMISTRY_MIX"
-          );
+        : reports.filter((r) => {
+            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+            if (formFilter === "MICROWATER")
+              return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "CHEMISTRY")
+              return r.formType === "CHEMISTRY_MIX";
+            return true;
+          });
 
     const byStatus =
       statusFilter === "ALL"
@@ -520,7 +523,7 @@ export default function QaDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -538,6 +541,8 @@ export default function QaDashboard() {
                   ? "All forms"
                   : ft === "MICRO"
                   ? "Micro"
+                  : ft === "MICROWATER"
+                  ? "Micro Water"
                   : "Chemistry"}
               </button>
             );
