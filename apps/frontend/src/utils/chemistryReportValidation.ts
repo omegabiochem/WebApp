@@ -117,6 +117,16 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     dateTestedInitial: "",
   },
   {
+    key: "GLYCERINE",
+    label: "GLYCERINE",
+    checked: false,
+    bulkActiveLot: "",
+    sopNo: "",
+    formulaContent: "",
+    result: "",
+    dateTestedInitial: "",
+  },
+  {
     key: "HOMOSALATE",
     label: "HOMOSALATE",
     checked: false,
@@ -159,6 +169,16 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
   {
     key: "OCTYL_SALICYLATE",
     label: "OCTYL SALICYLATE",
+    checked: false,
+    bulkActiveLot: "",
+    sopNo: "",
+    formulaContent: "",
+    result: "",
+    dateTestedInitial: "",
+  },
+  {
+    key: "PHENYLEPHRINE",
+    label: "PHENYLEPHRINE",
     checked: false,
     bulkActiveLot: "",
     sopNo: "",

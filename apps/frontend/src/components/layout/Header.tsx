@@ -7,41 +7,31 @@ type MenuItem = { label: string; path: string };
 const menuByRole: Record<string, MenuItem[]> = {
   ADMIN: [
     { label: "Home", path: "/adminDashboard" },
-    // { label: "Samples", path: "/samples" },
-    { label: "New Reports", path: "/reports/new" },
-    { label: "Audit", path: "/audit" },
-    { label: "Results", path: "/results" },
+    { label: "Audit and Trail", path: "/audit" },
     { label: "Balancer", path: "/balancer" },
   ],
   CLIENT: [
     { label: "Home", path: "/clientDashboard" },
+    { label: "Audit and Trail", path: "/clientAudit" },
     { label: "Forms", path: "/formmenu" },
-    // { label: "Samples", path: "/samples" },
   ],
   SYSTEMADMIN: [
     { label: "Home", path: "/systemAdminDashboard" },
     { label: "Dashboard", path: "/" },
-    // { label: "Samples", path: "/samples" },
+
     { label: "New Reports", path: "/reports/new" },
     { label: "Audit", path: "/audit" },
   ],
-  MICRO: [
-    { label: "Home", path: "/microDashboard" },
-    // { label: "Samples", path: "/samples" },
-  ],
+  MICRO: [{ label: "Home", path: "/microDashboard" }],
   CHEMISTRY: [
     { label: "Home", path: "/chemistryDashboard" },
-    // { label: "Samples", path: "/samples" },
+
     { label: "Balancer", path: "/balancer" },
   ],
-  QA: [
-    { label: "Home", path: "/qaDashboard" },
-    // { label: "Samples", path: "/samples" },
-  ],
+  QA: [{ label: "Home", path: "/qaDashboard" }],
   FRONTDESK: [
     { label: "Home", path: "/frontdeskDashboard" },
-    // { label: "Samples", path: "/samples/new" },
-    { label: "Balancer", path: "/balancer" },
+    // { label: "Balancer", path: "/balancer" },
   ],
   DEFAULT: [{ label: "Home", path: "/home" }],
 };
@@ -114,7 +104,7 @@ export default function Header() {
               )}
               {(role === "ADMIN" || role === "SYSTEMADMIN") && (
                 <Link to="/admin" className="hover:underline">
-                  Admin
+                  User Management
                 </Link>
               )}
               <button
@@ -130,4 +120,3 @@ export default function Header() {
     </header>
   );
 }
-

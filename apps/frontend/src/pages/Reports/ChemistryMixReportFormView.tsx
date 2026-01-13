@@ -742,7 +742,7 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-          <div className="mt-2 border border-black text-[11px]">
+          <div className="mt-0.5 border border-black text-[11px]">
             <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-semibold text-center border-b border-black">
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
@@ -841,14 +841,14 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* NOTE line (you can make this static text) */}
-          <div className="mt-2 text-[10px]">
+          <div className="mt-1 text-[10px]">
             NOTE : Turn Over time is at least 1 week. Biochem, Inc is not
             responsible for the release of any product not in the Biochem
             stability program.
           </div>
 
           {/* Comments + signatures */}
-          <div className="mt-2 text-[12px]">
+          <div className="mt- text-[12px]">
             <div className="flex items-center gap-2 mb-2">
               <span className="font-medium">Comments :</span>
               <input
@@ -911,8 +911,8 @@ export default function ChemistryMixReportFormView(
           <div
             className={
               isBulk
-                ? "mt-2 flex items-end justify-between print-footer"
-                : "mt-2 flex items-end justify-between print-footer"
+                ? "mt-1 flex items-end justify-between print-footer"
+                : "mt-1 flex items-end justify-between print-footer"
             }
             style={
               !isBulk
