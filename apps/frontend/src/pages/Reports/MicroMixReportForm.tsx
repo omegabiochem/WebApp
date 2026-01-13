@@ -3021,7 +3021,7 @@ export default function MicroMixReportForm({
               autoFocus
               value={newSpecValue}
               onChange={(e) => setNewSpecValue(e.target.value)}
-              placeholder='Example: "<500 CFU/ mL/g"'
+              placeholder='Example: "<500 "'
               className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
 

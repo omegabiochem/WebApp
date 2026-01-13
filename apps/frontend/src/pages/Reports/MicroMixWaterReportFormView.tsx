@@ -749,15 +749,12 @@ export default function MicroMixWaterReportFormView(
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml</div>
+                <div className="py-1 px-2 text-center">CFU/mL</div>
               </div>
-              <div className="py-1 px-2 flex">
-                <input
-                  className="w-full input-editable  px-1"
-                  value={report?.tbc_spec || ""}
-                  readOnly
-                  disabled
-                />
+              <div className="py-1 px-2 flex items-center justify-center text-center">
+                <div className="whitespace-nowrap">
+                  {report?.tbc_spec || ""} CFU/ mL
+                </div>
               </div>
             </div>
             {/* Row 2: Total Mold & Yeast Count */}
@@ -791,13 +788,10 @@ export default function MicroMixWaterReportFormView(
                 />
                 <div className="py-1 px-2 text-center">CFU/ml</div>
               </div>
-              <div className="py-1 px-2 flex">
-                <input
-                  className="w-full input-editable  px-1"
-                  value={report?.tmy_spec || ""}
-                  readOnly
-                  disabled
-                />
+              <div className="py-1 px-2 flex items-center justify-center text-center">
+                <div className="whitespace-nowrap">
+                  {report?.tmy_spec || ""} CFU/mL
+                </div>
               </div>
             </div>
           </div>
