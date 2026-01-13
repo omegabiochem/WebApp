@@ -1072,7 +1072,9 @@ export default function ChemistryMixReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div />
             <div className="text-[18px] font-bold text-center underline">
-              Report
+                {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+                ? "CHEMISTRY SUBMISSION FORM"
+                : "CHEMISTRY REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold">
               {reportNumber}

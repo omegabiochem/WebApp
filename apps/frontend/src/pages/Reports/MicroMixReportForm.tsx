@@ -1433,7 +1433,9 @@ export default function MicroMixReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              Report
+              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+                ? "MICRO SUBMISSION FORM"
+                : "MICRO REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {reportNumber ? <> {reportNumber}</> : null}

@@ -538,8 +538,11 @@ export default function MicroMixWaterReportFormView(
               </div>
 
               {/* Center: Title */}
-              <div className="text-center text-[18px] font-bold underline">
-                Water Report
+              <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
+                {report.status === "DRAFT" ||
+                report.status === "SUBMITTED_BY_CLIENT"
+                  ? "MICRO WATER SUBMISSION FORM"
+                  : "MICRO WATER REPORT"}
               </div>
 
               {/* Right: Report Number */}

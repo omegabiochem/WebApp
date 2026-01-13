@@ -525,7 +525,10 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline">
-                Report
+                {report.status === "DRAFT" ||
+                report.status === "SUBMITTED_BY_CLIENT"
+                  ? "MICRO SUBMISSION FORM"
+                  : "MICRO REPORT"}
               </div>
 
               {/* Right: Report Number */}
