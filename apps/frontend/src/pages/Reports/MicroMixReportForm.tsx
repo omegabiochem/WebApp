@@ -93,8 +93,16 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     label: "Resubmit",
     color: "bg-blue-700",
   },
-  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
+  UNDER_QA_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_PRELIMINARY_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-500",
+  },
+  UNDER_QA_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_FINAL_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-500",
+  },
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
@@ -111,6 +119,9 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
+  if (role === "QA" && field === "dateCompleted") {
+    return p === "FINAL";
+  }
 
   // Block FINAL fields during PRELIM for MICRO & ADMIN
   if ((role === "MICRO" || role === "ADMIN") && p === "PRELIM") {
@@ -642,11 +653,24 @@ export default function MicroMixReportForm({
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ReportStatus) {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before changing status.");
+      return;
+    }
+
+    // ✅ Optional: prevent status change when there are unsaved edits
+    if (isDirty) {
+      alert(
+        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status."
+      );
+      return;
+    }
     const isNeeds =
       target === "FRONTDESK_NEEDS_CORRECTION" ||
       target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
       target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
+      target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+      target === "QA_NEEDS_FINAL_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
       target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
       target === "CLIENT_NEEDS_FINAL_CORRECTION";
@@ -1007,6 +1031,13 @@ export default function MicroMixReportForm({
               );
             }
           }
+
+          // ✅ QA: only allow dateCompleted in FINAL
+          if (role === "QA") {
+            if (phase === "PRELIM") {
+              return fields.filter((f) => f !== "dateCompleted");
+            }
+          }
           return fields;
         };
 
@@ -1039,7 +1070,7 @@ export default function MicroMixReportForm({
             // "testedDate",
             "comments",
           ],
-          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          QA: ["dateCompleted"],
           CLIENT: [
             "client",
             "dateSent",
@@ -1124,7 +1155,8 @@ export default function MicroMixReportForm({
         newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
         newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
-        newStatus === "UNDER_QA_REVIEW" ||
+        newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
+        newStatus === "UNDER_QA_FINAL_REVIEW" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
         newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
@@ -1133,7 +1165,8 @@ export default function MicroMixReportForm({
         newStatus === "FINAL_TESTING_ON_HOLD" ||
         newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
         newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
+        newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+        newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
         newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
         newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||

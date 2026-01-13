@@ -198,7 +198,7 @@ const STATUS_TRANSITIONS: Record<
     next: [
       'PRELIMINARY_TESTING_ON_HOLD',
       'PRELIMINARY_TESTING_NEEDS_CORRECTION',
-      'UNDER_CLIENT_PRELIMINARY_REVIEW',
+      'UNDER_QA_PRELIMINARY_REVIEW',
     ],
     nextEditableBy: ['MICRO'],
     canEdit: ['MICRO', 'ADMIN', 'QA'],
@@ -215,6 +215,21 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
+  UNDER_QA_PRELIMINARY_REVIEW: {
+    canSet: ['QA'],
+    next: [
+      'QA_NEEDS_PRELIMINARY_CORRECTION',
+      'UNDER_CLIENT_PRELIMINARY_REVIEW',
+    ],
+    nextEditableBy: ['MICRO'],
+    canEdit: ['QA'],
+  },
+  QA_NEEDS_PRELIMINARY_CORRECTION: {
+    canSet: ['QA'],
+    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO'],
+    canEdit: [],
+  },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
     canSet: ['MICRO'],
     next: ['PRELIMINARY_RESUBMISSION_BY_TESTING'],
@@ -223,7 +238,7 @@ const STATUS_TRANSITIONS: Record<
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
     canSet: ['CLIENT'],
-    next: ['UNDER_CLIENT_PRELIMINARY_REVIEW'],
+    next: ['UNDER_QA_PRELIMINARY_REVIEW'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
@@ -232,7 +247,7 @@ const STATUS_TRANSITIONS: Record<
     next: [
       'FINAL_TESTING_ON_HOLD',
       'FINAL_TESTING_NEEDS_CORRECTION',
-      'UNDER_QA_REVIEW',
+      'UNDER_QA_FINAL_REVIEW',
     ],
     nextEditableBy: ['QA', 'ADMIN'],
     canEdit: ['MICRO'],
@@ -257,17 +272,17 @@ const STATUS_TRANSITIONS: Record<
   },
   FINAL_RESUBMISSION_BY_TESTING: {
     canSet: ['MICRO', 'ADMIN', 'QA'],
-    next: ['UNDER_QA_REVIEW'],
+    next: ['UNDER_QA_FINAL_REVIEW'],
     nextEditableBy: [],
     canEdit: [],
   },
-  UNDER_QA_REVIEW: {
+  UNDER_QA_FINAL_REVIEW: {
     canSet: ['MICRO', 'QA'],
-    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    next: ['QA_NEEDS_FINAL_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA'],
     canEdit: ['QA'],
   },
-  QA_NEEDS_CORRECTION: {
+  QA_NEEDS_FINAL_CORRECTION: {
     canSet: ['QA'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['MICRO'],
@@ -288,13 +303,13 @@ const STATUS_TRANSITIONS: Record<
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_REVIEW'],
+    next: ['UNDER_QA_FINAL_REVIEW'],
     nextEditableBy: ['QA'],
     canEdit: ['ADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_REVIEW'],
+    next: ['UNDER_QA_FINAL_REVIEW'],
     nextEditableBy: ['QA'],
     canEdit: [],
   },
