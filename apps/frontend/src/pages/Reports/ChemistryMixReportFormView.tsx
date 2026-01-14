@@ -865,7 +865,7 @@ export default function ChemistryMixReportFormView(
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="font-medium">TESTED BY :</span>
+                  <span className="font-medium">VERIFIED BY :</span>
                   <input
                     className="flex-1 border-0 border-b border-black/60 outline-none"
                     value={report?.testedBy || ""}

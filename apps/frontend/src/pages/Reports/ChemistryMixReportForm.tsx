@@ -2027,7 +2027,7 @@ export default function ChemistryMixReportForm({
                     selectingCorrections ? "Click to add correction" : undefined
                   }
                 >
-                  TESTED BY :
+                  VERIFIED BY :
                   <ResolveOverlay field="testedBy" />
                 </span>
 
