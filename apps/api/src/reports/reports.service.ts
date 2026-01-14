@@ -764,9 +764,9 @@ export class ReportsService {
   ) {
     const current = await this.get(id);
 
-    if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
       throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
+        'Only ADMIN/SYSTEMADMIN/QA/MICRO can Change Status this directly',
       );
     }
 
@@ -793,13 +793,16 @@ export class ReportsService {
       );
     }
 
-    if (!eSignPassword) {
-      throw new BadRequestException(
-        'Electronic Signature (password) is required for status changes',
-      );
-    }
+    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW'; // ✅ only for Start Final
 
-    await this.esign.verifyPassword(user.userId, String(eSignPassword));
+    if (!skipESign) {
+      if (!eSignPassword) {
+        throw new BadRequestException(
+          'Electronic Signature (password) is required for status changes',
+        );
+      }
+      await this.esign.verifyPassword(user.userId, String(eSignPassword));
+    }
 
     const trans = STATUS_TRANSITIONS[current.status as ReportStatus];
     if (!trans) {
