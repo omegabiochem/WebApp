@@ -842,7 +842,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
           </div>
 
           {/* Legends / Comments */}
-          <div className="mt-2 text-[11px]">
+          <div className=" text-[11px]">
             <div
               className=" font-bold border-black p-2"
               style={{ textDecoration: "underline" }}

@@ -484,7 +484,7 @@ export default function ChemistryMixReportFormView(
               </div>
 
               {/* Center: Title */}
-              <div className="text-center text-[18px] font-bold underline">
+              <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
                 {report.status === "DRAFT" ||
                 report.status === "SUBMITTED_BY_CLIENT"
                   ? "CHEMISTRY SUBMISSION FORM"
