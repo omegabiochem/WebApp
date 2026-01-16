@@ -188,7 +188,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tbc_spec",
       "tmy_spec",
       "pathogens",
-      "comments"
+      "comments",
     ], // read-only
   };
   if (!role) return false;
@@ -726,7 +726,7 @@ export default function MicroMixReportForm({
     });
   }
 
-  // Resolve a single correction
+  // // Resolve a single correction
   async function resolveOne(c: CorrectionItem) {
     if (!reportId) return;
     return runBusy("RESOLVE", async () => {
@@ -1406,7 +1406,14 @@ export default function MicroMixReportForm({
             onClick={handleClose}
             disabled={isBusy}
           >
-            {isBusy ? "Working..." : "Close"}
+            {isBusy ? (
+              <span className="inline-flex items-center gap-2">
+                <SpinnerDark />
+                Working...
+              </span>
+            ) : (
+              "Close"
+            )}
           </button>
 
           {/* <button
@@ -2944,7 +2951,7 @@ export default function MicroMixReportForm({
       )}
 
       {/* Floating Corrections button */}
-      <div className="no-print fixed bottom-6 right-6 z-40">
+      {/* <div className="no-print fixed bottom-6 right-6 z-40">
         <button
           onClick={() => setShowCorrTray((s) => !s)}
           className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
@@ -2956,7 +2963,64 @@ export default function MicroMixReportForm({
             </span>
           )}
         </button>
-      </div>
+      </div> */}
+
+      {showCorrTray && (
+        <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <div className="text-sm font-semibold">Open corrections</div>
+            <button
+              className="rounded px-2 py-1 text-xs hover:bg-slate-100"
+              onClick={() => setShowCorrTray(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="max-h-72 overflow-auto divide-y">
+            {openCorrections.length === 0 ? (
+              <div className="p-3 text-xs text-slate-500">
+                No open corrections.
+              </div>
+            ) : (
+              openCorrections.map((c) => (
+                <div key={c.id} className="p-3 text-sm">
+                  <div className="text-[11px] font-medium text-slate-500">
+                    {c.fieldKey}
+                  </div>
+                  <div className="mt-1"> Reason : {c.message}</div>
+                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                    <div className="mt-1 text-xs text-slate-600">
+                      <span className="font-medium">Old Value :</span>{" "}
+                      <span className="break-words">
+                        {typeof c.oldValue === "string"
+                          ? c.oldValue
+                          : JSON.stringify(c.oldValue)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      className="text-xs font-medium text-emerald-700 hover:underline"
+                      onClick={() => resolveOne(c)}
+                    >
+                      {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
+                    </button>
+                    <button
+                      className="text-xs text-slate-500 hover:underline"
+                      onClick={() => resolveField(c.fieldKey)}
+                      title="Resolve all notes for this field"
+                    >
+                      Resolve all for field
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {showAddSpec && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
