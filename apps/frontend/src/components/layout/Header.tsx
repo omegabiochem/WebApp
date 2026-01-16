@@ -14,6 +14,7 @@ const menuByRole: Record<string, MenuItem[]> = {
     { label: "Home", path: "/clientDashboard" },
     { label: "Audit and Trail", path: "/clientAudit" },
     { label: "Forms", path: "/formmenu" },
+    // { label: "Support", path: "/omegaChatBox" },
   ],
   SYSTEMADMIN: [
     { label: "Home", path: "/systemAdminDashboard" },

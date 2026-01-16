@@ -459,3 +459,73 @@ enum SampleType {
 
 
 
+
+model MessageThread {
+  id          String   @id @default(cuid())
+
+  // CRITICAL: isolates clients
+  clientCode  String
+
+  // Optional context binding
+  reportId    String?
+  chemistryId String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    Message[]
+
+  reads       MessageThreadRead[]
+
+  @@index([clientCode])
+  @@index([reportId])
+  @@index([chemistryId])
+}
+
+model Message {
+  id          String    @id @default(cuid())
+
+  threadId    String
+  senderId    String
+  senderRole  UserRole
+  senderName  String?
+
+  body        String
+
+  // Role mentions: ["QA", "MICRO"]
+  mentions    UserRole[] @default([])
+
+  // Attachments / linked reports
+  attachments Json?
+
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+
+model MessageThreadRead {
+  id         String   @id @default(cuid())
+  threadId   String
+  userId     String
+  lastReadAt DateTime @default(now())
+
+  thread     MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@index([threadId])
+}
+
+
+
+
+
+
+
+
+
+

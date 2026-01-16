@@ -30,6 +30,7 @@ import { ChemistryReportsModule } from './reports/chemistryreports.module';
 import { ChemistryAttachmentsModule } from './attachments/chemistryattachments.module';
 import { RequestContextMiddleware } from './common/context.middleware';
 import { FaviconController } from './favicon.controller';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { FaviconController } from './favicon.controller';
     AttachmentsModule,
     ChemistryReportsModule,
     ChemistryAttachmentsModule,
+    MessagesModule
   ],
   controllers: [HealthController, FaviconController],
   providers: [
