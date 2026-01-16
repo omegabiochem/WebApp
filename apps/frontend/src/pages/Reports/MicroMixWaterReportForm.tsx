@@ -1252,10 +1252,22 @@ export default function MicroMixReportForm({
   //   event.preventDefault();
   // });
 
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+    return "/";
+  }, [role]);
+
   const handleClose = () => {
-    // Your useBlocker(isDirty) hook will intercept this navigation if there are unsaved changes.
-    if (onClose) onClose();
-    else navigate(-1);
+    if (onClose) return onClose();
+
+    // If opened from Gmail, history may not have a previous in-app page
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
   };
 
   // any open correction = red

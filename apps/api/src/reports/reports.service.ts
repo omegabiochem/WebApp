@@ -21,6 +21,7 @@ import * as crypto from 'crypto';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { AttachmentsService } from 'src/attachments/attachments.service';
+import { ReportNotificationsService } from 'src/notifications/report-notifications.service';
 
 // ----------------------------
 // Which roles may edit which fields (unchanged)
@@ -485,6 +486,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     private readonly esign: ESignService,
     private readonly attachments: AttachmentsService,
+    private readonly reportNotifications: ReportNotificationsService,
   ) {}
 
   // 👇 add this inside the class
@@ -744,6 +746,42 @@ export class ReportsService {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
     } else {
       this.reportsGateway.notifyReportUpdate(updated);
+    }
+    const prevStatus = String(current.status);
+
+    if (patchIn.status && prevStatus !== String(patchIn.status)) {
+      const slug =
+        current.formType === 'MICRO_MIX'
+          ? 'micro-mix'
+          : current.formType === 'MICRO_MIX_WATER'
+            ? 'micro-mix-water'
+            : 'micro-mix';
+
+      let clientUser: {
+        name: string | null;
+        email: string | null;
+        clientCode: string | null;
+      } | null = null;
+
+      if (current.createdBy) {
+        clientUser = await this.prisma.user.findUnique({
+          where: { id: current.createdBy },
+          select: { name: true, email: true, clientCode: true },
+        });
+      }
+
+      await this.reportNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName: clientUser?.name ?? '-',
+        clientCode: clientUser?.clientCode ?? null,
+        clientEmail: clientUser?.email ?? null,
+        oldStatus: prevStatus,
+        newStatus: String(patchIn.status),
+        reportUrl: `${process.env.APP_URL}/reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
     }
 
     return flattenReport(updated);

@@ -13,7 +13,7 @@ function AppShell() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <Header />
-      <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+      <Toaster position="top-right" toastOptions={{ duration: 2000 }} />
 
       <main className="mx-auto max-w-6xl p-6">
         <Outlet />

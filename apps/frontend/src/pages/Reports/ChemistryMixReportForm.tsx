@@ -581,6 +581,18 @@ export default function ChemistryMixReportForm({
     (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ChemistryReportStatus) {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before changing status.");
+      return;
+    }
+
+    // ✅ Optional: prevent status change when there are unsaved edits
+    if (isDirty) {
+      alert(
+        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status."
+      );
+      return;
+    }
     const isNeeds =
       target === "FRONTDESK_NEEDS_CORRECTION" ||
       target === "TESTING_NEEDS_CORRECTION" ||
@@ -899,10 +911,28 @@ export default function ChemistryMixReportForm({
     });
   }
 
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+    if (role === "CHEMISTRY") return "/chemistryDashboard";
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+    return "/";
+  }, [role]);
+
   const handleClose = () => {
-    if (onClose) onClose();
-    else navigate(-1);
+    if (onClose) return onClose();
+
+    // If opened from Gmail, history may not have a previous in-app page
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
   };
+
+  // const handleClose = () => {
+  //   if (onClose) onClose();
+  //   else navigate(-1);
+  // };
 
   // Above component body (or inside, before return)
   const sampleTypeItems: [SampleTypeKey, string][] = [
@@ -1026,6 +1056,7 @@ export default function ChemistryMixReportForm({
         {/* Top buttons */}
         <div className="no-print mb-4 flex justify-end gap-2">
           <button
+            type="button"
             className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
             onClick={handleClose}
             disabled={isBusy}
@@ -1072,7 +1103,7 @@ export default function ChemistryMixReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div />
             <div className="text-[18px] font-bold text-center underline">
-                {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
                 ? "CHEMISTRY SUBMISSION FORM"
                 : "CHEMISTRY REPORT"}
             </div>
