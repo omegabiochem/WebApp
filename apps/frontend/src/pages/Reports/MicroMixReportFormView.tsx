@@ -525,7 +525,10 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline">
-                Report
+                {report.status === "DRAFT" ||
+                report.status === "SUBMITTED_BY_CLIENT"
+                  ? "MICRO SUBMISSION FORM"
+                  : "MICRO REPORT"}
               </div>
 
               {/* Right: Report Number */}
@@ -735,15 +738,12 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml/g</div>
+                <div className="py-1 px-2 text-center">CFU/ mL/g</div>
               </div>
-              <div className="py-1 px-2 flex">
-                <input
-                  className="w-full input-editable  px-1"
-                  value={report?.tbc_spec || ""}
-                  readOnly
-                  disabled
-                />
+              <div className="py-1 px-2 flex items-center justify-center text-center">
+                <div className="whitespace-nowrap">
+                  {report?.tbc_spec || ""} CFU/ mL/g
+                </div>
               </div>
             </div>
             {/* Row 2: Total Mold & Yeast Count */}
@@ -769,15 +769,12 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ml/g</div>
+                <div className="py-1 px-2 text-center">CFU/ ml/g</div>
               </div>
-              <div className="py-1 px-2 flex">
-                <input
-                  className="w-full input-editable  px-1"
-                  value={report?.tmy_spec || ""}
-                  readOnly
-                  disabled
-                />
+              <div className="py-1 px-2 flex items-center justify-center text-center">
+                <div className="whitespace-nowrap">
+                  {report?.tmc_spec || ""} CFU/ ml/g
+                </div>
               </div>
             </div>
           </div>
@@ -845,7 +842,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
           </div>
 
           {/* Legends / Comments */}
-          <div className="mt-2 text-[11px]">
+          <div className=" text-[11px]">
             <div
               className=" font-bold border-black p-2"
               style={{ textDecoration: "underline" }}

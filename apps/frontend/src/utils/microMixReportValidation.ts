@@ -35,8 +35,10 @@ export type ReportStatus =
   | "FINAL_TESTING_NEEDS_CORRECTION"
   | "FINAL_RESUBMISSION_BY_TESTING"
   | "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"
-  | "UNDER_QA_REVIEW"
-  | "QA_NEEDS_CORRECTION"
+  | "QA_NEEDS_PRELIMINARY_CORRECTION"
+  | "UNDER_QA_PRELIMINARY_REVIEW"
+  | "QA_NEEDS_FINAL_CORRECTION"
+  | "UNDER_QA_FINAL_REVIEW"
   | "UNDER_ADMIN_REVIEW"
   | "ADMIN_NEEDS_CORRECTION"
   | "ADMIN_REJECTED"
@@ -205,6 +207,7 @@ export const PRELIM_STATUSES: ReportStatus[] = [
   "PRELIMINARY_RESUBMISSION_BY_TESTING",
   "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
   "PRELIMINARY_APPROVED", // up to this point it's still the preliminary pass
+  "UNDER_QA_PRELIMINARY_REVIEW",
 ];
 
 /** Statuses that should validate the MICRO "Final" subset */
@@ -214,6 +217,7 @@ export const FINAL_STATUSES: ReportStatus[] = [
   "FINAL_TESTING_NEEDS_CORRECTION",
   "FINAL_RESUBMISSION_BY_TESTING",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_FINAL_REVIEW",
 ];
 
 /** Helper: derive MICRO phase from a status */
@@ -412,8 +416,13 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
         case "testedDate":
           return !v.testedDate;
 
-        case "dateCompleted":
+        case "dateCompleted": {
+          // ✅ Only required in FINAL phase (QA completion step)
+          if (currentPhase !== "FINAL") return false;
+          // (optional) only QA/ADMIN enforce
+          if (role !== "QA" && role !== "ADMIN") return false;
           return !v.dateCompleted;
+        }
         case "reviewedBy":
           return !v.reviewedBy?.trim();
         case "reviewedDate":
@@ -567,8 +576,13 @@ export function useMicroMixWaterReportValidation(
         case "testedDate":
           return !v.testedDate;
 
-        case "dateCompleted":
+        case "dateCompleted": {
+          // ✅ Only required in FINAL phase (QA completion step)
+          if (currentPhase !== "FINAL") return false;
+          // (optional) only QA/ADMIN enforce
+          if (role !== "QA" && role !== "ADMIN") return false;
           return !v.dateCompleted;
+        }
         case "reviewedBy":
           return !v.reviewedBy?.trim();
         case "reviewedDate":

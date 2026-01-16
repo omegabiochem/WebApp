@@ -322,3 +322,14 @@ export function canShowChemistryUpdateButton(
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
   );
 }
+
+export function splitDateInitial(value?: string) {
+  if (!value) return { date: "", initial: "" };
+  const [d, i] = value.split("/").map((s) => s?.trim() ?? "");
+  return { date: d ?? "", initial: i ?? "" };
+}
+
+export function joinDateInitial(date: string, initial: string) {
+  if (!date && !initial) return "";
+  return `${date || ""} / ${initial || ""}`.trim();
+}

@@ -255,8 +255,10 @@ enum ReportStatus {
   FINAL_TESTING_NEEDS_CORRECTION
   FINAL_RESUBMISSION_BY_TESTING
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW
-  UNDER_QA_REVIEW
-  QA_NEEDS_CORRECTION
+  UNDER_QA_PRELIMINARY_REVIEW
+  QA_NEEDS_PRELIMINARY_CORRECTION
+  UNDER_QA_FINAL_REVIEW
+  QA_NEEDS_FINAL_CORRECTION
   UNDER_FINAL_RESUBMISSION_QA_REVIEW
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
@@ -451,6 +453,76 @@ enum SampleType {
   DI_WATER_SAMPLE
   STABILITY
 }
+
+
+
+
+
+
+
+model MessageThread {
+  id          String   @id @default(cuid())
+
+  // CRITICAL: isolates clients
+  clientCode  String
+
+  // Optional context binding
+  reportId    String?
+  chemistryId String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    Message[]
+
+  reads       MessageThreadRead[]
+
+  @@index([clientCode])
+  @@index([reportId])
+  @@index([chemistryId])
+}
+
+model Message {
+  id          String    @id @default(cuid())
+
+  threadId    String
+  senderId    String
+  senderRole  UserRole
+  senderName  String?
+
+  body        String
+
+  // Role mentions: ["QA", "MICRO"]
+  mentions    UserRole[] @default([])
+
+  // Attachments / linked reports
+  attachments Json?
+
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+
+model MessageThreadRead {
+  id         String   @id @default(cuid())
+  threadId   String
+  userId     String
+  lastReadAt DateTime @default(now())
+
+  thread     MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@index([threadId])
+}
+
+
+
+
 
 
 

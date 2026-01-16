@@ -25,6 +25,9 @@ import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
 import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
 import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
+
+import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
+import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -305,6 +308,39 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN", "QA"]}>
               <AuditTrailPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      //Client Audit trail (tight access)
+      {
+        path: "clientAudit",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CLIENT"]}>
+              <JJLClientAuditTrailPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      // chat box
+      {
+        path: "omegaChatBox",
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "CLIENT",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "QA",
+              ]}
+            >
+              <OmegaChatBox />
             </RequireRole>
           </RequireAuth>
         ),

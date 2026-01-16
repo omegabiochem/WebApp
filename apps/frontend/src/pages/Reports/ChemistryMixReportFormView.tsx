@@ -484,8 +484,11 @@ export default function ChemistryMixReportFormView(
               </div>
 
               {/* Center: Title */}
-              <div className="text-center text-[18px] font-bold underline">
-                Report
+              <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
+                {report.status === "DRAFT" ||
+                report.status === "SUBMITTED_BY_CLIENT"
+                  ? "CHEMISTRY SUBMISSION FORM"
+                  : "CHEMISTRY REPORT"}
               </div>
 
               {/* Right: Report Number */}
@@ -693,7 +696,7 @@ export default function ChemistryMixReportFormView(
                 </span>
 
                 <div className="inline-flex border border-transparent">
-                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  <div className="grid grid-cols-4 grid-rows-2 gap-x-7 gap-y-1">
                     {sampleTypeItems.map(([key, label]) => (
                       <label
                         key={key}
@@ -706,7 +709,7 @@ export default function ChemistryMixReportFormView(
                           readOnly
                           disabled
                         />
-                        <span className="text-[11px]">{label}</span>
+                        <span className="text-[10px]">{label}</span>
 
                         {/* ✅ STABILITY writing line (view mode) */}
                         {key === "STABILITY" && (
@@ -742,8 +745,8 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-          <div className="mt-2 border border-black text-[11px]">
-            <div className="grid grid-cols-[24%_15%_12%_14%_15%_20%] font-semibold text-center border-b border-black">
+          <div className="mt-0.5 border border-black text-[11px]">
+            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-semibold text-center border-b border-black">
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
@@ -751,7 +754,7 @@ export default function ChemistryMixReportFormView(
                 RAW / BULK ACTIVE LOT #
               </div>
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              SOP # / VALIDATED
+                SOP # / VALIDATED
               </div>
               <div className="p-1 border-r border-black h-full flex items-center justify-center">
                 FORMULA CONTENT
@@ -767,7 +770,7 @@ export default function ChemistryMixReportFormView(
             {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
               <div
                 key={row.key}
-                className="grid grid-cols-[24%_15%_12%_14%_15%_20%] border-b last:border-b-0 border-black"
+                className="grid grid-cols-[25%_15%_11%_14%_15%_20%] border-b last:border-b-0 border-black"
               >
                 {/* active name + checkbox */}
                 <div className="flex items-center gap-2 border-r border-black px-1 ">
@@ -783,7 +786,7 @@ export default function ChemistryMixReportFormView(
                 {/* BULK ACTIVE LOT # */}
                 <div className="border-r border-black px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     value={row.bulkActiveLot}
                     readOnly
                     disabled
@@ -793,7 +796,7 @@ export default function ChemistryMixReportFormView(
                 {/* SOP # */}
                 <div className="border-r border-black px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     value={row.sopNo}
                     readOnly
                     disabled
@@ -804,7 +807,7 @@ export default function ChemistryMixReportFormView(
                 <div className="border-r border-black px-1 flex items-center">
                   <div className="flex w-full items-center gap-1 whitespace-nowrap">
                     <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
+                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
                       value={row.formulaContent}
                       readOnly
                       disabled
@@ -817,7 +820,7 @@ export default function ChemistryMixReportFormView(
                 <div className="border-r border-black px-1 flex items-center">
                   <div className="flex w-full items-center gap-1 whitespace-nowrap">
                     <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
+                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
                       value={row.result}
                       readOnly
                       disabled
@@ -829,7 +832,7 @@ export default function ChemistryMixReportFormView(
                 {/* date tested / initials */}
                 <div className="px-1 ">
                   <input
-                    className="w-full border-none outline-none text-[11px]"
+                    className="w-full border-none outline-none text-[11px] text-center"
                     placeholder="MM/DD/YYYY / AB"
                     value={row.dateTestedInitial}
                     readOnly
@@ -841,14 +844,14 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* NOTE line (you can make this static text) */}
-          <div className="mt-2 text-[10px]">
+          <div className="mt-1 text-[10px]">
             NOTE : Turn Over time is at least 1 week. Biochem, Inc is not
             responsible for the release of any product not in the Biochem
             stability program.
           </div>
 
           {/* Comments + signatures */}
-          <div className="mt-2 text-[12px]">
+          <div className="mt- text-[12px]">
             <div className="flex items-center gap-2 mb-2">
               <span className="font-medium">Comments :</span>
               <input
@@ -862,7 +865,7 @@ export default function ChemistryMixReportFormView(
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="font-medium">TESTED BY :</span>
+                  <span className="font-medium">VERIFIED BY :</span>
                   <input
                     className="flex-1 border-0 border-b border-black/60 outline-none"
                     value={report?.testedBy || ""}
@@ -911,8 +914,8 @@ export default function ChemistryMixReportFormView(
           <div
             className={
               isBulk
-                ? "mt-2 flex items-end justify-between print-footer"
-                : "mt-2 flex items-end justify-between print-footer"
+                ? "mt-1 flex items-end justify-between print-footer"
+                : "mt-1 flex items-end justify-between print-footer"
             }
             style={
               !isBulk

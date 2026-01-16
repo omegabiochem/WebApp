@@ -67,8 +67,10 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "FINAL_TESTING_ON_HOLD",
   "FINAL_TESTING_NEEDS_CORRECTION",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
-  "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  "UNDER_QA_PRELIMINARY_REVIEW",
+  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "UNDER_QA_FINAL_REVIEW",
+  "QA_NEEDS_FINAL_CORRECTION",
   "UNDER_ADMIN_REVIEW",
   "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
@@ -191,9 +193,9 @@ export default function AdminDashboard() {
 
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
-  const [formFilter, setFormFilter] = useState<"ALL" | "MICRO" | "CHEMISTRY">(
-    "ALL"
-  );
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+  >("ALL");
 
   // ✅ status filter now uses combined type
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
@@ -232,7 +234,9 @@ export default function AdminDashboard() {
       "microMix:statusChanged",
       (payload: { id: string; status: any }) => {
         setReports((prev) =>
-          prev.map((r) => (r.id === payload.id ? { ...r, status: payload.status } : r))
+          prev.map((r) =>
+            r.id === payload.id ? { ...r, status: payload.status } : r
+          )
         );
       }
     );
@@ -246,7 +250,9 @@ export default function AdminDashboard() {
       "chemistryMix:statusChanged",
       (payload: { id: string; status: any }) => {
         setReports((prev) =>
-          prev.map((r) => (r.id === payload.id ? { ...r, status: payload.status } : r))
+          prev.map((r) =>
+            r.id === payload.id ? { ...r, status: payload.status } : r
+          )
         );
       }
     );
@@ -320,11 +326,14 @@ export default function AdminDashboard() {
     const byForm =
       formFilter === "ALL"
         ? reports
-        : reports.filter((r) =>
-            formFilter === "MICRO"
-              ? r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER"
-              : r.formType === "CHEMISTRY_MIX"
-          );
+        : reports.filter((r) => {
+            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+            if (formFilter === "MICROWATER")
+              return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "CHEMISTRY")
+              return r.formType === "CHEMISTRY_MIX";
+            return true;
+          });
 
     const byStatus =
       statusFilter === "ALL"
@@ -380,7 +389,15 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage, formFilter]);
+  }, [
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    formFilter,
+  ]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -516,7 +533,7 @@ export default function AdminDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "CHEMISTRY"] as const).map((ft) => {
+          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -534,6 +551,8 @@ export default function AdminDashboard() {
                   ? "All forms"
                   : ft === "MICRO"
                   ? "Micro"
+                  : ft === "MICROWATER"
+                  ? "Micro Water"
                   : "Chemistry"}
               </button>
             );
@@ -663,13 +682,16 @@ export default function AdminDashboard() {
               {!loading &&
                 pageRows.map((r) => {
                   const isMicro =
-                    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   const rowBusy = updatingId === r.id;
 
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium">{displayReportNo(r)}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {displayReportNo(r)}
+                      </td>
                       <td className="px-4 py-3">{r.formNumber}</td>
                       <td className="px-4 py-3">{r.client}</td>
                       <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
@@ -701,20 +723,26 @@ export default function AdminDashboard() {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
                                 try {
-                                  if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
+                                  if (
+                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                  ) {
                                     const next =
                                       "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id ? { ...x, status: next } : x
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x
                                       )
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(e?.message || "Failed to update status");
+                                  toast.error(
+                                    e?.message || "Failed to update status"
+                                  );
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -734,18 +762,23 @@ export default function AdminDashboard() {
                                 setUpdatingId(r.id);
                                 try {
                                   if (r.status === "CLIENT_NEEDS_CORRECTION") {
-                                    const next = "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                    const next =
+                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id ? { ...x, status: next } : x
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x
                                       )
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(e?.message || "Failed to update status");
+                                  toast.error(
+                                    e?.message || "Failed to update status"
+                                  );
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -786,7 +819,10 @@ export default function AdminDashboard() {
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-12 text-center text-slate-500"
+                  >
                     No reports match filters.
                   </td>
                 </tr>
@@ -905,7 +941,11 @@ export default function AdminDashboard() {
                           r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(r, next, "Sent back to client for correction");
+                          await setStatus(
+                            r,
+                            next,
+                            "Sent back to client for correction"
+                          );
                           setReports((prev) =>
                             prev.map((x) =>
                               x.id === r.id ? { ...x, status: next } : x
@@ -960,7 +1000,8 @@ export default function AdminDashboard() {
                 />
               ) : (
                 <div className="text-sm text-slate-600">
-                  This form type ({selectedReport?.formType}) doesn’t have a viewer yet.
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
                 </div>
               )}
             </div>
@@ -1034,14 +1075,24 @@ export default function AdminDashboard() {
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
                   />
                   <input
                     type="password"
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
                   />
 
                   <div className="mb-2 flex items-stretch gap-2">
@@ -1067,7 +1118,9 @@ export default function AdminDashboard() {
                       data-form-type="other"
                     />
                   </div>
-                  {eSignError && <p className="mb-2 text-xs text-rose-600">{eSignError}</p>}
+                  {eSignError && (
+                    <p className="mb-2 text-xs text-rose-600">{eSignError}</p>
+                  )}
                 </div>
               )}
 
@@ -1100,10 +1153,6 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
-
-
-
 
 // import { useEffect, useMemo, useRef, useState } from "react";
 // import { useNavigate } from "react-router-dom";
@@ -1659,7 +1708,7 @@ export default function AdminDashboard() {
 //           <select
 //             value={statusFilter}
 //             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-//             className="w-44 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
+//             className="w-44 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
 //                  ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
 //           >
 //             {ALL_STATUSES.map((s) => (
@@ -1674,7 +1723,7 @@ export default function AdminDashboard() {
 //             placeholder="Search by client"
 //             value={searchClient}
 //             onChange={(e) => setSearchClient(e.target.value)}
-//             className="flex-1 min-w-[140px] rounded-lg border px-3 py-2 text-sm 
+//             className="flex-1 min-w-[140px] rounded-lg border px-3 py-2 text-sm
 //                  ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
 //           />
 
@@ -1683,7 +1732,7 @@ export default function AdminDashboard() {
 //             placeholder="Search by report # (e.g., MMX-1234)"
 //             value={searchReport}
 //             onChange={(e) => setSearchReport(e.target.value)}
-//             className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
+//             className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm
 //                  ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
 //           />
 
@@ -1693,14 +1742,14 @@ export default function AdminDashboard() {
 //               type="date"
 //               value={dateFrom}
 //               onChange={(e) => setDateFrom(e.target.value)}
-//               className="w-40 rounded-lg border px-3 py-2 text-sm 
+//               className="w-40 rounded-lg border px-3 py-2 text-sm
 //                    ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
 //             />
 //             <input
 //               type="date"
 //               value={dateTo}
 //               onChange={(e) => setDateTo(e.target.value)}
-//               className="w-40 rounded-lg border px-3 py-2 text-sm 
+//               className="w-40 rounded-lg border px-3 py-2 text-sm
 //                    ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
 //             />
 //           </div>
