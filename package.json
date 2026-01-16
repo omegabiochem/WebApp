@@ -4,6 +4,7 @@
   },
   "dependencies": {
     "@prisma/client": "^7.2.0",
-    "lucide-react": "^0.561.0"
+    "lucide-react": "^0.561.0",
+    "postmark": "^4.0.5"
   }
 }

@@ -23,9 +23,15 @@ const schema = z
     email: z
       .string()
       .email("Invalid email address")
-      .refine((val) => val.endsWith("@gmail.com"), {
-        message: "Only Gmail addresses are allowed",
-      }),
+      .refine(
+        (val) => {
+          const v = val.toLowerCase();
+          return v.endsWith("@gmail.com") || v.endsWith("@omegabiochemlab.com");
+        },
+        {
+          message: "Allowed domains: gmail.com or omegabiochemlab.com",
+        }
+      ),
     name: z.string().optional(),
     role: z.enum(
       [
