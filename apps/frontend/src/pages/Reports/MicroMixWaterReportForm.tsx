@@ -188,6 +188,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tbc_spec",
       "tmy_spec",
       "pathogens",
+      "comments"
     ], // read-only
   };
   if (!role) return false;
