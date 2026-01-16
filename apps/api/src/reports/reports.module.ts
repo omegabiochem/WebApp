@@ -27,8 +27,10 @@ import { ESignService } from 'src/auth/esign.service';
 import { AttachmentsController } from 'src/attachments/attachments.controller';
 import { AttachmentsService } from 'src/attachments/attachments.service';
 import { StorageService } from 'src/storage/storage.service';
+import { NotificationsModule } from 'src/notifications/report-notification.module';
 
 @Module({
+  imports:[NotificationsModule],
   controllers: [ReportsController,AttachmentsController],
   providers: [ReportsService,ReportsGateway,PrismaService,ESignService,AttachmentsService,StorageService],
 })

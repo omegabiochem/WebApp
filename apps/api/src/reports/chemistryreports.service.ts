@@ -18,6 +18,8 @@ import { PrismaService } from 'prisma/prisma.service';
 import { ChemistryAttachmentsService } from 'src/attachments/chemistryattachments.service';
 import { ESignService } from 'src/auth/esign.service';
 import { getRequestContext } from 'src/common/request-context';
+import { ChemistryReportNotificationsService } from 'src/notifications/chemistryreport-notification.service';
+import { ReportNotificationsService } from 'src/notifications/report-notifications.service';
 import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
 
@@ -228,7 +230,16 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedDate',
     'actives',
   ],
-  QA: ['dateCompleted', 'reviewedBy', 'reviewedDate'],
+  QA: [
+    'dateReceived',
+    'sop',
+    'results',
+    'dateTested',
+    'initial',
+    'comments',
+    'actives',
+    'dateCompleted',
+  ],
   CLIENT: [
     'client',
     'dateSent',
@@ -335,6 +346,7 @@ export class ChemistryReportsService {
     private readonly prisma: PrismaService,
     private readonly esign: ESignService,
     private readonly attachments: ChemistryAttachmentsService,
+    private readonly chemistryNotifications: ChemistryReportNotificationsService
   ) {}
 
   // 👇 add this inside the class
@@ -596,6 +608,39 @@ export class ChemistryReportsService {
 
     const [updated] = await this.prisma.$transaction(ops);
 
+    const prevStatus = String(current.status);
+
+    if (patchIn.status && String(current.status) !== String(patchIn.status)) {
+      const slug = 'chemistry-mix';
+      current.formType === 'CHEMISTRY_MIX';
+
+      let clientUser: {
+        name: string | null;
+        email: string | null;
+        clientCode: string | null;
+      } | null = null;
+
+      if (current.createdBy) {
+        clientUser = await this.prisma.user.findUnique({
+          where: { id: current.createdBy },
+          select: { name: true, email: true, clientCode: true },
+        });
+      }
+
+      await this.chemistryNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName: clientUser?.name ?? '-',
+        clientCode: clientUser?.clientCode ?? null,
+        clientEmail: clientUser?.email ?? null,
+        oldStatus: prevStatus,
+        newStatus: String(patchIn.status),
+        reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
+    }
+    
     return flattenReport(updated);
   }
 
@@ -627,9 +672,9 @@ export class ChemistryReportsService {
   ) {
     const current = await this.get(id);
 
-    if (!['ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN can Change Status this directly',
+        'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
       );
     }
 
@@ -846,6 +891,7 @@ export class ChemistryReportsService {
       'CLIENT',
       'MICRO',
       'FRONTDESK',
+      'QA',
       'ADMIN',
     ];
     if (!allowedResolvers.includes(user.role))

@@ -93,8 +93,16 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     label: "Resubmit",
     color: "bg-blue-700",
   },
-  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
+  UNDER_QA_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_PRELIMINARY_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-500",
+  },
+  UNDER_QA_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_FINAL_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-500",
+  },
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
@@ -111,6 +119,9 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
+  if (role === "QA" && field === "dateCompleted") {
+    return p === "FINAL";
+  }
 
   // Block FINAL fields during PRELIM for MICRO & ADMIN
   if ((role === "MICRO" || role === "ADMIN") && p === "PRELIM") {
@@ -181,6 +192,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tbc_spec",
       "tmy_spec",
       "pathogens",
+      "comments"
     ], // read-only
   };
   if (!role) return false;
@@ -322,16 +334,52 @@ export default function MicroMixReportForm({
     report?.dateCompleted || ""
   );
 
+  const normalizeSpec = (v: any) => {
+    const s = String(v ?? "").trim();
+    if (!s) return "";
+
+    // remove any trailing unit text variations
+    return s
+      .replace(/\s*CFU\s*\/?\s*mL\s*\/?\s*g\s*$/i, "")
+      .replace(/\s*CFU\s*\/?\s*ml\s*\/?\s*g\s*$/i, "")
+      .replace(/\s*CFU.*$/i, "") // fallback: remove anything starting from CFU
+      .trim();
+  };
+
   // TBC/TFC blocks
   //   const [tbc_dilution, set_tbc_dilution] = useState("x 10^1");
   const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
   const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
-  const [tbc_spec, set_tbc_spec] = useState(report?.tbc_spec || "");
+  const [tbc_spec, set_tbc_spec] = useState(() =>
+    normalizeSpec(report?.tbc_spec)
+  );
 
   //   const [tmy_dilution, set_tmy_dilution] = useState("x 10^1"); // Total Mold & Yeast
   const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
   const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
-  const [tmy_spec, set_tmy_spec] = useState(report?.tmy_spec || "");
+  const [tmy_spec, set_tmy_spec] = useState(() =>
+    normalizeSpec(report?.tmy_spec)
+  );
+
+  // Spec dropdown presets
+  const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
+
+  const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
+
+  useEffect(() => {
+    set_tbc_spec(normalizeSpec(report?.tbc_spec));
+    set_tmy_spec(normalizeSpec(report?.tmy_spec));
+  }, [report?.id]);
+
+  // Allow user-added custom spec values (shared by both TBC + TMY)
+  const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
+
+  // Small modal for adding custom spec
+  const [showAddSpec, setShowAddSpec] = useState(false);
+  const [specTarget, setSpecTarget] = useState<"tbc_spec" | "tmy_spec" | null>(
+    null
+  );
+  const [newSpecValue, setNewSpecValue] = useState("");
 
   type PathogenSpec = "Absent" | "Present" | "";
 
@@ -606,11 +654,24 @@ export default function MicroMixReportForm({
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: ReportStatus) {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before changing status.");
+      return;
+    }
+
+    // ✅ Optional: prevent status change when there are unsaved edits
+    if (isDirty) {
+      alert(
+        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status."
+      );
+      return;
+    }
     const isNeeds =
       target === "FRONTDESK_NEEDS_CORRECTION" ||
       target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
       target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
+      target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+      target === "QA_NEEDS_FINAL_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
       target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
       target === "CLIENT_NEEDS_FINAL_CORRECTION";
@@ -971,6 +1032,13 @@ export default function MicroMixReportForm({
               );
             }
           }
+
+          // ✅ QA: only allow dateCompleted in FINAL
+          if (role === "QA") {
+            if (phase === "PRELIM") {
+              return fields.filter((f) => f !== "dateCompleted");
+            }
+          }
           return fields;
         };
 
@@ -1003,7 +1071,7 @@ export default function MicroMixReportForm({
             // "testedDate",
             "comments",
           ],
-          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          QA: ["dateCompleted"],
           CLIENT: [
             "client",
             "dateSent",
@@ -1088,7 +1156,8 @@ export default function MicroMixReportForm({
         newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
         newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
-        newStatus === "UNDER_QA_REVIEW" ||
+        newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
+        newStatus === "UNDER_QA_FINAL_REVIEW" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
         newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
@@ -1097,7 +1166,8 @@ export default function MicroMixReportForm({
         newStatus === "FINAL_TESTING_ON_HOLD" ||
         newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
         newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
+        newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+        newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
         newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
         newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
@@ -1201,11 +1271,23 @@ export default function MicroMixReportForm({
   //   event.preventDefault();
   // });
 
-  const handleClose = () => {
-    // Your useBlocker(isDirty) hook will intercept this navigation if there are unsaved changes.
-    if (onClose) onClose();
-    else navigate(-1);
-  };
+const fallbackRoute = useMemo(() => {
+  if (role === "CLIENT") return "/clientDashboard";
+  if (role === "FRONTDESK") return "/frontdeskDashboard";
+  if (role === "QA") return "/qaDashboard";
+  if (role === "ADMIN") return "/adminDashboard";
+  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+  return "/";
+}, [role]);
+
+const handleClose = () => {
+  if (onClose) return onClose();
+
+  // If opened from Gmail, history may not have a previous in-app page
+  if (window.history.length > 1) navigate(-1);
+  else navigate(fallbackRoute, { replace: true });
+};
+
 
   // any open correction = red
   // const hasOpenCorrection = (field: string) => !!corrByField[field];
@@ -1282,6 +1364,53 @@ export default function MicroMixReportForm({
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
+  const specOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        [
+          ...DEFAULT_SPEC_OPTIONS,
+          ...customSpecOptions,
+          normalizeSpec(tbc_spec),
+          normalizeSpec(tmy_spec),
+        ].filter(Boolean)
+      )
+    );
+  }, [customSpecOptions, tbc_spec, tmy_spec]);
+
+  function openAddSpec(target: "tbc_spec" | "tmy_spec") {
+    setSpecTarget(target);
+    setNewSpecValue("");
+    setShowAddSpec(true);
+  }
+
+  function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
+    if (target === "tbc_spec") {
+      set_tbc_spec(value);
+      clearError("tbc_spec");
+    } else {
+      set_tmy_spec(value);
+      clearError("tmy_spec");
+    }
+    markDirty();
+  }
+
+  function saveCustomSpec() {
+    const v = newSpecValue.trim();
+
+    // normalize input
+    const normalized = v.replace(/CFU.*$/i, "").trim();
+
+    if (!normalized || !specTarget) return;
+
+    setCustomSpecOptions((prev) =>
+      prev.includes(normalized) ? prev : [...prev, normalized]
+    );
+
+    applySpecValue(specTarget, normalized);
+
+    setShowAddSpec(false);
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   return (
@@ -1350,7 +1479,9 @@ export default function MicroMixReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              Report
+              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+                ? "MICRO SUBMISSION FORM"
+                : "MICRO REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {reportNumber ? <> {reportNumber}</> : null}
@@ -1977,24 +2108,46 @@ export default function MicroMixReportForm({
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tbc_spec") && errors.tbc_spec
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_spec")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                value={tbc_spec}
-                onChange={(e) => {
-                  set_tbc_spec(e.target.value);
-                  clearError("tbc_spec");
-                }}
-                readOnly={lock("tbc_spec")}
-                aria-invalid={!!errors.tbc_spec}
-              />
+
+              <div className="flex w-full items-center gap-2">
+                <select
+                  className={`w-full input-editable px-1 border ${
+                    !lock("tbc_spec") && errors.tbc_spec
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tbc_spec")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
+                  value={tbc_spec}
+                  onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
+                  disabled={lock("tbc_spec")}
+                  aria-invalid={!!errors.tbc_spec}
+                >
+                  <option value="">-- Select --</option>
+                  {specOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {formatSpec(opt)}
+                    </option>
+                  ))}
+                </select>
+
+                {/* + Add new */}
+                {!lock("tbc_spec") && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAddSpec("tbc_spec");
+                    }}
+                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                    title="Add new specification"
+                  >
+                    +
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2091,24 +2244,45 @@ export default function MicroMixReportForm({
             >
               <FieldErrorBadge name="tmy_spec" errors={errors} />
               <ResolveOverlay field="tmy_spec" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tmy_spec") && errors.tmy_spec
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_spec")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                value={tmy_spec}
-                onChange={(e) => {
-                  set_tmy_spec(e.target.value);
-                  clearError("tmy_spec");
-                }}
-                readOnly={lock("tmy_spec")}
-                aria-invalid={!!errors.tmy_spec}
-              />
+
+              <div className="flex w-full items-center gap-2">
+                <select
+                  className={`w-full input-editable px-1 border ${
+                    !lock("tmy_spec") && errors.tmy_spec
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tmy_spec")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
+                  value={tmy_spec}
+                  onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
+                  disabled={lock("tmy_spec")}
+                  aria-invalid={!!errors.tmy_spec}
+                >
+                  <option value="">-- Select --</option>
+                  {specOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {formatSpec(opt)}
+                    </option>
+                  ))}
+                </select>
+
+                {!lock("tmy_spec") && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAddSpec("tmy_spec");
+                    }}
+                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                    title="Add new specification"
+                  >
+                    +
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2879,6 +3053,45 @@ export default function MicroMixReportForm({
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {showAddSpec && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-semibold mb-2">Add specification</h3>
+            <p className="text-xs mb-3 text-slate-600">
+              Add a new value to the dropdown.
+            </p>
+
+            <input
+              autoFocus
+              value={newSpecValue}
+              onChange={(e) => setNewSpecValue(e.target.value)}
+              placeholder='Example: "<500 "'
+              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-lg border px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setShowAddSpec(false);
+                  setSpecTarget(null);
+                  setNewSpecValue("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!newSpecValue.trim()}
+                onClick={saveCustomSpec}
+              >
+                Add
+              </button>
+            </div>
           </div>
         </div>
       )}
