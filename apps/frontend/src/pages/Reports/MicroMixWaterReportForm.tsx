@@ -14,6 +14,8 @@ import {
   createCorrections,
 } from "../../utils/microMixReportValidation";
 import {
+  JJL_SAMPLE_TYPE_OPTIONS,
+  JJL_TYPE_OF_TEST_OPTIONS,
   STATUS_TRANSITIONS,
   todayISO,
   type ReportStatus,
@@ -1393,6 +1395,12 @@ export default function MicroMixReportForm({
     setShowAddSpec(false);
   }
 
+  // ✅ JJL-only dropdown behavior
+  const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   return (
     <>
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
@@ -1565,27 +1573,37 @@ export default function MicroMixReportForm({
               <FieldErrorBadge name="typeOfTest" errors={errors} />
               <ResolveOverlay field="typeOfTest" />
               {lock("typeOfTest") ? (
-                <div className="flex-1  min-h-[14px]">{typeOfTest}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.typeOfTest
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  }${
-                    hasCorrection("typeOfTest")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={typeOfTest}
-                  onChange={(e) => {
-                    setTypeOfTest(e.target.value);
-                    clearError("typeOfTest");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.typeOfTest}
-                />
-              )}
+                              <div className="flex-1 min-h-[14px]">{typeOfTest}</div>
+                            ) : (
+                              <div className="flex-1 min-w-0">
+                                <input
+                                  list="typeOfTest-options"
+                                  className={`w-full input-editable py-[2px] text-[12px] leading-snug border ${
+                                    errors.typeOfTest
+                                      ? "border-red-500 ring-1 ring-red-500"
+                                      : "border-black/70"
+                                  } ${
+                                    hasCorrection("typeOfTest")
+                                      ? "ring-2 ring-rose-500 animate-pulse"
+                                      : ""
+                                  }`}
+                                  value={typeOfTest}
+                                  onChange={(e) => {
+                                    setTypeOfTest(e.target.value);
+                                    clearError("typeOfTest");
+                                    markDirty();
+                                  }}
+                                  placeholder={isJJL ? "Select or type..." : ""}
+                                  aria-invalid={!!errors.typeOfTest}
+                                />
+              
+                                <datalist id="typeOfTest-options">
+                                  {(isJJL ? JJL_TYPE_OF_TEST_OPTIONS : []).map((opt) => (
+                                    <option key={opt} value={opt} />
+                                  ))}
+                                </datalist>
+                              </div>
+                            )}
             </div>
             <div
               id="f-sampleType"
@@ -1601,28 +1619,38 @@ export default function MicroMixReportForm({
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
               <FieldErrorBadge name="sampleType" errors={errors} />
               <ResolveOverlay field="sampleType" />
-              {lock("sampleType") ? (
-                <div className="flex-1  min-h-[14px]">{sampleType}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.sampleType
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("sampleType")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={sampleType}
-                  onChange={(e) => {
-                    setSampleType(e.target.value);
-                    markDirty();
-                    clearError("sampleType");
-                  }}
-                  aria-invalid={!!errors.sampleType}
-                />
-              )}
+             {lock("sampleType") ? (
+                             <div className="flex-1 min-h-[14px]">{sampleType}</div>
+                           ) : (
+                             <div className="flex-1 min-w-0">
+                               <input
+                                 list="sampleType-options"
+                                 className={`w-full input-editable py-[2px] text-[12px] leading-snug border ${
+                                   errors.sampleType
+                                     ? "border-red-500 ring-1 ring-red-500"
+                                     : "border-black/70"
+                                 } ${
+                                   hasCorrection("sampleType")
+                                     ? "ring-2 ring-rose-500 animate-pulse"
+                                     : ""
+                                 }`}
+                                 value={sampleType}
+                                 onChange={(e) => {
+                                   setSampleType(e.target.value);
+                                   clearError("sampleType");
+                                   markDirty();
+                                 }}
+                                 placeholder={isJJL ? "Select or type..." : ""}
+                                 aria-invalid={!!errors.sampleType}
+                               />
+             
+                               <datalist id="sampleType-options">
+                                 {(isJJL ? JJL_SAMPLE_TYPE_OPTIONS : []).map((opt) => (
+                                   <option key={opt} value={opt} />
+                                 ))}
+                               </datalist>
+                             </div>
+                           )}
             </div>
             <div
               id="f-idNo"

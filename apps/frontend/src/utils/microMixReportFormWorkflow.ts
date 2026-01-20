@@ -460,3 +460,19 @@ export function todayISO() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
+export const JJL_TYPE_OF_TEST_OPTIONS = [
+  "TBC/TFC",
+  "USP-61/62",
+  "APHA-USP-61/62",
+] as const;
+
+export const JJL_SAMPLE_TYPE_OPTIONS = [
+  "Bulk Micro",
+  "Finished Goods Micro",
+  "Stability",
+  "Package Compatibility",
+  "Bulk Cleaning Validation",
+  "Finished Goods Cleaning Validation",
+  "Bulk Process Validation",
+] as const;

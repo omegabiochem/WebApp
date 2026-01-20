@@ -14,6 +14,8 @@ import {
   createCorrections,
 } from "../../utils/microMixReportValidation";
 import {
+  JJL_SAMPLE_TYPE_OPTIONS,
+  JJL_TYPE_OF_TEST_OPTIONS,
   STATUS_TRANSITIONS,
   todayISO,
   type ReportStatus,
@@ -192,7 +194,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tbc_spec",
       "tmy_spec",
       "pathogens",
-      "comments"
+      "comments",
     ], // read-only
   };
   if (!role) return false;
@@ -1271,23 +1273,22 @@ export default function MicroMixReportForm({
   //   event.preventDefault();
   // });
 
-const fallbackRoute = useMemo(() => {
-  if (role === "CLIENT") return "/clientDashboard";
-  if (role === "FRONTDESK") return "/frontdeskDashboard";
-  if (role === "QA") return "/qaDashboard";
-  if (role === "ADMIN") return "/adminDashboard";
-  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
-  return "/";
-}, [role]);
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+    return "/";
+  }, [role]);
 
-const handleClose = () => {
-  if (onClose) return onClose();
+  const handleClose = () => {
+    if (onClose) return onClose();
 
-  // If opened from Gmail, history may not have a previous in-app page
-  if (window.history.length > 1) navigate(-1);
-  else navigate(fallbackRoute, { replace: true });
-};
-
+    // If opened from Gmail, history may not have a previous in-app page
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
+  };
 
   // any open correction = red
   // const hasOpenCorrection = (field: string) => !!corrByField[field];
@@ -1410,6 +1411,10 @@ const handleClose = () => {
 
     setShowAddSpec(false);
   }
+
+  // ✅ JJL-only dropdown behavior
+  const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
+
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1573,6 +1578,39 @@ const handleClose = () => {
               <FieldErrorBadge name="typeOfTest" errors={errors} />
               <ResolveOverlay field="typeOfTest" />
               {lock("typeOfTest") ? (
+                <div className="flex-1 min-h-[14px]">{typeOfTest}</div>
+              ) : (
+                <div className="flex-1 min-w-0">
+                  <input
+                    list="typeOfTest-options"
+                    className={`w-full input-editable py-[2px] text-[12px] leading-snug border ${
+                      errors.typeOfTest
+                        ? "border-red-500 ring-1 ring-red-500"
+                        : "border-black/70"
+                    } ${
+                      hasCorrection("typeOfTest")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={typeOfTest}
+                    onChange={(e) => {
+                      setTypeOfTest(e.target.value);
+                      clearError("typeOfTest");
+                      markDirty();
+                    }}
+                    placeholder={isJJL ? "Select or type..." : ""}
+                    aria-invalid={!!errors.typeOfTest}
+                  />
+
+                  <datalist id="typeOfTest-options">
+                    {(isJJL ? JJL_TYPE_OF_TEST_OPTIONS : []).map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+
+              {/* {lock("typeOfTest") ? (
                 <div className="flex-1  min-h-[14px]">{typeOfTest}</div>
               ) : (
                 <input
@@ -1593,7 +1631,7 @@ const handleClose = () => {
                   }}
                   aria-invalid={!!errors.typeOfTest}
                 />
-              )}
+              )} */}
             </div>
             <div
               id="f-sampleType"
@@ -1609,7 +1647,41 @@ const handleClose = () => {
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
               <FieldErrorBadge name="sampleType" errors={errors} />
               <ResolveOverlay field="sampleType" />
+
               {lock("sampleType") ? (
+                <div className="flex-1 min-h-[14px]">{sampleType}</div>
+              ) : (
+                <div className="flex-1 min-w-0">
+                  <input
+                    list="sampleType-options"
+                    className={`w-full input-editable py-[2px] text-[12px] leading-snug border ${
+                      errors.sampleType
+                        ? "border-red-500 ring-1 ring-red-500"
+                        : "border-black/70"
+                    } ${
+                      hasCorrection("sampleType")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={sampleType}
+                    onChange={(e) => {
+                      setSampleType(e.target.value);
+                      clearError("sampleType");
+                      markDirty();
+                    }}
+                    placeholder={isJJL ? "Select or type..." : ""}
+                    aria-invalid={!!errors.sampleType}
+                  />
+
+                  <datalist id="sampleType-options">
+                    {(isJJL ? JJL_SAMPLE_TYPE_OPTIONS : []).map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+
+              {/* {lock("sampleType") ? (
                 <div className="flex-1  min-h-[14px]">{sampleType}</div>
               ) : (
                 <input
@@ -1630,7 +1702,7 @@ const handleClose = () => {
                   }}
                   aria-invalid={!!errors.sampleType}
                 />
-              )}
+              )} */}
             </div>
             <div
               id="f-formulaNo"
@@ -2707,31 +2779,6 @@ const handleClose = () => {
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
         <div className="flex flex-wrap gap-2">
-          {/* {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-            (targetStatus: ReportStatus) => {
-              if (
-                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                  role!
-                ) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={role === "SYSTEMADMIN" || isBusy}
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {label}
-                  </button>
-                );
-              }
-              return null;
-            }
-          )} */}
-
           {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
             (targetStatus: ReportStatus) => {
               if (
