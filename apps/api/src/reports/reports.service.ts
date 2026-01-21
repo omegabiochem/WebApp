@@ -564,9 +564,9 @@ export class ReportsService {
         microMixWater: true,
       },
     });
-
-    this.reportsGateway.notifyReportCreated(created);
-    return flattenReport(created); // keep old shape convenient for UI
+    const flat = flattenReport(created);
+    this.reportsGateway.notifyReportCreated(flat);
+    return flat;
   }
 
   async get(id: string) {

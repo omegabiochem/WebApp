@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import io from "socket.io-client";
+// import io from "socket.io-client";
 import {
   canShowUpdateButton,
   STATUS_COLORS,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api, API_URL, getToken } from "../../lib/api";
+import { api, } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import {
@@ -19,10 +19,12 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  formatDate,
   matchesDateRange,
-  toDateOnlyISO,
+  toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 
 // ---------------------------------
 // Types
@@ -129,16 +131,7 @@ function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
 
-function formatDate(iso: string | null) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-}
+
 
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
@@ -221,57 +214,57 @@ export default function AdminDashboard() {
   const { user } = useAuth();
 
   // Socket (live updates)
-  const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  // const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
-  useEffect(() => {
-    const t = getToken();
-    const url =
-      window.location.protocol === "https:"
-        ? API_URL.replace(/^http:/, "https:")
-        : API_URL;
+  // useEffect(() => {
+  //   const t = getToken();
+  //   const url =
+  //     window.location.protocol === "https:"
+  //       ? API_URL.replace(/^http:/, "https:")
+  //       : API_URL;
 
-    socketRef.current = io(url, {
-      transports: ["websocket"],
-      auth: t ? { token: t } : undefined,
-      path: "/socket.io",
-    });
+  //   socketRef.current = io(url, {
+  //     transports: ["websocket"],
+  //     auth: t ? { token: t } : undefined,
+  //     path: "/socket.io",
+  //   });
 
-    // ✅ update BOTH micro & chem status if your backend emits them
-    socketRef.current.on(
-      "microMix:statusChanged",
-      (payload: { id: string; status: any }) => {
-        setReports((prev) =>
-          prev.map((r) =>
-            r.id === payload.id ? { ...r, status: payload.status } : r,
-          ),
-        );
-      },
-    );
+  //   // ✅ update BOTH micro & chem status if your backend emits them
+  //   socketRef.current.on(
+  //     "microMix:statusChanged",
+  //     (payload: { id: string; status: any }) => {
+  //       setReports((prev) =>
+  //         prev.map((r) =>
+  //           r.id === payload.id ? { ...r, status: payload.status } : r,
+  //         ),
+  //       );
+  //     },
+  //   );
 
-    socketRef.current.on("microMix:created", (payload: Report) => {
-      setReports((prev) => [payload, ...prev]);
-    });
+  //   socketRef.current.on("microMix:created", (payload: Report) => {
+  //     setReports((prev) => [payload, ...prev]);
+  //   });
 
-    // OPTIONAL: if you emit chemistry events too
-    socketRef.current.on(
-      "chemistryMix:statusChanged",
-      (payload: { id: string; status: any }) => {
-        setReports((prev) =>
-          prev.map((r) =>
-            r.id === payload.id ? { ...r, status: payload.status } : r,
-          ),
-        );
-      },
-    );
+  //   // OPTIONAL: if you emit chemistry events too
+  //   socketRef.current.on(
+  //     "chemistryMix:statusChanged",
+  //     (payload: { id: string; status: any }) => {
+  //       setReports((prev) =>
+  //         prev.map((r) =>
+  //           r.id === payload.id ? { ...r, status: payload.status } : r,
+  //         ),
+  //       );
+  //     },
+  //   );
 
-    socketRef.current.on("chemistryMix:created", (payload: Report) => {
-      setReports((prev) => [payload, ...prev]);
-    });
+  //   socketRef.current.on("chemistryMix:created", (payload: Report) => {
+  //     setReports((prev) => [payload, ...prev]);
+  //   });
 
-    return () => {
-      socketRef.current?.disconnect();
-    };
-  }, []);
+  //   return () => {
+  //     socketRef.current?.disconnect();
+  //   };
+  // }, []);
 
   async function setStatus(
     r: Report,
@@ -508,8 +501,8 @@ export default function AdminDashboard() {
     const now = new Date();
 
     const setRange = (from: Date, to: Date) => {
-      setDateFrom(toDateOnlyISO(from));
-      setDateTo(toDateOnlyISO(to));
+      setDateFrom(toDateOnlyISO_UTC(from));
+      setDateTo(toDateOnlyISO_UTC(to));
     };
 
     if (datePreset === "ALL") {
@@ -611,6 +604,9 @@ export default function AdminDashboard() {
     formFilter,
     datePreset,
   ]);
+
+  useLiveReportStatus(setReports);
+
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -82,7 +82,7 @@ function fileTypeFromExt(ext: string): "image" | "pdf" | "other" {
   return "other";
 }
 
-function toDateOnlyISO(d: Date) {
+function toDateOnlyISO_UTC(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -990,8 +990,8 @@ export default function ReportAttachmentsPage() {
                 const now = new Date();
 
                 const apply = (from: Date, to: Date) => {
-                  setFromDate(toDateOnlyISO(from));
-                  setToDate(toDateOnlyISO(to));
+                  setFromDate(toDateOnlyISO_UTC(from));
+                  setToDate(toDateOnlyISO_UTC(to));
                 };
 
                 if (v === "TODAY") {

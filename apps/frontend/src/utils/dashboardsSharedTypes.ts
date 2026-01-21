@@ -1,5 +1,3 @@
-
-
 export type DatePreset =
   | "ALL"
   | "TODAY"
@@ -12,23 +10,26 @@ export type DatePreset =
   | "LAST_YEAR"
   | "CUSTOM";
 
-export function toDateOnlyISO(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+export function toDateOnlyISO_UTC(d: Date) {
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
+
 export function startOfDayISO(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map(Number);
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0);
+  const dt = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0));
   return dt.toISOString();
 }
+
 export function endOfDayISO(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map(Number);
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1, 23, 59, 59, 999);
+  const dt = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1, 23, 59, 59, 999));
   return dt.toISOString();
 }
+
 
 export function matchesDateRange(
   dateISO: string | null,
@@ -52,5 +53,15 @@ export function matchesDateRange(
   return true;
 }
 
+export function formatDate(iso: string | null) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
 
-
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    timeZone: "UTC",
+  }).format(d);
+}

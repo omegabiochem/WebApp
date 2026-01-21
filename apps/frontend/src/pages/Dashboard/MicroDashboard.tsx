@@ -13,10 +13,12 @@ import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
 import {
+  formatDate,
   matchesDateRange,
-  toDateOnlyISO,
+  toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 
 // -----------------------------
 // Types
@@ -64,16 +66,7 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
-function formatDate(iso: string | null) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-}
+
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
 }
@@ -488,8 +481,8 @@ export default function MicroDashboard() {
     const now = new Date();
 
     const setRange = (from: Date, to: Date) => {
-      setFromDate(toDateOnlyISO(from));
-      setToDate(toDateOnlyISO(to));
+      setFromDate(toDateOnlyISO_UTC(from));
+      setToDate(toDateOnlyISO_UTC(to));
     };
 
     if (datePreset === "ALL") {
@@ -595,6 +588,9 @@ export default function MicroDashboard() {
   useEffect(() => {
     setStatusFilter("ALL");
   }, [formFilter]);
+
+  useLiveReportStatus(setReports);
+
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

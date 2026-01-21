@@ -23,9 +23,10 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import {
   matchesDateRange,
-  toDateOnlyISO,
+  toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 
 // -----------------------------
 // Types
@@ -103,11 +104,13 @@ function formatDate(iso: string | null) {
   if (!iso) return "-";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
+
+  return new Intl.DateTimeFormat(undefined, {
     year: "numeric",
     month: "short",
     day: "2-digit",
-  });
+    timeZone: "UTC",
+  }).format(d);
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
@@ -525,8 +528,8 @@ export default function ClientDashboard() {
     const now = new Date();
 
     const setRange = (from: Date, to: Date) => {
-      setFromDate(toDateOnlyISO(from));
-      setToDate(toDateOnlyISO(to));
+      setFromDate(toDateOnlyISO_UTC(from));
+      setToDate(toDateOnlyISO_UTC(to));
     };
 
     if (datePreset === "ALL") {
@@ -632,6 +635,13 @@ export default function ClientDashboard() {
   useEffect(() => {
     setStatusFilter("ALL");
   }, [formFilter]);
+
+  useLiveReportStatus(setReports, {
+    acceptCreated: (r: Report) => {
+      // ✅ only show reports that belong to THIS logged-in client
+      return getFormPrefix(r.formNumber) === user?.clientCode;
+    },
+  });
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

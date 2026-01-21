@@ -22,6 +22,7 @@ import { ChemistryReportNotificationsService } from 'src/notifications/chemistry
 import { ReportNotificationsService } from 'src/notifications/report-notifications.service';
 import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
+import { ReportsGateway } from './reports.gateway';
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
@@ -343,10 +344,11 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 export class ChemistryReportsService {
   // Service methods would go here
   constructor(
+    private readonly reportsGateway: ReportsGateway,
     private readonly prisma: PrismaService,
     private readonly esign: ESignService,
     private readonly attachments: ChemistryAttachmentsService,
-    private readonly chemistryNotifications: ChemistryReportNotificationsService
+    private readonly chemistryNotifications: ChemistryReportNotificationsService,
   ) {}
 
   // 👇 add this inside the class
@@ -415,8 +417,13 @@ export class ChemistryReportsService {
           create: this._coerce(rest),
         },
       },
+      include: {
+        chemistryMix: true, // ✅ REQUIRED
+      },
     });
-    return flattenReport(created);
+    const flat = flattenReport(created);
+    this.reportsGateway.notifyReportCreated(flat);
+    return flat;
   }
 
   private _coerce(obj: any) {
@@ -610,6 +617,12 @@ export class ChemistryReportsService {
 
     const prevStatus = String(current.status);
 
+     if (patchIn.status) {
+      this.reportsGateway.notifyStatusChange(id, patchIn.status);
+    } else {
+      this.reportsGateway.notifyReportUpdate(updated);
+    }
+
     if (patchIn.status && String(current.status) !== String(patchIn.status)) {
       const slug = 'chemistry-mix';
       current.formType === 'CHEMISTRY_MIX';
@@ -640,7 +653,7 @@ export class ChemistryReportsService {
         actorUserId: user.userId,
       });
     }
-    
+
     return flattenReport(updated);
   }
 
@@ -749,7 +762,7 @@ export class ChemistryReportsService {
       data: { ...patch, updatedBy: user.userId },
     });
 
-    // this.reportsGateway.notifyStatusChange(id, target);
+    this.reportsGateway.notifyStatusChange(id, target);
     return updated;
   }
 
@@ -908,6 +921,8 @@ export class ChemistryReportsService {
     await updateDetailsByType(this.prisma, report.formType, id, {
       corrections: arr,
     });
+
+     this.reportsGateway.notifyReportUpdate({ id });
 
     // this.reportsGateway.notifyReportUpdate({ id });
     return { ok: true };
