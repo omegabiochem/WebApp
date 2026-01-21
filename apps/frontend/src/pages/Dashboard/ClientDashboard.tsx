@@ -21,6 +21,11 @@ import {
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
+import {
+  matchesDateRange,
+  toDateOnlyISO,
+  type DatePreset,
+} from "../../utils/dashboardsSharedTypes";
 
 // -----------------------------
 // Types
@@ -66,23 +71,6 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "RESUBMISSION_BY_CLIENT",
   "LOCKED",
 ];
-
-// // Include an "ALL" pseudo-status for filtering
-// const CLIENT_STATUSES: ("ALL" | ReportStatus)[] = [
-//   "ALL",
-//   "FINAL_APPROVED",
-//   "DRAFT",
-//   "SUBMITTED_BY_CLIENT",
-//   "UNDER_CLIENT_PRELIMINARY_REVIEW",
-//   "UNDER_CLIENT_FINAL_REVIEW",
-//   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-//   "CLIENT_NEEDS_FINAL_CORRECTION",
-//   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-//   "UNDER_CLIENT_FINAL_CORRECTION",
-//   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-//   "FINAL_RESUBMISSION_BY_CLIENT",
-//   "LOCKED",
-// ];
 
 // -----------------------------
 // Utilities
@@ -146,7 +134,7 @@ function canUpdateThisReport(r: Report, user?: any) {
   return canShowUpdateButton(
     user?.role as Role,
     r.status as ReportStatus,
-    fieldsUsedOnForm
+    fieldsUsedOnForm,
   );
 }
 
@@ -176,7 +164,7 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
   return canShowChemistryUpdateButton(
     user?.role,
     r.status as ChemistryReportStatus,
-    chemistryFieldsUsedOnForm
+    chemistryFieldsUsedOnForm,
   );
 }
 
@@ -317,7 +305,7 @@ export default function ClientDashboard() {
 
   // ✅ NEW: single-report print from modal
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null
+    null,
   );
 
   const [formFilter, setFormFilter] = useState<
@@ -346,6 +334,10 @@ export default function ClientDashboard() {
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
+  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
+  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -364,7 +356,7 @@ export default function ClientDashboard() {
         if (abort) return;
 
         const clientReports = all.filter(
-          (r) => getFormPrefix(r.formNumber) === user?.clientCode
+          (r) => getFormPrefix(r.formNumber) === user?.clientCode,
         );
         setReports(clientReports);
       } catch (e: any) {
@@ -413,8 +405,13 @@ export default function ClientDashboard() {
         })
       : byStatus;
 
+    // 3.5) date range filter (by dateSent)
+    const byDate = bySearch.filter((r) =>
+      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+    );
+
     // 4) sort (same as you already have)
-    const sorted = [...bySearch].sort((a, b) => {
+    const sorted = [...byDate].sort((a, b) => {
       if (sortBy === "formNumber") {
         const aN = a.formNumber.toLowerCase();
         const bN = b.formNumber.toLowerCase();
@@ -426,7 +423,16 @@ export default function ClientDashboard() {
     });
 
     return sorted;
-  }, [reports, formFilter, statusFilter, search, sortBy, sortDir]);
+  }, [
+    reports,
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+  ]);
 
   // Pagination
   const total = processed.length;
@@ -444,7 +450,7 @@ export default function ClientDashboard() {
   async function setStatus(
     r: Report,
     newStatus: string,
-    reason = "Client correction update"
+    reason = "Client correction update",
   ) {
     const isChemistry = r.formType === "CHEMISTRY_MIX";
 
@@ -464,7 +470,7 @@ export default function ClientDashboard() {
 
     // Update local state immediately so the UI stays in sync
     setReports((prev) =>
-      prev.map((x) => (x.id === r.id ? { ...x, status: newStatus } : x))
+      prev.map((x) => (x.id === r.id ? { ...x, status: newStatus } : x)),
     );
     // return res;
   }
@@ -482,7 +488,7 @@ export default function ClientDashboard() {
   const isRowSelected = (id: string) => selectedIds.includes(id);
   const toggleRow = (id: string) => {
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
@@ -492,7 +498,7 @@ export default function ClientDashboard() {
   const toggleSelectPage = () => {
     if (allOnPageSelected) {
       setSelectedIds((prev) =>
-        prev.filter((id) => !pageRows.some((r) => r.id === id))
+        prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
     } else {
       setSelectedIds((prev) => {
@@ -514,6 +520,122 @@ export default function ClientDashboard() {
   const selectedReportObjects = selectedIds
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
+
+  useEffect(() => {
+    const now = new Date();
+
+    const setRange = (from: Date, to: Date) => {
+      setFromDate(toDateOnlyISO(from));
+      setToDate(toDateOnlyISO(to));
+    };
+
+    if (datePreset === "ALL") {
+      setFromDate("");
+      setToDate("");
+      return;
+    }
+
+    if (datePreset === "CUSTOM") return;
+
+    if (datePreset === "TODAY") {
+      setRange(now, now);
+      return;
+    }
+
+    if (datePreset === "YESTERDAY") {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      setRange(y, y);
+      return;
+    }
+
+    if (datePreset === "LAST_7_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 7);
+      setRange(from, now);
+      return;
+    }
+
+    if (datePreset === "LAST_30_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 30);
+      setRange(from, now);
+      return;
+    }
+
+    if (datePreset === "THIS_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "LAST_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "THIS_YEAR") {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "LAST_YEAR") {
+      const from = new Date(now.getFullYear() - 1, 0, 1);
+      const to = new Date(now.getFullYear() - 1, 11, 31);
+      setRange(from, to);
+      return;
+    }
+  }, [datePreset]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      formFilter !== "ALL" ||
+      statusFilter !== "ALL" ||
+      search.trim() !== "" ||
+      sortBy !== "dateSent" ||
+      sortDir !== "desc" ||
+      perPage !== 10 ||
+      datePreset !== "ALL" ||
+      fromDate !== "" ||
+      toDate !== ""
+    );
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+  const clearAllFilters = () => {
+    setFormFilter("ALL");
+    setStatusFilter("ALL");
+    setSearch("");
+    setSortBy("dateSent");
+    setSortDir("desc");
+    setPerPage(10);
+    setDatePreset("ALL");
+    setFromDate("");
+    setToDate("");
+    setPage(1);
+  };
+
+  useEffect(() => {
+    setStatusFilter("ALL");
+  }, [formFilter]);
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   return (
     <div className="p-6">
@@ -571,7 +693,7 @@ export default function ClientDashboard() {
               }}
             />
           </>,
-          document.body
+          document.body,
         )}
       {/* Header */}
       {/* Header */}
@@ -593,7 +715,7 @@ export default function ClientDashboard() {
               "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
               selectedIds.length
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                : "bg-slate-200 text-slate-500"
+                : "bg-slate-200 text-slate-500",
             )}
           >
             {printingBulk ? <Spinner /> : "🖨️"}
@@ -632,16 +754,16 @@ export default function ClientDashboard() {
                   "pb-2 border-b-2 text-sm font-medium",
                   isActive
                     ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
                 )}
               >
                 {ft === "ALL"
                   ? "All forms"
                   : ft === "MICRO"
-                  ? "Micro"
-                  : ft === "MICROWATER"
-                  ? "Micro Water"
-                  : "Chemistry"}
+                    ? "Micro"
+                    : ft === "MICROWATER"
+                      ? "Micro Water"
+                      : "Chemistry"}
               </button>
             );
           })}
@@ -661,7 +783,7 @@ export default function ClientDashboard() {
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
                 statusFilter === s
                   ? "bg-blue-600 text-white ring-blue-600"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
               )}
               aria-pressed={statusFilter === s}
             >
@@ -732,6 +854,75 @@ export default function ClientDashboard() {
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* Date + Clear row */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="flex items-center gap-2">
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All dates</option>
+              <option value="TODAY">Today</option>
+              <option value="YESTERDAY">Yesterday</option>
+              <option value="LAST_7_DAYS">Last 7 days</option>
+              <option value="LAST_30_DAYS">Last 30 days</option>
+              <option value="THIS_MONTH">This month</option>
+              <option value="LAST_MONTH">Last month</option>
+              <option value="THIS_YEAR">This year</option>
+              <option value="LAST_YEAR">Last year</option>
+              <option value="CUSTOM">Custom range</option>
+            </select>
+          </div>
+
+          {/* Custom from/to only when CUSTOM */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
+            />
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={classNames(
+                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                hasActiveFilters
+                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+              )}
+              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+            >
+              ✕ Clear
+            </button>
           </div>
         </div>
       </div>
@@ -816,7 +1007,7 @@ export default function ClientDashboard() {
                                   r.status as ChemistryReportStatus
                                 ]
                               : STATUS_COLORS[r.status as ReportStatus]) ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
                           )}
                         >
                           {niceStatus(String(r.status))}
@@ -846,7 +1037,7 @@ export default function ClientDashboard() {
                                     await setStatus(
                                       r,
                                       "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                      "Sent back to client for correction"
+                                      "Sent back to client for correction",
                                     );
                                     toast.success("Report status updated");
                                   } else if (
@@ -856,13 +1047,13 @@ export default function ClientDashboard() {
                                     await setStatus(
                                       r,
                                       "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                      "Resubmission under Review"
+                                      "Resubmission under Review",
                                     );
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
                                   toast.error(
-                                    e?.message || "Failed to update status"
+                                    e?.message || "Failed to update status",
                                   );
                                 } finally {
                                   setUpdatingId(null);
@@ -889,7 +1080,7 @@ export default function ClientDashboard() {
                                       await setStatus(
                                         r,
                                         "UNDER_CLIENT_CORRECTION",
-                                        "Sent back to client for correction"
+                                        "Sent back to client for correction",
                                       );
                                     } else if (
                                       r.status === "RESUBMISSION_BY_TESTING"
@@ -897,13 +1088,13 @@ export default function ClientDashboard() {
                                       await setStatus(
                                         r,
                                         "UNDER_CLIENT_REVIEW",
-                                        "Resubmission under Review"
+                                        "Resubmission under Review",
                                       );
                                     }
                                     goToReportEditor(r);
                                   } catch (e: any) {
                                     toast.error(
-                                      e?.message || "Failed to update status"
+                                      e?.message || "Failed to update status",
                                     );
                                   } finally {
                                     setUpdatingId(null);
@@ -1024,7 +1215,7 @@ export default function ClientDashboard() {
                           await setStatus(
                             r,
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                            "Sent back to client for correction"
+                            "Sent back to client for correction",
                           );
                         } else if (
                           r.status === "PRELIMINARY_RESUBMISSION_BY_TESTING"
@@ -1032,7 +1223,7 @@ export default function ClientDashboard() {
                           await setStatus(
                             r,
                             "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                            "Resubmission under Review"
+                            "Resubmission under Review",
                           );
                         }
                         setSelectedReport(null);
@@ -1063,7 +1254,7 @@ export default function ClientDashboard() {
                           await setStatus(
                             r,
                             "UNDER_CLIENT_CORRECTION",
-                            "Sent back to client for correction"
+                            "Sent back to client for correction",
                           );
                         } else if (
                           selectedReport.status === "RESUBMISSION_BY_TESTING"
@@ -1071,7 +1262,7 @@ export default function ClientDashboard() {
                           await setStatus(
                             r,
                             "UNDER_CLIENT_REVIEW",
-                            "Resubmission under Review"
+                            "Resubmission under Review",
                           );
                         }
                         setSelectedReport(null);
