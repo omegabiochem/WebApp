@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -492,8 +493,17 @@ export class ChemistryReportsService {
     const {
       reason: _reasonFromBody,
       eSignPassword: _pwdFromBody,
+      expectedVersion,
       ...patch
     } = { ...patchIn };
+
+    // ✅ optimistic locking: require version for non-admin edits
+    if (
+      !['ADMIN', 'SYSTEMADMIN'].includes(user.role) &&
+      typeof expectedVersion !== 'number'
+    ) {
+      throw new BadRequestException('expectedVersion is required');
+    }
 
     // field-level permissions (ignore 'status' here)
     const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
@@ -594,30 +604,76 @@ export class ChemistryReportsService {
       base.status = patchIn.status;
     }
 
-    const ops: Prisma.PrismaPromise<any>[] = [
-      this.prisma.chemistryReport.update({
-        where: { id },
-        data: {
-          ...base,
-          updatedBy: user.userId,
-        },
-        include: { chemistryMix: true },
-      }),
-    ];
+    // const ops: Prisma.PrismaPromise<any>[] = [
+    //   this.prisma.chemistryReport.update({
+    //     where: { id },
+    //     data: {
+    //       ...base,
+    //       updatedBy: user.userId,
+    //     },
+    //     include: { chemistryMix: true },
+    //   }),
+    // ];
 
-    const detailsOp = updateDetailsByType(
-      this.prisma,
-      current.formType,
-      id,
-      details,
-    );
-    if (detailsOp) ops.push(detailsOp);
+    // const detailsOp = updateDetailsByType(
+    //   this.prisma,
+    //   current.formType,
+    //   id,
+    //   details,
+    // );
+    // if (detailsOp) ops.push(detailsOp);
 
-    const [updated] = await this.prisma.$transaction(ops);
+    // const [updated] = await this.prisma.$transaction(ops);
+
+    // const prevStatus = String(current.status);
+
+    // if (patchIn.status) {
+    //   this.reportsGateway.notifyStatusChange(id, patchIn.status);
+    // } else {
+    //   this.reportsGateway.notifyReportUpdate(updated);
+    // }
+
+    // ✅ Step 1: attempt base update with version check
+    const baseRes = await this.prisma.chemistryReport.updateMany({
+      where: {
+        id,
+        ...(typeof expectedVersion === 'number'
+          ? { version: expectedVersion }
+          : {}),
+      },
+      data: {
+        ...base,
+        updatedBy: user.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    // ✅ Step 2: if expectedVersion was provided, enforce conflict
+    if (typeof expectedVersion === 'number' && baseRes.count === 0) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message:
+          'This report was updated by someone else. Please reload and try again.',
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    // ✅ Step 3: now update details (only after base update succeeded)
+    if (Object.keys(details).length > 0) {
+      await updateDetailsByType(this.prisma, current.formType, id, details);
+    }
+
+    // ✅ Step 4: read updated report and do notifications + email
+    const updated = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: { chemistryMix: true },
+    });
+    if (!updated) throw new NotFoundException('Report not found after update');
 
     const prevStatus = String(current.status);
 
-     if (patchIn.status) {
+    if (patchIn.status) {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
     } else {
       this.reportsGateway.notifyReportUpdate(updated);
@@ -922,7 +978,7 @@ export class ChemistryReportsService {
       corrections: arr,
     });
 
-     this.reportsGateway.notifyReportUpdate({ id });
+    this.reportsGateway.notifyReportUpdate({ id });
 
     // this.reportsGateway.notifyReportUpdate({ id });
     return { ok: true };

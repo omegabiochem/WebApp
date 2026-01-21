@@ -303,8 +303,16 @@ export default function MicroMixReportForm({
   const [reportId, setReportId] = useState(report?.id || null);
 
   const [reportNumber, setReportNumber] = useState<string>(
-    report?.reportNumber || ""
+    report?.reportNumber || "",
   );
+
+  const [reportVersion, setReportVersion] = useState<number>(
+    typeof report?.version === "number" ? report.version : 0,
+  );
+
+  useEffect(() => {
+    if (typeof report?.version === "number") setReportVersion(report.version);
+  }, [report?.version]);
 
   // //To set clientCode automatically when creating a new report
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
@@ -313,7 +321,7 @@ export default function MicroMixReportForm({
   // const [client, setClient] = useState(initialClientValue);
   const [client, setClient] = useState(
     report?.client ??
-      (!report?.id && role === "CLIENT" ? user?.clientCode ?? "" : "")
+      (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
@@ -322,18 +330,18 @@ export default function MicroMixReportForm({
   const [description, setDescription] = useState(report?.description || "");
   const [lotNo, setLotNo] = useState(report?.lotNo || "");
   const [manufactureDate, setManufactureDate] = useState(
-    report?.manufactureDate || ""
+    report?.manufactureDate || "",
   );
   const [testSopNo, setTestSopNo] = useState(report?.testSopNo || "");
   const [dateTested, setDateTested] = useState(report?.dateTested || "");
   const [preliminaryResults, setPreliminaryResults] = useState(
-    report?.preliminaryResults || ""
+    report?.preliminaryResults || "",
   );
   const [preliminaryResultsDate, setPreliminaryResultsDate] = useState(
-    report?.preliminaryResultsDate || ""
+    report?.preliminaryResultsDate || "",
   );
   const [dateCompleted, setDateCompleted] = useState(
-    report?.dateCompleted || ""
+    report?.dateCompleted || "",
   );
 
   const normalizeSpec = (v: any) => {
@@ -353,14 +361,14 @@ export default function MicroMixReportForm({
   const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
   const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
   const [tbc_spec, set_tbc_spec] = useState(() =>
-    normalizeSpec(report?.tbc_spec)
+    normalizeSpec(report?.tbc_spec),
   );
 
   //   const [tmy_dilution, set_tmy_dilution] = useState("x 10^1"); // Total Mold & Yeast
   const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
   const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
   const [tmy_spec, set_tmy_spec] = useState(() =>
-    normalizeSpec(report?.tmy_spec)
+    normalizeSpec(report?.tmy_spec),
   );
 
   // Spec dropdown presets
@@ -379,7 +387,7 @@ export default function MicroMixReportForm({
   // Small modal for adding custom spec
   const [showAddSpec, setShowAddSpec] = useState(false);
   const [specTarget, setSpecTarget] = useState<"tbc_spec" | "tmy_spec" | null>(
-    null
+    null,
   );
   const [newSpecValue, setNewSpecValue] = useState("");
 
@@ -461,14 +469,14 @@ export default function MicroMixReportForm({
         spec: "",
       },
     ],
-    []
+    [],
   );
 
   const gramsFor = (p: PathRow) => p.grams ?? "11g";
 
   // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
   const [pathogens, setPathogens] = useState<PathRow[]>(
-    report?.pathogens || pathogenDefaults
+    report?.pathogens || pathogenDefaults,
   );
 
   // --- Row-level errors for pathogens ---
@@ -478,7 +486,7 @@ export default function MicroMixReportForm({
   >([]);
 
   const [pathogensTableError, setPathogensTableError] = useState<string | null>(
-    null
+    null,
   );
 
   // function organismDisabled() {
@@ -511,7 +519,7 @@ export default function MicroMixReportForm({
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
     () => corrections.filter((c) => c.status === "OPEN"),
-    [corrections]
+    [corrections],
   );
   const corrByField = useMemo(() => {
     const m: Record<string, CorrectionItem[]> = {};
@@ -664,7 +672,7 @@ export default function MicroMixReportForm({
     // ✅ Optional: prevent status change when there are unsaved edits
     if (isDirty) {
       alert(
-        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status."
+        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status.",
       );
       return;
     }
@@ -724,7 +732,7 @@ export default function MicroMixReportForm({
       if (!items.length) return;
 
       await Promise.all(
-        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
+        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed")),
       );
       const fresh = await getCorrections(reportId!);
       setCorrections(fresh);
@@ -795,8 +803,8 @@ export default function MicroMixReportForm({
     hasOpenCorrection(keyOrPrefix)
       ? "dash dash-red"
       : flash[keyOrPrefix]
-      ? "dash dash-green"
-      : "";
+        ? "dash dash-green"
+        : "";
   // const dashClass = (field: string) =>
   //   hasOpenCorrection(field)
   //     ? "dash dash-red"
@@ -807,7 +815,7 @@ export default function MicroMixReportForm({
   function validatePathogenRows(
     rows: PathRow[],
     who: Role | undefined = role,
-    phase: MicroPhase | undefined = deriveMicroPhaseFromStatus(status)
+    phase: MicroPhase | undefined = deriveMicroPhaseFromStatus(status),
   ) {
     const rowErrs: PathogenRowError[] = rows.map(() => ({}));
     let tableErr: string | null = null;
@@ -937,7 +945,7 @@ export default function MicroMixReportForm({
     role,
     {
       status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
-    }
+    },
   );
 
   // Current values snapshot (use inside handlers)
@@ -975,6 +983,7 @@ export default function MicroMixReportForm({
     id: string;
     status: ReportStatus;
     reportNumber?: number | string;
+    version?: number;
   };
 
   const handleSave = async (): Promise<boolean> => {
@@ -1024,13 +1033,13 @@ export default function MicroMixReportForm({
             if (phase === "PRELIM") {
               // drop FINAL-only fields during PRELIM
               return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.FINAL.includes(f)
+                (f) => !MICRO_PHASE_FIELDS.FINAL.includes(f),
               );
             }
             // (Optional) once in FINAL, drop PRELIM-only fields:
             if (phase === "FINAL") {
               return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f)
+                (f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f),
               );
             }
           }
@@ -1095,7 +1104,7 @@ export default function MicroMixReportForm({
           : PHASE_WRITE_GUARD(allowedBase);
 
         const payload = Object.fromEntries(
-          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+          Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
 
         // New reports always start as DRAFT
@@ -1109,7 +1118,11 @@ export default function MicroMixReportForm({
           if (reportId) {
             saved = await api<SavedReport>(`/reports/${reportId}`, {
               method: "PATCH",
-              body: JSON.stringify({ ...payload, reason: "Saving" }),
+              body: JSON.stringify({
+                ...payload,
+                reason: "Saving",
+                expectedVersion: reportVersion,
+              }),
             });
           } else {
             saved = await api(`/reports`, {
@@ -1121,12 +1134,26 @@ export default function MicroMixReportForm({
           setReportId(saved.id); // 👈 keep the new id
           setStatus(saved.status); // in case backend changed it
           setReportNumber(String(saved.reportNumber ?? ""));
+          setReportVersion(
+            typeof saved.version === "number"
+              ? saved.version
+              : reportVersion + 1,
+          );
+
           setIsDirty(false);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
           console.error(err);
-          alert("❌ Error saving draft: " + err.message);
+          if (err?.status === 409 || err?.response?.status === 409) {
+            alert(
+              "⚠️ Someone else updated this report. Please reload and try again.",
+            );
+            return false;
+          }
+          alert("❌ Error saving  report: " + (err.message || "Unknown error"));
+          return false;
+
           return false;
         }
       })) ?? false
@@ -1140,7 +1167,7 @@ export default function MicroMixReportForm({
 
   async function handleStatusChange(
     newStatus: ReportStatus,
-    opts?: { reason?: string; eSignPassword?: string }
+    opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
       // const token = localStorage.getItem("token");
@@ -1295,7 +1322,7 @@ export default function MicroMixReportForm({
   const hasOpenCorrection = (keyOrPrefix: string) =>
     openCorrections.some(
       (c) =>
-        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
     );
   // let Admin/Micro resolve even if the key is nested under "pathogens:*"
 
@@ -1315,7 +1342,7 @@ export default function MicroMixReportForm({
 
   async function runBusy<T>(
     action: Exclude<BusyAction, null>,
-    fn: () => Promise<T>
+    fn: () => Promise<T>,
   ): Promise<T | undefined> {
     if (busyRef.current) return; // 🚫 prevent double click
     busyRef.current = true;
@@ -1373,8 +1400,8 @@ export default function MicroMixReportForm({
           ...customSpecOptions,
           normalizeSpec(tbc_spec),
           normalizeSpec(tmy_spec),
-        ].filter(Boolean)
-      )
+        ].filter(Boolean),
+      ),
     );
   }, [customSpecOptions, tbc_spec, tmy_spec]);
 
@@ -1404,7 +1431,7 @@ export default function MicroMixReportForm({
     if (!normalized || !specTarget) return;
 
     setCustomSpecOptions((prev) =>
-      prev.includes(normalized) ? prev : [...prev, normalized]
+      prev.includes(normalized) ? prev : [...prev, normalized],
     );
 
     applySpecValue(specTarget, normalized);
@@ -1414,7 +1441,6 @@ export default function MicroMixReportForm({
 
   // ✅ JJL-only dropdown behavior
   const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1523,7 +1549,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "dateSent"
+                "dateSent",
               )}`}
             >
               {/* <ResolveOverlay field="dateSent" /> */}
@@ -1570,7 +1596,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "typeOfTest"
+                "typeOfTest",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
@@ -1641,7 +1667,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "sampleType"
+                "sampleType",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
@@ -1751,7 +1777,7 @@ export default function MicroMixReportForm({
               setAddMessage("");
             }}
             className={`border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass(
-              "description"
+              "description",
             )}`}
           >
             <div className="w-28 font-medium">DESCRIPTION:</div>
@@ -1791,7 +1817,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "lotNo"
+                "lotNo",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">LOT #:</div>
@@ -1828,7 +1854,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "manufactureDate"
+                "manufactureDate",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">
@@ -1877,7 +1903,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "testSopNo"
+                "testSopNo",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
@@ -1914,7 +1940,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "dateTested"
+                "dateTested",
               )}`}
             >
               <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
@@ -1959,7 +1985,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "preliminaryResults"
+                "preliminaryResults",
               )}`}
             >
               <div className="font-medium">PRELIMINARY RESULTS:</div>
@@ -1996,7 +2022,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "preliminaryResultsDate"
+                "preliminaryResultsDate",
               )}`}
             >
               <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
@@ -2040,7 +2066,7 @@ export default function MicroMixReportForm({
               setAddMessage("");
             }}
             className={` flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass(
-              "dateCompleted"
+              "dateCompleted",
             )}`}
           >
             <div className="font-medium whitespace-nowrap">DATE COMPLETED:</div>
@@ -2107,7 +2133,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tbc_gram"
+                "tbc_gram",
               )}`}
             >
               <FieldErrorBadge name="tbc_gram" errors={errors} />
@@ -2141,7 +2167,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tbc_result"
+                "tbc_result",
               )}`}
             >
               <FieldErrorBadge name="tbc_result" errors={errors} />
@@ -2243,7 +2269,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_gram"
+                "tmy_gram",
               )}`}
             >
               <FieldErrorBadge name="tmy_gram" errors={errors} />
@@ -2277,7 +2303,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_result"
+                "tmy_result",
               )}`}
             >
               <FieldErrorBadge name="tmy_result" errors={errors} />
@@ -2463,7 +2489,7 @@ export default function MicroMixReportForm({
                     setAddMessage("");
                   }}
                   className={`py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap ${dashClass(
-                    `pathogens:${p.key}:result`
+                    `pathogens:${p.key}:result`,
                   )}`}
                 >
                   <ResolveOverlay field={`pathogens.${p.key}.result`} />
@@ -2548,7 +2574,7 @@ export default function MicroMixReportForm({
                     setAddMessage("");
                   }}
                   className={`py-[2px] px-2 text-center ${dashClass(
-                    `pathogens:${p.key}:spec`
+                    `pathogens:${p.key}:spec`,
                   )} ${
                     pathogenRowErrors[idx]?.spec ? "ring-1 ring-red-500" : ""
                   }`}
@@ -2676,7 +2702,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
-                "testedDate"
+                "testedDate",
               )}`}
             >
               DATE:
@@ -2745,7 +2771,7 @@ export default function MicroMixReportForm({
                 setAddMessage("");
               }}
               className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
-                "reviewedDate"
+                "reviewedDate",
               )}`}
             >
               DATE:
@@ -2783,7 +2809,7 @@ export default function MicroMixReportForm({
             (targetStatus: ReportStatus) => {
               if (
                 STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                  role!
+                  role!,
                 ) &&
                 statusButtons[targetStatus]
               ) {
@@ -2819,7 +2845,7 @@ export default function MicroMixReportForm({
                 );
               }
               return null;
-            }
+            },
           )}
         </div>
       </div>
@@ -2910,7 +2936,7 @@ export default function MicroMixReportForm({
                   className="text-rose-600 hover:underline"
                   onClick={() =>
                     setPendingCorrections((prev) =>
-                      prev.filter((_, idx) => idx !== i)
+                      prev.filter((_, idx) => idx !== i),
                     )
                   }
                 >
@@ -2945,7 +2971,7 @@ export default function MicroMixReportForm({
                     reportId!,
                     pendingCorrections,
                     pendingStatus!,
-                    "Corrections requested"
+                    "Corrections requested",
                   );
 
                   setSelectingCorrections(false);

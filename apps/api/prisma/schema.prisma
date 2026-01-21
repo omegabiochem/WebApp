@@ -27,6 +27,7 @@ model Report {
   microMixWater            MicroMixWaterDetails?
   
   statusHistory            StatusHistory[]
+    version                  Int                        @default(1)
 }
  
 model MicroMixDetails {
@@ -308,6 +309,7 @@ model ChemistryReport {
   
   chemistryMix             ChemistryMixDetails?
   statusHistory            ChemistryReportStatusHistory[]
+  version                  Int                        @default(1)
 }
 
 
