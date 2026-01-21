@@ -361,16 +361,6 @@ export default function AdminDashboard() {
         )
       : byClient;
 
-    // const byDateFrom = dateFrom
-    //   ? byReport.filter(
-    //       (r) => !r.dateSent || new Date(r.dateSent) >= new Date(dateFrom)
-    //     )
-    //   : byReport;
-    // const byDateTo = dateTo
-    //   ? byDateFrom.filter(
-    //       (r) => !r.dateSent || new Date(r.dateSent) <= new Date(dateTo)
-    //     )
-    //   : byDateFrom;
     const byDate = byReport.filter((r) =>
       matchesDateRange(r.dateSent, dateFrom || undefined, dateTo || undefined),
     );
