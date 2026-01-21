@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import io from "socket.io-client";
+// import io from "socket.io-client";
 import {
   canShowUpdateButton,
   STATUS_COLORS,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api, API_URL, getToken } from "../../lib/api";
+import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import {
@@ -18,6 +18,13 @@ import {
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+import {
+  formatDate,
+  matchesDateRange,
+  toDateOnlyISO_UTC,
+  type DatePreset,
+} from "../../utils/dashboardsSharedTypes";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 
 // ---------------------------------
 // Types
@@ -122,16 +129,7 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
-function formatDate(iso: string | null) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-}
+
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
 }
@@ -179,7 +177,7 @@ export default function QaDashboard() {
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [changeStatusReport, setChangeStatusReport] = useState<Report | null>(
-    null
+    null,
   );
   const [newStatus, setNewStatus] = useState<string>("");
   const [reason, setReason] = useState<string>("");
@@ -204,65 +202,67 @@ export default function QaDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
   // Socket (live updates)
-  const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  // const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
-  useEffect(() => {
-    const t = getToken();
-    const url =
-      window.location.protocol === "https:"
-        ? API_URL.replace(/^http:/, "https:")
-        : API_URL;
+  // useEffect(() => {
+  //   const t = getToken();
+  //   const url =
+  //     window.location.protocol === "https:"
+  //       ? API_URL.replace(/^http:/, "https:")
+  //       : API_URL;
 
-    socketRef.current = io(url, {
-      transports: ["websocket"],
-      auth: t ? { token: t } : undefined,
-      path: "/socket.io",
-    });
+  //   socketRef.current = io(url, {
+  //     transports: ["websocket"],
+  //     auth: t ? { token: t } : undefined,
+  //     path: "/socket.io",
+  //   });
 
-    socketRef.current.on(
-      "microMix:statusChanged",
-      (payload: { id: string; status: any }) => {
-        setReports((prev) =>
-          prev.map((r) =>
-            r.id === payload.id ? { ...r, status: payload.status } : r
-          )
-        );
-      }
-    );
+  //   socketRef.current.on(
+  //     "microMix:statusChanged",
+  //     (payload: { id: string; status: any }) => {
+  //       setReports((prev) =>
+  //         prev.map((r) =>
+  //           r.id === payload.id ? { ...r, status: payload.status } : r,
+  //         ),
+  //       );
+  //     },
+  //   );
 
-    socketRef.current.on("microMix:created", (payload: Report) => {
-      setReports((prev) => [payload, ...prev]);
-    });
+  //   socketRef.current.on("microMix:created", (payload: Report) => {
+  //     setReports((prev) => [payload, ...prev]);
+  //   });
 
-    // OPTIONAL: chemistry events (if your backend emits them)
-    socketRef.current.on(
-      "chemistryMix:statusChanged",
-      (payload: { id: string; status: any }) => {
-        setReports((prev) =>
-          prev.map((r) =>
-            r.id === payload.id ? { ...r, status: payload.status } : r
-          )
-        );
-      }
-    );
-    socketRef.current.on("chemistryMix:created", (payload: Report) => {
-      setReports((prev) => [payload, ...prev]);
-    });
+  //   // OPTIONAL: chemistry events (if your backend emits them)
+  //   socketRef.current.on(
+  //     "chemistryMix:statusChanged",
+  //     (payload: { id: string; status: any }) => {
+  //       setReports((prev) =>
+  //         prev.map((r) =>
+  //           r.id === payload.id ? { ...r, status: payload.status } : r,
+  //         ),
+  //       );
+  //     },
+  //   );
+  //   socketRef.current.on("chemistryMix:created", (payload: Report) => {
+  //     setReports((prev) => [payload, ...prev]);
+  //   });
 
-    return () => {
-      socketRef.current?.disconnect();
-    };
-  }, []);
+  //   return () => {
+  //     socketRef.current?.disconnect();
+  //   };
+  // }, []);
 
   // ✅ IMPORTANT: chemistry /status endpoint usually does NOT require reason
   async function setStatus(
     r: Report,
     nextStatus: string,
-    reasonText = "Common Status Change"
+    reasonText = "Common Status Change",
   ) {
     const isChem = r.formType === "CHEMISTRY_MIX";
     const endpoint = isChem
@@ -334,7 +334,7 @@ export default function QaDashboard() {
 
     const byClient = searchClient.trim()
       ? byStatus.filter((r) =>
-          r.client.toLowerCase().includes(searchClient.toLowerCase())
+          r.client.toLowerCase().includes(searchClient.toLowerCase()),
         )
       : byStatus;
 
@@ -342,23 +342,14 @@ export default function QaDashboard() {
       ? byClient.filter((r) =>
           String(displayReportNo(r))
             .toLowerCase()
-            .includes(searchReport.toLowerCase())
+            .includes(searchReport.toLowerCase()),
         )
       : byClient;
+    const byDate = byReport.filter((r) =>
+      matchesDateRange(r.dateSent, dateFrom || undefined, dateTo || undefined),
+    );
 
-    const byDateFrom = dateFrom
-      ? byReport.filter(
-          (r) => !r.dateSent || new Date(r.dateSent) >= new Date(dateFrom)
-        )
-      : byReport;
-
-    const byDateTo = dateTo
-      ? byDateFrom.filter(
-          (r) => !r.dateSent || new Date(r.dateSent) <= new Date(dateTo)
-        )
-      : byDateFrom;
-
-    return [...byDateTo].sort((a, b) => {
+    return [...byDate].sort((a, b) => {
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return bT - aT;
@@ -397,14 +388,14 @@ export default function QaDashboard() {
     return canShowUpdateButton(
       userObj?.role as Role,
       r.status as ReportStatus,
-      QA_FIELDS_ON_FORM
+      QA_FIELDS_ON_FORM,
     );
   }
   function canUpdateThisChem(r: Report, userObj?: any) {
     return canShowChemistryUpdateButton(
       userObj?.role,
       r.status as ChemistryReportStatus,
-      QA_FIELDS_ON_FORM
+      QA_FIELDS_ON_FORM,
     );
   }
 
@@ -447,7 +438,9 @@ export default function QaDashboard() {
       });
 
       setReports((prev) =>
-        prev.map((r) => (r.id === report.id ? { ...r, status: nextStatus } : r))
+        prev.map((r) =>
+          r.id === report.id ? { ...r, status: nextStatus } : r,
+        ),
       );
       setChangeStatusReport(null);
       setReason("");
@@ -493,6 +486,120 @@ export default function QaDashboard() {
     );
   };
 
+  useEffect(() => {
+    const now = new Date();
+
+    const setRange = (from: Date, to: Date) => {
+      setDateFrom(toDateOnlyISO_UTC(from));
+      setDateTo(toDateOnlyISO_UTC(to));
+    };
+
+    if (datePreset === "ALL") {
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+
+    if (datePreset === "CUSTOM") return;
+
+    if (datePreset === "TODAY") return setRange(now, now);
+
+    if (datePreset === "YESTERDAY") {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      return setRange(y, y);
+    }
+
+    if (datePreset === "LAST_7_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 7);
+      return setRange(from, now);
+    }
+
+    if (datePreset === "LAST_30_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 30);
+      return setRange(from, now);
+    }
+
+    if (datePreset === "THIS_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return setRange(from, to);
+    }
+
+    if (datePreset === "LAST_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      return setRange(from, to);
+    }
+
+    if (datePreset === "THIS_YEAR") {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31);
+      return setRange(from, to);
+    }
+
+    if (datePreset === "LAST_YEAR") {
+      const from = new Date(now.getFullYear() - 1, 0, 1);
+      const to = new Date(now.getFullYear() - 1, 11, 31);
+      return setRange(from, to);
+    }
+  }, [datePreset]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      formFilter !== "ALL" ||
+      String(statusFilter) !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
+      datePreset !== "ALL" ||
+      dateFrom !== "" ||
+      dateTo !== "" ||
+      perPage !== 10
+    );
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+  ]);
+
+  const clearFilters = () => {
+    setSearchClient("");
+    setSearchReport("");
+    setDatePreset("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setStatusFilter("ALL");
+    setFormFilter("ALL");
+    setPerPage(10);
+    setPage(1);
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    formFilter,
+    datePreset,
+  ]);
+
+  useLiveReportStatus(setReports);
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -536,16 +643,16 @@ export default function QaDashboard() {
                   "pb-2 border-b-2 text-sm font-medium",
                   isActive
                     ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
                 )}
               >
                 {ft === "ALL"
                   ? "All forms"
                   : ft === "MICRO"
-                  ? "Micro"
-                  : ft === "MICROWATER"
-                  ? "Micro Water"
-                  : "Chemistry"}
+                    ? "Micro"
+                    : ft === "MICROWATER"
+                      ? "Micro Water"
+                      : "Chemistry"}
               </button>
             );
           })}
@@ -563,7 +670,7 @@ export default function QaDashboard() {
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
                 statusFilter === s
                   ? "bg-blue-600 text-white ring-blue-600"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
               )}
               aria-pressed={statusFilter === s}
             >
@@ -575,13 +682,13 @@ export default function QaDashboard() {
 
       {/* Filters */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
-        <div className="flex flex-wrap gap-3">
-          {/* ✅ dropdown options match form filter */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Status */}
           <select
             value={String(statusFilter)}
             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-            className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
-                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
+               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
             {statusOptions.map((s) => (
               <option key={String(s)} value={String(s)}>
@@ -590,38 +697,87 @@ export default function QaDashboard() {
             ))}
           </select>
 
+          {/* Search client */}
           <input
             placeholder="Search by client"
             value={searchClient}
             onChange={(e) => setSearchClient(e.target.value)}
-            className="flex-1 min-w-[140px] rounded-lg border px-3 py-2 text-sm 
-                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
+               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
+          {/* Search report */}
           <input
             placeholder="Search by report #"
             value={searchReport}
             onChange={(e) => setSearchReport(e.target.value)}
-            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
-                 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm 
+               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
-          <div className="flex gap-2 min-w-[200px]">
+          {/* Custom range */}
+          <div className="flex gap-5">
+            {/* Date preset */}
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
+               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All dates</option>
+              <option value="TODAY">Today</option>
+              <option value="YESTERDAY">Yesterday</option>
+              <option value="LAST_7_DAYS">Last 7 days</option>
+              <option value="LAST_30_DAYS">Last 30 days</option>
+              <option value="THIS_MONTH">This month</option>
+              <option value="LAST_MONTH">Last month</option>
+              <option value="THIS_YEAR">This year</option>
+              <option value="LAST_YEAR">Last year</option>
+              <option value="CUSTOM">Custom range</option>
+            </select>
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-40 rounded-lg border px-3 py-2 text-sm 
-                   ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
             />
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-40 rounded-lg border px-3 py-2 text-sm 
-                   ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
             />
           </div>
+
+          {/* Clear */}
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 
@@ -691,7 +847,7 @@ export default function QaDashboard() {
                         <span
                           className={classNames(
                             "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                            badgeClasses(r)
+                            badgeClasses(r),
                           )}
                         >
                           {niceStatus(String(r.status))}
@@ -726,15 +882,15 @@ export default function QaDashboard() {
                                       prev.map((x) =>
                                         x.id === r.id
                                           ? { ...x, status: next }
-                                          : x
-                                      )
+                                          : x,
+                                      ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
                                   toast.error(
-                                    e?.message || "Failed to update status"
+                                    e?.message || "Failed to update status",
                                   );
                                 } finally {
                                   setUpdatingId(null);
@@ -762,15 +918,15 @@ export default function QaDashboard() {
                                       prev.map((x) =>
                                         x.id === r.id
                                           ? { ...x, status: next }
-                                          : x
-                                      )
+                                          : x,
+                                      ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
                                   toast.error(
-                                    e?.message || "Failed to update status"
+                                    e?.message || "Failed to update status",
                                   );
                                 } finally {
                                   setUpdatingId(null);
@@ -796,7 +952,7 @@ export default function QaDashboard() {
                               setNewStatus(
                                 options.map(String).includes(current)
                                   ? current
-                                  : String(options[0] ?? "DRAFT")
+                                  : String(options[0] ?? "DRAFT"),
                               );
 
                               setReason("");
@@ -942,12 +1098,12 @@ export default function QaDashboard() {
                           await setStatus(
                             r,
                             next,
-                            "Sent back to client for correction"
+                            "Sent back to client for correction",
                           );
                           setReports((prev) =>
                             prev.map((x) =>
-                              x.id === r.id ? { ...x, status: next } : x
-                            )
+                              x.id === r.id ? { ...x, status: next } : x,
+                            ),
                           );
                         }
 

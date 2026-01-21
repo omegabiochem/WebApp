@@ -158,7 +158,7 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 function canEdit(
   role: Role | undefined,
   field: string,
-  status?: ChemistryReportStatus
+  status?: ChemistryReportStatus,
 ) {
   if (!role || !status) return false;
   const transition = STATUS_TRANSITIONS[status];
@@ -212,46 +212,54 @@ export default function ChemistryMixReportForm({
   // ---- core report identity ----
   const [reportId, setReportId] = useState<string | null>(report?.id ?? null);
   const [reportNumber, setReportNumber] = useState<string>(
-    report?.reportNumber ?? ""
+    report?.reportNumber ?? "",
   );
+
+  const [reportVersion, setReportVersion] = useState<number>(
+    typeof report?.version === "number" ? report.version : 0,
+  );
+
+  useEffect(() => {
+    if (typeof report?.version === "number") setReportVersion(report.version);
+  }, [report?.version]);
 
   // ---- header fields (same as micro) ----
   const [client, setClient] = useState(
-    report?.client ?? (user?.role === "CLIENT" ? user?.clientCode ?? "" : "")
+    report?.client ?? (user?.role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
   const [dateSent, setDateSent] = useState(report?.dateSent || "");
 
   // ---- SAMPLE DESCRIPTION BLOCK ----
   const [sampleDescription, setSampleDescription] = useState(
-    report?.sampleDescription || ""
+    report?.sampleDescription || "",
   );
 
   // type of test: ID / Percent Assay / Content Uniformity
   type TestType = "ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY";
   const [testTypes, setTestTypes] = useState<TestType[]>(
-    report?.testTypes || []
+    report?.testTypes || [],
   );
 
   // sample collected position: top / mid / bottom
   type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
 
   const [sampleCollected, setSampleCollected] = useState<SampleCollected[]>(
-    report?.sampleCollected || []
+    report?.sampleCollected || [],
   );
 
   const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
   const [manufactureDate, setManufactureDate] = useState(
-    report?.manufactureDate || ""
+    report?.manufactureDate || "",
   );
 
   const [formulaId, setFormulaId] = useState(report?.formulaId || "");
   const [sampleSize, setSampleSize] = useState(report?.sampleSize || "");
   const [stabilityNote, setStabilityNote] = useState(
-    report?.stabilityNote || ""
+    report?.stabilityNote || "",
   );
 
   const [numberOfActives, setNumberOfActives] = useState(
-    report?.numberOfActives || ""
+    report?.numberOfActives || "",
   );
   const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
 
@@ -267,33 +275,33 @@ export default function ChemistryMixReportForm({
     | "STABILITY";
 
   const [sampleTypes, setSampleTypes] = useState<SampleTypeKey[]>(
-    report?.sampleTypes || []
+    report?.sampleTypes || [],
   );
 
   const toggleSampleType = (key: SampleTypeKey) => {
     setSampleTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
     markDirty();
   };
 
   const toggleTestType = (key: TestType) => {
     setTestTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
     markDirty();
   };
 
   const toggleSampleCollected = (key: SampleCollected) => {
     setSampleCollected((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
     markDirty();
   };
 
   // ---- ACTIVES TABLE ----
   const [actives, setActives] = useState<ChemActiveRow[]>(
-    report?.actives || DEFAULT_CHEM_ACTIVES
+    report?.actives || DEFAULT_CHEM_ACTIVES,
   );
 
   // const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
@@ -343,6 +351,7 @@ export default function ChemistryMixReportForm({
     id: string;
     status: ChemistryReportStatus;
     reportNumber?: number | string;
+    version?: number;
   };
 
   const lock = (f: string) =>
@@ -358,12 +367,12 @@ export default function ChemistryMixReportForm({
 
   const [activeRowErrors, setActiveRowErrors] = useState<ActiveRowError[]>([]);
   const [activesTableError, setActivesTableError] = useState<string | null>(
-    null
+    null,
   );
 
   useEffect(() => {
     setActiveRowErrors((prev) =>
-      Array.from({ length: actives.length }, (_, i) => prev[i] ?? {})
+      Array.from({ length: actives.length }, (_, i) => prev[i] ?? {}),
     );
   }, [actives.length]);
 
@@ -373,7 +382,7 @@ export default function ChemistryMixReportForm({
 
   function validateActiveRows(
     rows: ChemActiveRow[],
-    who: Role | undefined = role
+    who: Role | undefined = role,
   ) {
     const rowErrs: ActiveRowError[] = rows.map(() => ({}));
     let tableErr: string | null = null;
@@ -428,7 +437,7 @@ export default function ChemistryMixReportForm({
           !e.formulaContent &&
           !e.sopNo &&
           !e.result &&
-          !e.dateTestedInitial
+          !e.dateTestedInitial,
       )
     );
   }
@@ -490,7 +499,7 @@ export default function ChemistryMixReportForm({
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
     () => corrections.filter((c) => c.status === "OPEN"),
-    [corrections]
+    [corrections],
   );
 
   // const corrByField = useMemo(() => {
@@ -589,7 +598,7 @@ export default function ChemistryMixReportForm({
     // ✅ Optional: prevent status change when there are unsaved edits
     if (isDirty) {
       alert(
-        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status."
+        "⚠️ You have unsaved changes. Please UPDATE (Save) before changing status.",
       );
       return;
     }
@@ -634,8 +643,8 @@ export default function ChemistryMixReportForm({
     hasOpenCorrection(keyOrPrefix)
       ? "dash dash-red"
       : flash[keyOrPrefix]
-      ? "dash dash-green"
-      : "";
+        ? "dash dash-green"
+        : "";
 
   const canResolveField = (field: string) => {
     if (!reportId || !role) return false;
@@ -652,7 +661,7 @@ export default function ChemistryMixReportForm({
       if (!items.length) return;
 
       await Promise.all(
-        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed"))
+        items.map((c) => resolveCorrection(reportId!, c.id, "Fixed")),
       );
       const fresh = await getCorrections(reportId!);
       setCorrections(fresh);
@@ -683,7 +692,7 @@ export default function ChemistryMixReportForm({
       | "sopNo"
       | "formulaContent"
       | "result"
-      | "dateTestedInitial"
+      | "dateTestedInitial",
   ) => `actives:${rowKey}:${col}`;
 
   // Update ResolveOverlay to support prefixes too (so row overlay works)
@@ -790,7 +799,7 @@ export default function ChemistryMixReportForm({
           : allowedBase;
 
         const payload = Object.fromEntries(
-          Object.entries(fullPayload).filter(([k]) => allowed.includes(k))
+          Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
 
         // New reports always start as DRAFT
@@ -804,7 +813,11 @@ export default function ChemistryMixReportForm({
           if (reportId) {
             saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
               method: "PATCH",
-              body: JSON.stringify({ ...payload, reason: "Saving" }),
+              body: JSON.stringify({
+                ...payload,
+                reason: "Saving",
+                expectedVersion: reportVersion,
+              }),
             });
           } else {
             saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
@@ -815,12 +828,29 @@ export default function ChemistryMixReportForm({
           setReportId(saved.id); // 👈 keep the new id
           setStatus(saved.status); // in case backend changed it
           setReportNumber(String(saved.reportNumber ?? ""));
+          setReportVersion(
+            typeof saved.version === "number"
+              ? saved.version
+              : reportVersion + 1,
+          );
+
           setIsDirty(false);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
           console.error(err);
-          alert("❌ Error saving chemistry report: " + err.message);
+          if (err?.status === 409 || err?.response?.status === 409) {
+            alert(
+              "⚠️ Someone else updated this report. Please reload and try again.",
+            );
+            return false;
+          }
+          alert(
+            "❌ Error saving chemistry report: " +
+              (err.message || "Unknown error"),
+          );
+          return false;
+
           return false;
         }
       })) ?? false
@@ -834,7 +864,7 @@ export default function ChemistryMixReportForm({
 
   async function handleStatusChange(
     newStatus: ChemistryReportStatus,
-    opts?: { reason?: string; eSignPassword?: string }
+    opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
       const values = makeValues();
@@ -890,7 +920,7 @@ export default function ChemistryMixReportForm({
             }),
             // If your API supports header alternative:
             // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
-          }
+          },
         );
 
         setStatus(updated.status ?? newStatus);
@@ -956,7 +986,7 @@ export default function ChemistryMixReportForm({
   function hasOpenCorrectionKey(keyOrPrefix: string) {
     return openCorrections.some(
       (c) =>
-        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`)
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
     );
   }
 
@@ -996,7 +1026,7 @@ export default function ChemistryMixReportForm({
 
   async function runBusy<T>(
     action: Exclude<BusyAction, null>,
-    fn: () => Promise<T>
+    fn: () => Promise<T>,
   ): Promise<T | undefined> {
     if (busyRef.current) return; // 🚫 prevent double click
     busyRef.current = true;
@@ -1134,7 +1164,7 @@ export default function ChemistryMixReportForm({
             <div
               id="f-dateSent"
               className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "dateSent"
+                "dateSent",
               )}`}
             >
               <div
@@ -1176,7 +1206,7 @@ export default function ChemistryMixReportForm({
           <div
             id="f-sampleDescription"
             className={`border-b border-black flex items-center gap-2 px-2 relative ${dashClass(
-              "sampleDescription"
+              "sampleDescription",
             )}`}
           >
             <div
@@ -1298,7 +1328,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 flex items-center gap-3 text-[12px]">
               <span
                 className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "sampleCollected"
+                  "sampleCollected",
                 )}`}
                 onClick={corrClick("sampleCollected")}
                 title={
@@ -1391,7 +1421,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 border-r border-black flex items-center gap-2">
               <span
                 className={`font-medium whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "lotBatchNo"
+                  "lotBatchNo",
                 )}`}
                 onClick={corrClick("lotBatchNo")}
                 title={
@@ -1422,7 +1452,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 flex items-center gap-2">
               <span
                 className={`font-medium whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "manufactureDate"
+                  "manufactureDate",
                 )}`}
                 onClick={corrClick("manufactureDate")}
                 title={
@@ -1461,7 +1491,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 border-r border-black flex items-center gap-1">
               <span
                 className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
-                  "formulaId"
+                  "formulaId",
                 )}`}
                 onClick={corrClick("formulaId")}
                 title={
@@ -1493,7 +1523,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 border-r border-black flex items-center gap-1">
               <span
                 className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
-                  "sampleSize"
+                  "sampleSize",
                 )}`}
                 onClick={corrClick("sampleSize")}
                 title={
@@ -1525,7 +1555,7 @@ export default function ChemistryMixReportForm({
             <div className="px-2 flex items-center gap-1">
               <span
                 className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
-                  "numberOfActives"
+                  "numberOfActives",
                 )}`}
                 onClick={corrClick("numberOfActives")}
                 title={
@@ -1562,7 +1592,7 @@ export default function ChemistryMixReportForm({
             <div className="flex max-w-[600px] pr-1 py-1 self-stretch border-r border-black">
               <span
                 className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "sampleTypes"
+                  "sampleTypes",
                 )}`}
                 onClick={corrClick("sampleTypes")}
                 title={
@@ -1639,7 +1669,7 @@ export default function ChemistryMixReportForm({
             <div className="flex items-center gap-2 whitespace-nowrap pl-2 py-1">
               <span
                 className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
-                  "dateReceived"
+                  "dateReceived",
                 )}`}
                 onClick={corrClick("dateReceived")}
                 title={
@@ -1768,7 +1798,7 @@ export default function ChemistryMixReportForm({
                 {/* ACTIVE + checkbox */}
                 <div
                   className={`flex items-center gap-2 border-r border-black px-1 relative ${dashClass(
-                    kChecked
+                    kChecked,
                   )}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
@@ -1803,7 +1833,7 @@ export default function ChemistryMixReportForm({
 
                 <div
                   className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.bulkActiveLot
+                    !!rowErr.bulkActiveLot,
                   )} ${dashClass(kBulkActiveLot)} ${corrCursor}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
@@ -1840,7 +1870,7 @@ export default function ChemistryMixReportForm({
                 {/* SOP # */}
                 <div
                   className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.sopNo
+                    !!rowErr.sopNo,
                   )} ${dashClass(kSop)} ${corrCursor}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
@@ -1876,7 +1906,7 @@ export default function ChemistryMixReportForm({
                 {/* FORMULA CONTENT */}
                 <div
                   className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.formulaContent
+                    !!rowErr.formulaContent,
                   )} ${dashClass(kFormula)} ${corrCursor}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
@@ -1913,7 +1943,7 @@ export default function ChemistryMixReportForm({
                 {/* RESULTS */}
                 <div
                   className={`border-r border-black px-1  relative ${inputErrClass(
-                    !!rowErr.result
+                    !!rowErr.result,
                   )} ${dashClass(kResult)}  ${corrCursor}`}
                   onClick={(e) => {
                     if (!selectingCorrections) return;
@@ -1967,7 +1997,7 @@ export default function ChemistryMixReportForm({
                         setActiveField(idx, {
                           dateTestedInitial: joinDateInitial(
                             e.target.value,
-                            initial
+                            initial,
                           ),
                         })
                       }
@@ -1993,7 +2023,7 @@ export default function ChemistryMixReportForm({
                       setActiveField(idx, {
                         dateTestedInitial: joinDateInitial(
                           date,
-                          e.target.value.toUpperCase()
+                          e.target.value.toUpperCase(),
                         ),
                       })
                     }
@@ -2016,7 +2046,7 @@ export default function ChemistryMixReportForm({
           <div className="flex items-center gap-2 mb-2">
             <span
               className={`font-medium ${corrCursor} relative ${dashClass(
-                "comments"
+                "comments",
               )}`}
               onClick={corrClick("comments")}
               title={
@@ -2051,7 +2081,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span
                   className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedBy"
+                    "testedBy",
                   )}`}
                   onClick={corrClick("testedBy")}
                   title={
@@ -2066,7 +2096,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass(
                     "testedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none"
+                    "flex-1 border-0 border-b border-black/60 outline-none",
                   )}
                   value={testedBy}
                   onChange={(e) => {
@@ -2083,7 +2113,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span
                   className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedDate"
+                    "testedDate",
                   )}`}
                   onClick={corrClick("testedDate")}
                   title={
@@ -2097,7 +2127,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass(
                     "testedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none"
+                    "flex-1 border-0 border-b border-black/60 outline-none",
                   )}
                   type="date"
                   min={todayISO()}
@@ -2119,7 +2149,7 @@ export default function ChemistryMixReportForm({
               <div className="mb-2 flex items-center gap-2">
                 <span
                   className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedBy"
+                    "reviewedBy",
                   )}`}
                   onClick={corrClick("reviewedBy")}
                   title={
@@ -2134,7 +2164,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass(
                     "reviewedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none"
+                    "flex-1 border-0 border-b border-black/60 outline-none",
                   )}
                   value={reviewedBy}
                   onChange={(e) => {
@@ -2151,7 +2181,7 @@ export default function ChemistryMixReportForm({
               <div className="flex items-center gap-2">
                 <span
                   className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedDate"
+                    "reviewedDate",
                   )}`}
                   onClick={corrClick("reviewedDate")}
                   title={
@@ -2166,7 +2196,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass(
                     "reviewedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none"
+                    "flex-1 border-0 border-b border-black/60 outline-none",
                   )}
                   type="date"
                   min={todayISO()}
@@ -2256,7 +2286,7 @@ export default function ChemistryMixReportForm({
                 );
               }
               return null;
-            }
+            },
           )}
         </div>
       </div>
@@ -2348,7 +2378,7 @@ export default function ChemistryMixReportForm({
                   className="text-rose-600 hover:underline"
                   onClick={() =>
                     setPendingCorrections((prev) =>
-                      prev.filter((_, idx) => idx !== i)
+                      prev.filter((_, idx) => idx !== i),
                     )
                   }
                 >
@@ -2383,7 +2413,7 @@ export default function ChemistryMixReportForm({
                     reportId!,
                     pendingCorrections,
                     pendingStatus!,
-                    "Corrections requested"
+                    "Corrections requested",
                   );
 
                   setSelectingCorrections(false);
