@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, API_URL, getToken } from "../../lib/api";
 import { createPortal } from "react-dom";
+import { useAuth } from "../../context/AuthContext";
 
 type ReportType = "MICRO" | "MICRO_WATER" | "CHEMISTRY";
 type ReportTypeFilter = "ALL" | ReportType;
@@ -503,6 +504,24 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
+  const { user } = useAuth();
+  const role = (user?.role || "").toUpperCase();
+
+  const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
+    if (!role) return "ALL"; // or [] if you want to hide until loaded
+
+    if (role === "CHEMISTRY") return ["CHEMISTRY"];
+    if (role === "MICRO") return ["MICRO", "MICRO_WATER"];
+
+    // ADMIN/QA/SUPER etc
+    return "ALL";
+  }, [role]);
+
+  useEffect(() => {
+    if (role === "CHEMISTRY") setReportType("CHEMISTRY");
+    if (role === "MICRO") setReportType("MICRO");
+  }, [role]);
+
   const isRowSelected = (id: string) => selectedIds.includes(id);
   const toggleRow = (id: string) => {
     setSelectedIds((prev) =>
@@ -542,6 +561,10 @@ export default function ReportAttachmentsPage() {
     let out = items.filter((a) => {
       const ext = fileExt(a.filename);
       const ft = fileTypeFromExt(ext);
+
+      // role restriction (frontend)
+      if (allowedTypes !== "ALL" && !allowedTypes.includes(a.reportType))
+        return false;
 
       if (reportType !== "ALL" && a.reportType !== reportType) return false;
       if (kind !== "ALL" && a.kind !== kind) return false;
@@ -608,19 +631,28 @@ export default function ReportAttachmentsPage() {
     toDate,
     sort,
     reportType,
+    allowedTypes,
   ]);
 
   const counts = useMemo(() => {
-    const total = items.length;
+    const allowed =
+      allowedTypes === "ALL"
+        ? items
+        : items.filter((a) => allowedTypes.includes(a.reportType));
+
+    const total = allowed.length;
     const shown = filtered.length;
+
     const images = filtered.filter(
       (a) => fileTypeFromExt(fileExt(a.filename)) === "image",
     ).length;
+
     const pdfs = filtered.filter(
       (a) => fileTypeFromExt(fileExt(a.filename)) === "pdf",
     ).length;
+
     return { total, shown, images, pdfs };
-  }, [items.length, filtered]);
+  }, [items, filtered, allowedTypes]);
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -654,8 +686,12 @@ export default function ReportAttachmentsPage() {
     setSource("ALL");
     setFromDate("");
     setToDate("");
-    setReportType("ALL");
     setSort("NEWEST");
+
+    // ✅ keep role-safe tab
+    if (role === "CHEMISTRY") setReportType("CHEMISTRY");
+    else if (role === "MICRO") setReportType("MICRO");
+    else setReportType("ALL");
   };
 
   // Selected objects (printable only)
@@ -719,6 +755,32 @@ export default function ReportAttachmentsPage() {
       });
     }
   };
+
+  const visibleTabs = useMemo(() => {
+    const all: ReportTypeFilter[] = [
+      "ALL",
+      "MICRO",
+      "MICRO_WATER",
+      "CHEMISTRY",
+    ];
+    if (allowedTypes === "ALL") return all;
+
+    // show only tabs that make sense for the role
+    return all.filter(
+      (t) => t === "ALL" || allowedTypes.includes(t as ReportType),
+    );
+  }, [allowedTypes]);
+
+  useEffect(() => {
+    if (allowedTypes === "ALL") return;
+
+    setSelectedIds((prev) =>
+      prev.filter((id) => {
+        const att = items.find((x) => x.id === id);
+        return att ? allowedTypes.includes(att.reportType) : false;
+      }),
+    );
+  }, [allowedTypes, items]);
 
   return (
     <div className="p-6">
@@ -822,7 +884,7 @@ export default function ReportAttachmentsPage() {
       {/* Tabs row */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICRO_WATER", "CHEMISTRY"] as const).map((t) => {
+          {visibleTabs.map((t) => {
             const isActive = reportType === t;
             return (
               <button

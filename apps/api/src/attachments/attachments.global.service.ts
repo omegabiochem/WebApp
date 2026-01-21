@@ -38,10 +38,22 @@ function extType(filename: string): 'image' | 'pdf' | 'other' {
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    stream.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    stream.on('data', (c) =>
+      chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)),
+    );
     stream.on('end', () => resolve(Buffer.concat(chunks)));
     stream.on('error', reject);
   });
+}
+
+function allowedTypesForRole(role: string | null): ReportType[] {
+  return role === 'CHEMISTRY'
+    ? ['CHEMISTRY']
+    : role === 'MICRO'
+      ? ['MICRO', 'MICRO_WATER']
+      : role === 'CLIENT'
+        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER']
+        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER'];
 }
 
 @Injectable()
@@ -67,49 +79,71 @@ export class AttachmentsGlobalService {
 
     // ✅ If CLIENT: filter at DB level (best)
     const reportWhere =
-      userRole === 'CLIENT'
-        ? { report: { clientCode: userClientCode } }
-        : {};
+      userRole === 'CLIENT' ? { report: { clientCode: userClientCode } } : {};
 
     const chemWhere =
-      userRole === 'CLIENT'
-        ? { report: { clientCode: userClientCode } }
-        : {};
+      userRole === 'CLIENT' ? { report: { clientCode: userClientCode } } : {};
+
+    const role = userRole;
+
+    const allowedReportTypes: ReportType[] =
+      role === 'CHEMISTRY'
+        ? ['CHEMISTRY']
+        : role === 'MICRO'
+          ? ['MICRO', 'MICRO_WATER']
+          : role === 'CLIENT'
+            ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER'] // or based on client ownership
+            : ['CHEMISTRY', 'MICRO', 'MICRO_WATER']; // ADMIN/QA etc
+
+    const canSeeMicro = userRole !== 'CHEMISTRY';
+    const canSeeChem = userRole !== 'MICRO';
+
+    const microWhereFinal: any = {
+      ...(reportWhere as any),
+      report: {
+        ...(reportWhere as any)?.report,
+        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER'] }, // ✅ filter by report.formType
+      },
+    };
 
     const [microItems, chemItems] = await Promise.all([
-      this.prisma.attachment.findMany({
-        where: reportWhere as any,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          reportId: true,
-          kind: true,
-          filename: true,
-          pages: true,
-          source: true,
-          createdAt: true,
-          createdBy: true,
-          report: { select: { formType: true, clientCode: true } }, // ✅ include clientCode
-        },
-        take: 5000,
-      }),
+      canSeeMicro
+        ? this.prisma.attachment.findMany({
+            where: microWhereFinal,
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              reportId: true,
+              kind: true,
+              filename: true,
+              pages: true,
+              source: true,
+              createdAt: true,
+              createdBy: true,
+              report: { select: { formType: true, clientCode: true } },
+            },
+            take: 5000,
+          })
+        : Promise.resolve([]),
 
-      this.prisma.chemistryAttachment.findMany({
-        where: chemWhere as any,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          chemistryId: true,
-          kind: true,
-          filename: true,
-          pages: true,
-          source: true,
-          createdAt: true,
-          createdBy: true,
-          report: { select: { clientCode: true } }, // ✅ include clientCode
-        },
-        take: 5000,
-      }),
+      canSeeChem
+        ? this.prisma.chemistryAttachment.findMany({
+            where: chemWhere as any,
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              chemistryId: true,
+              kind: true,
+              filename: true,
+              pages: true,
+              source: true,
+              createdAt: true,
+              createdBy: true,
+              report: { select: { clientCode: true } },
+            },
+            take: 5000,
+          })
+        : Promise.resolve([]),
     ]);
 
     const merged: Array<{
@@ -224,14 +258,28 @@ export class AttachmentsGlobalService {
     const userRole = user?.role ?? null;
     const userClientCode = (user?.clientCode || '').trim() || null;
 
+    const allowed = allowedTypesForRole(userRole);
+
     // ✅ MICRO
     const micro = await this.prisma.attachment.findUnique({
       where: { id },
-      select: { id: true, report: { select: { clientCode: true } } },
+      select: {
+        id: true,
+        report: { select: { clientCode: true, formType: true } },
+      },
     });
+
     if (micro) {
+      // CLIENT ownership check
       if (userRole === 'CLIENT' && micro.report?.clientCode !== userClientCode)
         return null;
+
+      // ✅ role-based type check
+      const rt: ReportType =
+        micro.report?.formType === 'MICRO_MIX_WATER' ? 'MICRO_WATER' : 'MICRO';
+
+      if (!allowed.includes(rt)) return null;
+
       return this.micro.stream(id);
     }
 
@@ -240,9 +288,14 @@ export class AttachmentsGlobalService {
       where: { id },
       select: { id: true, report: { select: { clientCode: true } } },
     });
+
     if (chem) {
       if (userRole === 'CLIENT' && chem.report?.clientCode !== userClientCode)
         return null;
+
+      // ✅ role-based type check
+      if (!allowed.includes('CHEMISTRY')) return null;
+
       return this.chem.stream(id);
     }
 
@@ -254,7 +307,10 @@ export class AttachmentsGlobalService {
 
     for (const id of ids) {
       const out = await this.streamByAnyId(id, user);
-      if (!out) throw new BadRequestException(`Attachment not found or not allowed: ${id}`);
+      if (!out)
+        throw new BadRequestException(
+          `Attachment not found or not allowed: ${id}`,
+        );
 
       const { stream, mime, filename } = out;
 
