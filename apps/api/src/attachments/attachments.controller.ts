@@ -76,4 +76,6 @@ export class AttachmentsController {
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`);
     stream.pipe(res);
   }
+
+  
 }

@@ -25,22 +25,37 @@ export default function Header() {
       { label: "Home", path: "/adminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
       { label: "Balancer", path: "/balancer" },
+      { label: "Results", path: "/results" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
       { label: "Audit and Trail", path: "/clientAudit" },
       { label: "Forms", path: "/formmenu" },
+      { label: "Results", path: "/results" },
     ],
     SYSTEMADMIN: [
       { label: "Home", path: "/systemAdminDashboard" },
       { label: "Dashboard", path: "/" },
       { label: "New Reports", path: "/reports/new" },
-      { label: "Audit", path: "/audit" },
+      { label: "Audit and Trail", path: "/audit" },
+      { label: "Results", path: "/results" },
     ],
-    MICRO: [{ label: "Home", path: "/microDashboard" }],
-    CHEMISTRY: [{ label: "Home", path: "/chemistryDashboard" }],
-    QA: [{ label: "Home", path: "/qaDashboard" }],
-    FRONTDESK: [{ label: "Home", path: "/frontdeskDashboard" }],
+    MICRO: [
+      { label: "Home", path: "/microDashboard" },
+      { label: "Results", path: "/results" },
+    ],
+    CHEMISTRY: [
+      { label: "Home", path: "/chemistryDashboard" },
+      { label: "Results", path: "/results" },
+    ],
+    QA: [
+      { label: "Home", path: "/qaDashboard" },
+      { label: "Results", path: "/results" },
+    ],
+    FRONTDESK: [
+      { label: "Home", path: "/frontdeskDashboard" },
+      { label: "Results", path: "/results" },
+    ],
     DEFAULT: [{ label: "Home", path: "/home" }],
   };
 
@@ -96,16 +111,16 @@ export default function Header() {
                       role === "CHEMISTRY"
                         ? "/chemistryDashboard"
                         : role === "MICRO"
-                        ? "/microDashboard"
-                        : role === "QA"
-                        ? "/qaDashboard"
-                        : role === "FRONTDESK"
-                        ? "/frontdeskDashboard"
-                        : role === "ADMIN"
-                        ? "/adminDashboard"
-                        : role === "SYSTEMADMIN"
-                        ? "/systemAdminDashboard"
-                        : "/home";
+                          ? "/microDashboard"
+                          : role === "QA"
+                            ? "/qaDashboard"
+                            : role === "FRONTDESK"
+                              ? "/frontdeskDashboard"
+                              : role === "ADMIN"
+                                ? "/adminDashboard"
+                                : role === "SYSTEMADMIN"
+                                  ? "/systemAdminDashboard"
+                                  : "/home";
                     navigate(home, { replace: true });
                   }
                 }}
@@ -135,7 +150,7 @@ export default function Header() {
                   >
                     {item.label}
                   </Link>
-                )
+                ),
               )}
               {(role === "ADMIN" || role === "SYSTEMADMIN") && (
                 <Link to="/admin" className="hover:underline">

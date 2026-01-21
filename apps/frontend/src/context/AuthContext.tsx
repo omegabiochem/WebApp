@@ -7,6 +7,7 @@ import {
 } from "react";
 import { setToken as storeToken, clearToken, getToken, api } from "../lib/api";
 import type { Role } from "../utils/roles";
+import { socket } from "../lib/socket"; // ✅ add
 
 type User = {
   id: string;
@@ -31,11 +32,21 @@ const Ctx = createContext<AuthContextType>({
   logout: () => {},
 });
 
+function connectSocketWithToken(t: string) {
+  if (!t) return;
+  socket.auth = { token: t };
+
+  // If it somehow connected without token earlier, force reset
+  if (socket.connected) socket.disconnect();
+
+  socket.connect();
+}
+
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [token, setTokenState] = useState<string | null>(null);
 
-  // On mount: if we have a token, validate it and hydrate user
   useEffect(() => {
     const init = async () => {
       const t = getToken();
@@ -44,53 +55,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        // api() will attach Authorization automatically
         const me = await api<User>("/auth/me");
         setTokenState(t);
         setUser(me);
         localStorage.setItem("user", JSON.stringify(me));
+
+        // ✅ connect socket after token is validated
+      connectSocketWithToken(t);
+
       } catch {
-        // token invalid/expired — clear local state
         clearToken();
         localStorage.removeItem("user");
         setTokenState(null);
         setUser(null);
+
+        if (socket.connected) socket.disconnect(); // ✅ ensure closed
       }
     };
     init();
   }, []);
 
   const login = (t: string, u: User) => {
-    // persist token (api() reads it)
     storeToken(t);
     setTokenState(t);
+
+    // ✅ connect socket immediately after login
+  connectSocketWithToken(t);
 
     if (u) {
       setUser(u);
       localStorage.setItem("user", JSON.stringify(u));
     } else {
-      // fallback: fetch profile using api() (with Bearer)
       api<User>("/auth/me")
         .then((me) => {
           setUser(me);
           localStorage.setItem("user", JSON.stringify(me));
         })
         .catch(() => {
-          // If this fails, clear everything
           clearToken();
           localStorage.removeItem("user");
           setTokenState(null);
           setUser(null);
+
+          if (socket.connected) socket.disconnect(); // ✅
         });
     }
   };
 
   const logout = async () => {
     try {
-      await api("/auth/logout", { method: "POST" }); // best-effort audit
-    } catch {
-      // ignore network errors on logout
-    }
+      await api("/auth/logout", { method: "POST" });
+    } catch {}
+
+    // ✅ disconnect socket on logout
+    if (socket.connected) socket.disconnect();
+
     clearToken();
     localStorage.removeItem("user");
     setTokenState(null);

@@ -8,6 +8,7 @@ import * as path from 'path';
 import type { Express } from 'express';
 import { ReadStream } from 'fs';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 
 type CreateInput = {
   reportId: string;
@@ -139,9 +140,7 @@ export class AttachmentsService {
     return { ...a, size: st?.size ?? null };
   }
 
-  async stream(
-    id: string,
-  ): Promise<{
+  async stream(id: string): Promise<{
     stream: NodeJS.ReadableStream;
     mime: string;
     filename: string;

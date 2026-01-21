@@ -11,6 +11,7 @@ datasource db {
 
 model Report {
   id                       String                    @id @default(cuid())
+  clientCode               String?
   formNumber               String                    @unique
   reportNumber             String?                   @unique
   prefix                   String                    @default("OM")
@@ -26,6 +27,7 @@ model Report {
   microMixWater            MicroMixWaterDetails?
   
   statusHistory            StatusHistory[]
+    version                  Int                        @default(1)
 }
  
 model MicroMixDetails {
@@ -291,6 +293,7 @@ enum AttachmentKind {
 
 model ChemistryReport {
   id                       String                    @id @default(cuid())
+  clientCode               String?
   formNumber               String                    @unique
   reportNumber             String?                   @unique
   prefix                   String                    @default("BC")
@@ -306,6 +309,7 @@ model ChemistryReport {
   
   chemistryMix             ChemistryMixDetails?
   statusHistory            ChemistryReportStatusHistory[]
+  version                  Int                        @default(1)
 }
 
 

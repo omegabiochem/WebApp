@@ -12,6 +12,13 @@ import {
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
 import toast from "react-hot-toast";
+import {
+  formatDate,
+  matchesDateRange,
+  toDateOnlyISO_UTC,
+  type DatePreset,
+} from "../../utils/dashboardsSharedTypes";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 
 // -----------------------------
 // Types
@@ -56,16 +63,7 @@ function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
 
-function formatDate(iso: string | null) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-}
+
 
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
@@ -77,7 +75,7 @@ function displayReportNo(r: Report) {
 async function setStatus(
   r: Report,
   newStatus: string,
-  reason = "Common Status Change"
+  reason = "Common Status Change",
 ) {
   await api(`/chemistry-reports/${r.id}/status`, {
     method: "PATCH",
@@ -187,7 +185,7 @@ export default function ChemistryDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null
+    null,
   );
 
   // ✅ Loading guards
@@ -200,6 +198,10 @@ export default function ChemistryDashboard() {
 
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
+
+  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
+  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -246,7 +248,12 @@ export default function ChemistryDashboard() {
         })
       : byStatus;
 
-    const sorted = [...bySearch].sort((a, b) => {
+    // 3.5) date range filter (by dateSent)
+    const byDate = bySearch.filter((r) =>
+      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+    );
+
+    const sorted = [...byDate].sort((a, b) => {
       if (sortBy === "reportNumber") {
         const aK = (a.reportNumber || "").toLowerCase();
         const bK = (b.reportNumber || "").toLowerCase();
@@ -258,7 +265,8 @@ export default function ChemistryDashboard() {
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir]);
+ }, [reports, statusFilter, search, sortBy, sortDir, fromDate, toDate]);
+
 
   // pagination
   const total = processed.length;
@@ -286,7 +294,7 @@ export default function ChemistryDashboard() {
     return canShowChemistryUpdateButton(
       user?.role,
       r.status as ChemistryReportStatus,
-      chemistryFieldsUsedOnForm
+      chemistryFieldsUsedOnForm,
     );
   }
 
@@ -299,7 +307,7 @@ export default function ChemistryDashboard() {
   const isRowSelected = (id: string) => selectedIds.includes(id);
   const toggleRow = (id: string) => {
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
@@ -309,7 +317,7 @@ export default function ChemistryDashboard() {
   const toggleSelectPage = () => {
     if (allOnPageSelected) {
       setSelectedIds((prev) =>
-        prev.filter((id) => !pageRows.some((r) => r.id === id))
+        prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
     } else {
       setSelectedIds((prev) => {
@@ -350,12 +358,124 @@ export default function ChemistryDashboard() {
 
     if (nextStatus) {
       setReports((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x))
+        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
       );
     }
 
     goToReportEditor(r);
   }
+
+  useEffect(() => {
+    const now = new Date();
+
+    const setRange = (from: Date, to: Date) => {
+      setFromDate(toDateOnlyISO_UTC(from));
+      setToDate(toDateOnlyISO_UTC(to));
+    };
+
+    if (datePreset === "ALL") {
+      setFromDate("");
+      setToDate("");
+      return;
+    }
+
+    if (datePreset === "CUSTOM") return;
+
+    if (datePreset === "TODAY") {
+      setRange(now, now);
+      return;
+    }
+
+    if (datePreset === "YESTERDAY") {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      setRange(y, y);
+      return;
+    }
+
+    if (datePreset === "LAST_7_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 7);
+      setRange(from, now);
+      return;
+    }
+
+    if (datePreset === "LAST_30_DAYS") {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 30);
+      setRange(from, now);
+      return;
+    }
+
+    if (datePreset === "THIS_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "LAST_MONTH") {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "THIS_YEAR") {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31);
+      setRange(from, to);
+      return;
+    }
+
+    if (datePreset === "LAST_YEAR") {
+      const from = new Date(now.getFullYear() - 1, 0, 1);
+      const to = new Date(now.getFullYear() - 1, 11, 31);
+      setRange(from, to);
+      return;
+    }
+  }, [datePreset]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      statusFilter !== "ALL" ||
+      search.trim() !== "" ||
+      sortBy !== "dateSent" ||
+      sortDir !== "desc" ||
+      perPage !== 10 ||
+      datePreset !== "ALL" ||
+      fromDate !== "" ||
+      toDate !== ""
+    );
+  }, [
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+  const clearAllFilters = () => {
+    setStatusFilter("ALL");
+    setSearch("");
+    setSortBy("dateSent");
+    setSortDir("desc");
+    setPerPage(10);
+    setDatePreset("ALL");
+    setFromDate("");
+    setToDate("");
+    setPage(1);
+  };
+
+  useLiveReportStatus(setReports);
+
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   return (
     <div className="p-6">
@@ -407,7 +527,7 @@ export default function ChemistryDashboard() {
               }}
             />
           </>,
-          document.body
+          document.body,
         )}
 
       {/* Header */}
@@ -430,7 +550,7 @@ export default function ChemistryDashboard() {
               "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
               selectedIds.length
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                : "bg-slate-200 text-slate-500"
+                : "bg-slate-200 text-slate-500",
             )}
           >
             {printingBulk ? <Spinner /> : "🖨️"}
@@ -467,7 +587,7 @@ export default function ChemistryDashboard() {
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
                 statusFilter === s
                   ? "bg-blue-600 text-white ring-blue-600"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
               )}
             >
               {niceStatus(String(s))}
@@ -528,6 +648,74 @@ export default function ChemistryDashboard() {
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+        {/* Date + Clear row */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="flex items-center gap-2">
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All dates</option>
+              <option value="TODAY">Today</option>
+              <option value="YESTERDAY">Yesterday</option>
+              <option value="LAST_7_DAYS">Last 7 days</option>
+              <option value="LAST_30_DAYS">Last 30 days</option>
+              <option value="THIS_MONTH">This month</option>
+              <option value="LAST_MONTH">Last month</option>
+              <option value="THIS_YEAR">This year</option>
+              <option value="LAST_YEAR">Last year</option>
+              <option value="CUSTOM">Custom range</option>
+            </select>
+          </div>
+
+          {/* Custom from/to only when CUSTOM */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
+            />
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setDatePreset("CUSTOM");
+              }}
+              disabled={datePreset !== "CUSTOM"}
+              className={classNames(
+                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
+              )}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={classNames(
+                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                hasActiveFilters
+                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+              )}
+              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+            >
+              ✕ Clear
+            </button>
           </div>
         </div>
       </div>
@@ -614,7 +802,7 @@ export default function ChemistryDashboard() {
                             CHEMISTRY_STATUS_COLORS[
                               r.status as ChemistryReportStatus
                             ] ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
+                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
                           )}
                         >
                           {niceStatus(String(r.status))}
@@ -642,7 +830,7 @@ export default function ChemistryDashboard() {
                                   await autoAdvanceAndOpen(r, "micro");
                                 } catch (e: any) {
                                   toast.error(
-                                    e?.message || "Failed to update status"
+                                    e?.message || "Failed to update status",
                                   );
                                 } finally {
                                   setUpdatingId(null);
