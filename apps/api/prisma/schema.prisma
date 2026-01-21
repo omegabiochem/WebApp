@@ -11,6 +11,7 @@ datasource db {
 
 model Report {
   id                       String                    @id @default(cuid())
+  clientCode               String?
   formNumber               String                    @unique
   reportNumber             String?                   @unique
   prefix                   String                    @default("OM")
@@ -291,6 +292,7 @@ enum AttachmentKind {
 
 model ChemistryReport {
   id                       String                    @id @default(cuid())
+  clientCode               String?
   formNumber               String                    @unique
   reportNumber             String?                   @unique
   prefix                   String                    @default("BC")

@@ -1,7 +1,6 @@
 // src/routes.tsx
 import { createBrowserRouter } from "react-router-dom";
 import App from "./App";
-import Results from "./pages/Results";
 import Login from "./pages/Auth/Login";
 import Home from "./pages/Home";
 import CreateCredentials from "./pages/Admin/CreateCredentials";
@@ -28,6 +27,7 @@ import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFor
 
 import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
+import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -146,14 +146,7 @@ export const router = createBrowserRouter([
       },
 
       // LIMS work areas (tune roles as you prefer)
-      {
-        path: "results",
-        element: (
-          <RequireAuth>
-            <Results />
-          </RequireAuth>
-        ),
-      },
+
       {
         path: "samples",
         element: (
@@ -341,6 +334,26 @@ export const router = createBrowserRouter([
               ]}
             >
               <OmegaChatBox />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "results",
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "CLIENT",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "QA",
+              ]}
+            >
+              <ReportAttachmentsPage />
             </RequireRole>
           </RequireAuth>
         ),

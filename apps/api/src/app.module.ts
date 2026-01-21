@@ -32,6 +32,8 @@ import { RequestContextMiddleware } from './common/context.middleware';
 import { FaviconController } from './favicon.controller';
 import { MessagesModule } from './messages/messages.module';
 
+import { AttachmentsGlobalModule } from './attachments/attachments.global.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -44,7 +46,8 @@ import { MessagesModule } from './messages/messages.module';
     AttachmentsModule,
     ChemistryReportsModule,
     ChemistryAttachmentsModule,
-    MessagesModule
+    MessagesModule,
+    AttachmentsGlobalModule
   ],
   controllers: [HealthController, FaviconController],
   providers: [

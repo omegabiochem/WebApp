@@ -7,11 +7,12 @@ import { AttachmentsService } from './attachments.service';
 import { PrismaService } from 'prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
+
 @Module({
   imports: [
     MulterModule.register({
-        storage: memoryStorage(),  
-    //   dest: 'tmp/uploads',
+      storage: memoryStorage(),
+      //   dest: 'tmp/uploads',
       limits: { fileSize: 50 * 1024 * 1024 },
     }),
   ],
@@ -19,4 +20,4 @@ import { StorageService } from '../storage/storage.service';
   providers: [AttachmentsService, PrismaService, StorageService],
   exports: [AttachmentsService],
 })
-export class AttachmentsModule {} 
+export class AttachmentsModule {}
