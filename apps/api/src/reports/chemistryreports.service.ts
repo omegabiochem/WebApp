@@ -408,6 +408,7 @@ export class ChemistryReportsService {
 
     const created = await this.prisma.chemistryReport.create({
       data: {
+        clientCode,
         formType,
         formNumber,
         prefix,
