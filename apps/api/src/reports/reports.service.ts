@@ -550,6 +550,7 @@ export class ReportsService {
 
     const created = await this.prisma.report.create({
       data: {
+        clientCode,
         formType,
         formNumber,
         prefix,
