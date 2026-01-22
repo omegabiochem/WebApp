@@ -146,6 +146,11 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     color: "bg-blue-600",
   },
 
+    UNDER_RESUBMISSION_QA_REVIEW: {
+    label: "Approve",
+    color: "bg-blue-600",
+  },
+
   UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
   QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
@@ -917,6 +922,7 @@ export default function ChemistryMixReportForm({
               status: newStatus,
               reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
               eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: reportVersion,
             }),
             // If your API supports header alternative:
             // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
@@ -2414,6 +2420,7 @@ export default function ChemistryMixReportForm({
                     pendingCorrections,
                     pendingStatus!,
                     "Corrections requested",
+                    reportVersion
                   );
 
                   setSelectingCorrections(false);
