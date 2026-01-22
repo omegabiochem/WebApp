@@ -1008,6 +1008,7 @@ export class ReportsService {
       items: { fieldKey: string; message: string; oldValue?: any | null }[];
       targetStatus?: ReportStatus;
       reason?: string;
+      expectedVersion?: number;
     },
   ) {
     if (!body.items?.length) {
@@ -1069,6 +1070,7 @@ export class ReportsService {
       await this.update(user, id, {
         status: body.targetStatus,
         reason: body.reason || 'Corrections requested',
+         expectedVersion: body.expectedVersion,
       });
     }
 

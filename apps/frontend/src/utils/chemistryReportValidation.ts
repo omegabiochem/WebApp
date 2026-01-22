@@ -619,14 +619,16 @@ export async function createCorrections(
   reportId: string,
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
-  reason?: string
+  reason?: string,
+  expectedVersion?: number
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason }),
+    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
   });
 }
+
 
 export async function resolveCorrection(
   reportId: string,

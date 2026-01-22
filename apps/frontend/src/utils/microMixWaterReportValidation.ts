@@ -279,25 +279,15 @@ export async function createCorrections(
   reportId: string,
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
-  reason?: string
+  reason?: string,
+   expectedVersion?: number
+
 ) {
-  // const res = await fetch(
-  //   `${API_BASE}/reports/${reportId}/corrections`,
-  //   {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${token}`,
-  //     },
-  //     body: JSON.stringify({ items, targetStatus, reason }),
-  //   }
-  // );
-  // if (!res.ok) throw new Error("Failed to create corrections");
-  // return res.json();
+ 
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason }),
+    body: JSON.stringify({ items, targetStatus, reason,expectedVersion }),
   });
 }
 

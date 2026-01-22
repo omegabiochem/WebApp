@@ -39,6 +39,7 @@ type Report = {
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
+  version:number;
 };
 
 // A status filter can be micro OR chemistry OR "ALL"
@@ -462,8 +463,10 @@ export default function ClientDashboard() {
       : `/reports/${r.id}/status`;
 
     const body = isChemistry
-      ? { reason, status: newStatus }
-      : { reason, status: newStatus };
+      ? { reason, status: newStatus,
+      expectedVersion: r.version, }
+      : { reason, status: newStatus,
+      expectedVersion: r.version, };
 
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
     await api(url, {

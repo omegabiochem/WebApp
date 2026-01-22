@@ -201,7 +201,7 @@ function AttachmentPreview({
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(
-          `${attBase(reportId)}/${attId}`
+          `${attBase(reportId)}/${attId}`,
         );
         setMeta(metaResp);
         const blob = await apiBlob(`${attBase(reportId)}/${attId}/file`);
@@ -331,8 +331,24 @@ const PrintStyles = () => (
   `}</style>
 );
 
+const BlurStyles = () => (
+  <style>{`
+    .blur-field {
+      filter: blur(4px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @media print {
+      .blur-field {
+        filter: blur(3px);
+      }
+    }
+  `}</style>
+);
+
 export default function ChemistryMixReportFormView(
-  props: ChemistryMixReportFormProps
+  props: ChemistryMixReportFormProps,
 ) {
   const {
     report,
@@ -407,6 +423,23 @@ export default function ChemistryMixReportFormView(
 
   const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
 
+  const BLUR_SIGNATURE_STATUSES = new Set([
+    "DRAFT",
+    "SUBMITTED_BY_CLIENT",
+    "CLIENT_NEEDS_CORRECTION",
+    "UNDER_CLIENT_CORRECTION",
+    "RESUBMISSION_BY_CLIENT",
+    "UNDER_CLIENT_REVIEW",
+    "UNDER_TESTING_REVIEW",
+    "TESTING_ON_HOLD",
+    "TESTING_NEEDS_CORRECTION",
+    "RESUBMISSION_BY_TESTING",
+    "UNDER_RESUBMISSION_TESTING_REVIEW",
+    "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  ]);
+
+  const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
+
   return (
     <div
       className={
@@ -417,6 +450,7 @@ export default function ChemistryMixReportFormView(
     >
       {/* only inject styles when NOT bulk-printing from dashboard */}
       {!isBulk && <PrintStyles />}
+      {!isBulk && <BlurStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -569,7 +603,7 @@ export default function ChemistryMixReportFormView(
                       type="checkbox"
                       className="thick-box2"
                       checked={report?.testTypes?.includes(
-                        "CONTENT_UNIFORMITY"
+                        "CONTENT_UNIFORMITY",
                       )}
                       readOnly
                       disabled
@@ -867,7 +901,9 @@ export default function ChemistryMixReportFormView(
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-medium">VERIFIED BY :</span>
                   <input
-                    className="flex-1 border-0 border-b border-black/60 outline-none"
+                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                      shouldBlurSignatures ? "blur-field" : ""
+                    }`}
                     value={report?.testedBy || ""}
                     readOnly
                     disabled
@@ -876,7 +912,9 @@ export default function ChemistryMixReportFormView(
                 <div className="flex items-center gap-2">
                   <span className="font-medium">DATE :</span>
                   <input
-                    className="flex-1 border-0 border-b border-black/60 outline-none"
+                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                      shouldBlurSignatures ? "blur-field" : ""
+                    }`}
                     type="date"
                     value={formatDateForInput(report?.testedDate) || ""}
                     readOnly
@@ -889,7 +927,9 @@ export default function ChemistryMixReportFormView(
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-medium">REVIEWED BY :</span>
                   <input
-                    className="flex-1 border-0 border-b border-black/60 outline-none"
+                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                      shouldBlurSignatures ? "blur-field" : ""
+                    }`}
                     value={report?.reviewedBy || ""}
                     readOnly
                     disabled
@@ -898,7 +938,9 @@ export default function ChemistryMixReportFormView(
                 <div className="flex items-center gap-2">
                   <span className="font-medium">DATE :</span>
                   <input
-                    className="flex-1 border-0 border-b border-black/60 outline-none"
+                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                      shouldBlurSignatures ? "blur-field" : ""
+                    }`}
                     type="date"
                     value={formatDateForInput(report?.reviewedDate) || ""}
                     readOnly
@@ -921,8 +963,8 @@ export default function ChemistryMixReportFormView(
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
                 : !isSingleBulk
-                ? { pageBreakInside: "avoid", breakInside: "avoid" }
-                : undefined
+                  ? { pageBreakInside: "avoid", breakInside: "avoid" }
+                  : undefined
             }
           >
             {/* LEFT: logos on top, then confidential text */}

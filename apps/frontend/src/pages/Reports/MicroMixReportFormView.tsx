@@ -773,7 +773,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               </div>
               <div className="py-1 px-2 flex items-center justify-center text-center">
                 <div className="whitespace-nowrap">
-                  {report?.tmc_spec || ""} CFU/ ml/g
+                  {report?.tmy_spec || ""} CFU/ ml/g
                 </div>
               </div>
             </div>

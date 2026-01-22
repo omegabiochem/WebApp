@@ -2923,6 +2923,7 @@ export default function MicroMixReportForm({
                     pendingCorrections,
                     pendingStatus!,
                     "Corrections requested",
+                    reportVersion
                   );
 
                   setSelectingCorrections(false);

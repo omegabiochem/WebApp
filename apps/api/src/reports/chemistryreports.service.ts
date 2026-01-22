@@ -150,14 +150,14 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
     canSet: ['CHEMISTRY'],
-    next: ['RESUBMISSION_BY_TESTING'],
-    nextEditableBy: ['CLIENT'],
+    next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
+    nextEditableBy: ['CHEMISTRY'],
     canEdit: ['CHEMISTRY', 'ADMIN', 'QA'],
   },
   RESUBMISSION_BY_TESTING: {
-    canSet: ['CLIENT'],
-    next: ['UNDER_RESUBMISSION_QA_REVIEW'],
-    nextEditableBy: ['CLIENT'],
+    canSet: ['QA'],
+    next: ['UNDER_CLIENT_REVIEW'],
+    nextEditableBy: ['QA'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
@@ -875,6 +875,7 @@ export class ChemistryReportsService {
       items: { fieldKey: string; message: string; oldValue?: any | null }[];
       targetStatus?: ChemistryReportStatus;
       reason?: string;
+      expectedVersion?: number;
     },
   ) {
     if (!body.items?.length) {
@@ -932,6 +933,7 @@ export class ChemistryReportsService {
       await this.update(user, id, {
         status: body.targetStatus,
         reason: body.reason || 'Corrections requested',
+        expectedVersion: body.expectedVersion,
       });
     }
 
@@ -971,7 +973,7 @@ export class ChemistryReportsService {
 
     const allowedResolvers: UserRole[] = [
       'CLIENT',
-      'MICRO',
+      'CHEMISTRY',
       'FRONTDESK',
       'QA',
       'ADMIN',
