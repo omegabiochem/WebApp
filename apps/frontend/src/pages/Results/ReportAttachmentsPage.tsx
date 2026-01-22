@@ -1083,16 +1083,25 @@ export default function ReportAttachmentsPage() {
                 const reportLink = reportLinkFor(a.reportType, a.reportId);
 
                 return (
-                  <button
+                  <div
                     key={a.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       if (ft === "other")
                         window.open(`${API_URL}${filePath}`, "_blank");
                       else setOpen({ id: a.id, filename: a.filename });
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (ft === "other")
+                          window.open(`${API_URL}${filePath}`, "_blank");
+                        else setOpen({ id: a.id, filename: a.filename });
+                      }
+                    }}
                     className={classNames(
-                      "text-left rounded-2xl border bg-white p-3 shadow-sm hover:bg-slate-50/50 transition",
+                      "text-left rounded-2xl border bg-white p-3 shadow-sm hover:bg-slate-50/50 transition cursor-pointer",
                       isRowSelected(a.id) && "ring-2 ring-blue-500",
                     )}
                     title="Click to preview"
@@ -1106,6 +1115,7 @@ export default function ReportAttachmentsPage() {
                         <input
                           type="checkbox"
                           checked={isRowSelected(a.id)}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={() => toggleRow(a.id)}
                         />
                       </label>
@@ -1188,7 +1198,7 @@ export default function ReportAttachmentsPage() {
                         );
                       })()}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
