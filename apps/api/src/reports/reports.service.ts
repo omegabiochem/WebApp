@@ -841,13 +841,26 @@ export class ReportsService {
     return flattenReport(updated);
   }
 
-  async updateStatus(
-    user: { userId: string; role: UserRole },
-    id: string,
-    status: ReportStatus,
-  ) {
-    return this.update(user, id, { status });
-  }
+  // async updateStatus(
+  //   user: { userId: string; role: UserRole },
+  //   id: string,
+  //   status: ReportStatus,
+  // ) {
+  //   return this.update(user, id, { status });
+  // }
+
+    async updateStatus(
+      user: { userId: string; role: UserRole },
+      id: string,
+      body: {
+        status: ReportStatus;
+        reason?: string;
+        eSignPassword?: string;
+        expectedVersion?: number;
+      },
+    ) {
+      return this.update(user, id, body);
+    }
 
   async changeStatus(
     user: { userId: string; role: UserRole },

@@ -1221,6 +1221,7 @@ export default function MicroMixReportForm({
             status: newStatus,
             reason: opts?.reason ?? "Changing Status",
             eSignPassword: opts?.eSignPassword ?? undefined,
+             expectedVersion: reportVersion,
           }),
         });
 

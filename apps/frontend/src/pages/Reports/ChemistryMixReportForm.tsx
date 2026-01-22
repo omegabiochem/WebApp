@@ -917,6 +917,7 @@ export default function ChemistryMixReportForm({
               status: newStatus,
               reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
               eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: reportVersion,
             }),
             // If your API supports header alternative:
             // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }

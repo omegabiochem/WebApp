@@ -713,12 +713,25 @@ export class ChemistryReportsService {
     return flattenReport(updated);
   }
 
+  // async updateStatus(
+  //   user: { userId: string; role: UserRole },
+  //   id: string,
+  //   status: ChemistryReportStatus,
+  // ) {
+  //   return this.update(user, id, { status });
+  // }
+
   async updateStatus(
     user: { userId: string; role: UserRole },
     id: string,
-    status: ChemistryReportStatus,
+    body: {
+      status: ChemistryReportStatus;
+      reason?: string;
+      eSignPassword?: string;
+      expectedVersion?: number;
+    },
   ) {
-    return this.update(user, id, { status });
+    return this.update(user, id, body);
   }
 
   async get(id: string) {
