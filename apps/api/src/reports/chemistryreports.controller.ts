@@ -104,6 +104,7 @@ export class ChemistryReportsController {
       status: ChemistryReportStatus;
       reason?: string;
       eSignPassword?: string;
+      expectedVersion?: number;
     },
   ) {
     const reasonFromHeader = req.headers['x-change-reason'] as
@@ -117,11 +118,12 @@ export class ChemistryReportsController {
       userId: req.user?.userId,
       role: req.user?.role,
       ip: req.ip,
-      reason: body?.reason ?? reasonFromHeader ?? undefined,
+      reason: body?.reason ?? reasonFromHeader,
       eSignPassword: body?.eSignPassword ?? eSignFromHeader,
     });
 
-    return this.svc.updateStatus(req.user, id, body.status);
+    // ✅ pass full payload through
+    return this.svc.update(req.user, id, body);
   }
 
   @Get(':id')
@@ -159,13 +161,10 @@ export class ChemistryReportsController {
     return this.svc.addAttachment(req.user, id, file, body);
   }
 
-
-
   @Get(':id/attachments')
-async listAttachments(@Param('id') id: string) {
-  return this.svc.listAttachments(id);
-}
-
+  async listAttachments(@Param('id') id: string) {
+    return this.svc.listAttachments(id);
+  }
 
   // Corrections
   @Post(':id/corrections')
@@ -191,6 +190,4 @@ async listAttachments(@Param('id') id: string) {
   ) {
     return this.svc.resolveCorrection(req.user, id, cid, body);
   }
-
-
 }

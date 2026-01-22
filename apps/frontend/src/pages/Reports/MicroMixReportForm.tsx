@@ -1236,6 +1236,7 @@ export default function MicroMixReportForm({
             status: newStatus,
             reason: opts?.reason ?? "Changing Status",
             eSignPassword: opts?.eSignPassword ?? undefined,
+            expectedVersion: reportVersion,
           }),
         });
 
@@ -2972,6 +2973,7 @@ export default function MicroMixReportForm({
                     pendingCorrections,
                     pendingStatus!,
                     "Corrections requested",
+                    reportVersion
                   );
 
                   setSelectingCorrections(false);

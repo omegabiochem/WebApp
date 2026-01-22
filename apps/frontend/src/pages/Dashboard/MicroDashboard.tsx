@@ -32,6 +32,7 @@ type Report = {
   reportNumber: string | null;
   formNumber: string;
   prefix?: string;
+  version: number;
 };
 
 // -----------------------------
@@ -81,7 +82,8 @@ async function setStatus(
 ) {
   await api(`/reports/${r.id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ reason, status: newStatus }),
+    body: JSON.stringify({ reason, status: newStatus,
+      expectedVersion: r.version, }),
   });
 }
 
