@@ -200,7 +200,7 @@ function AttachmentPreview({
     (async () => {
       try {
         const metaResp = await api<AttachmentItem>(
-          `${attBase(reportId)}/${attId}`
+          `${attBase(reportId)}/${attId}`,
         );
         setMeta(metaResp);
         const blob = await apiBlob(`${attBase(reportId)}/${attId}/file`);
@@ -276,6 +276,22 @@ const PrintStyles = () => (
 
       /* If we ever render QR as <img>, keep it crisp */
       img { image-rendering: pixelated; image-rendering: crisp-edges; }
+    }
+  `}</style>
+);
+
+const BlurStyles = () => (
+  <style>{`
+    .blur-field {
+      filter: blur(4px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @media print {
+      .blur-field {
+        filter: blur(3px);
+      }
     }
   `}</style>
 );
@@ -443,6 +459,33 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
   const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
 
+  const BLUR_SIGNATURE_STATUSES = new Set([
+    "DRAFT",
+    "SUBMITTED_BY_CLIENT",
+    "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    "CLIENT_NEEDS_FINAL_CORRECTION",
+    "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+    "UNDER_CLIENT_FINAL_CORRECTION",
+    "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+    "FINAL_RESUBMISSION_BY_CLIENT",
+    "UNDER_CLIENT_PRELIMINARY_REVIEW",
+    "UNDER_CLIENT_FINAL_REVIEW",
+    "UNDER_PRELIMINARY_TESTING_REVIEW",
+    "PRELIMINARY_TESTING_ON_HOLD",
+    "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+    "PRELIMINARY_RESUBMISSION_BY_TESTING",
+    "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+    "FINAL_RESUBMISSION_BY_TESTING",
+    "PRELIMINARY_APPROVED",
+    "UNDER_FINAL_TESTING_REVIEW",
+    "FINAL_TESTING_ON_HOLD",
+    "FINAL_TESTING_NEEDS_CORRECTION",
+    "FINAL_RESUBMISSION_BY_TESTING",
+    "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  ]);
+
+  const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
+
   return (
     <div
       className={
@@ -453,6 +496,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     >
       {/* only inject styles when NOT bulk-printing from dashboard */}
       {!isBulk && <PrintStyles />}
+      {!isBulk && <BlurStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -871,7 +915,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="font-medium mb-2 flex items-center gap-2">
                 TESTED BY:
                 <input
-                  className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                  className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                    shouldBlurSignatures ? "blur-field" : ""
+                  }`}
                   value={report?.testedBy || ""}
                   readOnly
                   disabled
@@ -881,7 +927,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="font-medium mt-2 flex items-center gap-2">
                 DATE:
                 <input
-                  className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                  className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                    shouldBlurSignatures ? "blur-field" : ""
+                  }`}
                   value={formatDateForInput(report?.testedDate) || ""}
                   readOnly
                   disabled
@@ -894,7 +942,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="font-medium mb-2 flex items-center gap-2">
                 REVIEWED BY:
                 <input
-                  className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                  className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                    shouldBlurSignatures ? "blur-field" : ""
+                  }`}
                   value={report?.reviewedBy || ""}
                   readOnly
                   disabled
@@ -904,7 +954,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="font-medium mt-2 flex items-center gap-2">
                 DATE:
                 <input
-                  className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none"
+                  className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                    shouldBlurSignatures ? "blur-field" : ""
+                  }`}
                   value={formatDateForInput(report?.reviewedDate) || ""}
                   readOnly
                   disabled
@@ -925,8 +977,8 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
                 : !isSingleBulk
-                ? { pageBreakInside: "avoid", breakInside: "avoid" }
-                : undefined
+                  ? { pageBreakInside: "avoid", breakInside: "avoid" }
+                  : undefined
             }
           >
             {/* LEFT: logos on top, then confidential text */}

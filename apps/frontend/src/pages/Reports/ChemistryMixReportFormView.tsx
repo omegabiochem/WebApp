@@ -435,7 +435,6 @@ export default function ChemistryMixReportFormView(
     "TESTING_NEEDS_CORRECTION",
     "RESUBMISSION_BY_TESTING",
     "UNDER_RESUBMISSION_TESTING_REVIEW",
-    "UNDER_RESUBMISSION_ADMIN_REVIEW",
   ]);
 
   const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
