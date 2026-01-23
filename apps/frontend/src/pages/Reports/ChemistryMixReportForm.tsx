@@ -2508,7 +2508,7 @@ export default function ChemistryMixReportForm({
       )}
 
       {/* Floating Corrections button */}
-      <div className="no-print fixed bottom-6 right-6 z-40">
+      <div className="no-print fixed bottom-20 right-6 z-40">
         <button
           onClick={() => setShowCorrTray((s) => !s)}
           className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
