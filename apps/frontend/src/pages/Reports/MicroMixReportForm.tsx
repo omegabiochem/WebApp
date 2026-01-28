@@ -2148,7 +2148,7 @@ export default function MicroMixReportForm({
                   hasCorrection("tbc_gram")
                     ? "ring-2 ring-rose-500 animate-pulse"
                     : ""
-                }`}
+                } focus:outline-none focus:ring-0 focus:border-black`}
                 value={tbc_gram}
                 onChange={(e) => {
                   set_tbc_gram(e.target.value);
@@ -2182,7 +2182,7 @@ export default function MicroMixReportForm({
                   hasCorrection("tbc_result")
                     ? "ring-2 ring-rose-500 animate-pulse"
                     : ""
-                }`}
+                }focus:outline-none focus:ring-0 focus:border-black`}
                 value={tbc_result}
                 onChange={(e) => {
                   set_tbc_result(e.target.value);
@@ -2284,7 +2284,7 @@ export default function MicroMixReportForm({
                   hasCorrection("tmy_gram")
                     ? "ring-2 ring-rose-500 animate-pulse"
                     : ""
-                }`}
+                }focus:outline-none focus:ring-0 focus:border-black`}
                 value={tmy_gram}
                 onChange={(e) => {
                   set_tmy_gram(e.target.value);
@@ -2318,7 +2318,7 @@ export default function MicroMixReportForm({
                   hasCorrection("tmy_result")
                     ? "ring-2 ring-rose-500 animate-pulse"
                     : ""
-                }`}
+                }focus:outline-none focus:ring-0 focus:border-black`}
                 value={tmy_result}
                 onChange={(e) => {
                   set_tmy_result(e.target.value);
@@ -2973,7 +2973,7 @@ export default function MicroMixReportForm({
                     pendingCorrections,
                     pendingStatus!,
                     "Corrections requested",
-                    reportVersion
+                    reportVersion,
                   );
 
                   setSelectingCorrections(false);
