@@ -33,6 +33,8 @@ type Report = {
   formNumber: string;
   prefix?: string;
   version: number;
+  selectedActives?: string[];
+  selectedActivesText?: string;
 };
 
 // -----------------------------
@@ -181,6 +183,7 @@ export default function ChemistryDashboard() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  const [activeFilter, setActiveFilter] = useState<string>("ALL");
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -243,16 +246,39 @@ export default function ChemistryDashboard() {
     const bySearch = q
       ? byStatus.filter((r) => {
           const combinedNo = displayReportNo(r).toLowerCase();
+
+          const formNo = (r.formNumber || "").toLowerCase();
+          const formType = (r.formType || "").toLowerCase();
+
+          const activesStr = (
+            r.selectedActivesText ||
+            (r.selectedActives?.join(", ") ?? "")
+          ).toLowerCase();
+
           return (
             combinedNo.includes(q) ||
             r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
+            String(r.status).toLowerCase().includes(q) ||
+            formNo.includes(q) || // ✅ added
+            formType.includes(q) || // ✅ added (optional but useful)
+            activesStr.includes(q) // ✅ added (optional)
           );
         })
       : byStatus;
 
+    const byActive =
+      activeFilter === "ALL"
+        ? bySearch
+        : bySearch.filter((r) => {
+            const list = r.selectedActivesText?.trim()
+              ? r.selectedActivesText.split(",").map((s) => s.trim())
+              : (r.selectedActives ?? []).map((s) => String(s).trim());
+
+            return list.includes(activeFilter);
+          });
+
     // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const byDate = byActive.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
@@ -268,7 +294,16 @@ export default function ChemistryDashboard() {
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir, fromDate, toDate]);
+  }, [
+    reports,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+    activeFilter,
+  ]);
 
   // pagination
   const total = processed.length;
@@ -280,7 +315,7 @@ export default function ChemistryDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage]);
+  }, [statusFilter, search, perPage, activeFilter]);
 
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [
@@ -447,7 +482,8 @@ export default function ChemistryDashboard() {
       perPage !== 10 ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      activeFilter !== "ALL" // ✅ add
     );
   }, [
     statusFilter,
@@ -458,6 +494,7 @@ export default function ChemistryDashboard() {
     datePreset,
     fromDate,
     toDate,
+    activeFilter,
   ]);
 
   const clearAllFilters = () => {
@@ -469,10 +506,141 @@ export default function ChemistryDashboard() {
     setDatePreset("ALL");
     setFromDate("");
     setToDate("");
+    setActiveFilter("ALL");
     setPage(1);
   };
 
   useLiveReportStatus(setReports);
+
+  function ActivesCell({
+    selectedActives,
+    selectedActivesText,
+  }: {
+    selectedActives?: string[];
+    selectedActivesText?: string;
+  }) {
+    // Normalize list
+    const list = React.useMemo(() => {
+      if (selectedActivesText?.trim()) {
+        // If backend sends a single string like "A, B, C"
+        return selectedActivesText
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      return (selectedActives ?? [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+    }, [selectedActives, selectedActivesText]);
+
+    const first = list[0];
+    const rest = list.slice(1);
+    const moreCount = rest.length;
+
+    const [open, setOpen] = React.useState(false);
+    const btnRef = React.useRef<HTMLButtonElement | null>(null);
+    const popRef = React.useRef<HTMLDivElement | null>(null);
+
+    // Close on outside click
+    React.useEffect(() => {
+      if (!open) return;
+
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current?.contains(t)) return;
+        if (btnRef.current?.contains(t)) return;
+        setOpen(false);
+      };
+
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setOpen(false);
+      };
+
+      document.addEventListener("mousedown", onDown);
+      document.addEventListener("keydown", onKey);
+      return () => {
+        document.removeEventListener("mousedown", onDown);
+        document.removeEventListener("keydown", onKey);
+      };
+    }, [open]);
+
+    if (!list.length) return <span className="text-slate-500">-</span>;
+
+    return (
+      <div className="relative inline-flex items-center gap-2">
+        <span className="truncate max-w-[220px]">{first}</span>
+
+        {moreCount > 0 && (
+          <>
+            <button
+              ref={btnRef}
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="rounded-full border bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              title={rest.join(", ")}
+            >
+              +{moreCount}
+            </button>
+
+            {open && (
+              <div
+                ref={popRef}
+                className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border bg-white p-2 shadow-lg"
+                role="dialog"
+              >
+                <div className="px-2 pb-1 text-xs font-semibold text-slate-600">
+                  Other actives
+                </div>
+
+                <div className="max-h-44 overflow-auto">
+                  {rest.map((a, i) => (
+                    <div
+                      key={`${a}-${i}`}
+                      className="rounded-lg px-2 py-1 text-sm text-slate-800 hover:bg-slate-50"
+                    >
+                      {a}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded-lg border px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  const allActives = useMemo(() => {
+    const set = new Set<string>();
+
+    for (const r of reports) {
+      // prefer array, fallback to text
+      const list = r.selectedActivesText?.trim()
+        ? r.selectedActivesText
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : (r.selectedActives ?? [])
+            .map((s) => String(s).trim())
+            .filter(Boolean);
+
+      list.forEach((a) => set.add(a));
+    }
+
+    return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [reports]);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -652,8 +820,13 @@ export default function ChemistryDashboard() {
           </div>
         </div>
         {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+        {/* Date + Actives + Clear */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
+          {/* Date preset */}
+          <div className="md:col-span-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Date preset
+            </label>
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
@@ -672,8 +845,11 @@ export default function ChemistryDashboard() {
             </select>
           </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
+          {/* From */}
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              From
+            </label>
             <input
               type="date"
               value={fromDate}
@@ -687,6 +863,13 @@ export default function ChemistryDashboard() {
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+          </div>
+
+          {/* To */}
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              To
+            </label>
             <input
               type="date"
               value={toDate}
@@ -702,13 +885,32 @@ export default function ChemistryDashboard() {
             />
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          {/* Actives */}
+          <div className="md:col-span-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Active
+            </label>
+            <select
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              {allActives.map((a) => (
+                <option key={a} value={a}>
+                  {a === "ALL" ? "All actives" : a}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clear */}
+          <div className="md:col-span-2 md:flex md:justify-end">
             <button
               type="button"
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
               className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                "w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
                 hasActiveFilters
                   ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                   : "border bg-slate-100 text-slate-400 cursor-not-allowed",
@@ -742,7 +944,7 @@ export default function ChemistryDashboard() {
                 </th>
                 <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Form @</th>
+                <th className="px-4 py-3 font-medium">Actives</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -793,7 +995,13 @@ export default function ChemistryDashboard() {
                         {displayReportNo(r)}
                       </td>
                       <td className="px-4 py-3">{r.formNumber}</td>
-                      <td className="px-4 py-3">{r.formType}</td>
+                      <td className="px-4 py-3">
+                        <ActivesCell
+                          selectedActives={r.selectedActives}
+                          selectedActivesText={r.selectedActivesText}
+                        />
+                      </td>
+
                       <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
 
                       <td className="px-4 py-3">

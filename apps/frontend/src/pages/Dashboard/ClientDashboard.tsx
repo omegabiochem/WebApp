@@ -1053,16 +1053,17 @@ export default function ClientDashboard() {
                                       "Sent back to client for correction",
                                     );
                                     toast.success("Report status updated");
-                                  } else if (
-                                    r.status ===
-                                    "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                  ) {
-                                    await setStatus(
-                                      r,
-                                      "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                      "Resubmission under Review",
-                                    );
-                                  }
+                                  } 
+                                  // else if (
+                                  //   r.status ===
+                                  //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                  // ) {
+                                  //   await setStatus(
+                                  //     r,
+                                  //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                  //     "Resubmission under Review",
+                                  //   );
+                                  // }
                                   goToReportEditor(r);
                                 } catch (e: any) {
                                   toast.error(
