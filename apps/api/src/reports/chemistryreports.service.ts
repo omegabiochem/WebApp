@@ -341,6 +341,15 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
   const raw = (r.corrections ?? []) as CorrectionItem[];
   return Array.isArray(raw) ? raw : [];
 }
+
+function extractSelectedActives(actives: any): string[] {
+  if (!Array.isArray(actives)) return [];
+  return actives
+    .filter((a) => a && (a.checked === true || a.selected === true))
+    .map((a) => String(a.label ?? a.name ?? a.active ?? '').trim())
+    .filter(Boolean);
+}
+
 @Injectable()
 export class ChemistryReportsService {
   // Service methods would go here
@@ -461,6 +470,16 @@ export class ChemistryReportsService {
 
   // TO get list of reports
 
+  // async findAll() {
+  //   const reports = await this.prisma.chemistryReport.findMany({
+  //     orderBy: { createdAt: 'desc' },
+  //     include: {
+  //       chemistryMix: true,
+  //     },
+  //   });
+  //   return reports.map(flattenReport);
+  // }
+
   async findAll() {
     const reports = await this.prisma.chemistryReport.findMany({
       orderBy: { createdAt: 'desc' },
@@ -468,7 +487,17 @@ export class ChemistryReportsService {
         chemistryMix: true,
       },
     });
-    return reports.map(flattenReport);
+
+    return reports.map((r) => {
+      const flat = flattenReport(r);
+      const selectedActives = extractSelectedActives((flat as any).actives);
+
+      return {
+        ...flat,
+        selectedActives, // ✅ array
+        selectedActivesText: selectedActives.join(', '), // ✅ optional string
+      };
+    });
   }
 
   async update(

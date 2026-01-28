@@ -234,14 +234,14 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
     canSet: ['MICRO'],
-    next: ['PRELIMINARY_RESUBMISSION_BY_TESTING'],
+    next: ['UNDER_QA_PRELIMINARY_REVIEW'],
     nextEditableBy: ['CLIENT'],
     canEdit: ['MICRO', 'ADMIN', 'QA'],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ['CLIENT'],
+    canSet: ['QA'],
     next: ['UNDER_QA_PRELIMINARY_REVIEW'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['QA'],
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
