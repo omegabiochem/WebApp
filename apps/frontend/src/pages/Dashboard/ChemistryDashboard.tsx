@@ -33,6 +33,8 @@ type Report = {
   formNumber: string;
   prefix?: string;
   version: number;
+  selectedActives?: string[];
+  selectedActivesText?: string;
 };
 
 // -----------------------------
@@ -181,6 +183,8 @@ export default function ChemistryDashboard() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  const [activeFilter, setActiveFilter] = useState<string>("ALL");
+
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -474,6 +478,132 @@ export default function ChemistryDashboard() {
 
   useLiveReportStatus(setReports);
 
+  function ActivesCell({
+    selectedActives,
+    selectedActivesText,
+  }: {
+    selectedActives?: string[];
+    selectedActivesText?: string;
+  }) {
+    // Normalize list
+    const list = React.useMemo(() => {
+      if (selectedActivesText?.trim()) {
+        // If backend sends a single string like "A, B, C"
+        return selectedActivesText
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      return (selectedActives ?? [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+    }, [selectedActives, selectedActivesText]);
+
+    const first = list[0];
+    const rest = list.slice(1);
+    const moreCount = rest.length;
+
+    const [open, setOpen] = React.useState(false);
+    const btnRef = React.useRef<HTMLButtonElement | null>(null);
+    const popRef = React.useRef<HTMLDivElement | null>(null);
+
+    // Close on outside click
+    React.useEffect(() => {
+      if (!open) return;
+
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current?.contains(t)) return;
+        if (btnRef.current?.contains(t)) return;
+        setOpen(false);
+      };
+
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setOpen(false);
+      };
+
+      document.addEventListener("mousedown", onDown);
+      document.addEventListener("keydown", onKey);
+      return () => {
+        document.removeEventListener("mousedown", onDown);
+        document.removeEventListener("keydown", onKey);
+      };
+    }, [open]);
+
+    if (!list.length) return <span className="text-slate-500">-</span>;
+
+    return (
+      <div className="relative inline-flex items-center gap-2">
+        <span className="truncate max-w-[220px]">{first}</span>
+
+        {moreCount > 0 && (
+          <>
+            <button
+              ref={btnRef}
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="rounded-full border bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              title={rest.join(", ")}
+            >
+              +{moreCount}
+            </button>
+
+            {open && (
+              <div
+                ref={popRef}
+                className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border bg-white p-2 shadow-lg"
+                role="dialog"
+              >
+                <div className="px-2 pb-1 text-xs font-semibold text-slate-600">
+                  Other actives
+                </div>
+
+                <div className="max-h-44 overflow-auto">
+                  {rest.map((a, i) => (
+                    <div
+                      key={`${a}-${i}`}
+                      className="rounded-lg px-2 py-1 text-sm text-slate-800 hover:bg-slate-50"
+                    >
+                      {a}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded-lg border px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  const allActives = useMemo(() => {
+  const set = new Set<string>();
+
+  for (const r of reports) {
+    // prefer array, fallback to text
+    const list = r.selectedActivesText?.trim()
+      ? r.selectedActivesText.split(",").map((s) => s.trim()).filter(Boolean)
+      : (r.selectedActives ?? []).map((s) => String(s).trim()).filter(Boolean);
+
+    list.forEach((a) => set.add(a));
+  }
+
+  return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+}, [reports]);
+
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -650,6 +780,8 @@ export default function ChemistryDashboard() {
               ))}
             </select>
           </div>
+
+
         </div>
         {/* Date + Clear row */}
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -702,6 +834,8 @@ export default function ChemistryDashboard() {
             />
           </div>
 
+          
+
           <div className="flex items-center gap-2 md:justify-end">
             <button
               type="button"
@@ -742,7 +876,7 @@ export default function ChemistryDashboard() {
                 </th>
                 <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Form @</th>
+                <th className="px-4 py-3 font-medium">Actives</th>
                 <th className="px-4 py-3 font-medium">Date Sent</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -793,7 +927,13 @@ export default function ChemistryDashboard() {
                         {displayReportNo(r)}
                       </td>
                       <td className="px-4 py-3">{r.formNumber}</td>
-                      <td className="px-4 py-3">{r.formType}</td>
+                      <td className="px-4 py-3">
+                        <ActivesCell
+                          selectedActives={r.selectedActives}
+                          selectedActivesText={r.selectedActivesText}
+                        />
+                      </td>
+
                       <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
 
                       <td className="px-4 py-3">

@@ -192,14 +192,14 @@ export const STATUS_TRANSITIONS: Record<
   },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
     canSet: ["MICRO"],
-    next: ["PRELIMINARY_RESUBMISSION_BY_TESTING"],
+    next: ["UNDER_QA_PRELIMINARY_REVIEW"],
     nextEditableBy: ["CLIENT"],
     canEdit: ["MICRO", "ADMIN", "QA"],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ["CLIENT"],
+    canSet: ["QA"],
     next: ["UNDER_QA_PRELIMINARY_REVIEW"],
-    nextEditableBy: ["CLIENT"],
+    nextEditableBy: ["QA"],
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
@@ -407,7 +407,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,
-  status?: ReportStatus
+  status?: ReportStatus,
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
@@ -417,7 +417,7 @@ export function canRoleEditInStatus(
 export function canRoleEditField(
   role: Role | undefined,
   status: ReportStatus | undefined,
-  field: string
+  field: string,
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
@@ -437,15 +437,15 @@ export function canRoleEditField(
 export function canShowUpdateButton(
   role: Role | undefined,
   status: ReportStatus | undefined,
-  fieldsToConsider?: string[]
+  fieldsToConsider?: string[],
 ): boolean {
   if (!role || !status) return false;
   if (!canRoleEditInStatus(role, status)) return false;
 
   const allow = FIELD_EDIT_MAP[role] ?? [];
   const effective = allow.includes("*")
-    ? fieldsToConsider ?? ["*"]
-    : fieldsToConsider ?? allow;
+    ? (fieldsToConsider ?? ["*"])
+    : (fieldsToConsider ?? allow);
   return (
     effective.length > 0 &&
     (allow.includes("*") || effective.some((f) => allow.includes(f)))
