@@ -185,7 +185,6 @@ export default function ChemistryDashboard() {
   const [perPage, setPerPage] = useState(10);
   const [activeFilter, setActiveFilter] = useState<string>("ALL");
 
-
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   // selection & printing
@@ -247,16 +246,39 @@ export default function ChemistryDashboard() {
     const bySearch = q
       ? byStatus.filter((r) => {
           const combinedNo = displayReportNo(r).toLowerCase();
+
+          const formNo = (r.formNumber || "").toLowerCase();
+          const formType = (r.formType || "").toLowerCase();
+
+          const activesStr = (
+            r.selectedActivesText ||
+            (r.selectedActives?.join(", ") ?? "")
+          ).toLowerCase();
+
           return (
             combinedNo.includes(q) ||
             r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
+            String(r.status).toLowerCase().includes(q) ||
+            formNo.includes(q) || // ✅ added
+            formType.includes(q) || // ✅ added (optional but useful)
+            activesStr.includes(q) // ✅ added (optional)
           );
         })
       : byStatus;
 
+    const byActive =
+      activeFilter === "ALL"
+        ? bySearch
+        : bySearch.filter((r) => {
+            const list = r.selectedActivesText?.trim()
+              ? r.selectedActivesText.split(",").map((s) => s.trim())
+              : (r.selectedActives ?? []).map((s) => String(s).trim());
+
+            return list.includes(activeFilter);
+          });
+
     // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const byDate = byActive.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
@@ -272,7 +294,16 @@ export default function ChemistryDashboard() {
     });
 
     return sorted;
-  }, [reports, statusFilter, search, sortBy, sortDir, fromDate, toDate]);
+  }, [
+    reports,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+    activeFilter,
+  ]);
 
   // pagination
   const total = processed.length;
@@ -284,7 +315,7 @@ export default function ChemistryDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage]);
+  }, [statusFilter, search, perPage, activeFilter]);
 
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [
@@ -451,7 +482,8 @@ export default function ChemistryDashboard() {
       perPage !== 10 ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      activeFilter !== "ALL" // ✅ add
     );
   }, [
     statusFilter,
@@ -462,6 +494,7 @@ export default function ChemistryDashboard() {
     datePreset,
     fromDate,
     toDate,
+    activeFilter,
   ]);
 
   const clearAllFilters = () => {
@@ -473,6 +506,7 @@ export default function ChemistryDashboard() {
     setDatePreset("ALL");
     setFromDate("");
     setToDate("");
+    setActiveFilter("ALL");
     setPage(1);
   };
 
@@ -589,20 +623,24 @@ export default function ChemistryDashboard() {
   }
 
   const allActives = useMemo(() => {
-  const set = new Set<string>();
+    const set = new Set<string>();
 
-  for (const r of reports) {
-    // prefer array, fallback to text
-    const list = r.selectedActivesText?.trim()
-      ? r.selectedActivesText.split(",").map((s) => s.trim()).filter(Boolean)
-      : (r.selectedActives ?? []).map((s) => String(s).trim()).filter(Boolean);
+    for (const r of reports) {
+      // prefer array, fallback to text
+      const list = r.selectedActivesText?.trim()
+        ? r.selectedActivesText
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : (r.selectedActives ?? [])
+            .map((s) => String(s).trim())
+            .filter(Boolean);
 
-    list.forEach((a) => set.add(a));
-  }
+      list.forEach((a) => set.add(a));
+    }
 
-  return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-}, [reports]);
-
+    return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [reports]);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -780,12 +818,15 @@ export default function ChemistryDashboard() {
               ))}
             </select>
           </div>
-
-
         </div>
         {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+        {/* Date + Actives + Clear */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
+          {/* Date preset */}
+          <div className="md:col-span-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Date preset
+            </label>
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
@@ -804,8 +845,11 @@ export default function ChemistryDashboard() {
             </select>
           </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
+          {/* From */}
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              From
+            </label>
             <input
               type="date"
               value={fromDate}
@@ -819,6 +863,13 @@ export default function ChemistryDashboard() {
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+          </div>
+
+          {/* To */}
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              To
+            </label>
             <input
               type="date"
               value={toDate}
@@ -834,15 +885,32 @@ export default function ChemistryDashboard() {
             />
           </div>
 
-          
+          {/* Actives */}
+          <div className="md:col-span-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Active
+            </label>
+            <select
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              {allActives.map((a) => (
+                <option key={a} value={a}>
+                  {a === "ALL" ? "All actives" : a}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          {/* Clear */}
+          <div className="md:col-span-2 md:flex md:justify-end">
             <button
               type="button"
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
               className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                "w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
                 hasActiveFilters
                   ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                   : "border bg-slate-100 text-slate-400 cursor-not-allowed",
