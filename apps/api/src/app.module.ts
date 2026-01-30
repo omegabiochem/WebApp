@@ -1,15 +1,3 @@
-// import { Module } from '@nestjs/common';
-// import { AppController } from './app.controller';
-// import { AppService } from './app.service';
-// import { AuthModule } from './auth/auth.module';
-
-// @Module({
-//   imports: [AuthModule],
-//   controllers: [AppController],
-//   providers: [AppService],
-// })
-// export class AppModule {}
-
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
@@ -33,6 +21,7 @@ import { FaviconController } from './favicon.controller';
 import { MessagesModule } from './messages/messages.module';
 
 import { AttachmentsGlobalModule } from './attachments/attachments.global.module';
+import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
 
 @Module({
   imports: [
@@ -47,7 +36,7 @@ import { AttachmentsGlobalModule } from './attachments/attachments.global.module
     ChemistryReportsModule,
     ChemistryAttachmentsModule,
     MessagesModule,
-    AttachmentsGlobalModule
+    AttachmentsGlobalModule,
   ],
   controllers: [HealthController, FaviconController],
   providers: [
@@ -60,6 +49,8 @@ import { AttachmentsGlobalModule } from './attachments/attachments.global.module
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestContextMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestContextMiddleware, IpAllowlistMiddleware)
+      .forRoutes('*');
   }
 }
