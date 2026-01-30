@@ -146,7 +146,7 @@ const statusButtons: Record<string, { label: string; color: string }> = {
     color: "bg-blue-600",
   },
 
-    UNDER_RESUBMISSION_QA_REVIEW: {
+  UNDER_RESUBMISSION_QA_REVIEW: {
     label: "Approve",
     color: "bg-blue-600",
   },
@@ -405,17 +405,33 @@ export default function ChemistryMixReportForm({
       return !tableErr;
     }
 
+    // if (who === "CLIENT") {
+    //   rows.forEach((r, i) => {
+    //     if (r.checked && !r.formulaContent?.trim()) {
+    //       rowErrs[i].formulaContent = "Required";
+    //     }
+    //   });
+    // }
+    // if (who === "CLIENT") {
+    //   rows.forEach((r, i) => {
+    //     if (r.checked && !r.bulkActiveLot?.trim()) {
+    //       rowErrs[i].bulkActiveLot = "Required";
+    //     }
+    //   });
+    // }
+
     if (who === "CLIENT") {
       rows.forEach((r, i) => {
         if (r.checked && !r.formulaContent?.trim()) {
           rowErrs[i].formulaContent = "Required";
         }
-      });
-    }
-    if (who === "CLIENT") {
-      rows.forEach((r, i) => {
         if (r.checked && !r.bulkActiveLot?.trim()) {
           rowErrs[i].bulkActiveLot = "Required";
+        }
+
+        // ✅ OTHER must have a name if checked
+        if (r.key === "OTHER" && r.checked && !(r.otherName ?? "").trim()) {
+          tableErr = "Please enter a name for OTHER active";
         }
       });
     }
@@ -1802,7 +1818,7 @@ export default function ChemistryMixReportForm({
                 {/* <ResolveOverlay field={rk} /> */}
 
                 {/* ACTIVE + checkbox */}
-                <div
+                {/* <div
                   className={`flex items-center gap-2 border-r border-black px-1 relative ${dashClass(
                     kChecked,
                   )}`}
@@ -1833,6 +1849,91 @@ export default function ChemistryMixReportForm({
                     }
                   />
                   <span>{row.label}</span>
+                </div> */}
+
+                {/* ACTIVE + checkbox */}
+                {/* ACTIVE + checkbox (COMPLETE FIXED) */}
+                <div
+                  className={`flex items-start gap-2 border-r border-black px-1 relative ${dashClass(
+                    kChecked,
+                  )}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kChecked);
+                  }}
+                  title={
+                    selectingCorrections ? "Click to add correction" : undefined
+                  }
+                >
+                  <ResolveOverlay field={kChecked} />
+
+                  {/* checkbox */}
+                  <input
+                    type="checkbox"
+                    checked={row.checked}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+
+                      // your existing helper
+                      setActiveChecked(idx, checked);
+
+                      // ✅ If OTHER unchecked -> clear input
+                      if (row.key === "OTHER" && !checked) {
+                        setActiveField(idx, { otherName: "" });
+                      }
+                    }}
+                    disabled={
+                      lock("actives") ||
+                      role !== "CLIENT" ||
+                      selectingCorrections
+                    }
+                    className={
+                      lock("actives") || role !== "CLIENT"
+                        ? "accent-black"
+                        : "accent-blue-600"
+                    }
+                  />
+
+                  {/* label + other input */}
+                  <div className="flex-1">
+                    {row.key === "OTHER" ? (
+                      <>
+                        {/* ✅ Show "OTHER" only when unchecked */}
+                        {!row.checked && (
+                          <div className="leading-tight">OTHER</div>
+                        )}
+
+                        {/* ✅ Show ONLY input when checked (no duplicate text) */}
+                        {row.checked && (
+                          <input
+                            className="mt-1 w-full border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
+                            placeholder="Enter active name"
+                            value={row.otherName ?? ""}
+                            readOnly={
+                              lock("actives") ||
+                              role !== "CLIENT" ||
+                              selectingCorrections
+                            }
+                            onChange={(e) => {
+                              if (
+                                lock("actives") ||
+                                role !== "CLIENT" ||
+                                selectingCorrections
+                              )
+                                return;
+                              setActiveField(idx, {
+                                otherName: e.target.value,
+                              });
+                            }}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      // ✅ Normal label for all other actives
+                      <div className="leading-tight">{row.label}</div>
+                    )}
+                  </div>
                 </div>
 
                 {/* BULK ACTIVE LOT # */}
@@ -2420,7 +2521,7 @@ export default function ChemistryMixReportForm({
                     pendingCorrections,
                     pendingStatus!,
                     "Corrections requested",
-                    reportVersion
+                    reportVersion,
                   );
 
                   setSelectingCorrections(false);
