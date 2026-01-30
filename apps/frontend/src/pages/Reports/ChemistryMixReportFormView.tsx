@@ -806,7 +806,7 @@ export default function ChemistryMixReportFormView(
                 className="grid grid-cols-[25%_15%_11%_14%_15%_20%] border-b last:border-b-0 border-black"
               >
                 {/* active name + checkbox */}
-                <div className="flex items-center gap-2 border-r border-black px-1 ">
+                {/* <div className="flex items-center gap-2 border-r border-black px-1 ">
                   <input
                     type="checkbox"
                     className="thick-box2"
@@ -815,7 +815,34 @@ export default function ChemistryMixReportFormView(
                     disabled
                   />
                   <span>{row.label}</span>
+                </div> */}
+
+                {/* active name + checkbox (VIEW MODE FIX) */}
+                <div className="flex items-start gap-2 border-r border-black px-1">
+                  <input
+                    type="checkbox"
+                    className="thick-box2"
+                    checked={row.checked}
+                    readOnly
+                    disabled
+                  />
+
+                  <div className="flex-1 leading-tight">
+                    {row.key === "OTHER" ? (
+                      row.checked ? (
+                        // ✅ If OTHER is checked, show what user typed
+                        <span>{row.otherName?.trim() || "OTHER"}</span>
+                      ) : (
+                        // ✅ If OTHER not checked, show OTHER
+                        <span>OTHER</span>
+                      )
+                    ) : (
+                      // ✅ Normal rows
+                      <span>{row.label}</span>
+                    )}
+                  </div>
                 </div>
+
                 {/* BULK ACTIVE LOT # */}
                 <div className="border-r border-black px-1 ">
                   <input
