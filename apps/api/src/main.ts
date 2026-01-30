@@ -1,15 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  app.set('trust proxy', true);
 
   app.use(helmet());
   app.enableCors({
     origin: [
       'http://localhost:5173',
       'https://www.omegabiochemlab.com',
+      'https://lims.omegabiochemlab.com',
       'https://omegabiochemlab.com',
       'https://omega-lims.fly.dev',
       'https://omega-lims-staging.fly.dev',
