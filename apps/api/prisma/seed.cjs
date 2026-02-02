@@ -10,12 +10,21 @@ const prisma = new PrismaClient({
 
 async function seedAdmin() {
   const passwordHash = bcrypt.hashSync('Admin@123', 10);
+
   await prisma.user.upsert({
-    where: { email: 'admin@lab.test' },
-    update: { role: 'ADMIN', userId: 'admin' },
+    where: { userId: 'admin' }, // ✅ must be unique
+    update: {
+      email: 'admin@lab.test',
+      name: 'Admin',
+      role: 'ADMIN',
+      active: true,
+      mustChangePassword: false,
+      passwordVersion: 1,
+    },
     create: {
       email: 'admin@lab.test',
       userId: 'admin',
+      userIdSetAt: new Date(), // ✅ optional but good
       name: 'Admin',
       role: 'ADMIN',
       passwordHash,
@@ -25,6 +34,7 @@ async function seedAdmin() {
     },
   });
 }
+
 
 async function seedM2M() {
   const clientId = process.env.M2M_CLIENT_ID || 'scan-watcher';
