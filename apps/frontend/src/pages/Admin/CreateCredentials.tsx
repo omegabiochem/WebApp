@@ -26,7 +26,7 @@ const schema = z
       .refine(
         (val) => {
           const v = val.toLowerCase();
-          return v.endsWith("@gmail.com") || v.endsWith("@omegabiochemlab.com");
+          return v.endsWith(".com") || v.endsWith("@omegabiochemlab.com");
         },
         {
           message: "Allowed domains: gmail.com or omegabiochemlab.com",
