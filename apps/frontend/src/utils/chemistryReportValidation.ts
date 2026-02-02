@@ -12,6 +12,7 @@ export type ChemActiveRow = {
   formulaContent: string; // %
   result: string; // %
   dateTestedInitial: string; // "MM/DD/YYYY / AB"
+  otherName?: string; // for "OTHER" active
 };
 
 // Default actives from the template
@@ -257,8 +258,8 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     dateTestedInitial: "",
   },
   {
-    key: "WATER_CONTENT",
-    label: "WATER CONTENT",
+    key: "CONTENT_UNIFORMITY",
+    label: "CONTENT UNIFORMITY",
     checked: false,
     bulkActiveLot: "",
     sopNo: "",
@@ -285,6 +286,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     formulaContent: "",
     result: "",
     dateTestedInitial: "",
+    otherName: "",
   },
 ];
 
@@ -403,7 +405,7 @@ export function FieldErrorBadge({
         "absolute -top-2 right-1 text-[10px] leading-none text-red-600 bg-white px-1 rounded no-print pointer-events-none",
       title: msg,
     },
-    msg
+    msg,
   );
 }
 
@@ -420,7 +422,7 @@ type ValidationOpts = {
 
 export function useChemistryReportValidation(
   role?: Role,
-  opts?: ValidationOpts
+  opts?: ValidationOpts,
 ) {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -434,7 +436,7 @@ export function useChemistryReportValidation(
 
   const requiredList = useMemo(() => {
     const base = (ROLE_FIELDS[(role as Role) || "CLIENT"] ?? []).filter(
-      (f) => f !== "*"
+      (f) => f !== "*",
     );
     if (opts?.requiredOverride) return opts.requiredOverride;
     return base;
@@ -518,7 +520,7 @@ export function useChemistryReportValidation(
             if (checked.length === 0) return true; // "Required" => select at least one
             // For each checked active, CLIENT must provide formulaContent
             const missingFormula = checked.some(
-              (r) => !r.formulaContent?.trim()
+              (r) => !r.formulaContent?.trim(),
             );
             return missingFormula;
           }
@@ -546,7 +548,7 @@ export function useChemistryReportValidation(
           return false;
       }
     },
-    [role]
+    [role],
   );
 
   /** returns true when valid; sets errors + scrolls to first error */
@@ -592,7 +594,7 @@ export function useChemistryReportValidation(
 
       return Object.keys(next).length === 0;
     },
-    [isEmpty, requiredList, role]
+    [isEmpty, requiredList, role],
   );
 
   return { errors, clearError, validateAndSetErrors };
@@ -611,7 +613,7 @@ export type CorrectionItem = {
 
 export async function getCorrections(reportId: string) {
   return await api<CorrectionItem[]>(
-    `/chemistry-reports/${reportId}/corrections`
+    `/chemistry-reports/${reportId}/corrections`,
   );
 }
 
@@ -620,7 +622,7 @@ export async function createCorrections(
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
   reason?: string,
-  expectedVersion?: number
+  expectedVersion?: number,
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
     method: "POST",
@@ -629,11 +631,10 @@ export async function createCorrections(
   });
 }
 
-
 export async function resolveCorrection(
   reportId: string,
   cid: string,
-  resolutionNote?: string
+  resolutionNote?: string,
 ) {
   return api<CorrectionItem>(
     `/chemistry-reports/${reportId}/corrections/${cid}`,
@@ -641,6 +642,6 @@ export async function resolveCorrection(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resolutionNote }),
-    }
+    },
   );
 }
