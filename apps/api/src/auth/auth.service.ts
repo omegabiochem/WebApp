@@ -87,18 +87,39 @@ export class AuthService {
     const inviteTokenExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3); // 3 days
     const tempPasswordExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 hours
 
-    const user = await this.prisma.user.upsert({
-      where: { email },
-      update: {
-        passwordHash,
-        inviteToken,
-        inviteTokenExpiresAt,
-        tempPasswordExpiresAt,
-        mustChangePassword: true,
-        ...(role ? { role: role as any } : {}),
-        active: true,
-      },
-      create: {
+    // const user = await this.prisma.user.upsert({
+    //   where: { email },
+    //   update: {
+    //     passwordHash,
+    //     inviteToken,
+    //     inviteTokenExpiresAt,
+    //     tempPasswordExpiresAt,
+    //     mustChangePassword: true,
+    //     ...(role ? { role: role as any } : {}),
+    //     active: true,
+    //   },
+    //   create: {
+    //     email,
+    //     passwordHash,
+    //     inviteToken,
+    //     inviteTokenExpiresAt,
+    //     tempPasswordExpiresAt,
+    //     mustChangePassword: true,
+    //     ...(role ? { role: role as any } : {}),
+    //     active: true,
+    //     passwordVersion: 1,
+    //   },
+    //   select: {
+    //     id: true,
+    //     email: true,
+    //     role: true,
+    //     mustChangePassword: true,
+    //     inviteToken: true,
+    //   },
+    // });
+
+    const user = await this.prisma.user.create({
+      data: {
         email,
         passwordHash,
         inviteToken,

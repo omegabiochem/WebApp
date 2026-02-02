@@ -121,7 +121,7 @@ model Sample {
 
 model User {
   id                    String           @id @default(cuid())
-  email                 String           @unique
+  email                 String           
   name                  String?
   role                  UserRole         @default(CLIENT)
   passwordHash          String
