@@ -44,7 +44,7 @@ export class MailService {
     const brandSubtitle =
       process.env.MAIL_BRAND_SUBTITLE || 'Account credentials';
     const supportEmail =
-      process.env.MAIL_SUPPORT_EMAIL || 'omegabiochem.tech@gmail.com';
+      process.env.SUPPORT_EMAIL || 'tech@omegabiochemlab.com';
 
     // Avoid sending localhost links in real emails
     const loginUrl =

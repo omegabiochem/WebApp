@@ -79,8 +79,8 @@ export class UsersService {
       }
     }
 
-    const emailExists = await this.prisma.user.findUnique({ where: { email } });
-    if (emailExists) throw new BadRequestException('Email already exists');
+    // const emailExists = await this.prisma.user.findUnique({ where: { email } });
+    // if (emailExists) throw new BadRequestException('Email already exists');
 
     // Check userId uniqueness
     const uidExists = await this.prisma.user.findFirst({
