@@ -812,26 +812,15 @@ export class ReportsService {
             ? 'micro-mix-water'
             : 'micro-mix';
 
-      let clientUser: {
-        name: string | null;
-        email: string | null;
-        clientCode: string | null;
-      } | null = null;
-
-      if (current.createdBy) {
-        clientUser = await this.prisma.user.findUnique({
-          where: { id: current.createdBy },
-          select: { name: true, email: true, clientCode: true },
-        });
-      }
+      const clientCode = current.clientCode ?? null;
+      const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
 
       await this.reportNotifications.onStatusChanged({
         formType: current.formType,
         reportId: current.id,
         formNumber: current.formNumber,
-        clientName: clientUser?.name ?? '-',
-        clientCode: clientUser?.clientCode ?? null,
-        clientEmail: clientUser?.email ?? null,
+        clientName,
+        clientCode,
         oldStatus: prevStatus,
         newStatus: String(patchIn.status),
         reportUrl: `${process.env.APP_URL}/reports/${slug}/${current.id}`,
@@ -850,18 +839,18 @@ export class ReportsService {
   //   return this.update(user, id, { status });
   // }
 
-    async updateStatus(
-      user: { userId: string; role: UserRole },
-      id: string,
-      body: {
-        status: ReportStatus;
-        reason?: string;
-        eSignPassword?: string;
-        expectedVersion?: number;
-      },
-    ) {
-      return this.update(user, id, body);
-    }
+  async updateStatus(
+    user: { userId: string; role: UserRole },
+    id: string,
+    body: {
+      status: ReportStatus;
+      reason?: string;
+      eSignPassword?: string;
+      expectedVersion?: number;
+    },
+  ) {
+    return this.update(user, id, body);
+  }
 
   async changeStatus(
     user: { userId: string; role: UserRole },
@@ -1071,7 +1060,7 @@ export class ReportsService {
       await this.update(user, id, {
         status: body.targetStatus,
         reason: body.reason || 'Corrections requested',
-         expectedVersion: body.expectedVersion,
+        expectedVersion: body.expectedVersion,
       });
     }
 

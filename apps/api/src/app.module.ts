@@ -37,6 +37,7 @@ import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
     ChemistryAttachmentsModule,
     MessagesModule,
     AttachmentsGlobalModule,
+    
   ],
   controllers: [HealthController, FaviconController],
   providers: [

@@ -713,26 +713,28 @@ export class ChemistryReportsService {
       const slug = 'chemistry-mix';
       current.formType === 'CHEMISTRY_MIX';
 
-      let clientUser: {
-        name: string | null;
-        email: string | null;
-        clientCode: string | null;
-      } | null = null;
+      const clientCode = current.clientCode ?? null;
+      const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
 
-      if (current.createdBy) {
-        clientUser = await this.prisma.user.findUnique({
-          where: { id: current.createdBy },
-          select: { name: true, email: true, clientCode: true },
-        });
-      }
+      // await this.chemistryNotifications.onStatusChanged({
+      //   formType: current.formType,
+      //   reportId: current.id,
+      //   formNumber: current.formNumber,
+      //   clientName: clientUser?.name ?? '-',
+      //   clientCode: clientUser?.clientCode ?? null,
+      //   clientEmail: clientUser?.email ?? null,
+      //   oldStatus: prevStatus,
+      //   newStatus: String(patchIn.status),
+      //   reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+      //   actorUserId: user.userId,
+      // });
 
       await this.chemistryNotifications.onStatusChanged({
         formType: current.formType,
         reportId: current.id,
         formNumber: current.formNumber,
-        clientName: clientUser?.name ?? '-',
-        clientCode: clientUser?.clientCode ?? null,
-        clientEmail: clientUser?.email ?? null,
+        clientName,
+        clientCode,
         oldStatus: prevStatus,
         newStatus: String(patchIn.status),
         reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,

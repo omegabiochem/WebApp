@@ -28,6 +28,7 @@ import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFor
 import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
+import ClientNotificationSettings from "./pages/Admin/ClientNotificationSettings";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -354,6 +355,16 @@ export const router = createBrowserRouter([
               ]}
             >
               <ReportAttachmentsPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "notifications",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+              <ClientNotificationSettings />
             </RequireRole>
           </RequireAuth>
         ),
