@@ -26,6 +26,7 @@ export default function Header() {
       { label: "Audit and Trail", path: "/audit" },
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
+      { label: "Notifications", path: "/notifications" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
