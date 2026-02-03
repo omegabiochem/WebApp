@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { FormType, ChemistryReportStatus } from '@prisma/client';
 import { MailService } from '../mail/mail.service';
 import { NotificationRecipientsService } from 'src/mail/notification-recipients.service';
+import { PrismaService } from 'prisma/prisma.service';
 
 type NotifyArgs = {
   formType: FormType; // should be CHEMISTRY_MIX here
@@ -128,9 +129,8 @@ export class ChemistryReportNotificationsService {
       }
 
       // const emails = await this.recipients.getClientEmails(clientCode);
-      const emails = await this.recipients.getClientNotificationEmails(clientCode);
-
-   
+      const emails =
+        await this.recipients.getClientNotificationEmails(clientCode);
 
       if (emails.length === 0) {
         this.log.warn(
@@ -235,4 +235,5 @@ export class ChemistryReportNotificationsService {
 
     // otherwise: no email
   }
+
 }

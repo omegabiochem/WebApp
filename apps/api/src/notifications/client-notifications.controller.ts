@@ -1,5 +1,5 @@
 // apps/api/src/notifications/client-notifications.controller.ts
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ClientNotificationsService } from './client-notifications.service';
 import { ClientNotifyMode } from '@prisma/client';
 
@@ -43,5 +43,12 @@ export class ClientNotificationsController {
     @Param('id') id: string,
   ) {
     return this.svc.removeEmail(clientCode, id);
+  }
+
+
+// ✅ GET /client-notifications?q=JJL
+  @Get()
+  async listAll(@Query('q') q?: string) {
+    return this.svc.listAllFromClientSequence(q);
   }
 }
