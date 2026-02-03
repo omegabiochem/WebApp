@@ -26,7 +26,7 @@ export default function Header() {
       { label: "Audit and Trail", path: "/audit" },
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
-      { label: "Notifications", path: "/notifications" },
+      { label: "User Management", path: "/manage-users" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
@@ -153,11 +153,11 @@ export default function Header() {
                   </Link>
                 ),
               )}
-              {(role === "ADMIN" || role === "SYSTEMADMIN") && (
+              {/* {(role === "ADMIN" || role === "SYSTEMADMIN") && (
                 <Link to="/admin" className="hover:underline">
                   User Management
                 </Link>
-              )}
+              )} */}
               <button
                 type="button"
                 onClick={handleLogout}
