@@ -96,4 +96,83 @@ export class ClientNotificationsService {
     await this.prisma.clientNotificationEmail.delete({ where: { id } });
     return { ok: true };
   }
+
+  //   // ✅ NEW: list all configs
+  // async listAll(q?: string) {
+  //   const where = q?.trim()
+  //     ? {
+  //         clientCode: {
+  //           contains: q.trim().toUpperCase(),
+  //           mode: 'insensitive' as const,
+  //         },
+  //       }
+  //     : undefined;
+
+  //   const rows = await this.prisma.clientNotificationConfig.findMany({
+  //     where,
+  //     orderBy: { clientCode: 'asc' },
+  //     include: {
+  //       emails: { orderBy: { email: 'asc' } },
+  //     },
+  //   });
+
+  //   return rows.map((r) => ({
+  //     clientCode: r.clientCode,
+  //     mode: r.mode,
+  //     emails: r.emails.map((e) => ({
+  //       id: e.id,
+  //       email: e.email,
+  //       label: e.label,
+  //       active: e.active,
+  //     })),
+  //   }));
+  // }
+
+
+  // ✅ list ALL clients from ClientSequence, and ensure config exists
+  async listAllFromClientSequence(q?: string) {
+    const search = (q ?? '').trim().toUpperCase();
+
+    // 1) Fetch all client codes (source of truth)
+    const seq = await this.prisma.clientSequence.findMany({
+      where: search
+        ? { clientCode: { contains: search, mode: 'insensitive' } }
+        : undefined,
+      orderBy: { clientCode: 'asc' },
+      select: { clientCode: true },
+    });
+
+    const clientCodes = seq.map((s) => s.clientCode);
+
+    if (clientCodes.length === 0) return [];
+
+    // 2) Ensure every client has a config row (auto-create missing)
+    await this.prisma.clientNotificationConfig.createMany({
+      data: clientCodes.map((clientCode) => ({
+        clientCode,
+        mode: ClientNotifyMode.USERS_PLUS_CUSTOM,
+      })),
+      skipDuplicates: true,
+    });
+
+    // 3) Return configs + emails
+    const configs = await this.prisma.clientNotificationConfig.findMany({
+      where: { clientCode: { in: clientCodes } },
+      orderBy: { clientCode: 'asc' },
+      include: {
+        emails: { orderBy: { email: 'asc' } },
+      },
+    });
+
+    return configs.map((c) => ({
+      clientCode: c.clientCode,
+      mode: c.mode,
+      emails: c.emails.map((e) => ({
+        id: e.id,
+        email: e.email,
+        label: e.label,
+        active: e.active,
+      })),
+    }));
+  }
 }
