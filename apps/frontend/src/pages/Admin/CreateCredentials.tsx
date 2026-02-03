@@ -30,7 +30,7 @@ const schema = z
         },
         {
           message: "Allowed domains: gmail.com or omegabiochemlab.com",
-        }
+        },
       ),
     name: z.string().optional(),
     role: z.enum(
@@ -45,7 +45,7 @@ const schema = z
       ],
       {
         message: "Role is required",
-      }
+      },
     ),
     userId: z
       .string()
@@ -53,7 +53,7 @@ const schema = z
       .max(20, "User ID max 20 chars")
       .regex(
         /^[a-z0-9._-]+$/,
-        "Only lowercase a–z, 0–9, dot, underscore, hyphen"
+        "Only lowercase a–z, 0–9, dot, underscore, hyphen",
       ),
     clientCode: z
       .string()
@@ -70,7 +70,7 @@ const schema = z
     {
       message: "Client Code is required for CLIENT role",
       path: ["clientCode"], // 👈 validation error shows under clientCode
-    }
+    },
   );
 type FormData = z.infer<typeof schema>;
 
@@ -87,18 +87,17 @@ export default function CreateCredentials() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
   const [modalOpen, setModalOpen] = useState(false);
   const [createdEmail, setCreatedEmail] = useState("");
-  const [createdUserId, setCreatedUserId] = useState<string | undefined>(
-    undefined
-  ); // ✅ new
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
+  // ✅ new
   const [tempPassword, setTempPassword] = useState("");
 
   const [copiedField, setCopiedField] = useState<"password" | "userId" | null>(
-    null
+    null,
   );
 
   const copyToClipboard = async (
     text: string,
-    field: "password" | "userId"
+    field: "password" | "userId",
   ) => {
     try {
       await navigator.clipboard.writeText(text);

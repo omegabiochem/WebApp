@@ -29,6 +29,7 @@ import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
 import ClientNotificationSettings from "./pages/Admin/ClientNotificationSettings";
+import ManageUsers from "./pages/Admin/ManageUsers";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -365,6 +366,17 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
               <ClientNotificationSettings />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "manage-users",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+              <ManageUsers />
             </RequireRole>
           </RequireAuth>
         ),
