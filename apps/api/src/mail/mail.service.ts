@@ -10,6 +10,8 @@ function escapeHtml(input: string) {
     .replace(/'/g, '&#039;');
 }
 
+type ClientNotifyKind = 'REPORT_UPDATES' | 'MESSAGES';
+
 @Injectable()
 export class MailService {
   private readonly log = new Logger(MailService.name);
@@ -214,7 +216,7 @@ If you did not expect this email, contact support at ${supportEmail}.
   }
 
   async sendStatusNotificationEmail(args: {
-    to: string;
+    to: string | string[];
     subject: string;
     title: string;
     lines: string[];
@@ -288,9 +290,21 @@ If you did not expect this email, contact support at ${supportEmail}.
       (args.actionUrl ? `\n\nOpen: ${args.actionUrl}` : '') +
       `\n\n— ${brandName}\n`;
 
+    const toList = Array.isArray(args.to) ? args.to : [args.to];
+    if (toList.length === 0) return;
+
     await this.client.sendEmail({
       From: from,
-      To: args.to,
+
+      // ✅ Keep To as your system mailbox, put clients in Bcc for privacy
+      // To: process.env.MAIL_TO_FALLBACK || 'tech@omegabiochemlab.com',
+      // // Bcc: toList.join(','),
+
+      //       To: 'undisclosed-recipients@omegabiochemlab.com',
+      // Bcc: toList.join(','),
+
+      To: toList.join(','),
+
       Subject: args.subject,
       HtmlBody: htmlBody,
       TextBody: textBody,
@@ -307,60 +321,4 @@ If you did not expect this email, contact support at ${supportEmail}.
       ],
     });
   }
-
-  // async sendStatusNotificationEmail(args: {
-  //   to: string;
-  //   subject: string;
-  //   title: string;
-  //   lines: string[];
-  //   tag: string;
-  //   metadata: Record<string, string>;
-  // }) {
-  //   const from =
-  //     process.env.MAIL_FROM || 'Omega LIMS <no-reply@omegabiochemlab.com>';
-
-  //   const replyTo = process.env.MAIL_REPLY_TO || 'no-reply@omegabiochemlab.com';
-
-  //   const brandName = process.env.MAIL_BRAND_NAME || 'Omega Biochem';
-  //   const brandSubtitle = 'Report notification';
-
-  //   const htmlLines = args.lines
-  //     .map((l) => `<li style="margin:6px 0;">${escapeHtml(l)}</li>`)
-  //     .join('');
-
-  //   const htmlBody = `
-  // <div style="background:#f3f6fb; padding:24px 0;">
-  //   <div style="max-width:640px; margin:0 auto; background:#fff; border:1px solid #e6eaf2; border-radius:14px; overflow:hidden;">
-  //     <div style="background:#0b3a83; padding:18px 22px;">
-  //       <div style="font-family:Arial; color:#fff; font-size:18px; font-weight:700;">${escapeHtml(brandName)}</div>
-  //       <div style="font-family:Arial; color:#dbe8ff; font-size:13px; font-weight:600; margin-top:4px;">${escapeHtml(brandSubtitle)}</div>
-  //     </div>
-  //     <div style="padding:22px; font-family:Arial; color:#111827; font-size:14px; line-height:1.6;">
-  //       <h2 style="margin:0 0 12px 0; font-size:16px;">${escapeHtml(args.title)}</h2>
-  //       <ul style="margin:0; padding-left:18px;">${htmlLines}</ul>
-  //       <p style="margin:16px 0 0 0; color:#6b7280; font-size:12px;">This message was sent automatically.</p>
-  //     </div>
-  //   </div>
-  // </div>
-  // `;
-
-  //   const textBody = `${args.title}\n\n${args.lines.join('\n')}\n\n— ${brandName}\n`;
-
-  //   await this.client.sendEmail({
-  //     From: from,
-  //     To: args.to,
-  //     Subject: args.subject,
-  //     HtmlBody: htmlBody,
-  //     TextBody: textBody,
-  //     ReplyTo: replyTo,
-  //     Headers: [{ Name: 'X-PM-Sender', Value: 'tech@omegabiochemlab.com' }],
-  //     MessageStream: 'outbound',
-  //     Tag: args.tag,
-  //     TrackOpens: true,
-  //     TrackLinks: 'HtmlOnly' as any,
-  //     Metadata: Object.fromEntries(
-  //       Object.entries(args.metadata).map(([k, v]) => [k, String(v)]),
-  //     ),
-  //   });
-  // }
 }

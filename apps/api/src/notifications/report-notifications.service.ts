@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ReportStatus, FormType } from '@prisma/client';
 import { MailService } from '../mail/mail.service';
+import { NotificationRecipientsService } from '../mail/notification-recipients.service';
 
 type NotifyArgs = {
   formType: FormType;
@@ -30,7 +31,10 @@ function deptForFormType(formType: FormType) {
 export class ReportNotificationsService {
   private readonly log = new Logger(ReportNotificationsService.name);
 
-  constructor(private readonly mail: MailService) {}
+  constructor(
+    private readonly mail: MailService,
+    private readonly recipients: NotificationRecipientsService,
+  ) {}
 
   private labTo() {
     return process.env.LAB_NOTIFY_TO || 'tech@omegabiochemlab.com';
@@ -109,16 +113,32 @@ export class ReportNotificationsService {
     // LAB -> CLIENT (notify client)
     // -------------------------
     const notifyClient = async (title: string, tag: string) => {
-      const to = requireClientEmail();
-      if (!to) return;
+      const clientCode = args.clientCode?.trim();
+      if (!clientCode) {
+        this.log.warn(
+          `${newStatus} but no clientCode for form ${args.formNumber}`,
+        );
+        return;
+      }
+
+      // const emails = await this.recipients.getClientEmails(clientCode);
+      const emails = await this.recipients.getClientNotificationEmails(clientCode);
+
+
+      if (emails.length === 0) {
+        this.log.warn(
+          `No active client emails for clientCode=${clientCode} (${args.formNumber})`,
+        );
+        return;
+      }
 
       await this.mail.sendStatusNotificationEmail({
-        to,
+        to: emails, // ✅ now list
         subject: `Omega LIMS — ${title} (${args.formNumber})`,
         title,
         lines: [
           `Form #: ${args.formNumber}`,
-          `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+          `Client: ${args.clientName} (${clientCode})`,
           `Form Type: ${args.formType}`,
           `Status: ${nice(args.newStatus)}`,
         ],
@@ -130,11 +150,12 @@ export class ReportNotificationsService {
           formNumber: args.formNumber,
           formType: args.formType,
           status: args.newStatus,
+          clientCode,
         },
       });
 
       this.log.log(
-        `Email sent (LAB → CLIENT): ${newStatus} → ${to} (${args.formNumber})`,
+        `Email sent (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
       );
     };
 
@@ -184,7 +205,6 @@ export class ReportNotificationsService {
       return;
     }
 
-    
     // ✅ UNDER_CLIENT_PRELIMINARY_REVIEW (lab -> client)
     if (newStatus === 'UNDER_CLIENT_PRELIMINARY_REVIEW') {
       await notifyClient(

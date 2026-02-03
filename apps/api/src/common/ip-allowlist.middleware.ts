@@ -26,14 +26,14 @@ export class IpAllowlistMiddleware implements NestMiddleware {
       .filter(Boolean);
 
     // 🔎 DEBUG LOGS (VERY IMPORTANT)
-    console.log("[IP_ALLOWLIST]", {
-      enabled,
-      ip,
-      allow,
-      cf: req.headers["cf-connecting-ip"],
-      xff: req.headers["x-forwarded-for"],
-      path: req.originalUrl,
-    });
+    // console.log("[IP_ALLOWLIST]", {
+    //   enabled,
+    //   ip,
+    //   allow,
+    //   cf: req.headers["cf-connecting-ip"],
+    //   xff: req.headers["x-forwarded-for"],
+    //   path: req.originalUrl,
+    // });
 
     // 🚪 If not enabled → allow everything
     if (!enabled) return next();

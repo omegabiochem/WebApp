@@ -27,7 +27,7 @@ model Report {
   microMixWater            MicroMixWaterDetails?
   
   statusHistory            StatusHistory[]
-    version                  Int                        @default(1)
+  version                  Int                       @default(1)
 }
  
 model MicroMixDetails {
@@ -141,11 +141,18 @@ model User {
   lastActivityAt        DateTime?        @db.Timestamp(6)
   auditTrails           AuditTrail[]
   readings              BalanceReading[]
+
+
+ // ✅ notification toggles
+  emailNotificationsEnabled Boolean @default(true)
+
+  @@index([clientCode, role])
 }
 
 model ClientSequence {
   clientCode String @id
   lastNumber Int    @default(0)
+
 }
 
 model LabReportSequence {
@@ -527,7 +534,40 @@ model MessageThreadRead {
 
 
 
+enum ClientNotifyMode {
+  USERS_ONLY
+  CUSTOM_ONLY
+  USERS_PLUS_CUSTOM
+}
 
+model ClientNotificationConfig {
+  clientCode String @id
+  mode       ClientNotifyMode @default(USERS_PLUS_CUSTOM)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  emails     ClientNotificationEmail[]
+
+  @@index([mode])
+}
+
+model ClientNotificationEmail {
+  id         String @id @default(cuid())
+  clientCode String
+
+  email      String
+  label      String?
+  active     Boolean @default(true)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  config     ClientNotificationConfig @relation(fields: [clientCode], references: [clientCode], onDelete: Cascade)
+
+  @@unique([clientCode, email])
+  @@index([clientCode, active])
+}
 
 
 
