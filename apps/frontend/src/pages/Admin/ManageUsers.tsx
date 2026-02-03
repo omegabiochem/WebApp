@@ -153,11 +153,11 @@ type EmailRow = {
   active: boolean;
 };
 
-type ClientNotifConfig = {
-  clientCode: string;
-  mode: Mode;
-  emails: EmailRow[];
-};
+// type ClientNotifConfig = {
+//   clientCode: string;
+//   mode: Mode;
+//   emails: EmailRow[];
+// };
 
 function upsertEmail(list: EmailRow[], row: EmailRow) {
   const idx = list.findIndex((x) => x.id === row.id);
@@ -247,16 +247,16 @@ export default function UsersAdmin() {
   const [copied, setCopied] = useState(false);
 
   /* -------------------- notifications state -------------------- */
-  const [notifClientCode, setNotifClientCode] = useState("");
-  const [notifLoading, setNotifLoading] = useState(false);
-  const [cfg, setCfg] = useState<ClientNotifConfig | null>(null);
-  const [newEmail, setNewEmail] = useState("");
-  const [newLabel, setNewLabel] = useState("");
+  //   const [notifClientCode, setNotifClientCode] = useState("");
+  //   const [notifLoading, setNotifLoading] = useState(false);
+  //   const [cfg, setCfg] = useState<ClientNotifConfig | null>(null);
+  //   const [newEmail, setNewEmail] = useState("");
+  //   const [newLabel, setNewLabel] = useState("");
 
-  const canLoadNotif = useMemo(
-    () => notifClientCode.trim().length > 0,
-    [notifClientCode],
-  );
+  //   const canLoadNotif = useMemo(
+  //     () => notifClientCode.trim().length > 0,
+  //     [notifClientCode],
+  //   );
 
   /* -------------------- debounce search -------------------- */
   const [qDebounced, setQDebounced] = useState(q);
@@ -418,98 +418,98 @@ export default function UsersAdmin() {
 
   /* -------------------- notifications actions -------------------- */
 
-  async function loadNotif() {
-    const code = notifClientCode.trim();
-    if (!code) return;
-    setNotifLoading(true);
-    try {
-      const res = await api<ClientNotifConfig>(
-        `/client-notifications/${encodeURIComponent(code)}`,
-      );
-      setCfg(res);
-      toast.success("Loaded");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to load");
-    } finally {
-      setNotifLoading(false);
-    }
-  }
+  //   async function loadNotif() {
+  //     const code = notifClientCode.trim();
+  //     if (!code) return;
+  //     setNotifLoading(true);
+  //     try {
+  //       const res = await api<ClientNotifConfig>(
+  //         `/client-notifications/${encodeURIComponent(code)}`,
+  //       );
+  //       setCfg(res);
+  //       toast.success("Loaded");
+  //     } catch (e: any) {
+  //       toast.error(e?.message || "Failed to load");
+  //     } finally {
+  //       setNotifLoading(false);
+  //     }
+  //   }
 
-  async function setMode(mode: Mode) {
-    if (!cfg) return;
-    try {
-      await api(
-        `/client-notifications/${encodeURIComponent(cfg.clientCode)}/mode`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ mode }),
-        },
-      );
-      toast.success("Mode updated");
-      setCfg({ ...cfg, mode });
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to update mode");
-    }
-  }
+  //   async function setMode(mode: Mode) {
+  //     if (!cfg) return;
+  //     try {
+  //       await api(
+  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/mode`,
+  //         {
+  //           method: "PATCH",
+  //           body: JSON.stringify({ mode }),
+  //         },
+  //       );
+  //       toast.success("Mode updated");
+  //       setCfg({ ...cfg, mode });
+  //     } catch (e: any) {
+  //       toast.error(e?.message || "Failed to update mode");
+  //     }
+  //   }
 
-  async function addEmail() {
-    if (!cfg) return;
-    const email = newEmail.trim().toLowerCase();
-    if (!email || !email.includes("@")) {
-      toast.error("Enter a valid email");
-      return;
-    }
-    try {
-      const row = await api<EmailRow>(
-        `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            email,
-            label: newLabel.trim() || undefined,
-          }),
-        },
-      );
-      toast.success("Email added");
-      setCfg({ ...cfg, emails: upsertEmail(cfg.emails, row) });
-      setNewEmail("");
-      setNewLabel("");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to add email");
-    }
-  }
+  //   async function addEmail() {
+  //     if (!cfg) return;
+  //     const email = newEmail.trim().toLowerCase();
+  //     if (!email || !email.includes("@")) {
+  //       toast.error("Enter a valid email");
+  //       return;
+  //     }
+  //     try {
+  //       const row = await api<EmailRow>(
+  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails`,
+  //         {
+  //           method: "POST",
+  //           body: JSON.stringify({
+  //             email,
+  //             label: newLabel.trim() || undefined,
+  //           }),
+  //         },
+  //       );
+  //       toast.success("Email added");
+  //       setCfg({ ...cfg, emails: upsertEmail(cfg.emails, row) });
+  //       setNewEmail("");
+  //       setNewLabel("");
+  //     } catch (e: any) {
+  //       toast.error(e?.message || "Failed to add email");
+  //     }
+  //   }
 
-  async function toggleEmail(row: EmailRow, active: boolean) {
-    if (!cfg) return;
-    try {
-      const updated = await api<EmailRow>(
-        `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
-        { method: "PATCH", body: JSON.stringify({ active }) },
-      );
-      setCfg({
-        ...cfg,
-        emails: cfg.emails.map((e) => (e.id === updated.id ? updated : e)),
-      });
-      toast.success("Updated");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to update email");
-    }
-  }
+  //   async function toggleEmail(row: EmailRow, active: boolean) {
+  //     if (!cfg) return;
+  //     try {
+  //       const updated = await api<EmailRow>(
+  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
+  //         { method: "PATCH", body: JSON.stringify({ active }) },
+  //       );
+  //       setCfg({
+  //         ...cfg,
+  //         emails: cfg.emails.map((e) => (e.id === updated.id ? updated : e)),
+  //       });
+  //       toast.success("Updated");
+  //     } catch (e: any) {
+  //       toast.error(e?.message || "Failed to update email");
+  //     }
+  //   }
 
-  async function removeEmail(row: EmailRow) {
-    if (!cfg) return;
-    if (!confirm(`Remove ${row.email}?`)) return;
-    try {
-      await api(
-        `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
-        { method: "DELETE" },
-      );
-      toast.success("Removed");
-      setCfg({ ...cfg, emails: cfg.emails.filter((e) => e.id !== row.id) });
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to remove");
-    }
-  }
+  //   async function removeEmail(row: EmailRow) {
+  //     if (!cfg) return;
+  //     if (!confirm(`Remove ${row.email}?`)) return;
+  //     try {
+  //       await api(
+  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
+  //         { method: "DELETE" },
+  //       );
+  //       toast.success("Removed");
+  //       setCfg({ ...cfg, emails: cfg.emails.filter((e) => e.id !== row.id) });
+  //     } catch (e: any) {
+  //       toast.error(e?.message || "Failed to remove");
+  //     }
+  //   }
 
   if (!user) return <p>Please log in.</p>;
   if (!isAdmin) return <p>You do not have access to this page.</p>;
