@@ -36,7 +36,37 @@ import {
   Settings2,
 } from "lucide-react";
 
-/* -------------------- shared helpers -------------------- */
+/* -------------------- helpers -------------------- */
+
+function cx(...classes: Array<string | false | undefined | null>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const btnBase =
+  "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition " +
+  "disabled:opacity-50 disabled:cursor-not-allowed " +
+  "focus:outline-none focus:ring-2 focus:ring-indigo-200";
+
+const btn = {
+  primary: cx(btnBase, "bg-indigo-600 text-white hover:bg-indigo-500"),
+  neutral: cx(btnBase, "bg-slate-900 text-white hover:bg-slate-800"),
+  outline: cx(
+    btnBase,
+    "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+  ),
+  success: cx(btnBase, "bg-emerald-600 text-white hover:bg-emerald-500"),
+  warning: cx(btnBase, "bg-amber-500 text-white hover:bg-amber-400"),
+  danger: cx(btnBase, "bg-rose-600 text-white hover:bg-rose-500"),
+};
+
+const card = "rounded-xl border border-slate-200 bg-white shadow-sm";
+const cardHeader = "px-4 py-3 border-b border-slate-200 bg-white";
+
+const inputBase =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 " +
+  "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300";
+
+/* -------------------- roles -------------------- */
 
 const roleOptions: (Role | "ALL")[] = [
   "ALL",
@@ -72,7 +102,7 @@ function rolePillClass(role: Role) {
     case "ADMIN":
       return "bg-indigo-50 text-indigo-700 ring-indigo-200";
     case "QA":
-      return "bg-amber-50 text-amber-700 ring-amber-200";
+      return "bg-amber-50 text-amber-800 ring-amber-200";
     case "MICRO":
       return "bg-sky-50 text-sky-700 ring-sky-200";
     case "CHEMISTRY":
@@ -87,12 +117,8 @@ function rolePillClass(role: Role) {
 
 function statusPill(active: boolean) {
   return active
-    ? "bg-green-50 text-green-700 ring-green-200"
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
     : "bg-rose-50 text-rose-700 ring-rose-200";
-}
-
-function cx(...classes: Array<string | false | undefined | null>) {
-  return classes.filter(Boolean).join(" ");
 }
 
 /* -------------------- Create user schema -------------------- */
@@ -105,6 +131,8 @@ const createSchema = z
       .refine(
         (val) => {
           const v = val.toLowerCase();
+          // Keeping your original intent + message:
+          // If you truly want gmail.com, use v.endsWith("@gmail.com") instead.
           return v.endsWith(".com") || v.endsWith("@omegabiochemlab.com");
         },
         { message: "Allowed domains: gmail.com or omegabiochemlab.com" },
@@ -142,7 +170,7 @@ const createSchema = z
 
 type CreateFormData = z.infer<typeof createSchema>;
 
-/* -------------------- Client Notifications types -------------------- */
+/* -------------------- Notifications types + helpers -------------------- */
 
 type Mode = "USERS_ONLY" | "CUSTOM_ONLY" | "USERS_PLUS_CUSTOM";
 
@@ -152,12 +180,6 @@ type EmailRow = {
   label?: string | null;
   active: boolean;
 };
-
-// type ClientNotifConfig = {
-//   clientCode: string;
-//   mode: Mode;
-//   emails: EmailRow[];
-// };
 
 function upsertEmail(list: EmailRow[], row: EmailRow) {
   const idx = list.findIndex((x) => x.id === row.id);
@@ -184,9 +206,9 @@ function ModeButton({
   return (
     <button
       className={cx(
-        "rounded-lg px-3 py-2 border text-sm font-semibold transition",
+        "rounded-lg px-3 py-2 border text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
         active
-          ? "bg-slate-900 text-white border-slate-900"
+          ? "bg-indigo-600 text-white border-indigo-600"
           : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
       )}
       onClick={() => onClick(value)}
@@ -197,7 +219,7 @@ function ModeButton({
   );
 }
 
-/* -------------------- Component -------------------- */
+/* ==================== MAIN COMPONENT ==================== */
 
 export default function UsersAdmin() {
   const { user } = useAuth();
@@ -227,7 +249,7 @@ export default function UsersAdmin() {
   const [role, setRole] = useState<Role | "ALL">("ALL");
   const [active, setActive] = useState<"ALL" | "TRUE" | "FALSE">("ALL");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(50);
 
   /* -------------------- manage data -------------------- */
   const [loading, setLoading] = useState(false);
@@ -245,18 +267,6 @@ export default function UsersAdmin() {
   const [pwUserLabel, setPwUserLabel] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [copied, setCopied] = useState(false);
-
-  /* -------------------- notifications state -------------------- */
-  //   const [notifClientCode, setNotifClientCode] = useState("");
-  //   const [notifLoading, setNotifLoading] = useState(false);
-  //   const [cfg, setCfg] = useState<ClientNotifConfig | null>(null);
-  //   const [newEmail, setNewEmail] = useState("");
-  //   const [newLabel, setNewLabel] = useState("");
-
-  //   const canLoadNotif = useMemo(
-  //     () => notifClientCode.trim().length > 0,
-  //     [notifClientCode],
-  //   );
 
   /* -------------------- debounce search -------------------- */
   const [qDebounced, setQDebounced] = useState(q);
@@ -416,106 +426,12 @@ export default function UsersAdmin() {
     setPageSize(20);
   };
 
-  /* -------------------- notifications actions -------------------- */
-
-  //   async function loadNotif() {
-  //     const code = notifClientCode.trim();
-  //     if (!code) return;
-  //     setNotifLoading(true);
-  //     try {
-  //       const res = await api<ClientNotifConfig>(
-  //         `/client-notifications/${encodeURIComponent(code)}`,
-  //       );
-  //       setCfg(res);
-  //       toast.success("Loaded");
-  //     } catch (e: any) {
-  //       toast.error(e?.message || "Failed to load");
-  //     } finally {
-  //       setNotifLoading(false);
-  //     }
-  //   }
-
-  //   async function setMode(mode: Mode) {
-  //     if (!cfg) return;
-  //     try {
-  //       await api(
-  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/mode`,
-  //         {
-  //           method: "PATCH",
-  //           body: JSON.stringify({ mode }),
-  //         },
-  //       );
-  //       toast.success("Mode updated");
-  //       setCfg({ ...cfg, mode });
-  //     } catch (e: any) {
-  //       toast.error(e?.message || "Failed to update mode");
-  //     }
-  //   }
-
-  //   async function addEmail() {
-  //     if (!cfg) return;
-  //     const email = newEmail.trim().toLowerCase();
-  //     if (!email || !email.includes("@")) {
-  //       toast.error("Enter a valid email");
-  //       return;
-  //     }
-  //     try {
-  //       const row = await api<EmailRow>(
-  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails`,
-  //         {
-  //           method: "POST",
-  //           body: JSON.stringify({
-  //             email,
-  //             label: newLabel.trim() || undefined,
-  //           }),
-  //         },
-  //       );
-  //       toast.success("Email added");
-  //       setCfg({ ...cfg, emails: upsertEmail(cfg.emails, row) });
-  //       setNewEmail("");
-  //       setNewLabel("");
-  //     } catch (e: any) {
-  //       toast.error(e?.message || "Failed to add email");
-  //     }
-  //   }
-
-  //   async function toggleEmail(row: EmailRow, active: boolean) {
-  //     if (!cfg) return;
-  //     try {
-  //       const updated = await api<EmailRow>(
-  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
-  //         { method: "PATCH", body: JSON.stringify({ active }) },
-  //       );
-  //       setCfg({
-  //         ...cfg,
-  //         emails: cfg.emails.map((e) => (e.id === updated.id ? updated : e)),
-  //       });
-  //       toast.success("Updated");
-  //     } catch (e: any) {
-  //       toast.error(e?.message || "Failed to update email");
-  //     }
-  //   }
-
-  //   async function removeEmail(row: EmailRow) {
-  //     if (!cfg) return;
-  //     if (!confirm(`Remove ${row.email}?`)) return;
-  //     try {
-  //       await api(
-  //         `/client-notifications/${encodeURIComponent(cfg.clientCode)}/emails/${row.id}`,
-  //         { method: "DELETE" },
-  //       );
-  //       toast.success("Removed");
-  //       setCfg({ ...cfg, emails: cfg.emails.filter((e) => e.id !== row.id) });
-  //     } catch (e: any) {
-  //       toast.error(e?.message || "Failed to remove");
-  //     }
-  //   }
-
-  if (!user) return <p>Please log in.</p>;
-  if (!isAdmin) return <p>You do not have access to this page.</p>;
+  if (!user) return <p className="p-6 text-slate-700">Please log in.</p>;
+  if (!isAdmin)
+    return <p className="p-6 text-slate-700">You do not have access to this page.</p>;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-slate-50 text-slate-900 min-h-[calc(100vh-64px)]">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
         <div>
@@ -531,11 +447,12 @@ export default function UsersAdmin() {
           <button
             onClick={() => setTab("USERS")}
             className={cx(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
               tab === "USERS"
-                ? "bg-slate-900 text-white border-slate-900"
+                ? "bg-indigo-600 text-white border-indigo-600"
                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
             )}
+            type="button"
           >
             <Users size={16} />
             Users
@@ -544,11 +461,12 @@ export default function UsersAdmin() {
           <button
             onClick={() => setTab("NOTIFICATIONS")}
             className={cx(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
               tab === "NOTIFICATIONS"
-                ? "bg-slate-900 text-white border-slate-900"
+                ? "bg-indigo-600 text-white border-indigo-600"
                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
             )}
+            type="button"
           >
             <Bell size={16} />
             Notifications
@@ -560,18 +478,14 @@ export default function UsersAdmin() {
       {tab === "USERS" && (
         <>
           {/* Create user card */}
-          <div className="rounded-xl border bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className={cx(card, "overflow-hidden")}>
+            <div className={cx(cardHeader, "flex items-center justify-between")}>
               <div className="flex items-center gap-2">
-                <Plus size={18} className="text-slate-700" />
-                <div className="font-semibold text-slate-900">
-                  Create account
-                </div>
+                <Plus size={18} className="text-slate-600" />
+                <div className="font-semibold text-slate-900">Create account</div>
               </div>
-              <button
-                onClick={loadUsers}
-                className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
+
+              <button onClick={loadUsers} className={btn.outline} type="button">
                 <RefreshCw size={16} />
                 Refresh
               </button>
@@ -582,11 +496,9 @@ export default function UsersAdmin() {
               className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3"
             >
               <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Email
-                </label>
+                <label className="block text-xs text-slate-600 mb-1">Email</label>
                 <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                  className={inputBase}
                   {...register("email")}
                   placeholder="user@omegabiochemlab.com"
                 />
@@ -602,18 +514,16 @@ export default function UsersAdmin() {
                   Name (optional)
                 </label>
                 <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                  className={inputBase}
                   {...register("name")}
                   placeholder="Jane Doe"
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  User ID
-                </label>
+                <label className="block text-xs text-slate-600 mb-1">User ID</label>
                 <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                  className={inputBase}
                   {...register("userId")}
                   placeholder="frontdesk01"
                 />
@@ -628,11 +538,9 @@ export default function UsersAdmin() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Role
-                </label>
+                <label className="block text-xs text-slate-600 mb-1">Role</label>
                 <select
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                  className={cx(inputBase, "cursor-pointer")}
                   {...register("role")}
                 >
                   {roles.map((r) => (
@@ -654,7 +562,7 @@ export default function UsersAdmin() {
                     Client Code
                   </label>
                   <input
-                    className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                    className={inputBase}
                     {...register("clientCode")}
                     placeholder="ABC"
                   />
@@ -667,10 +575,7 @@ export default function UsersAdmin() {
               )}
 
               <div className="md:col-span-2 flex justify-end pt-1">
-                <button
-                  disabled={creating}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
-                >
+                <button disabled={creating} className={btn.primary} type="submit">
                   {creating ? "Creating..." : "Create account"}
                 </button>
               </div>
@@ -679,33 +584,27 @@ export default function UsersAdmin() {
 
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="rounded-xl border bg-white p-4">
+            <div className={cx(card, "p-4")}>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-slate-600">Total results</div>
                 <Users size={18} className="text-slate-500" />
               </div>
-              <div className="mt-2 text-2xl font-semibold text-slate-900">
-                {total}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                Filtered results
-              </div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">{total}</div>
+              <div className="mt-1 text-xs text-slate-500">Filtered results</div>
             </div>
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={cx(card, "p-4")}>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-slate-600">Active</div>
-                <Shield size={18} className="text-green-600" />
+                <Shield size={18} className="text-emerald-600" />
               </div>
               <div className="mt-2 text-2xl font-semibold text-slate-900">
                 {stats.activeCount}
               </div>
-              <div className="mt-1 text-xs text-slate-500">
-                Enabled in current page
-              </div>
+              <div className="mt-1 text-xs text-slate-500">Enabled in current page</div>
             </div>
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={cx(card, "p-4")}>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-slate-600">Disabled</div>
                 <UserX size={18} className="text-rose-600" />
@@ -716,11 +615,9 @@ export default function UsersAdmin() {
               <div className="mt-1 text-xs text-slate-500">Cannot login</div>
             </div>
 
-            <div className="rounded-xl border bg-white p-4">
+            <div className={cx(card, "p-4")}>
               <div className="flex items-center justify-between">
-                <div className="text-sm text-slate-600">
-                  Must change password
-                </div>
+                <div className="text-sm text-slate-600">Must change password</div>
                 <KeyRound size={18} className="text-amber-600" />
               </div>
               <div className="mt-2 text-2xl font-semibold text-slate-900">
@@ -731,11 +628,11 @@ export default function UsersAdmin() {
           </div>
 
           {/* Filters */}
-          <div className="rounded-xl border bg-white p-4">
+          <div className={cx(card, "p-4")}>
             <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
               <div className="flex-1">
                 <label className="text-xs text-slate-600">Search</label>
-                <div className="mt-1 flex items-center gap-2 rounded-lg border bg-white px-3 py-2">
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <Search size={16} className="text-slate-400" />
                   <input
                     value={q}
@@ -743,7 +640,7 @@ export default function UsersAdmin() {
                       setQ(e.target.value);
                       setPage(1);
                     }}
-                    className="w-full outline-none text-sm"
+                    className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
                     placeholder="Search by email, name, userId..."
                   />
                 </div>
@@ -758,7 +655,7 @@ export default function UsersAdmin() {
                       setRole(e.target.value as any);
                       setPage(1);
                     }}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                    className={cx(inputBase, "mt-1 cursor-pointer")}
                   >
                     {roleOptions.map((r) => (
                       <option key={r} value={r}>
@@ -776,7 +673,7 @@ export default function UsersAdmin() {
                       setActive(e.target.value as any);
                       setPage(1);
                     }}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                    className={cx(inputBase, "mt-1 cursor-pointer")}
                   >
                     <option value="ALL">ALL</option>
                     <option value="TRUE">TRUE</option>
@@ -792,7 +689,7 @@ export default function UsersAdmin() {
                       setPageSize(Number(e.target.value));
                       setPage(1);
                     }}
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                    className={cx(inputBase, "mt-1 cursor-pointer")}
                   >
                     {[10, 20, 50, 100].map((n) => (
                       <option key={n} value={n}>
@@ -805,7 +702,7 @@ export default function UsersAdmin() {
                 <div className="flex items-end">
                   <button
                     onClick={resetFilters}
-                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-2"
+                    className={cx(btn.outline, "w-full")}
                     type="button"
                   >
                     <Settings2 size={16} />
@@ -816,79 +713,56 @@ export default function UsersAdmin() {
             </div>
           </div>
 
-          {/* Table */}
-          <div className="rounded-xl border bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="text-sm text-slate-700">
-                Showing <span className="font-medium">{items.length}</span> of{" "}
-                <span className="font-medium">{total}</span>
+          {/* Users list — NO horizontal scroll (grid rows + mobile cards) */}
+          <div className={cx(card, "overflow-hidden")}>
+            <div className={cx(cardHeader, "flex items-center justify-between")}>
+              <div className="text-sm text-slate-600">
+                Showing <span className="font-semibold text-slate-900">{items.length}</span>{" "}
+                of <span className="font-semibold text-slate-900">{total}</span>
               </div>
-              {loading && (
-                <div className="text-xs text-slate-500">Loading…</div>
-              )}
+              {loading && <div className="text-xs text-slate-500">Loading…</div>}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-[1200px] w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-slate-700 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium">User</th>
-                    <th className="text-left px-4 py-3 font-medium">Role</th>
-                    <th className="text-left px-4 py-3 font-medium">Client</th>
-                    <th className="text-left px-4 py-3 font-medium">Status</th>
-                    <th className="text-left px-4 py-3 font-medium">
-                      Last login
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium">
-                      Last activity
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium">
-                      Active reports
-                    </th>
-                    <th className="text-right px-4 py-3 font-medium">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
+            <div className="p-3">
+              {/* Desktop header row */}
+              <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
+                <div>User</div>
+                <div>Role</div>
+                <div>Client</div>
+                <div>Status</div>
+                <div>Last login</div>
+                <div>Last activity</div>
+                <div>Reports</div>
+                <div className="text-right">Actions</div>
+              </div>
 
-                <tbody className="divide-y">
-                  {!loading && items.length === 0 ? (
-                    <tr>
-                      <td
-                        className="px-4 py-10 text-center text-slate-500"
-                        colSpan={8}
-                      >
-                        No users found.
-                      </td>
-                    </tr>
-                  ) : (
-                    items.map((u, idx) => (
-                      <tr
-                        key={u.id}
-                        className={cx(
-                          idx % 2 === 0 && "bg-white",
-                          idx % 2 === 1 && "bg-slate-50/40",
-                        )}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-900">
-                            {u.name ?? "—"}
-                          </div>
-                          <div className="text-slate-600">{u.email}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            <span className="font-medium">User ID:</span>{" "}
+              {!loading && items.length === 0 ? (
+                <div className="px-3 py-10 text-center text-slate-500">
+                  No users found.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200">
+                  {items.map((u) => (
+                    <div key={u.id} className="py-3">
+                      {/* Desktop row */}
+                      <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 items-start px-3">
+                        <div>
+                          <div className="font-semibold text-slate-900">{u.name ?? "—"}</div>
+                          <div className="text-slate-700">{u.email}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            <span className="font-medium text-slate-700">User ID:</span>{" "}
                             {u.userId ?? "—"} •{" "}
-                            <span className="font-medium">Created:</span>{" "}
+                            <span className="font-medium text-slate-700">Created:</span>{" "}
                             {fmtDate(u.createdAt)}
                           </div>
                           {u.mustChangePassword && (
-                            <div className="mt-1 text-xs inline-flex items-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-2 py-0.5">
+                            <div className="mt-2 inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
                               Must change password
                             </div>
                           )}
-                        </td>
+                        </div>
 
-                        <td className="px-4 py-3">
+                        <div>
                           <span
                             className={cx(
                               "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
@@ -897,13 +771,11 @@ export default function UsersAdmin() {
                           >
                             {u.role}
                           </span>
-                        </td>
+                        </div>
 
-                        <td className="px-4 py-3 text-slate-700">
-                          {u.clientCode ?? "—"}
-                        </td>
+                        <div className="text-slate-900">{u.clientCode ?? "—"}</div>
 
-                        <td className="px-4 py-3">
+                        <div>
                           <span
                             className={cx(
                               "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
@@ -912,68 +784,159 @@ export default function UsersAdmin() {
                           >
                             {u.active ? "ACTIVE" : "DISABLED"}
                           </span>
-                        </td>
+                        </div>
 
-                        <td className="px-4 py-3 text-slate-700">
-                          {fmtDate(u.lastLoginAt)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">
-                          {fmtDate(u.lastActivityAt)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">
-                          {u.activeReportCount ?? "—"}
-                        </td>
+                        <div className="text-slate-900">{fmtDate(u.lastLoginAt)}</div>
+                        <div className="text-slate-900">{fmtDate(u.lastActivityAt)}</div>
+                        <div className="text-slate-900">{u.activeReportCount ?? "—"}</div>
 
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              className="rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={() => openManage(u)}
-                              type="button"
-                            >
-                              Manage
-                            </button>
-                            <button
-                              className="rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={() => toggleActive(u)}
-                              type="button"
-                            >
-                              {u.active ? "Disable" : "Enable"}
-                            </button>
-                            <button
-                              className="rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={() => doResetPassword(u)}
-                              type="button"
-                            >
-                              Reset PW
-                            </button>
-                            <button
-                              className="rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={() => doForceSignout(u)}
-                              type="button"
-                              title="Force signout (increments passwordVersion)"
-                            >
-                              Signout
-                            </button>
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          <button
+                            className={btn.outline}
+                            onClick={() => openManage(u)}
+                            type="button"
+                          >
+                            Manage
+                          </button>
+                          <button
+                            className={u.active ? btn.warning : btn.success}
+                            onClick={() => toggleActive(u)}
+                            type="button"
+                          >
+                            {u.active ? "Disable" : "Enable"}
+                          </button>
+                          <button
+                            className={btn.neutral}
+                            onClick={() => doResetPassword(u)}
+                            type="button"
+                          >
+                            Reset PW
+                          </button>
+                          <button
+                            className={btn.danger}
+                            onClick={() => doForceSignout(u)}
+                            type="button"
+                            title="Force signout (increments passwordVersion)"
+                          >
+                            Signout
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Mobile / Tablet card */}
+                      <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-900">{u.name ?? "—"}</div>
+                            <div className="text-slate-700 text-sm">{u.email}</div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              User ID:{" "}
+                              <span className="font-medium text-slate-900">
+                                {u.userId ?? "—"}
+                              </span>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+
+                          <div className="flex flex-col items-end gap-2">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                statusPill(u.active),
+                              )}
+                            >
+                              {u.active ? "ACTIVE" : "DISABLED"}
+                            </span>
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                rolePillClass(u.role),
+                              )}
+                            >
+                              {u.role}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="text-slate-500">
+                            Client
+                            <div className="text-slate-900 font-medium">
+                              {u.clientCode ?? "—"}
+                            </div>
+                          </div>
+                          <div className="text-slate-500">
+                            Reports
+                            <div className="text-slate-900 font-medium">
+                              {u.activeReportCount ?? "—"}
+                            </div>
+                          </div>
+                          <div className="text-slate-500">
+                            Last login
+                            <div className="text-slate-900 font-medium">
+                              {fmtDate(u.lastLoginAt)}
+                            </div>
+                          </div>
+                          <div className="text-slate-500">
+                            Last activity
+                            <div className="text-slate-900 font-medium">
+                              {fmtDate(u.lastActivityAt)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {u.mustChangePassword && (
+                          <div className="inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
+                            Must change password
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 flex-wrap pt-1">
+                          <button
+                            className={btn.outline}
+                            onClick={() => openManage(u)}
+                            type="button"
+                          >
+                            Manage
+                          </button>
+                          <button
+                            className={u.active ? btn.warning : btn.success}
+                            onClick={() => toggleActive(u)}
+                            type="button"
+                          >
+                            {u.active ? "Disable" : "Enable"}
+                          </button>
+                          <button
+                            className={btn.neutral}
+                            onClick={() => doResetPassword(u)}
+                            type="button"
+                          >
+                            Reset PW
+                          </button>
+                          <button
+                            className={btn.danger}
+                            onClick={() => doForceSignout(u)}
+                            type="button"
+                          >
+                            Signout
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Pagination */}
-            <div className="px-4 py-3 border-t flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+            <div className="px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
               <div className="text-slate-600">
-                Page <span className="font-medium">{page}</span> of{" "}
-                <span className="font-medium">{totalPages}</span>
+                Page <span className="font-semibold text-slate-900">{page}</span>{" "}
+                of <span className="font-semibold text-slate-900">{totalPages}</span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className={btn.outline}
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   type="button"
@@ -981,7 +944,7 @@ export default function UsersAdmin() {
                   Prev
                 </button>
                 <button
-                  className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className={btn.outline}
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   type="button"
@@ -1004,26 +967,25 @@ export default function UsersAdmin() {
         title="Account Created"
       >
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">
-            Give these credentials securely:
-          </p>
+          <p className="text-sm text-slate-600">Give these credentials securely:</p>
 
-          <div className="rounded-xl border bg-slate-50 p-4 text-sm space-y-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
             <div>
-              <span className="font-semibold">Email:</span> {createdEmail}
+              <span className="font-semibold text-slate-700">Email:</span>{" "}
+              <span className="text-slate-900">{createdEmail}</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">User ID:</span>
-              <code className="break-all">{createdUserId ?? "—"}</code>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-slate-700">User ID:</span>
+              <code className="break-all text-slate-900">{createdUserId ?? "—"}</code>
               <button
                 type="button"
                 onClick={() => copyCreate(createdUserId ?? "", "userId")}
-                className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                className={btn.outline}
               >
                 {copiedField === "userId" ? (
                   <span className="inline-flex items-center gap-1">
-                    <Check size={14} className="text-green-600" /> Copied
+                    <Check size={14} className="text-emerald-600" /> Copied
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1">
@@ -1033,17 +995,17 @@ export default function UsersAdmin() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Temporary password:</span>
-              <code className="break-all">{createdTempPassword}</code>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-slate-700">Temporary password:</span>
+              <code className="break-all text-slate-900">{createdTempPassword}</code>
               <button
                 type="button"
                 onClick={() => copyCreate(createdTempPassword, "password")}
-                className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                className={btn.outline}
               >
                 {copiedField === "password" ? (
                   <span className="inline-flex items-center gap-1">
-                    <Check size={14} className="text-green-600" /> Copied
+                    <Check size={14} className="text-emerald-600" /> Copied
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1">
@@ -1056,7 +1018,7 @@ export default function UsersAdmin() {
 
           <div className="flex justify-end pt-1">
             <button
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
+              className={btn.primary}
               onClick={() => setCreateModalOpen(false)}
               type="button"
             >
@@ -1067,31 +1029,25 @@ export default function UsersAdmin() {
       </Modal>
 
       {/* Manage user modal */}
-      <Modal
-        open={manageModalOpen}
-        onClose={() => setManageModalOpen(false)}
-        title="Manage User"
-      >
+      <Modal open={manageModalOpen} onClose={() => setManageModalOpen(false)} title="Manage User">
         {!selected ? null : (
           <div className="space-y-5">
-            <div className="rounded-xl border bg-slate-50 p-4">
-              <div className="text-lg font-semibold text-slate-900">
-                {selected.name ?? "—"}
-              </div>
-              <div className="text-sm text-slate-600">{selected.email}</div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-lg font-semibold text-slate-900">{selected.name ?? "—"}</div>
+              <div className="text-sm text-slate-700">{selected.email}</div>
               <div className="mt-1 text-xs text-slate-500">
                 User ID:{" "}
-                <span className="font-medium">{selected.userId ?? "—"}</span>
+                <span className="font-medium text-slate-900">
+                  {selected.userId ?? "—"}
+                </span>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Role
-                </label>
+                <label className="block text-xs text-slate-600 mb-1">Role</label>
                 <select
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                  className={cx(inputBase, "cursor-pointer")}
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as Role)}
                 >
@@ -1106,20 +1062,15 @@ export default function UsersAdmin() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Client Code
-                </label>
+                <label className="block text-xs text-slate-600 mb-1">Client Code</label>
                 <input
                   disabled={editRole !== "CLIENT"}
                   className={cx(
-                    "w-full rounded-lg border px-3 py-2 text-sm bg-white",
-                    editRole !== "CLIENT" &&
-                      "opacity-60 cursor-not-allowed bg-slate-50",
+                    inputBase,
+                    editRole !== "CLIENT" && "opacity-60 cursor-not-allowed bg-slate-100",
                   )}
                   value={editClientCode}
-                  onChange={(e) =>
-                    setEditClientCode(e.target.value.toUpperCase())
-                  }
+                  onChange={(e) => setEditClientCode(e.target.value.toUpperCase())}
                   placeholder={editRole === "CLIENT" ? "ABC" : "N/A"}
                 />
                 <p className="text-xs text-slate-500 mt-1">
@@ -1132,17 +1083,13 @@ export default function UsersAdmin() {
 
             <div className="flex justify-end gap-2 pt-1">
               <button
-                className="rounded-lg border bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className={btn.outline}
                 onClick={() => setManageModalOpen(false)}
                 type="button"
               >
                 Cancel
               </button>
-              <button
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
-                onClick={saveManage}
-                type="button"
-              >
+              <button className={btn.primary} onClick={saveManage} type="button">
                 Save changes
               </button>
             </div>
@@ -1151,27 +1098,18 @@ export default function UsersAdmin() {
       </Modal>
 
       {/* Reset password modal */}
-      <Modal
-        open={pwModalOpen}
-        onClose={() => setPwModalOpen(false)}
-        title="Temporary Password"
-      >
+      <Modal open={pwModalOpen} onClose={() => setPwModalOpen(false)} title="Temporary Password">
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Generated for{" "}
-            <span className="font-medium text-slate-900">{pwUserLabel}</span>
+            Generated for <span className="font-medium text-slate-900">{pwUserLabel}</span>
           </p>
 
-          <div className="rounded-xl border bg-slate-50 p-4 flex items-center justify-between gap-3">
-            <code className="text-sm break-all">{tempPassword}</code>
-            <button
-              type="button"
-              onClick={copyTemp}
-              className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            >
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-center justify-between gap-3">
+            <code className="text-sm break-all text-slate-900">{tempPassword}</code>
+            <button type="button" onClick={copyTemp} className={btn.outline}>
               {copied ? (
                 <span className="inline-flex items-center gap-2">
-                  <Check size={16} className="text-green-600" /> Copied
+                  <Check size={16} className="text-emerald-600" /> Copied
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-2">
@@ -1182,11 +1120,7 @@ export default function UsersAdmin() {
           </div>
 
           <div className="flex justify-end pt-1">
-            <button
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
-              onClick={() => setPwModalOpen(false)}
-              type="button"
-            >
+            <button className={btn.primary} onClick={() => setPwModalOpen(false)} type="button">
               Close
             </button>
           </div>
@@ -1196,14 +1130,9 @@ export default function UsersAdmin() {
   );
 }
 
+/* ==================== NOTIFICATIONS ==================== */
+
 function NotificationsAllClients() {
-  type Mode = "USERS_ONLY" | "CUSTOM_ONLY" | "USERS_PLUS_CUSTOM";
-  type EmailRow = {
-    id: string;
-    email: string;
-    label?: string | null;
-    active: boolean;
-  };
   type ClientNotifConfig = {
     clientCode: string;
     mode: Mode;
@@ -1233,14 +1162,16 @@ function NotificationsAllClients() {
   async function loadAll() {
     setLoading(true);
     try {
-      // ✅ NEW endpoint
       const res = await api<ClientNotifConfig[]>(
         `/client-notifications?q=${encodeURIComponent(q.trim())}`,
       );
       setAll(res);
 
-      // auto-select first item if none selected
-      if (!selectedCode && res.length) setSelectedCode(res[0].clientCode);
+      // keep selection stable; if it no longer exists, select first
+      setSelectedCode((prev) => {
+        if (prev && res.some((x) => x.clientCode === prev)) return prev;
+        return res[0]?.clientCode ?? null;
+      });
     } catch (e: any) {
       toast.error(e?.message || "Failed to load client notifications");
     } finally {
@@ -1248,11 +1179,9 @@ function NotificationsAllClients() {
     }
   }
 
-  // initial load (and when query changes with small debounce)
+  // initial load (and on query change with debounce)
   useEffect(() => {
-    const t = setTimeout(() => {
-      loadAll();
-    }, 250);
+    const t = setTimeout(() => loadAll(), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
@@ -1262,17 +1191,11 @@ function NotificationsAllClients() {
     try {
       await api(
         `/client-notifications/${encodeURIComponent(selected.clientCode)}/mode`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ mode }),
-        },
+        { method: "PATCH", body: JSON.stringify({ mode }) },
       );
       toast.success("Mode updated");
-
       setAll((prev) =>
-        prev.map((c) =>
-          c.clientCode === selected.clientCode ? { ...c, mode } : c,
-        ),
+        prev.map((c) => (c.clientCode === selected.clientCode ? { ...c, mode } : c)),
       );
     } catch (e: any) {
       toast.error(e?.message || "Failed to update mode");
@@ -1298,7 +1221,6 @@ function NotificationsAllClients() {
       );
 
       toast.success("Email added");
-
       setAll((prev) =>
         prev.map((c) =>
           c.clientCode === selected.clientCode
@@ -1327,9 +1249,7 @@ function NotificationsAllClients() {
           c.clientCode === selected.clientCode
             ? {
                 ...c,
-                emails: c.emails.map((e) =>
-                  e.id === updated.id ? updated : e,
-                ),
+                emails: c.emails.map((e) => (e.id === updated.id ? updated : e)),
               }
             : c,
         ),
@@ -1352,7 +1272,6 @@ function NotificationsAllClients() {
       );
 
       toast.success("Removed");
-
       setAll((prev) =>
         prev.map((c) =>
           c.clientCode === selected.clientCode
@@ -1368,30 +1287,24 @@ function NotificationsAllClients() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
       {/* LEFT: client list */}
-      <div className="lg:col-span-4 rounded-xl border bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
+      <div className={cx("lg:col-span-4", card, "overflow-hidden")}>
+        <div className={cx(cardHeader, "flex items-center justify-between")}>
           <div className="flex items-center gap-2">
-            <Bell size={18} className="text-slate-700" />
+            <Bell size={18} className="text-slate-600" />
             <div className="font-semibold text-slate-900">Clients</div>
           </div>
-          <button
-            onClick={loadAll}
-            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            type="button"
-          >
+          <button onClick={loadAll} className={btn.outline} type="button">
             <RefreshCw size={16} />
             Refresh
           </button>
         </div>
 
         <div className="p-4">
-          <label className="block text-xs text-slate-600 mb-1">
-            Search client
-          </label>
-          <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
+          <label className="block text-xs text-slate-600 mb-1">Search client</label>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <Search size={16} className="text-slate-400" />
             <input
-              className="w-full outline-none text-sm"
+              className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
               placeholder="JJL, OME..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -1399,7 +1312,7 @@ function NotificationsAllClients() {
           </div>
         </div>
 
-        <div className="border-t">
+        <div className="border-t border-slate-200">
           {loading ? (
             <div className="p-4 text-sm text-slate-500">Loading...</div>
           ) : filtered.length === 0 ? (
@@ -1416,33 +1329,33 @@ function NotificationsAllClients() {
                     key={c.clientCode}
                     onClick={() => setSelectedCode(c.clientCode)}
                     className={cx(
-                      "w-full text-left px-4 py-3 border-b hover:bg-slate-50 transition",
-                      isSel && "bg-slate-900 text-white hover:bg-slate-900",
+                      "w-full text-left px-4 py-3 border-b border-slate-200 hover:bg-slate-50 transition",
+                      isSel && "bg-indigo-50 text-slate-900 hover:bg-indigo-50",
                     )}
                     type="button"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="font-semibold tracking-wide">
+                      <div
+                        className={cx(
+                          "font-semibold tracking-wide",
+                          isSel ? "text-slate-900" : "text-slate-900",
+                        )}
+                      >
                         {c.clientCode}
                       </div>
                       <span
                         className={cx(
                           "text-xs rounded-full px-2 py-0.5 ring-1",
                           isSel
-                            ? "bg-white/10 text-white ring-white/20"
-                            : "bg-slate-50 text-slate-700 ring-slate-200",
+                            ? "bg-indigo-600 text-white ring-indigo-200"
+                            : "bg-slate-100 text-slate-700 ring-slate-200",
                         )}
                       >
                         {c.mode}
                       </span>
                     </div>
 
-                    <div
-                      className={cx(
-                        "mt-1 text-xs",
-                        isSel ? "text-white/80" : "text-slate-600",
-                      )}
-                    >
+                    <div className={cx("mt-1 text-xs", isSel ? "text-slate-600" : "text-slate-500")}>
                       Custom emails:{" "}
                       <span className="font-medium">
                         {activeCount}/{totalCount} active
@@ -1459,16 +1372,16 @@ function NotificationsAllClients() {
       {/* RIGHT: selected config */}
       <div className="lg:col-span-8 space-y-4">
         {!selected ? (
-          <div className="rounded-xl border bg-white p-6 text-sm text-slate-500">
+          <div className={cx(card, "p-6 text-sm text-slate-500")}>
             Select a client to manage notifications.
           </div>
         ) : (
           <>
             {/* Mode */}
-            <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cx(cardHeader, "flex items-center justify-between")}>
                 <div className="flex items-center gap-2">
-                  <Settings2 size={18} className="text-slate-700" />
+                  <Settings2 size={18} className="text-slate-600" />
                   <div className="font-semibold text-slate-900">
                     Mode — {selected.clientCode}
                   </div>
@@ -1477,56 +1390,40 @@ function NotificationsAllClients() {
 
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <ModeButton
-                    current={selected.mode}
-                    value="USERS_PLUS_CUSTOM"
-                    onClick={setMode}
-                  >
+                  <ModeButton current={selected.mode} value="USERS_PLUS_CUSTOM" onClick={setMode}>
                     Users + Custom
                   </ModeButton>
-                  <ModeButton
-                    current={selected.mode}
-                    value="CUSTOM_ONLY"
-                    onClick={setMode}
-                  >
+                  <ModeButton current={selected.mode} value="CUSTOM_ONLY" onClick={setMode}>
                     Custom only
                   </ModeButton>
-                  <ModeButton
-                    current={selected.mode}
-                    value="USERS_ONLY"
-                    onClick={setMode}
-                  >
+                  <ModeButton current={selected.mode} value="USERS_ONLY" onClick={setMode}>
                     Users only
                   </ModeButton>
                 </div>
 
                 <div className="text-xs text-slate-600">
-                  Users = CLIENT accounts. Custom = B1/B2 extra recipients. If
-                  client wants only B1/B2, choose{" "}
-                  <span className="font-semibold">CUSTOM_ONLY</span>.
+                  Users = CLIENT accounts. Custom = B1/B2 extra recipients. If client wants only
+                  B1/B2, choose{" "}
+                  <span className="font-semibold text-slate-900">CUSTOM_ONLY</span>.
                 </div>
               </div>
             </div>
 
             {/* Custom emails */}
-            <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cx(cardHeader, "flex items-center justify-between")}>
                 <div className="flex items-center gap-2">
-                  <Mail size={18} className="text-slate-700" />
-                  <div className="font-semibold text-slate-900">
-                    Custom emails
-                  </div>
+                  <Mail size={18} className="text-slate-600" />
+                  <div className="font-semibold text-slate-900">Custom emails</div>
                 </div>
               </div>
 
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">
-                      Email
-                    </label>
+                    <label className="block text-xs text-slate-600 mb-1">Email</label>
                     <input
-                      className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                      className={inputBase}
                       placeholder="ops@client.com"
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
@@ -1534,11 +1431,9 @@ function NotificationsAllClients() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">
-                      Label (optional)
-                    </label>
+                    <label className="block text-xs text-slate-600 mb-1">Label (optional)</label>
                     <input
-                      className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                      className={inputBase}
                       placeholder="B1 / B2"
                       value={newLabel}
                       onChange={(e) => setNewLabel(e.target.value)}
@@ -1546,70 +1441,53 @@ function NotificationsAllClients() {
                   </div>
 
                   <div className="flex items-end">
-                    <button
-                      className="w-full rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-600"
-                      onClick={addEmail}
-                      type="button"
-                    >
+                    <button className={cx(btn.success, "w-full")} onClick={addEmail} type="button">
                       Add
                     </button>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-xl border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-slate-700">
-                      <tr className="text-left border-b">
-                        <th className="py-2 px-3">Email</th>
-                        <th className="py-2 px-3">Label</th>
-                        <th className="py-2 px-3">Active</th>
-                        <th className="py-2 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
+                <div className="space-y-2">
+                  {selected.emails.length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                      No custom emails added.
+                    </div>
+                  ) : (
+                    selected.emails.map((row) => (
+                      <div
+                        key={row.id}
+                        className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900 break-all">{row.email}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            Label: <span className="text-slate-900">{row.label ?? "—"}</span>
+                          </div>
+                        </div>
 
-                    <tbody className="divide-y">
-                      {selected.emails.length === 0 ? (
-                        <tr>
-                          <td className="py-6 px-3 text-slate-500" colSpan={4}>
-                            No custom emails added.
-                          </td>
-                        </tr>
-                      ) : (
-                        selected.emails.map((row) => (
-                          <tr key={row.id}>
-                            <td className="py-2 px-3">{row.email}</td>
-                            <td className="py-2 px-3 text-slate-600">
-                              {row.label ?? "—"}
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="checkbox"
-                                checked={row.active}
-                                onChange={(e) =>
-                                  toggleEmail(row, e.target.checked)
-                                }
-                              />
-                            </td>
-                            <td className="py-2 px-3 text-right">
-                              <button
-                                className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
-                                onClick={() => removeEmail(row)}
-                                type="button"
-                              >
-                                <Trash2 size={14} />
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={row.active}
+                              onChange={(e) => toggleEmail(row, e.target.checked)}
+                              className="accent-indigo-600"
+                            />
+                            Active
+                          </label>
+
+                          <button className={btn.danger} onClick={() => removeEmail(row)} type="button">
+                            <Trash2 size={14} />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <div className="text-xs text-slate-600">
-                  This affects who receives status-change emails for this client
-                  code.
+                  This affects who receives status-change emails for this client code.
                 </div>
               </div>
             </div>
