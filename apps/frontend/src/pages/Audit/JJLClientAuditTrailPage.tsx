@@ -95,7 +95,7 @@ function toShort(v: unknown) {
 }
 
 function looksLikeLeafDiff(
-  obj: any
+  obj: any,
 ): { oldKey: string; newKey: string } | null {
   if (!isPlainObject(obj)) return null;
 
@@ -255,8 +255,8 @@ function DetailsCell({ details, changes }: { details: string; changes?: any }) {
   const tableJson = hasChanges
     ? parsedChanges
     : detailsIsJson
-    ? parsedDetailsJson
-    : null;
+      ? parsedDetailsJson
+      : null;
 
   const isLongText = (details || "").length > 160;
 
@@ -298,6 +298,35 @@ function DetailsCell({ details, changes }: { details: string; changes?: any }) {
       )}
     </div>
   );
+}
+
+function formatAuditTime(iso: string) {
+  const d = new Date(iso);
+
+  if (isNaN(d.getTime())) return "-";
+
+  const date = d.toLocaleDateString(); // e.g. 2/4/2026
+  const time = d.toLocaleTimeString(); // e.g. 3:41:22 PM
+
+  return `${date}\n${time}`;
+}
+
+function formatEntityIds(v: string | null | undefined) {
+  if (!v) return "-";
+
+  const t = v.trim();
+
+  // Only format if it's a comma-separated ID list (no spaces)
+  const looksLikeIdList =
+    t.includes(",") && !/\s/.test(t) && /^[a-z0-9,_-]+$/i.test(t);
+
+  if (!looksLikeIdList) return t;
+
+  return t
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .join(",\n"); // newline after each comma
 }
 
 export default function JJLClientAuditTrailPage() {
@@ -424,12 +453,12 @@ export default function JJLClientAuditTrailPage() {
   // Build entity options from current dataset (works even with pagination)
   const entityOptions = useMemo(
     () => Array.from(new Set(records.map((r) => r.entity))).sort(),
-    [records]
+    [records],
   );
 
   const actionOptions = useMemo(
     () => Array.from(new Set(records.map((r) => r.action))).sort(),
-    [records]
+    [records],
   );
 
   const clearFilters = () => {
@@ -473,7 +502,7 @@ export default function JJLClientAuditTrailPage() {
       if (!resp.ok) {
         const txt = await resp.text().catch(() => "");
         throw new Error(
-          `CSV export failed (${resp.status}): ${txt || resp.statusText}`
+          `CSV export failed (${resp.status}): ${txt || resp.statusText}`,
         );
       }
 
@@ -697,17 +726,19 @@ export default function JJLClientAuditTrailPage() {
           <tbody>
             {records.map((r) => (
               <tr key={r.id} className="border-t hover:bg-gray-50 align-top">
-                <td className="p-3 whitespace-nowrap">
-                  {new Date(r.createdAt).toLocaleString()}
+                <td className="p-3 whitespace-pre-wrap font-mono text-xs">
+                  {formatAuditTime(r.createdAt)}
                 </td>
+
                 <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
-                <td className="p-3 font-mono text-xs whitespace-nowrap">
-                  {safeText(r.entityId)}
+                <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
+                  {formatEntityIds(r.entityId)}
                 </td>
+
                 <td className="p-3 whitespace-nowrap">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
-                      r.action
+                      r.action,
                     )}`}
                   >
                     {r.action}

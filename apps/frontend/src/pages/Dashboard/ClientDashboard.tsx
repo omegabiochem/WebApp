@@ -27,6 +27,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
 
 // -----------------------------
 // Types
@@ -39,7 +40,7 @@ type Report = {
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
-  version:number;
+  version: number;
 };
 
 // A status filter can be micro OR chemistry OR "ALL"
@@ -463,10 +464,8 @@ export default function ClientDashboard() {
       : `/reports/${r.id}/status`;
 
     const body = isChemistry
-      ? { reason, status: newStatus,
-      expectedVersion: r.version, }
-      : { reason, status: newStatus,
-      expectedVersion: r.version, };
+      ? { reason, status: newStatus, expectedVersion: r.version }
+      : { reason, status: newStatus, expectedVersion: r.version };
 
     // const slug = formTypeToSlug[r.formType] || "micro-mix";
     await api(url, {
@@ -519,10 +518,21 @@ export default function ClientDashboard() {
     if (printingBulk) return; // 🚫 prevent double
     if (!selectedIds.length) return;
 
+    // ✅ AUDIT: bulk print
+    logUiEvent({
+      action: "UI_PRINT_SELECTED",
+      entity: "Report",
+      details: `Printed selected reports (${selectedIds.length})`,
+      entityId: selectedIds.join(","),
+      meta: {
+        reportIds: selectedIds,
+        count: selectedIds.length,
+      },
+    });
+
     setPrintingBulk(true);
     setIsBulkPrinting(true);
   };
-
   const selectedReportObjects = selectedIds
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
@@ -1030,11 +1040,27 @@ export default function ClientDashboard() {
                         <div className="flex items-center gap-2">
                           <button
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                            onClick={() => setSelectedReport(r)}
+                            onClick={() => {
+                              logUiEvent({
+                                action: "UI_VIEW",
+                                entity:
+                                  r.formType === "CHEMISTRY_MIX"
+                                    ? "ChemistryReport"
+                                    : "Micro Report",
+                                entityId: r.id,
+                                details: `Viewed ${r.formNumber}`,
+                                meta: {
+                                  formNumber: r.formNumber,
+                                  formType: r.formType,
+                                  status: r.status,
+                                },
+                              });
+
+                              setSelectedReport(r);
+                            }}
                           >
                             View
                           </button>
-
                           {isMicro && canUpdateThisReport(r, user) && (
                             <button
                               disabled={updatingId === r.id}
@@ -1053,7 +1079,7 @@ export default function ClientDashboard() {
                                       "Sent back to client for correction",
                                     );
                                     toast.success("Report status updated");
-                                  } 
+                                  }
                                   // else if (
                                   //   r.status ===
                                   //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
@@ -1206,6 +1232,15 @@ export default function ClientDashboard() {
                   disabled={printingSingle}
                   onClick={() => {
                     if (printingSingle) return;
+                    logUiEvent({
+                      action: "UI_PRINT_SINGLE",
+                      entity:
+                        selectedReport.formType === "CHEMISTRY_MIX"
+                          ? "ChemistryReport"
+                          : "MicroReport",
+                      entityId: selectedReport.id,
+                      details: `Printed ${selectedReport.formNumber}`,
+                    });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);
                   }}
