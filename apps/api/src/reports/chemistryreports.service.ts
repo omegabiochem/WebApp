@@ -82,9 +82,9 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY'],
+    nextEditableBy: ['CHEMISTRY', 'MC'],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
@@ -94,28 +94,28 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ['CLIENT'],
     next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
     canEdit: ['CLIENT'],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY'],
+    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['CHEMISTRY'],
+    nextEditableBy: ['CHEMISTRY', 'MC'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
@@ -131,15 +131,15 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-    nextEditableBy: ['CHEMISTRY'],
-    canEdit: ['CHEMISTRY', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
   },
   TESTING_ON_HOLD: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
@@ -149,10 +149,10 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY'],
+    canSet: ['CHEMISTRY', 'MC'],
     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['CHEMISTRY'],
-    canEdit: ['CHEMISTRY', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ['QA'],
@@ -169,7 +169,7 @@ const STATUS_TRANSITIONS: Record<
   QA_NEEDS_CORRECTION: {
     canSet: ['QA'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY'],
+    nextEditableBy: ['CHEMISTRY', 'MC'],
     canEdit: [],
   },
 
@@ -260,6 +260,17 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'formulaContent',
   ],
   MICRO: [],
+  MC: [
+    'dateReceived',
+    'sop',
+    'results',
+    'dateTested',
+    'initial',
+    'comments',
+    'testedBy',
+    'testedDate',
+    'actives',
+  ],
 };
 
 type ChangeStatusInput =
@@ -928,6 +939,7 @@ export class ChemistryReportsService {
       'FRONTDESK',
       'MICRO',
       'CHEMISTRY',
+      'MC',
       'QA',
       'ADMIN',
       'SYSTEMADMIN',

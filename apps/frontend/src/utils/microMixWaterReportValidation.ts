@@ -6,6 +6,7 @@ export type Role =
   | "ADMIN"
   | "FRONTDESK"
   | "MICRO"
+  | "MC"
   | "QA"
   | "CLIENT";
 
@@ -88,8 +89,6 @@ export type MicroMixWaterReportFormValues = {
   pathogens: PathRow[];
 };
 
-
-
 // Centralized field requirements per role (no layout impact)
 export const ROLE_FIELDS: Record<Role, string[]> = {
   SYSTEMADMIN: [],
@@ -114,6 +113,22 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   ],
   FRONTDESK: [],
   MICRO: [
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+    "tbc_spec",
+    "tmy_gram",
+    "tmy_result",
+    "tmy_spec",
+    "pathogens",
+    // "comments",
+    // "testedBy",
+    // "testedDate",
+  ],
+  MC: [
     "testSopNo",
     "dateTested",
     "preliminaryResults",
@@ -192,7 +207,7 @@ export const FINAL_STATUSES: ReportStatus[] = [
 
 /** Helper: derive MICRO phase from a status */
 export function deriveMicroPhaseFromStatus(
-  status?: ReportStatus
+  status?: ReportStatus,
 ): MicroPhase | undefined {
   if (!status) return undefined;
   if (PRELIM_STATUSES.includes(status)) return "PRELIM";
@@ -213,7 +228,7 @@ export function canEditBy(
       canEdit: Role[];
     }
   >,
-  field: string
+  field: string,
 ) {
   if (!role || !status) return false;
   const t = statusTransitions[status];
@@ -242,7 +257,7 @@ export function FieldErrorBadge({
         "absolute -top-2 right-1 text-[10px] leading-none text-red-600 bg-white px-1 rounded no-print pointer-events-none",
       title: msg,
     },
-    msg
+    msg,
   );
 }
 
@@ -280,21 +295,19 @@ export async function createCorrections(
   items: { fieldKey: string; message: string }[],
   targetStatus?: string,
   reason?: string,
-   expectedVersion?: number
-
+  expectedVersion?: number,
 ) {
- 
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason,expectedVersion }),
+    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
   });
 }
 
 export async function resolveCorrection(
   reportId: string,
   cid: string,
-  resolutionNote?: string
+  resolutionNote?: string,
 ) {
   // const res = await fetch(
   //   `${API_BASE}/reports/${reportId}/corrections/${cid}`,
@@ -343,7 +356,7 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
   const currentPhase = useMemo(
     () => opts?.phase ?? deriveMicroPhaseFromStatus(opts?.status),
-    [opts?.phase, opts?.status]
+    [opts?.phase, opts?.status],
   );
 
   // How to check emptiness using provided values
@@ -412,12 +425,12 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
           // Only enforce results for MICRO/ADMIN in FINAL
           if (
-            (role === "MICRO" || role === "ADMIN") &&
+            (role === "MICRO" || role === "MC" || role === "ADMIN") &&
             currentPhase === "FINAL"
           ) {
             const missingResult = rows.some(
               (r) =>
-                r.checked && r.result !== "Absent" && r.result !== "Present"
+                r.checked && r.result !== "Absent" && r.result !== "Present",
             );
             return missingResult;
           }
@@ -427,25 +440,25 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
           return false;
       }
     },
-    []
+    [],
   );
 
   const requiredList = useMemo(() => {
     // Base role requireds (fallback)
     const base = (ROLE_FIELDS[(role as Role) || "CLIENT"] ?? []).filter(
-      (f) => f !== "*"
+      (f) => f !== "*",
     );
 
     // 1) Absolute override wins
     if (opts?.requiredOverride) return opts.requiredOverride;
 
-    // 2) If MICRO and explicit phase was provided, use phase lists
-    if (role === "MICRO" && opts?.phase) {
+    // 2) If MICRO or MC and explicit phase was provided, use phase lists
+    if ((role === "MICRO" || role === "MC") && opts?.phase) {
       return MICRO_PHASE_FIELDS[opts.phase];
     }
 
-    // 3) If MICRO and status provided, infer phase from status
-    if (role === "MICRO" && opts?.status) {
+    // 3) If MICRO or MC and status provided, infer phase from status
+    if ((role === "MICRO" || role === "MC") && opts?.status) {
       const phase = deriveMicroPhaseFromStatus(opts.status);
       if (phase) return MICRO_PHASE_FIELDS[phase];
     }
@@ -471,7 +484,7 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
       }
       return Object.keys(next).length === 0;
     },
-    [isEmpty, requiredList]
+    [isEmpty, requiredList],
   );
 
   return { errors, clearError, validateAndSetErrors };

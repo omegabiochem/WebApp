@@ -436,7 +436,12 @@ export default function ChemistryMixReportForm({
       });
     }
 
-    if (who === "CHEMISTRY" || who === "ADMIN" || who === "QA") {
+    if (
+      who === "CHEMISTRY" ||
+      who === "MC" ||
+      who === "ADMIN" ||
+      who === "QA"
+    ) {
       rows.forEach((r, i) => {
         if (!r.checked) return;
 
@@ -794,6 +799,17 @@ export default function ChemistryMixReportForm({
             "testedDate",
             "actives",
           ],
+          MC: [
+            "dateReceived",
+            "sop",
+            "results",
+            "dateTested",
+            "initial",
+            "comments",
+            "testedBy",
+            "testedDate",
+            "actives",
+          ],
           QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
           CLIENT: [
             "client",
@@ -953,6 +969,7 @@ export default function ChemistryMixReportForm({
         if (role === "CLIENT") navigate("/clientDashboard");
         else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
         else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
+        else if (role === "MC") navigate("/mcDashboard");
         else if (role === "QA") navigate("/qaDashboard");
         else if (role === "ADMIN") navigate("/adminDashboard");
         else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
@@ -967,6 +984,7 @@ export default function ChemistryMixReportForm({
     if (role === "CLIENT") return "/clientDashboard";
     if (role === "FRONTDESK") return "/frontdeskDashboard";
     if (role === "CHEMISTRY") return "/chemistryDashboard";
+    if (role === "MC") return "/mcDashboard";
     if (role === "QA") return "/qaDashboard";
     if (role === "ADMIN") return "/adminDashboard";
     if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
@@ -2537,8 +2555,8 @@ export default function ChemistryMixReportForm({
                     navigate("/frontdeskDashboard");
                   } else if (role === "CHEMISTRY") {
                     navigate("/chemistryDashboard");
-                    // } else if (role === "CHEMISTRY") {
-                    //   navigate("/chemistryDashboard");
+                  } else if (role === "MC") {
+                    navigate("/mcDashboard");
                   } else if (role === "QA") {
                     navigate("/qaDashboard");
                   } else if (role === "ADMIN") {
