@@ -430,7 +430,10 @@ export default function ChemistryMixReportForm({
         }
 
         // ✅ OTHER must have a name if checked
-        if (r.key === "OTHER" && r.checked && !(r.otherName ?? "").trim()) {
+        const isOther = (key: string) =>
+          key === "OTHER" || key.startsWith("OTHER_");
+
+        if (isOther(r.key) && r.checked && !(r.otherName ?? "").trim()) {
           tableErr = "Please enter a name for OTHER active";
         }
       });
@@ -1814,6 +1817,8 @@ export default function ChemistryMixReportForm({
             // const kDateInit = activeCellKey(row.key, "dateTestedInitial");
             const { date, initial } = splitDateInitial(row.dateTestedInitial);
 
+            const isOther = row.key === "OTHER" || row.key.startsWith("OTHER_");
+
             return (
               <div
                 key={row.key}
@@ -1897,7 +1902,10 @@ export default function ChemistryMixReportForm({
                       setActiveChecked(idx, checked);
 
                       // ✅ If OTHER unchecked -> clear input
-                      if (row.key === "OTHER" && !checked) {
+                      const isOther =
+                        row.key === "OTHER" || row.key.startsWith("OTHER_");
+
+                      if (isOther && !checked) {
                         setActiveField(idx, { otherName: "" });
                       }
                     }}
@@ -1915,14 +1923,15 @@ export default function ChemistryMixReportForm({
 
                   {/* label + other input */}
                   <div className="flex-1">
-                    {row.key === "OTHER" ? (
+                    {isOther ? (
                       <>
-                        {/* ✅ Show "OTHER" only when unchecked */}
+                        {/* Optional: show OTHER / OTHER 2 label when unchecked */}
                         {!row.checked && (
-                          <div className="leading-tight">OTHER</div>
+                          <div className="leading-tight">
+                            {row.key === "OTHER" ? "OTHER" : "OTHER 2"}
+                          </div>
                         )}
 
-                        {/* ✅ Show ONLY input when checked (no duplicate text) */}
                         {row.checked && (
                           <input
                             className="mt-1 w-full border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
@@ -1948,7 +1957,6 @@ export default function ChemistryMixReportForm({
                         )}
                       </>
                     ) : (
-                      // ✅ Normal label for all other actives
                       <div className="leading-tight">{row.label}</div>
                     )}
                   </div>
