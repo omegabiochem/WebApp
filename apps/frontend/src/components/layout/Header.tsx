@@ -44,10 +44,18 @@ export default function Header() {
     MICRO: [
       { label: "Home", path: "/microDashboard" },
       { label: "Results", path: "/results" },
+      { label: "Login Book", path: "/microLoginBook" },
     ],
     CHEMISTRY: [
       { label: "Home", path: "/chemistryDashboard" },
       { label: "Results", path: "/results" },
+      { label: "Login Book", path: "/chemistryLoginBook" },
+    ],
+    MC: [
+      { label: "Home", path: "/mcDashboard" },
+      { label: "Results", path: "/results" },
+      { label: "Micro Login Book", path: "/microLoginBook" },
+      { label: "Chemistry Login Book", path: "/chemistryLoginBook" },
     ],
     QA: [
       { label: "Home", path: "/qaDashboard" },
@@ -111,17 +119,19 @@ export default function Header() {
                     const home =
                       role === "CHEMISTRY"
                         ? "/chemistryDashboard"
-                        : role === "MICRO"
-                          ? "/microDashboard"
-                          : role === "QA"
-                            ? "/qaDashboard"
-                            : role === "FRONTDESK"
-                              ? "/frontdeskDashboard"
-                              : role === "ADMIN"
-                                ? "/adminDashboard"
-                                : role === "SYSTEMADMIN"
-                                  ? "/systemAdminDashboard"
-                                  : "/home";
+                        : role === "MC"
+                          ? "/mcDashboard"
+                          : role === "MICRO"
+                            ? "/microDashboard"
+                            : role === "QA"
+                              ? "/qaDashboard"
+                              : role === "FRONTDESK"
+                                ? "/frontdeskDashboard"
+                                : role === "ADMIN"
+                                  ? "/adminDashboard"
+                                  : role === "SYSTEMADMIN"
+                                    ? "/systemAdminDashboard"
+                                    : "/home";
                     navigate(home, { replace: true });
                   }
                 }}

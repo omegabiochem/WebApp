@@ -12,6 +12,7 @@ type Role =
   | "ADMIN"
   | "FRONTDESK"
   | "MICRO"
+  | "MC"
   | "CHEMISTRY"
   | "QA"
   | "CLIENT";
@@ -21,6 +22,7 @@ const roleHomePath: Record<Role, string> = {
   CLIENT: "/clientDashboard",
   SYSTEMADMIN: "/systemAdminDashboard",
   MICRO: "/microDashboard",
+  MC: "/mcDashboard",
   CHEMISTRY: "/chemistryDashboard",
   QA: "/qaDashboard",
   FRONTDESK: "/frontdeskDashboard",

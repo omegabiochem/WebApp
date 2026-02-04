@@ -285,6 +285,7 @@ enum UserRole {
   CHEMISTRY
   QA
   CLIENT
+  MC
 }
 
 enum AttachmentKind {

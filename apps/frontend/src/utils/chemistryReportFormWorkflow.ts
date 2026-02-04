@@ -4,6 +4,7 @@ export type Role =
   | "ADMIN"
   | "FRONTDESK"
   | "CHEMISTRY"
+  | "MC"
   | "QA"
   | "CLIENT";
 
@@ -63,9 +64,9 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
@@ -75,28 +76,28 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["CHEMISTRY", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "CHEMISTRY"],
+    nextEditableBy: ["ADMIN", "QA", "CHEMISTRY", "MC"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_CLIENT_REVIEW", "FRONTDESK_ON_HOLD"],
-    nextEditableBy: ["CHEMISTRY"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
@@ -112,15 +113,15 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
-    nextEditableBy: ["CHEMISTRY"],
-    canEdit: ["CHEMISTRY", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
+    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
   },
   TESTING_ON_HOLD: {
-    canSet: ["CHEMISTRY"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
@@ -130,10 +131,10 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["CHEMISTRY"],
-    next: ["UNDER_RESUBMISSION_QA_REVIEW",'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ["CHEMISTRY"],
-    canEdit: ["CHEMISTRY", "ADMIN", "QA"],
+    canSet: ["CHEMISTRY", "MC"],
+    next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
+    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ["QA"],
@@ -150,7 +151,7 @@ export const STATUS_TRANSITIONS: Record<
   QA_NEEDS_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
 
@@ -256,6 +257,17 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "testedDate",
     "actives",
   ],
+  MC: [
+    "dateReceived",
+    "sop",
+    "results",
+    "dateTested",
+    "initial",
+    "comments",
+    "testedBy",
+    "testedDate",
+    "actives",
+  ],
   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
   CLIENT: [
     "client",
@@ -278,7 +290,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,
-  status?: ChemistryReportStatus
+  status?: ChemistryReportStatus,
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
@@ -288,7 +300,7 @@ export function canRoleEditInStatus(
 export function canRoleEditField(
   role: Role | undefined,
   status: ChemistryReportStatus | undefined,
-  field: string
+  field: string,
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
@@ -308,15 +320,15 @@ export function canRoleEditField(
 export function canShowChemistryUpdateButton(
   role: Role | undefined,
   status: ChemistryReportStatus | undefined,
-  fieldsToConsider?: string[]
+  fieldsToConsider?: string[],
 ): boolean {
   if (!role || !status) return false;
   if (!canRoleEditInStatus(role, status)) return false;
 
   const allow = FIELD_EDIT_MAP[role] ?? [];
   const effective = allow.includes("*")
-    ? fieldsToConsider ?? ["*"]
-    : fieldsToConsider ?? allow;
+    ? (fieldsToConsider ?? ["*"])
+    : (fieldsToConsider ?? allow);
   return (
     effective.length > 0 &&
     (allow.includes("*") || effective.some((f) => allow.includes(f)))

@@ -30,6 +30,9 @@ import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
 import ClientNotificationSettings from "./pages/Admin/ClientNotificationSettings";
 import ManageUsers from "./pages/Admin/ManageUsers";
+import MCDashboard from "./pages/Dashboard/MCDashboard";
+import ChemistryLoginBook from "./loginbooks/ChemistryLoginBook";
+import MicroLoginBook from "./loginbooks/MicroLoginBook";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -147,6 +150,17 @@ export const router = createBrowserRouter([
         ),
       },
 
+      {
+        path: "mcDashboard",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["MC", "ADMIN", "SYSTEMADMIN"]}>
+              <MCDashboard />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
       // LIMS work areas (tune roles as you prefer)
 
       {
@@ -158,6 +172,7 @@ export const router = createBrowserRouter([
                 "FRONTDESK",
                 "MICRO",
                 "CHEMISTRY",
+                "MC",
                 "QA",
                 "ADMIN",
                 "SYSTEMADMIN",
@@ -218,6 +233,7 @@ export const router = createBrowserRouter([
                 "FRONTDESK",
                 "MICRO",
                 "CHEMISTRY",
+                "MC",
                 "QA",
                 "ADMIN",
                 "SYSTEMADMIN",
@@ -239,6 +255,7 @@ export const router = createBrowserRouter([
                 "FRONTDESK",
                 "MICRO",
                 "CHEMISTRY",
+                "MC",
                 "QA",
                 "ADMIN",
                 "SYSTEMADMIN",
@@ -270,6 +287,7 @@ export const router = createBrowserRouter([
               roles={[
                 "FRONTDESK",
                 "CHEMISTRY",
+                "MC",
                 "QA",
                 "ADMIN",
                 "SYSTEMADMIN",
@@ -288,7 +306,7 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <RequireRole
-              roles={["MICRO", "FRONTDESK", "QA", "ADMIN", "SYSTEMADMIN"]}
+              roles={["MICRO", "FRONTDESK", "QA", "ADMIN", "SYSTEMADMIN", "MC"]}
             >
               <BalancePage />
             </RequireRole>
@@ -332,6 +350,7 @@ export const router = createBrowserRouter([
                 "FRONTDESK",
                 "MICRO",
                 "CHEMISTRY",
+                "MC",
                 "QA",
               ]}
             >
@@ -352,6 +371,7 @@ export const router = createBrowserRouter([
                 "FRONTDESK",
                 "MICRO",
                 "CHEMISTRY",
+                "MC",
                 "QA",
               ]}
             >
@@ -377,6 +397,28 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
               <ManageUsers />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "chemistryLoginBook",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CHEMISTRY", "MC"]}>
+              <ChemistryLoginBook />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "microLoginBook",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["MICRO", "MC"]}>
+              <MicroLoginBook />
             </RequireRole>
           </RequireAuth>
         ),
