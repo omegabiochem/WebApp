@@ -230,7 +230,9 @@ export default function UsersAdmin() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN" || user?.role === "SYSTEMADMIN";
 
-  const [tab, setTab] = useState<"USERS" | "NOTIFICATIONS">("USERS");
+  const [tab, setTab] = useState<
+    "USERS" | "NOTIFICATIONS" | "REPORTS" | "CLIENTS"
+  >("USERS");
 
   /* -------------------- create user state -------------------- */
   const {
@@ -450,7 +452,7 @@ export default function UsersAdmin() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setTab("USERS")}
             className={cx(
@@ -477,6 +479,34 @@ export default function UsersAdmin() {
           >
             <Bell size={16} />
             Notifications
+          </button>
+
+          <button
+            onClick={() => setTab("REPORTS")}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
+              tab === "REPORTS"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+            )}
+            type="button"
+          >
+            <Shield size={16} />
+            Reports
+          </button>
+
+          <button
+            onClick={() => setTab("CLIENTS")}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
+              tab === "CLIENTS"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+            )}
+            type="button"
+          >
+            <Settings2 size={16} />
+            Clients
           </button>
         </div>
       </div>
@@ -1016,6 +1046,8 @@ export default function UsersAdmin() {
 
       {/* ---------------- NOTIFICATIONS TAB ---------------- */}
       {tab === "NOTIFICATIONS" && <NotificationsAllClients />}
+      {tab === "REPORTS" && <ReportsAdminTab />}
+      {tab === "CLIENTS" && <ClientsAdminTab />}
 
       {/* Create result modal */}
       <Modal
@@ -1638,6 +1670,310 @@ function NotificationsAllClients() {
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== REPORTS TAB ==================== */
+
+function ReportsAdminTab() {
+  type AdminReportRow = {
+    id: string;
+    formType: string;
+    formNumber: string;
+    reportNumber: string | null;
+    status: string;
+    clientCode: string | null;
+    createdAt: string;
+  };
+
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<AdminReportRow[]>([]);
+
+  async function load() {
+    setLoading(true);
+    try {
+      // ✅ adjust endpoint to your backend route
+      // recommended to build an admin endpoint:
+      // GET /admin/reports?q=...
+      const res = await api<AdminReportRow[]>(
+        `/admin/reports?q=${encodeURIComponent(q.trim())}`,
+      );
+      setItems(res);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load reports");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => load(), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  return (
+    <div className="space-y-4">
+      <div className={cx(card, "overflow-hidden")}>
+        <div className={cx(cardHeader, "flex items-center justify-between")}>
+          <div className="flex items-center gap-2">
+            <Shield size={18} className="text-slate-600" />
+            <div className="font-semibold text-slate-900">Reports</div>
+          </div>
+
+          <button onClick={load} className={btn.outline} type="button">
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="p-4">
+          <label className="block text-xs text-slate-600 mb-1">
+            Search report (form/report number, client code)
+          </label>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <Search size={16} className="text-slate-400" />
+            <input
+              className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
+              placeholder="OM-2026..., JJL-2026..., clientCode..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200">
+          {loading ? (
+            <div className="p-4 text-sm text-slate-500">Loading...</div>
+          ) : items.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500">No reports found.</div>
+          ) : (
+            <div className="p-3">
+              <div className="hidden lg:grid grid-cols-[1.3fr_1fr_1fr_1fr_1fr_0.9fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
+                <div>Form Type</div>
+                <div>Client</div>
+                <div>Form #</div>
+                <div>Report #</div>
+                <div>Status</div>
+                <div>Created</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {items.map((r) => (
+                  <div key={r.id} className="py-3">
+                    <div className="hidden lg:grid grid-cols-[1.3fr_1fr_1fr_1fr_1fr_0.9fr] gap-3 items-start px-3">
+                      <div className="font-semibold text-slate-900">
+                        {r.formType}
+                      </div>
+                      <div className="text-slate-900">
+                        {r.clientCode ?? "—"}
+                      </div>
+                      <div className="text-slate-900">{r.formNumber}</div>
+                      <div className="text-slate-900">
+                        {r.reportNumber ?? "—"}
+                      </div>
+                      <div className="text-slate-900">{r.status}</div>
+                      <div className="text-slate-900">
+                        {fmtDate(r.createdAt)}
+                      </div>
+                    </div>
+
+                    {/* mobile */}
+                    <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="font-semibold text-slate-900">
+                          {r.formType}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {fmtDate(r.createdAt)}
+                        </div>
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        Client:{" "}
+                        <span className="font-medium">
+                          {r.clientCode ?? "—"}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        Form #:{" "}
+                        <span className="font-medium">{r.formNumber}</span>
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        Report #:{" "}
+                        <span className="font-medium">
+                          {r.reportNumber ?? "—"}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        Status: <span className="font-medium">{r.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-3 pt-3 text-xs text-slate-600">
+                Tip: this admin list is best backed by a dedicated endpoint that
+                unions micro + chemistry reports.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== CLIENTS TAB ==================== */
+
+function ClientsAdminTab() {
+  type ClientRow = {
+    clientCode: string;
+    totalUsers: number;
+    activeUsers: number;
+    notificationsMode?: Mode;
+    customEmails?: number;
+  };
+
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<ClientRow[]>([]);
+
+  async function load() {
+    setLoading(true);
+    try {
+      // ✅ adjust endpoint to your backend route
+      // recommended:
+      // GET /admin/clients?q=...
+      const res = await api<ClientRow[]>(
+        `/admin/clients?q=${encodeURIComponent(q.trim())}`,
+      );
+      setItems(res);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load clients");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => load(), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  return (
+    <div className="space-y-4">
+      <div className={cx(card, "overflow-hidden")}>
+        <div className={cx(cardHeader, "flex items-center justify-between")}>
+          <div className="flex items-center gap-2">
+            <Settings2 size={18} className="text-slate-600" />
+            <div className="font-semibold text-slate-900">Clients</div>
+          </div>
+
+          <button onClick={load} className={btn.outline} type="button">
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="p-4">
+          <label className="block text-xs text-slate-600 mb-1">
+            Search client code
+          </label>
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <Search size={16} className="text-slate-400" />
+            <input
+              className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
+              placeholder="JJL, TEM..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200">
+          {loading ? (
+            <div className="p-4 text-sm text-slate-500">Loading...</div>
+          ) : items.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500">No clients found.</div>
+          ) : (
+            <div className="p-3">
+              <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
+                <div>Client Code</div>
+                <div>Total Users</div>
+                <div>Active Users</div>
+                <div>Notif Mode</div>
+                <div>Custom Emails</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {items.map((c) => (
+                  <div key={c.clientCode} className="py-3">
+                    <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 items-start px-3">
+                      <div className="font-semibold text-slate-900">
+                        {c.clientCode}
+                      </div>
+                      <div className="text-slate-900">{c.totalUsers}</div>
+                      <div className="text-slate-900">{c.activeUsers}</div>
+                      <div className="text-slate-900">
+                        {c.notificationsMode ?? "—"}
+                      </div>
+                      <div className="text-slate-900">
+                        {c.customEmails ?? "—"}
+                      </div>
+                    </div>
+
+                    {/* mobile */}
+                    <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
+                      <div className="flex items-start justify-between">
+                        <div className="font-semibold text-slate-900">
+                          {c.clientCode}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {c.notificationsMode ?? "—"}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="text-slate-500">
+                          Total users
+                          <div className="text-slate-900 font-medium">
+                            {c.totalUsers}
+                          </div>
+                        </div>
+                        <div className="text-slate-500">
+                          Active users
+                          <div className="text-slate-900 font-medium">
+                            {c.activeUsers}
+                          </div>
+                        </div>
+                        <div className="text-slate-500">
+                          Custom emails
+                          <div className="text-slate-900 font-medium">
+                            {c.customEmails ?? "—"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-600">
+                        Use Notifications tab to edit recipients & mode.
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-3 pt-3 text-xs text-slate-600">
+                Tip: this view can be built from Users +
+                ClientNotificationConfig aggregation.
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
