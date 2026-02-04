@@ -295,6 +295,7 @@ export type Role =
   | "ADMIN"
   | "FRONTDESK"
   | "CHEMISTRY"
+  | "MC"
   | "QA"
   | "CLIENT";
 
@@ -369,6 +370,10 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     // "comments",
     // "testedBy",
     // "testedDate",
+  ],
+  MC: [
+    "dateReceived",
+    "actives", // special rules inside isEmpty()
   ],
 
   // QA signs/reviews
@@ -526,7 +531,7 @@ export function useChemistryReportValidation(
           }
 
           // CHEMISTRY: validate only checked actives; require SOP/Result/Date+Initial
-          if (role === "CHEMISTRY" || role === "ADMIN") {
+          if (role === "CHEMISTRY" || role === "MC" || role === "ADMIN") {
             // If none selected, don't block chemistry (client may have selected none)
             if (checked.length === 0) return false;
 
@@ -563,7 +568,7 @@ export function useChemistryReportValidation(
             next[f] = "Select at least 1 active and fill Formula Content";
           } else if (
             f === "actives" &&
-            (role === "CHEMISTRY" || role === "ADMIN")
+            (role === "CHEMISTRY" || role === "MC" || role === "ADMIN")
           ) {
             next[f] =
               "Fill SOP #, Results, and Date Tested/Initial for checked actives";

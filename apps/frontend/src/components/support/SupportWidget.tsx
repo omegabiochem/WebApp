@@ -3,7 +3,14 @@ import { MessageCircle, X, Paperclip } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 
-const LAB_ROLES = ["MICRO", "CHEMISTRY", "QA", "FRONTDESK", "ADMIN"] as const;
+const LAB_ROLES = [
+  "MICRO",
+  "CHEMISTRY",
+  "MC",
+  "QA",
+  "FRONTDESK",
+  "ADMIN",
+] as const;
 
 type InboxLastMessage = {
   id: string;
@@ -126,7 +133,7 @@ export default function SupportWidget() {
     const url =
       isLab && selectedThread
         ? `/messages?clientCode=${encodeURIComponent(
-            selectedThread.clientCode
+            selectedThread.clientCode,
           )}`
         : "/messages";
 
@@ -196,7 +203,7 @@ export default function SupportWidget() {
       await api("/messages/read", {
         method: "POST",
         body: JSON.stringify(
-          isLab ? { clientCode: selectedThread!.clientCode } : {}
+          isLab ? { clientCode: selectedThread!.clientCode } : {},
         ),
       });
 

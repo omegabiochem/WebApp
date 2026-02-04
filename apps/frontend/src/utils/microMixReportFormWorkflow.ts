@@ -4,6 +4,7 @@ export type Role =
   | "ADMIN"
   | "FRONTDESK"
   | "MICRO"
+  | "MC"
   | "QA"
   | "CLIENT";
 
@@ -76,9 +77,9 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
@@ -88,21 +89,21 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["PRELIMINARY_RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["MICRO", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["FINAL_RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["MICRO", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
@@ -112,13 +113,13 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "MICRO"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC"],
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ["ADMIN", "QA", "MICRO"],
+    canSet: ["ADMIN", "QA", "MICRO", "MC"],
     next: ["UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"],
     nextEditableBy: ["ADMIN", "QA"],
     canEdit: [],
@@ -126,19 +127,19 @@ export const STATUS_TRANSITIONS: Record<
   FINAL_RESUBMISSION_BY_CLIENT: {
     canSet: ["CLIENT"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "MICRO"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC"],
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_CLIENT_FINAL_REVIEW", "FRONTDESK_ON_HOLD"],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
@@ -154,19 +155,19 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_PRELIMINARY_TESTING_REVIEW: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: [
       "PRELIMINARY_TESTING_ON_HOLD",
       "PRELIMINARY_TESTING_NEEDS_CORRECTION",
       "UNDER_QA_PRELIMINARY_REVIEW",
     ],
-    nextEditableBy: ["MICRO"],
-    canEdit: ["MICRO", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
   },
   PRELIMINARY_TESTING_ON_HOLD: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
@@ -181,20 +182,20 @@ export const STATUS_TRANSITIONS: Record<
       "QA_NEEDS_PRELIMINARY_CORRECTION",
       "UNDER_CLIENT_PRELIMINARY_REVIEW",
     ],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: ["QA"],
   },
   QA_NEEDS_PRELIMINARY_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_QA_PRELIMINARY_REVIEW"],
     nextEditableBy: ["CLIENT"],
-    canEdit: ["MICRO", "ADMIN", "QA"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
     canSet: ["QA"],
@@ -203,41 +204,41 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: [
       "FINAL_TESTING_ON_HOLD",
       "FINAL_TESTING_NEEDS_CORRECTION",
       "UNDER_QA_FINAL_REVIEW",
     ],
     nextEditableBy: ["QA", "ADMIN"],
-    canEdit: ["MICRO"],
+    canEdit: ["MICRO", "MC"],
   },
   FINAL_TESTING_ON_HOLD: {
-    canSet: ["MICRO"],
+    canSet: ["MICRO", "MC"],
     next: ["FINAL_TESTING_NEEDS_CORRECTION", "UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["CLIENT", "MICRO"],
+    nextEditableBy: ["CLIENT", "MICRO", "MC"],
     canEdit: [],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ["MICRO", "ADMIN", "QA"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA"],
     next: ["UNDER_CLIENT_FINAL_CORRECTION"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO", "ADMIN", "QA"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA"],
     next: ["UNDER_FINAL_RESUBMISSION_QA_REVIEW"],
     nextEditableBy: ["QA"],
-    canEdit: ["MICRO", "ADMIN", "QA"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
   },
   FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ["MICRO", "ADMIN", "QA"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA"],
     next: ["UNDER_QA_FINAL_REVIEW"],
     nextEditableBy: [],
     canEdit: [],
   },
   UNDER_QA_FINAL_REVIEW: {
-    canSet: ["MICRO", "QA"],
+    canSet: ["MICRO", "MC", "QA"],
     next: ["QA_NEEDS_FINAL_CORRECTION", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["QA"],
     canEdit: ["QA"],
@@ -245,7 +246,7 @@ export const STATUS_TRANSITIONS: Record<
   QA_NEEDS_FINAL_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
@@ -373,6 +374,20 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   ADMIN: ["*"],
   FRONTDESK: [],
   MICRO: [
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+    "tmy_gram",
+    "tmy_result",
+    "pathogens",
+    "comments",
+    "testedBy",
+    "testedDate",
+  ],
+  MC: [
     "testSopNo",
     "dateTested",
     "preliminaryResults",

@@ -53,7 +53,7 @@ export class ChangeStatusDto {
   reason?: string;
   eSignPassword?: string;
   force?: boolean;
-  deptRoleForSeq?: 'MICRO' | 'CHEMISTRY';
+  deptRoleForSeq?: 'MICRO' | 'CHEMISTRY' | 'MC';
 }
 
 // Accept both the old base path and the new generic one
@@ -120,7 +120,12 @@ export class ReportsController {
     @Req() req: any,
     @Param('id') id: string,
     @Body()
-    body: { status: ReportStatus; reason?: string; eSignPassword?: string ;  expectedVersion?: number;},
+    body: {
+      status: ReportStatus;
+      reason?: string;
+      eSignPassword?: string;
+      expectedVersion?: number;
+    },
   ) {
     const reasonFromHeader = req.headers['x-change-reason'] as
       | string
