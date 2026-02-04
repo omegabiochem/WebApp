@@ -22,6 +22,7 @@ import { MessagesModule } from './messages/messages.module';
 
 import { AttachmentsGlobalModule } from './attachments/attachments.global.module';
 import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
     ChemistryAttachmentsModule,
     MessagesModule,
     AttachmentsGlobalModule,
-    
+    AdminModule,
   ],
   controllers: [HealthController, FaviconController],
   providers: [
