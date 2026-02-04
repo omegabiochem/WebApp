@@ -126,12 +126,18 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   }
 
   // Block FINAL fields during PRELIM for MICRO & ADMIN
-  if ((role === "MICRO" || role === "ADMIN") && p === "PRELIM") {
+  if (
+    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
+    p === "PRELIM"
+  ) {
     if (MICRO_PHASE_FIELDS.FINAL.includes(field)) return false;
   }
 
   // (Optional) Once in FINAL, freeze PRELIM fields too:
-  if ((role === "MICRO" || role === "ADMIN") && p === "FINAL") {
+  if (
+    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
+    p === "FINAL"
+  ) {
     if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
   }
   const map: Record<Role, string[]> = {
@@ -166,6 +172,22 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "manufactureDate",
     ],
     MICRO: [
+      "testSopNo",
+      "dateTested",
+      "preliminaryResults",
+      "preliminaryResultsDate",
+      // "tbc_dilution",
+      "tbc_gram",
+      "tbc_result",
+      // "tmy_dilution",
+      "tmy_gram",
+      "tmy_result",
+      "pathogens",
+      "comments",
+      // "testedBy",
+      // "testedDate",
+    ],
+    MC: [
       "testSopNo",
       "dateTested",
       "preliminaryResults",
@@ -704,7 +726,7 @@ export default function MicroMixReportForm({
   function resultDisabled(p: PathRow) {
     if (!p.checked) return true;
 
-    if (role === "MICRO") {
+    if (role === "MICRO" || role === "MC") {
       // MICRO can edit only in FINAL phase
       return phase !== "FINAL";
     }
@@ -837,7 +859,10 @@ export default function MicroMixReportForm({
       });
     }
 
-    if ((who === "MICRO" || who === "ADMIN") && phase === "FINAL") {
+    if (
+      (who === "MICRO" || who === "MC" || who === "ADMIN") &&
+      phase === "FINAL"
+    ) {
       rows.forEach((r, i) => {
         if (r.checked && !r.result) {
           rowErrs[i].result = "Select Absent or Present";
@@ -1029,7 +1054,7 @@ export default function MicroMixReportForm({
         // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
 
         const PHASE_WRITE_GUARD = (fields: string[]) => {
-          if (role === "MICRO" || role === "ADMIN") {
+          if (role === "MICRO" || role === "MC" || role === "ADMIN") {
             if (phase === "PRELIM") {
               // drop FINAL-only fields during PRELIM
               return fields.filter(
@@ -1067,6 +1092,22 @@ export default function MicroMixReportForm({
             "manufactureDate",
           ],
           MICRO: [
+            "testSopNo",
+            "tbc_dilution",
+            "tbc_gram",
+            "tbc_result",
+            "tmy_dilution",
+            "tmy_gram",
+            "tmy_result",
+            "pathogens",
+            "dateTested",
+            "preliminaryResults",
+            "preliminaryResultsDate",
+            // "testedBy",
+            // "testedDate",
+            "comments",
+          ],
+          MC: [
             "testSopNo",
             "tbc_dilution",
             "tbc_gram",
@@ -1254,8 +1295,8 @@ export default function MicroMixReportForm({
           navigate("/frontdeskDashboard");
         } else if (role === "MICRO") {
           navigate("/microDashboard");
-          // } else if (role === "CHEMISTRY") {
-          //   navigate("/chemistryDashboard");
+        } else if (role === "MC") {
+          navigate("/mcDashboard");
         } else if (role === "QA") {
           navigate("/qaDashboard");
         } else if (role === "ADMIN") {
@@ -2989,8 +3030,9 @@ export default function MicroMixReportForm({
                     navigate("/frontdeskDashboard");
                   } else if (role === "MICRO") {
                     navigate("/microDashboard");
-                    // } else if (role === "CHEMISTRY") {
-                    //   navigate("/chemistryDashboard");
+                  } else if (role === "MC") {
+                    navigate("/mcDashboard");
+        
                   } else if (role === "QA") {
                     navigate("/qaDashboard");
                   } else if (role === "ADMIN") {
