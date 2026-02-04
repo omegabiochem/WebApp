@@ -1,37 +1,3 @@
-// import { api } from "../lib/api";
-
-// export type Role =
-//   | "SYSTEMADMIN"
-//   | "ADMIN"
-//   | "FRONTDESK"
-//   | "MICRO"
-//   | "CHEMISTRY"
-//   | "QA"
-//   | "CLIENT";
-
-// export async function createUserByAdmin(input: {
-//   email: string;
-//   name?: string;
-//   role: Role;
-// }): Promise<{ user: any; tempPassword: string }> {
-//   return api("/users", {
-//     method: "POST",
-//     body: JSON.stringify(input),
-//   });
-// }
-
-// export async function changeUserPassword(input: {
-//   currentPassword: string;
-//   newPassword: string;
-// }): Promise<{ ok: boolean }> {
-//   return api("/auth/change-password", {
-//     method: "POST",
-//     body: JSON.stringify(input),
-//     //  headers: {
-//     //   Authorization: `Bearer ${token}`,
-//     // },
-//   });
-// }
 
 
 import { api } from "../lib/api";
@@ -42,6 +8,7 @@ export type Role =
   | "FRONTDESK"
   | "MICRO"
   | "CHEMISTRY"
+  | "MC"
   | "QA"
   | "CLIENT";
 
@@ -131,10 +98,7 @@ export async function setUserRole(id: string, role: Role) {
   });
 }
 
-export async function setUserClientCode(
-  id: string,
-  clientCode: string | null
-) {
+export async function setUserClientCode(id: string, clientCode: string | null) {
   return api(`/users/${id}/client-code`, {
     method: "PATCH",
     body: JSON.stringify({ clientCode }),
