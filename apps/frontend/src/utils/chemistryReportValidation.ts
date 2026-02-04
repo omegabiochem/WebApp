@@ -288,6 +288,18 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     dateTestedInitial: "",
     otherName: "",
   },
+  // ✅ NEW extra OTHER row
+  {
+    key: "OTHER_2",
+    label: "OTHER",
+    checked: false,
+    otherName: "",
+    bulkActiveLot: "",
+    sopNo: "",
+    formulaContent: "",
+    result: "",
+    dateTestedInitial: "",
+  },
 ];
 
 export type Role =

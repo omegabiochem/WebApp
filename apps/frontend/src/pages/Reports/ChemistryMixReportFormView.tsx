@@ -296,7 +296,7 @@ const sampleTypeItems: [SampleTypeKey, string][] = [
 const PrintStyles = () => (
   <style>{`
     @media print {
-      @page { size: A4 portrait; margin: 6mm 10mm 12mm 10mm; }
+      @page { size: A4 portrait; margin: 6mm 10mm 12mm 6mm; }
 
       html, body { margin: 0 !important; padding: 0 !important; }
       .no-print { display: none !important; }
@@ -493,7 +493,7 @@ export default function ChemistryMixReportFormView(
       {isBulk || activePane === "FORM" ? (
         <>
           {/* Letterhead – same look as Micro */}
-          <div className="mb-2 text-center">
+          <div className="mb-1 text-center">
             <div
               className="font-bold tracking-wide text-[22px]"
               style={{ color: "blue" }}
@@ -510,7 +510,7 @@ export default function ChemistryMixReportFormView(
             <div className="text-[12px]">
               Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
             </div>
-            <div className="mt-1 grid grid-cols-3 items-center">
+            <div className="mt-0 grid grid-cols-3 items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
                 {report.formNumber && report.formNumber}
@@ -779,23 +779,23 @@ export default function ChemistryMixReportFormView(
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
           <div className="mt-0.5 border border-black text-[11px]">
-            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-semibold text-center border-b border-black">
-              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-bold text-center border-b border-black">
+              <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
-              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 RAW / BULK ACTIVE LOT #
               </div>
-              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 SOP # / VALIDATED
               </div>
-              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 FORMULA CONTENT
               </div>
-              <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 RESULTS
               </div>
-              <div className="p-1 whitespace-nowrap h-full flex items-center justify-center">
+              <div className="p-0.5 whitespace-nowrap h-full flex items-center justify-center">
                 DATE TESTED / INITIAL
               </div>
             </div>
@@ -818,7 +818,7 @@ export default function ChemistryMixReportFormView(
                 </div> */}
 
                 {/* active name + checkbox (VIEW MODE FIX) */}
-                <div className="flex items-start gap-2 border-r border-black px-1">
+                <div className="flex items-center gap-2 border-r border-black px-1">
                   <input
                     type="checkbox"
                     className="thick-box2"
@@ -828,16 +828,16 @@ export default function ChemistryMixReportFormView(
                   />
 
                   <div className="flex-1 leading-tight">
-                    {row.key === "OTHER" ? (
+                    {row.key === "OTHER" || row.key.startsWith("OTHER_") ? (
                       row.checked ? (
-                        // ✅ If OTHER is checked, show what user typed
-                        <span>{row.otherName?.trim() || "OTHER"}</span>
+                        <span>
+                          {row.otherName?.trim() ||
+                            (row.key === "OTHER" ? "OTHER" : "OTHER 2")}
+                        </span>
                       ) : (
-                        // ✅ If OTHER not checked, show OTHER
-                        <span>OTHER</span>
+                        <span>{row.key === "OTHER" ? "OTHER" : "OTHER 2"}</span>
                       )
                     ) : (
-                      // ✅ Normal rows
                       <span>{row.label}</span>
                     )}
                   </div>
@@ -924,7 +924,7 @@ export default function ChemistryMixReportFormView(
 
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div>
-                <div className="mb-2 flex items-center gap-2">
+                <div className="mb-1 flex items-center gap-2">
                   <span className="font-medium">VERIFIED BY :</span>
                   <input
                     className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -950,7 +950,7 @@ export default function ChemistryMixReportFormView(
               </div>
 
               <div>
-                <div className="mb-2 flex items-center gap-2">
+                <div className="mb-1 flex items-center gap-2">
                   <span className="font-medium">REVIEWED BY :</span>
                   <input
                     className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -982,8 +982,8 @@ export default function ChemistryMixReportFormView(
           <div
             className={
               isBulk
-                ? "mt-1 flex items-end justify-between print-footer"
-                : "mt-1 flex items-end justify-between print-footer"
+                ? "mt-0.5 flex items-end justify-between print-footer"
+                : "mt-0.5 flex items-end justify-between print-footer"
             }
             style={
               !isBulk
