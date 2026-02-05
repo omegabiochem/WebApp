@@ -1,7 +1,8 @@
 // src/pages/Audit/AuditTrailPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, RefreshCcw, Search } from "lucide-react";
 import { api, API_URL } from "../../lib/api";
+import { logUiEvent } from "../../lib/uiAudit";
 
 type AuditRecord = {
   id: string;
@@ -364,6 +365,19 @@ export default function AuditTrailPage() {
     pageSize,
   ]);
 
+  const didLog = useRef(false);
+
+  useEffect(() => {
+    if (didLog.current) return;
+    didLog.current = true;
+
+    logUiEvent({
+      action: "UI_VIEW_AUDIT_PAGE",
+      entity: "AuditTrail",
+      details: "Viewed Audit Trail page",
+    });
+  }, []);
+
   // Build query string
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -467,6 +481,24 @@ export default function AuditTrailPage() {
 
   const downloadCSV = async () => {
     const token = localStorage.getItem("token");
+    // ✅ AUDIT: bulk print
+    logUiEvent({
+      action: "UI_DOWNLOAD_AUDIT_CSV",
+      entity: "AuditTrail",
+      details: "Downloaded audit trail CSV",
+      meta: {
+        filters: {
+          entity: filterEntity || null,
+          action: filterAction || null,
+          userId: filterUserId || null,
+          entityId: filterEntityId || null,
+          from: dateFrom || null,
+          to: dateTo || null,
+          order: sortOrder,
+        },
+      },
+    });
+
     if (!token) {
       alert("Please log in first.");
       return;
