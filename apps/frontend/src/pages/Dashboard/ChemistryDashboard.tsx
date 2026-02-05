@@ -19,6 +19,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
 
 // -----------------------------
 // Types
@@ -364,10 +365,22 @@ export default function ChemistryDashboard() {
       });
     }
   };
-
   const handlePrintSelected = () => {
-    if (printingBulk) return;
+    if (printingBulk) return; // 🚫 prevent double
     if (!selectedIds.length) return;
+
+    // ✅ AUDIT: bulk print
+    logUiEvent({
+      action: "UI_PRINT_SELECTED",
+      entity: "Report",
+      details: `Printed selected reports (${selectedIds.length})`,
+      entityId:selectedIds.join(","),
+      meta: {
+        reportIds: selectedIds,
+        count: selectedIds.length,
+      },
+    });
+
     setPrintingBulk(true);
     setIsBulkPrinting(true);
   };
@@ -1020,10 +1033,32 @@ export default function ChemistryDashboard() {
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button
+                          {/* <button
                             disabled={rowBusy}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button> */}
+
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => {
+                              logUiEvent({
+                                action: "UI_VIEW",
+                                entity: "ChemistryReport",
+                                entityId: r.id,
+                                details: `Viewed ${r.formNumber}`,
+                                meta: {
+                                  formNumber: r.formNumber,
+                                  formType: r.formType,
+                                  status: r.status,
+                                },
+                              });
+
+                              setSelectedReport(r);
+                            }}
+                            disabled={rowBusy}
                           >
                             View
                           </button>
@@ -1133,6 +1168,15 @@ export default function ChemistryDashboard() {
                   className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                   onClick={() => {
                     if (printingSingle) return;
+                    logUiEvent({
+                      action: "UI_PRINT_SINGLE",
+                      entity:
+                        selectedReport.formType === "CHEMISTRY_MIX"
+                          ? "ChemistryReport"
+                          : "MicroReport",
+                      entityId: selectedReport.id,
+                      details: `Printed ${selectedReport.formNumber}`,
+                    });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);
                   }}
