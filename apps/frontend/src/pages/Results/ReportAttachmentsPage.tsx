@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, API_URL, getToken } from "../../lib/api";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
+import { logUiEvent } from "../../lib/uiAudit";
 
 type ReportType = "MICRO" | "MICRO_WATER" | "CHEMISTRY";
 type ReportTypeFilter = "ALL" | ReportType;
@@ -38,6 +39,7 @@ async function apiBlob(path: string): Promise<Blob> {
   return await res.blob();
 }
 
+/** Merges PDFs and triggers browser print in new tab */
 async function mergeAndPrintSelectedPdfs(ids: string[]) {
   const res = await fetch(`${API_URL}/attachments/merge-pdf`, {
     method: "POST",
@@ -143,7 +145,7 @@ function reportTypeLabel(t: ReportTypeFilter) {
 }
 
 // -----------------------------
-// UI helpers (same style as dashboard)
+// UI helpers
 // -----------------------------
 function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -160,6 +162,35 @@ function SpinnerDark({ className = "" }: { className?: string }) {
       aria-hidden="true"
     />
   );
+}
+
+// -----------------------------
+// Audit helper (ONLY events you listed)
+// -----------------------------
+function logAttachEvent(args: {
+  action:
+    | "UI_VIEW_ATTACHMENTS_PAGE"
+    | "UI_ATTACHMENTS_LOADED"
+    | "UI_ATTACHMENTS_PREVIEW_OPEN"
+    | "UI_ATTACHMENTS_PREVIEW_CLOSE"
+    | "UI_ATTACHMENTS_OPEN_FILE"
+    | "UI_ATTACHMENTS_OPEN_REPORT"
+    | "UI_ATTACHMENTS_PRINT_SELECTED"
+    | "UI_ATTACHMENTS_PRINT_SINGLE"
+    | "UI_ATTACHMENTS_PRINT_PREPARED"
+    | "UI_ATTACHMENTS_PRINT_FAILED"
+    | "UI_ATTACHMENTS_DOWNLOAD_SINGLE";
+  details: string;
+  entityId?: string | null; // attachment id
+  meta?: any;
+}) {
+  logUiEvent({
+    action: args.action,
+    entity: "Attachment",
+    entityId: args.entityId ?? undefined,
+    details: args.details,
+    meta: args.meta ?? undefined,
+  });
 }
 
 function Thumb({ path, alt }: { path: string; alt: string }) {
@@ -195,12 +226,14 @@ function AttachmentPreview({
   filename,
   onClose,
   onPrint,
+  onDownload,
   printingSingle,
 }: {
   attId: string;
   filename: string;
   onClose: () => void;
   onPrint: () => void;
+  onDownload: () => void;
   printingSingle: boolean;
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -261,10 +294,15 @@ function AttachmentPreview({
                 className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
                 href={objectUrl}
                 download={filename}
+                onClick={() => {
+                  // still allow browser download
+                  onDownload();
+                }}
               >
                 Download
               </a>
             )}
+
             <button
               className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
               onClick={onClose}
@@ -312,14 +350,16 @@ function AttachmentPreview({
 }
 
 // -----------------------------
-// Print root (portal) - prints selected attachments
+// Print root (portal) - prints selected attachments (images only)
 // -----------------------------
 function BulkPrintAttachmentsArea({
   items,
   onAfterPrint,
+  onPrepared,
 }: {
   items: AttachmentItem[];
   onAfterPrint: () => void;
+  onPrepared?: (args: { count: number; ids: string[] }) => void;
 }) {
   const [urls, setUrls] = React.useState<Record<string, string>>({});
   const [ready, setReady] = React.useState(false);
@@ -337,7 +377,7 @@ function BulkPrintAttachmentsArea({
             const ft = fileTypeFromExt(fileExt(a.filename));
             if (!(ft === "image" || ft === "pdf")) return [a.id, ""] as const;
 
-            const blob = await apiBlob(fileById(a.id)); // ✅ includes auth header
+            const blob = await apiBlob(fileById(a.id));
             const url = URL.createObjectURL(blob);
             revokeList.push(url);
             return [a.id, url] as const;
@@ -352,7 +392,8 @@ function BulkPrintAttachmentsArea({
         setUrls(map);
         setReady(true);
 
-        // print after everything is ready
+        onPrepared?.({ count: items.length, ids: items.map((x) => x.id) });
+
         setTimeout(async () => {
           await waitForAssets();
           window.print();
@@ -361,6 +402,7 @@ function BulkPrintAttachmentsArea({
         if (!mounted) return;
         setUrls({});
         setReady(true);
+        onPrepared?.({ count: items.length, ids: items.map((x) => x.id) });
         setTimeout(() => window.print(), 200);
       }
     })();
@@ -373,7 +415,7 @@ function BulkPrintAttachmentsArea({
       window.removeEventListener("afterprint", handleAfterPrint);
       revokeList.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [items, onAfterPrint]);
+  }, [items, onAfterPrint, onPrepared]);
 
   if (!items.length) return null;
 
@@ -395,19 +437,14 @@ function BulkPrintAttachmentsArea({
         if (pending <= 0) resolve();
       };
 
-      // images
       imgs.forEach((img) => {
-        // already loaded
         if (img.complete && img.naturalWidth > 0) return;
         pending += 1;
         img.addEventListener("load", done, { once: true });
         img.addEventListener("error", done, { once: true });
       });
 
-      // objects (pdf)
       objs.forEach(() => {
-        // object has no perfect "ready" signal in all browsers.
-        // We give it a short delay after it mounts.
         pending += 1;
         setTimeout(done, 400);
       });
@@ -494,7 +531,7 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
-  // ✅ selection + print
+  // selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -508,12 +545,9 @@ export default function ReportAttachmentsPage() {
   const role = (user?.role || "").toUpperCase();
 
   const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
-    if (!role) return "ALL"; // or [] if you want to hide until loaded
-
+    if (!role) return "ALL";
     if (role === "CHEMISTRY") return ["CHEMISTRY"];
     if (role === "MICRO") return ["MICRO", "MICRO_WATER"];
-
-    // ADMIN/QA/SUPER etc
     return "ALL";
   }, [role]);
 
@@ -532,6 +566,23 @@ export default function ReportAttachmentsPage() {
   const inputCls =
     "w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500 bg-white";
 
+  // (1) UI_VIEW_ATTACHMENTS_PAGE (once)
+  const didLogView = useRef(false);
+  useEffect(() => {
+    if (didLogView.current) return;
+    didLogView.current = true;
+
+    logAttachEvent({
+      action: "UI_VIEW_ATTACHMENTS_PAGE",
+      details: "Viewed Results Attachments page",
+      meta: { role },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load data + (2) UI_ATTACHMENTS_LOADED (count)
+  const didLogLoaded = useRef(false);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -540,7 +591,17 @@ export default function ReportAttachmentsPage() {
       try {
         type Paged = { items: AttachmentItem[]; total: number };
         const resp = await api<Paged>(`/attachments?take=500&skip=0`);
-        setItems(Array.isArray(resp.items) ? resp.items : []);
+        const list = Array.isArray(resp.items) ? resp.items : [];
+        setItems(list);
+
+        if (!didLogLoaded.current) {
+          didLogLoaded.current = true;
+          logAttachEvent({
+            action: "UI_ATTACHMENTS_LOADED",
+            details: "Attachments list loaded",
+            meta: { count: list.length },
+          });
+        }
       } catch (e: any) {
         setError(e?.message || "Failed to load attachments");
         setItems([]);
@@ -562,7 +623,6 @@ export default function ReportAttachmentsPage() {
       const ext = fileExt(a.filename);
       const ft = fileTypeFromExt(ext);
 
-      // role restriction (frontend)
       if (allowedTypes !== "ALL" && !allowedTypes.includes(a.reportType))
         return false;
 
@@ -654,30 +714,6 @@ export default function ReportAttachmentsPage() {
     return { total, shown, images, pdfs };
   }, [items, filtered, allowedTypes]);
 
-  const hasActiveFilters = useMemo(() => {
-    return (
-      q.trim() !== "" ||
-      kind !== "ALL" ||
-      fileType !== "ALL" ||
-      createdBy !== "ALL" ||
-      source !== "ALL" ||
-      fromDate !== "" ||
-      toDate !== "" ||
-      reportType !== "ALL" ||
-      sort !== "NEWEST"
-    );
-  }, [
-    q,
-    kind,
-    fileType,
-    createdBy,
-    source,
-    fromDate,
-    toDate,
-    reportType,
-    sort,
-  ]);
-
   const clearFilters = () => {
     setQ("");
     setKind("ALL");
@@ -688,7 +724,6 @@ export default function ReportAttachmentsPage() {
     setToDate("");
     setSort("NEWEST");
 
-    // ✅ keep role-safe tab
     if (role === "CHEMISTRY") setReportType("CHEMISTRY");
     else if (role === "MICRO") setReportType("MICRO");
     else setReportType("ALL");
@@ -704,36 +739,65 @@ export default function ReportAttachmentsPage() {
     return ft === "image";
   });
 
+  // (Printing) UI_ATTACHMENTS_PRINT_SELECTED / PREPARED / FAILED
   const handlePrintSelected = async () => {
     if (printingBulk) return;
     if (!selectedIds.length) return;
 
-    const selectedObjects = selectedIds
+    const selectedObjectsNow = selectedIds
       .map((id) => items.find((x) => x.id === id))
       .filter(Boolean) as AttachmentItem[];
 
-    const selectedImages = selectedObjects.filter(
+    const selectedImages = selectedObjectsNow.filter(
       (a) => fileTypeFromExt(fileExt(a.filename)) === "image",
     );
 
-    const selectedPdfs = selectedObjects.filter(
+    const selectedPdfs = selectedObjectsNow.filter(
       (a) => fileTypeFromExt(fileExt(a.filename)) === "pdf",
     );
+
+    logAttachEvent({
+      action: "UI_ATTACHMENTS_PRINT_SELECTED",
+      details: "Print selected attachments",
+      meta: {
+        selectedCount: selectedIds.length,
+        selectedIds,
+        imageCount: selectedImages.length,
+        pdfCount: selectedPdfs.length,
+      },
+    });
 
     setPrintingBulk(true);
 
     try {
       // images -> portal print
-      if (selectedImages.length) setIsBulkPrinting(true);
+      if (selectedImages.length) {
+        setIsBulkPrinting(true);
+        // PREPARED is fired when portal finished building URLs (see portal below)
+      }
 
       // pdfs -> merge print once
       if (selectedPdfs.length) {
         await mergeAndPrintSelectedPdfs(selectedPdfs.map((p) => p.id));
+        // optional: you can also consider this "prepared" for PDFs, but you asked optional
+        logAttachEvent({
+          action: "UI_ATTACHMENTS_PRINT_PREPARED",
+          details: "Prepared PDF print (merged)",
+          meta: {
+            ids: selectedPdfs.map((p) => p.id),
+            count: selectedPdfs.length,
+          },
+        });
       }
 
       // if no images, stop spinner now
       if (!selectedImages.length) setPrintingBulk(false);
-    } catch (e) {
+    } catch (e: any) {
+      logAttachEvent({
+        action: "UI_ATTACHMENTS_PRINT_FAILED",
+        details: "Print selected failed",
+        meta: { error: e?.message || String(e) },
+      });
       setPrintingBulk(false);
       throw e;
     }
@@ -765,7 +829,6 @@ export default function ReportAttachmentsPage() {
     ];
     if (allowedTypes === "ALL") return all;
 
-    // show only tabs that make sense for the role
     return all.filter(
       (t) => t === "ALL" || allowedTypes.includes(t as ReportType),
     );
@@ -817,6 +880,14 @@ export default function ReportAttachmentsPage() {
                     ? [singlePrintItem]
                     : []
               }
+              onPrepared={({ count, ids }) => {
+                // (optional) UI_ATTACHMENTS_PRINT_PREPARED
+                logAttachEvent({
+                  action: "UI_ATTACHMENTS_PRINT_PREPARED",
+                  details: "Prepared image print (portal ready)",
+                  meta: { count, ids },
+                });
+              }}
               onAfterPrint={() => {
                 setIsBulkPrinting(false);
                 setSinglePrintItem(null);
@@ -871,9 +942,7 @@ export default function ReportAttachmentsPage() {
             onClick={clearFilters}
             className={classNames(
               "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-              hasActiveFilters
-                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                : "border bg-white hover:bg-slate-50 text-slate-700",
+              "border bg-white hover:bg-slate-50 text-slate-700",
             )}
           >
             ✕ Clear
@@ -988,24 +1057,20 @@ export default function ReportAttachmentsPage() {
                 if (!v) return;
 
                 const now = new Date();
-
                 const apply = (from: Date, to: Date) => {
                   setFromDate(toDateOnlyISO_UTC(from));
                   setToDate(toDateOnlyISO_UTC(to));
                 };
 
-                if (v === "TODAY") {
-                  apply(now, now);
-                } else if (v === "YESTERDAY") {
+                if (v === "TODAY") apply(now, now);
+                else if (v === "YESTERDAY") {
                   const y = addDays(now, -1);
                   apply(y, y);
-                } else if (v === "LAST_7") {
-                  apply(addDays(now, -6), now); // inclusive 7 days
-                } else if (v === "LAST_30") {
-                  apply(addDays(now, -29), now);
-                } else if (v === "THIS_MONTH") {
+                } else if (v === "LAST_7") apply(addDays(now, -6), now);
+                else if (v === "LAST_30") apply(addDays(now, -29), now);
+                else if (v === "THIS_MONTH")
                   apply(startOfMonth(now), endOfMonth(now));
-                } else if (v === "LAST_MONTH") {
+                else if (v === "LAST_MONTH") {
                   const lastMonth = new Date(
                     now.getFullYear(),
                     now.getMonth() - 1,
@@ -1017,7 +1082,6 @@ export default function ReportAttachmentsPage() {
                   setToDate("");
                 }
 
-                // reset dropdown back to placeholder (so user can pick again)
                 e.currentTarget.value = "";
               }}
               className={inputCls}
@@ -1088,16 +1152,58 @@ export default function ReportAttachmentsPage() {
                     role="button"
                     tabIndex={0}
                     onClick={() => {
-                      if (ft === "other")
+                      if (ft === "other") {
+                        // (Open file in new tab)
+                        logAttachEvent({
+                          action: "UI_ATTACHMENTS_OPEN_FILE",
+                          details: "Opened attachment file",
+                          entityId: a.id,
+                          meta: { filename: a.filename, fileType: ft },
+                        });
                         window.open(`${API_URL}${filePath}`, "_blank");
-                      else setOpen({ id: a.id, filename: a.filename });
+                      } else {
+                        // (Preview open)
+                        logAttachEvent({
+                          action: "UI_ATTACHMENTS_PREVIEW_OPEN",
+                          details: "Opened attachment preview",
+                          entityId: a.id,
+                          meta: {
+                            filename: a.filename,
+                            fileType: ft,
+                            reportType: a.reportType,
+                            reportId: a.reportId,
+                            kind: a.kind,
+                          },
+                        });
+                        setOpen({ id: a.id, filename: a.filename });
+                      }
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        if (ft === "other")
+                        if (ft === "other") {
+                          logAttachEvent({
+                            action: "UI_ATTACHMENTS_OPEN_FILE",
+                            details: "Opened attachment file",
+                            entityId: a.id,
+                            meta: { filename: a.filename, fileType: ft },
+                          });
                           window.open(`${API_URL}${filePath}`, "_blank");
-                        else setOpen({ id: a.id, filename: a.filename });
+                        } else {
+                          logAttachEvent({
+                            action: "UI_ATTACHMENTS_PREVIEW_OPEN",
+                            details: "Opened attachment preview",
+                            entityId: a.id,
+                            meta: {
+                              filename: a.filename,
+                              fileType: ft,
+                              reportType: a.reportType,
+                              reportId: a.reportId,
+                              kind: a.kind,
+                            },
+                          });
+                          setOpen({ id: a.id, filename: a.filename });
+                        }
                       }
                     }}
                     className={classNames(
@@ -1156,7 +1262,19 @@ export default function ReportAttachmentsPage() {
                       <Link
                         to={reportLink}
                         className="text-xs underline text-blue-700"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logAttachEvent({
+                            action: "UI_ATTACHMENTS_OPEN_REPORT",
+                            details: "Opened report from attachment",
+                            entityId: a.id,
+                            meta: {
+                              reportId: a.reportId,
+                              reportType: a.reportType,
+                              reportLink,
+                            },
+                          });
+                        }}
                       >
                         Open report
                       </Link>
@@ -1170,18 +1288,43 @@ export default function ReportAttachmentsPage() {
                               e.stopPropagation();
                               if (!canPrint) return;
 
-                              const ft = fileTypeFromExt(fileExt(a.filename));
-                              if (ft === "pdf") {
+                              logAttachEvent({
+                                action: "UI_ATTACHMENTS_PRINT_SINGLE",
+                                details: "Print single attachment",
+                                entityId: a.id,
+                                meta: { filename: a.filename, fileType: ft },
+                              });
+
+                              const ftNow = fileTypeFromExt(
+                                fileExt(a.filename),
+                              );
+                              if (ftNow === "pdf") {
                                 setPrintingSingle(true);
                                 try {
                                   await mergeAndPrintSelectedPdfs([a.id]);
+                                  logAttachEvent({
+                                    action: "UI_ATTACHMENTS_PRINT_PREPARED",
+                                    details: "Prepared PDF print (merged)",
+                                    entityId: a.id,
+                                    meta: { ids: [a.id], count: 1 },
+                                  });
+                                } catch (err: any) {
+                                  logAttachEvent({
+                                    action: "UI_ATTACHMENTS_PRINT_FAILED",
+                                    details: "Print single failed",
+                                    entityId: a.id,
+                                    meta: {
+                                      error: err?.message || String(err),
+                                    },
+                                  });
+                                  throw err;
                                 } finally {
                                   setPrintingSingle(false);
                                 }
                                 return;
                               }
 
-                              // image -> existing portal print
+                              // image -> portal print
                               setPrintingSingle(true);
                               setSinglePrintItem(a);
                             }}
@@ -1285,6 +1428,18 @@ export default function ReportAttachmentsPage() {
                             <Link
                               to={reportLink}
                               className="text-xs underline text-blue-700"
+                              onClick={() => {
+                                logAttachEvent({
+                                  action: "UI_ATTACHMENTS_OPEN_REPORT",
+                                  details: "Opened report from attachment",
+                                  entityId: a.id,
+                                  meta: {
+                                    reportId: a.reportId,
+                                    reportType: a.reportType,
+                                    reportLink,
+                                  },
+                                });
+                              }}
                             >
                               Open report
                             </Link>
@@ -1309,9 +1464,18 @@ export default function ReportAttachmentsPage() {
                             {ft !== "other" && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setOpen({ id: a.id, filename: a.filename })
-                                }
+                                onClick={() => {
+                                  logAttachEvent({
+                                    action: "UI_ATTACHMENTS_PREVIEW_OPEN",
+                                    details: "Opened attachment preview",
+                                    entityId: a.id,
+                                    meta: {
+                                      filename: a.filename,
+                                      fileType: ft,
+                                    },
+                                  });
+                                  setOpen({ id: a.id, filename: a.filename });
+                                }}
                                 className="inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm hover:bg-slate-50"
                               >
                                 Preview
@@ -1324,15 +1488,37 @@ export default function ReportAttachmentsPage() {
                               onClick={async () => {
                                 if (!canPrint) return;
 
+                                logAttachEvent({
+                                  action: "UI_ATTACHMENTS_PRINT_SINGLE",
+                                  details: "Print single attachment",
+                                  entityId: a.id,
+                                  meta: { filename: a.filename, fileType: ft },
+                                });
+
                                 const ftNow = fileTypeFromExt(
                                   fileExt(a.filename),
                                 );
 
-                                // PDF -> merged print
                                 if (ftNow === "pdf") {
                                   setPrintingSingle(true);
                                   try {
                                     await mergeAndPrintSelectedPdfs([a.id]);
+                                    logAttachEvent({
+                                      action: "UI_ATTACHMENTS_PRINT_PREPARED",
+                                      details: "Prepared PDF print (merged)",
+                                      entityId: a.id,
+                                      meta: { ids: [a.id], count: 1 },
+                                    });
+                                  } catch (err: any) {
+                                    logAttachEvent({
+                                      action: "UI_ATTACHMENTS_PRINT_FAILED",
+                                      details: "Print single failed",
+                                      entityId: a.id,
+                                      meta: {
+                                        error: err?.message || String(err),
+                                      },
+                                    });
+                                    throw err;
                                   } finally {
                                     setPrintingSingle(false);
                                   }
@@ -1360,6 +1546,17 @@ export default function ReportAttachmentsPage() {
                                 try {
                                   const blob = await apiBlob(fileById(a.id));
                                   const url = URL.createObjectURL(blob);
+
+                                  logAttachEvent({
+                                    action: "UI_ATTACHMENTS_OPEN_FILE",
+                                    details: "Opened attachment file",
+                                    entityId: a.id,
+                                    meta: {
+                                      filename: a.filename,
+                                      fileType: ft,
+                                    },
+                                  });
+
                                   window.open(
                                     url,
                                     "_blank",
@@ -1401,13 +1598,34 @@ export default function ReportAttachmentsPage() {
 
             const ft = fileTypeFromExt(fileExt(att.filename));
             if (!(ft === "image" || ft === "pdf")) return;
-
             if (printingSingle) return;
+
+            // (Print single)
+            logAttachEvent({
+              action: "UI_ATTACHMENTS_PRINT_SINGLE",
+              details: "Print single attachment (from preview)",
+              entityId: att.id,
+              meta: { filename: att.filename, fileType: ft },
+            });
 
             if (ft === "pdf") {
               setPrintingSingle(true);
               try {
                 await mergeAndPrintSelectedPdfs([att.id]);
+                logAttachEvent({
+                  action: "UI_ATTACHMENTS_PRINT_PREPARED",
+                  details: "Prepared PDF print (merged)",
+                  entityId: att.id,
+                  meta: { ids: [att.id], count: 1 },
+                });
+              } catch (err: any) {
+                logAttachEvent({
+                  action: "UI_ATTACHMENTS_PRINT_FAILED",
+                  details: "Print single failed",
+                  entityId: att.id,
+                  meta: { error: err?.message || String(err) },
+                });
+                throw err;
               } finally {
                 setPrintingSingle(false);
               }
@@ -1418,7 +1636,28 @@ export default function ReportAttachmentsPage() {
             setPrintingSingle(true);
             setSinglePrintItem(att);
           }}
-          onClose={() => setOpen(null)}
+          onDownload={() => {
+            const att = items.find((x) => x.id === open.id);
+            if (!att) return;
+            logAttachEvent({
+              action: "UI_ATTACHMENTS_DOWNLOAD_SINGLE",
+              details: "Downloaded attachment (from preview)",
+              entityId: att.id,
+              meta: {
+                filename: att.filename,
+                fileType: fileTypeFromExt(fileExt(att.filename)),
+              },
+            });
+          }}
+          onClose={() => {
+            logAttachEvent({
+              action: "UI_ATTACHMENTS_PREVIEW_CLOSE",
+              details: "Closed attachment preview",
+              entityId: open.id,
+              meta: { filename: open.filename },
+            });
+            setOpen(null);
+          }}
         />
       )}
     </div>

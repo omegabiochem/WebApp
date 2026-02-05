@@ -9,7 +9,7 @@ import {
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api, } from "../../lib/api";
+import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import {
@@ -25,6 +25,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
 
 // ---------------------------------
 // Types
@@ -130,8 +131,6 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
-
-
 
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
@@ -607,7 +606,6 @@ export default function AdminDashboard() {
 
   useLiveReportStatus(setReports);
 
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -866,9 +864,34 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button
+                          {/* <button
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
                             onClick={() => setSelectedReport(r)}
+                            disabled={rowBusy}
+                          >
+                            View
+                          </button> */}
+
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => {
+                              logUiEvent({
+                                action: "UI_VIEW",
+                                entity:
+                                  r.formType === "CHEMISTRY_MIX"
+                                    ? "ChemistryReport"
+                                    : "Micro Report",
+                                entityId: r.id,
+                                details: `Viewed ${r.formNumber}`,
+                                meta: {
+                                  formNumber: r.formNumber,
+                                  formType: r.formType,
+                                  status: r.status,
+                                },
+                              });
+
+                              setSelectedReport(r);
+                            }}
                             disabled={rowBusy}
                           >
                             View
