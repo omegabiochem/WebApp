@@ -112,14 +112,20 @@ export default function Login() {
       setBanner({ type: "success", text: "Login successful!" });
       navigate(roleHomePath[res.user.role] ?? "/home", { replace: true });
     } catch (err: any) {
+      const code = err?.body?.code;
+
+      const remaining = err?.body?.remaining;
       const msg =
-        err?.status === 401 || err?.message?.includes("401")
-          ? "Invalid user ID or password."
-          : "Unable to sign in. Please try again.";
+        code === "ACCOUNT_LOCKED"
+          ? "Too many failed attempts. Your account is temporarily locked."
+          : code === "INVALID_CREDENTIALS" && typeof remaining === "number"
+            ? `Invalid user ID or password. Attempts left: ${remaining}`
+            : "Invalid user ID or password.";
+
       setBanner({ type: "error", text: msg });
       setError("password", { type: "server", message: msg });
     } finally {
-      submitLockRef.current = false; // ✅ always release lock
+      submitLockRef.current = false;
     }
   };
 
@@ -212,199 +218,3 @@ export default function Login() {
     </div>
   );
 }
-
-// // src/pages/Auth/Login.tsx
-// import { useForm } from "react-hook-form";
-// import { z } from "zod";
-// import { api } from "../../lib/api";
-// import { useAuth } from "../../context/AuthContext";
-// import { useNavigate } from "react-router-dom";
-// import { useState } from "react";
-// import { Eye, EyeOff } from "lucide-react";
-
-// type Role =
-//   | "SYSTEMADMIN"
-//   | "ADMIN"
-//   | "FRONTDESK"
-//   | "MICRO"
-//   | "CHEMISTRY"
-//   | "QA"
-//   | "CLIENT";
-
-// const roleHomePath: Record<Role, string> = {
-//   ADMIN: "/adminDashboard",
-//   CLIENT: "/clientDashboard",
-//   SYSTEMADMIN: "/systemAdminDashboard",
-//   MICRO: "/microDashboard",
-//   CHEMISTRY: "/chemistryDashboard",
-//   QA: "/qaDashboard",
-//   FRONTDESK: "/frontdeskDashboard",
-// };
-
-// const schema = z.object({
-//   userId: z.string().min(1),
-//   password: z.string().min(1),
-// });
-// type FormData = z.infer<typeof schema>;
-
-// function Spinner({ className = "" }: { className?: string }) {
-//   return (
-//     <span
-//       className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
-//       aria-hidden="true"
-//     />
-//   );
-// }
-
-// export default function Login() {
-//   const {
-//     register,
-//     handleSubmit,
-//     setError,
-//     formState: { isSubmitting, errors },
-//   } = useForm<FormData>({ defaultValues: { userId: "", password: "" } });
-
-//   const { login } = useAuth();
-//   const navigate = useNavigate();
-
-//   // banner message (success / error)
-//   const [banner, setBanner] = useState<{
-//     type: "success" | "error";
-//     text: string;
-//   } | null>(null);
-//   const [showPassword, setShowPassword] = useState(false);
-
-//   const onSubmit = async (data: FormData) => {
-//     setBanner(null); // clear previous
-//     try {
-//       const res = await api<{
-//         accessToken?: string;
-//         requiresPasswordReset?: boolean;
-//         user?: {
-//           id: string;
-//           email: string;
-//           role: Role;
-//           name?: string;
-//           mustChangePassword?: boolean;
-//         };
-//       }>("/auth/login", { method: "POST", body: JSON.stringify(data) });
-
-//       // password reset flow
-//       if (res.requiresPasswordReset) {
-//         if (res.accessToken && res.user) {
-//           login(res.accessToken, res.user);
-//         }
-//         setBanner({
-//           type: "success",
-//           text: "Login successful. Please reset your password.",
-//         });
-//         navigate("/auth/change-password", { replace: true });
-//         return;
-//       }
-
-//       // invalid response
-//       if (!res.accessToken || !res.user) {
-//         setBanner({ type: "error", text: "Invalid user ID or password." });
-//         // Also mark password field as error (optional):
-//         setError("password", {
-//           type: "server",
-//           message: "Invalid credentials",
-//         });
-//         return;
-//       }
-
-//       // success
-//       login(res.accessToken, res.user);
-//       setBanner({ type: "success", text: "Login successful!" });
-//       navigate(roleHomePath[res.user.role] ?? "/home", { replace: true });
-//     } catch (err: any) {
-//       // If your api() throws on non-2xx, handle status-based messages here
-//       const msg =
-//         err?.status === 401 || err?.message?.includes("401")
-//           ? "Invalid user ID or password."
-//           : "Unable to sign in. Please try again.";
-//       setBanner({ type: "error", text: msg });
-//       setError("password", { type: "server", message: msg });
-//     }
-//   };
-
-//   const field = "border rounded-md p-2";
-
-//   return (
-//     <div className="max-w-sm mx-auto bg-white rounded-xl shadow p-6">
-//       <h1 className="text-xl font-semibold mb-4">Sign in</h1>
-
-//       {/* Inline banner */}
-//       {banner && (
-//         <div
-//           className={`mb-3 rounded-md px-3 py-2 text-sm ${
-//             banner.type === "success"
-//               ? "bg-green-50 text-green-800 border border-green-200"
-//               : "bg-red-50 text-red-800 border border-red-200"
-//           }`}
-//           role="alert"
-//           aria-live="polite"
-//         >
-//           {banner.text}
-//         </div>
-//       )}
-
-//       <form
-//         onSubmit={handleSubmit(onSubmit)}
-//         className="flex flex-col gap-3"
-//         autoComplete="on"
-//       >
-//         <div className="flex flex-col gap-1">
-//           <input
-//             className={field}
-//             id="userId"
-//             placeholder="User ID"
-//             autoComplete="username"
-//             {...register("userId", { required: "User ID is required" })}
-//           />
-//           {errors.userId && (
-//             <span className="text-xs text-red-600">
-//               {errors.userId.message}
-//             </span>
-//           )}
-//         </div>
-
-//         <div className="flex flex-col gap-1">
-//           <div className="relative">
-//             <input
-//               className={`${field} pr-10 w-full`}
-//               id="password"
-//               type={showPassword ? "text" : "password"}
-//               placeholder="Password"
-//               autoComplete="current-password"
-//               {...register("password", { required: "Password is required" })}
-//             />
-
-//             <button
-//               type="button"
-//               onClick={() => setShowPassword((v) => !v)}
-//               className="absolute inset-y-0 right-2 flex items-center text-gray-500 hover:text-gray-700"
-//               aria-label={showPassword ? "Hide password" : "Show password"}
-//               title={showPassword ? "Hide password" : "Show password"}
-//             >
-//               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-//             </button>
-//           </div>
-
-//           {errors.password && (
-//             <span className="text-xs text-red-600">
-//               {errors.password.message}
-//             </span>
-//           )}
-//         </div>
-
-//         <button
-//           disabled={isSubmitting}
-//           className="bg-[var(--brand)] text-white px-4 py-2 rounded-md"
-//         >
-//           {isSubmitting ? "Signing in..." : "Sign in"}
-//         </button>
-//       </form>
-//     </div>
-//   );
-// }
