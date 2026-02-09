@@ -118,6 +118,11 @@ model Sample {
   updatedAt  DateTime @updatedAt
 }
 
+enum TwoFactorMethod {
+  EMAIL
+  SMS
+}
+
 model User {
   id                        String           @id @default(cuid())
   email                     String
@@ -131,6 +136,15 @@ model User {
   failedLoginCount          Int      @default(0)
   lockedUntil               DateTime?
   lastFailedLoginAt         DateTime?
+
+  phoneNumber     String?   // for non-client roles (SMS)
+  twoFactorEnabled Boolean  @default(true)
+  twoFactorMethod    TwoFactorMethod?
+
+  // OTP challenge state (minimal)
+  twoFactorCodeHash   String?
+  twoFactorExpiresAt  DateTime?
+  twoFactorAttempts   Int      @default(0)
 
   
   active                    Boolean          @default(true)

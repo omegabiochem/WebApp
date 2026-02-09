@@ -120,4 +120,16 @@ export class AuthController {
     `;
     return rows?.[0] ?? {};
   }
+
+  @Public()
+  @Post('verify-2fa')
+  verify2fa(@Req() req: any, @Body() body: { userId: string; code: string }) {
+    return this.auth.verifyTwoFactor(body, req);
+  }
+
+  @Public()
+  @Post('resend-2fa')
+  resend2fa(@Req() req: any, @Body() body: { userId: string }) {
+    return this.auth.resendTwoFactor(body, req);
+  }
 }
