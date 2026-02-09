@@ -10,6 +10,8 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from 'prisma/prisma.service';
 import { setRequestContext } from 'src/common/request-context';
+import { MailService } from 'src/mail/mail.service';
+import { SmsService } from 'src/mail/sms.service';
 
 const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 
@@ -31,6 +33,8 @@ export class AuthService {
   constructor(
     private jwt: JwtService,
     private prisma: PrismaService,
+    private mail: MailService,
+    private sms: SmsService,
   ) {}
 
   // ---------------------------
@@ -77,6 +81,94 @@ export class AuthService {
   }
   private passwordOk(pw: string) {
     return typeof pw === 'string' && pw.length >= 8;
+  }
+
+  private generateOtp6(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  // private async start2FA(
+  //   user: {
+  //     id: string;
+  //     email: string;
+  //     role: any;
+  //     phoneNumber?: string | null;
+  //     name?: string | null;
+  //   },
+  //   req?: any,
+  // ) {
+  //   // const method = user.role === 'CLIENT' ? 'EMAIL' : 'SMS';
+
+  //   // if (method === 'SMS' && !user.phoneNumber) {
+  //   //   throw new BadRequestException({
+  //   //     code: 'PHONE_REQUIRED',
+  //   //     message:
+  //   //       'Phone number is required for 2-factor authentication. Contact admin.',
+  //   //   });
+  //   // }
+
+  //   const method: 'EMAIL' | 'SMS' = 'EMAIL'; // ✅ temporary until A2P is approved
+
+  //   const code = this.generateOtp6();
+  //   const codeHash = await bcrypt.hash(code, 12);
+  //   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  //   await this.prisma.user.update({
+  //     where: { id: user.id },
+  //     data: {
+  //       twoFactorCodeHash: codeHash,
+  //       twoFactorExpiresAt: expiresAt,
+  //       twoFactorAttempts: 0,
+  //     } as any,
+  //   });
+
+  //   if (method === 'EMAIL') {
+  //     await this.mail.sendTwoFactorOtpEmail({
+  //       to: user.email,
+  //       name: user.name ?? null,
+  //       code,
+  //       expiresAt,
+  //     });
+  //   } else {
+  //     await this.sms.sendOtp(user.phoneNumber!, code);
+  //   }
+
+  //   return { method, expiresAt };
+  // }
+
+  private async start2FA(
+    user: {
+      id: string;
+      email: string;
+      role: any;
+      phoneNumber?: string | null;
+      name?: string | null;
+    },
+    req?: any,
+  ) {
+    const method: 'EMAIL' | 'SMS' = 'EMAIL'; // TEMP: A2P pending
+
+    const code = this.generateOtp6();
+    const codeHash = await bcrypt.hash(code, 12);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        twoFactorCodeHash: codeHash,
+        twoFactorExpiresAt: expiresAt,
+        twoFactorAttempts: 0,
+      } as any,
+    });
+
+    await this.mail.sendTwoFactorOtpEmail({
+      to: user.email,
+      name: user.name ?? null,
+      code,
+      expiresAt,
+    });
+
+    return { method, expiresAt };
   }
 
   // ---------------------------
@@ -231,9 +323,14 @@ export class AuthService {
         userId: true,
         clientCode: true,
 
-        // ✅ lockout fields
+        // lockout
         failedLoginCount: true,
         lockedUntil: true,
+        lastFailedLoginAt: true,
+
+        // 2FA
+        phoneNumber: true,
+        twoFactorEnabled: true,
       },
     });
 
@@ -249,7 +346,6 @@ export class AuthService {
         meta: { userAgent: ua },
       });
 
-      // ✅ structured reason (keep generic for security)
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid user ID or password.',
@@ -290,8 +386,8 @@ export class AuthService {
         where: { id: user.id },
         data: {
           failedLoginCount: nextCount,
-          lockedUntil: lockedUntil ?? undefined,
           lastFailedLoginAt: now,
+          ...(shouldLock ? { lockedUntil } : {}),
         } as any,
       });
 
@@ -302,11 +398,7 @@ export class AuthService {
         ip,
         entityId: user.userId ?? user.email,
         details: shouldLock ? 'Bad password; account locked' : 'Bad password',
-        meta: {
-          userAgent: ua,
-          failedLoginCount: nextCount,
-          lockedUntil,
-        },
+        meta: { userAgent: ua, failedLoginCount: nextCount, lockedUntil },
       });
 
       throw new UnauthorizedException({
@@ -319,9 +411,12 @@ export class AuthService {
       });
     }
 
-    // Temp password expiry (only for mustChangePassword users)
+    // ✅ temp password expiry check BEFORE anything else
     if (user.mustChangePassword) {
-      if (user.tempPasswordExpiresAt && user.tempPasswordExpiresAt < new Date()) {
+      if (
+        user.tempPasswordExpiresAt &&
+        user.tempPasswordExpiresAt < new Date()
+      ) {
         await this.logAuthEvent({
           action: 'LOGIN_FAILED',
           userId: user.id,
@@ -339,25 +434,39 @@ export class AuthService {
       }
     }
 
-    // ✅ success: reset lockout counters
-    setRequestContext({ skipAudit: true });
-    try {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          lastLoginAt: new Date(),
-          lastActivityAt: new Date(),
+    // ✅ then do 2FA
+    if (user.twoFactorEnabled) {
+      const { method, expiresAt } = await this.start2FA(
+        {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          phoneNumber: user.phoneNumber,
+          name: user.name ?? null,
+        },
+        req,
+      );
 
-          failedLoginCount: 0,
-          lockedUntil: undefined,
-          lastFailedLoginAt: undefined,
-        } as any,
-      });
-    } finally {
-      setRequestContext({ skipAudit: false });
+      return {
+        requiresTwoFactor: true,
+        method,
+        expiresAt: expiresAt.toISOString(),
+        userId: user.userId, // ✅
+        mustChangePassword: user.mustChangePassword, // ✅ optional but useful for FE
+      };
     }
 
-    // First-login flow (force change)
+    // ✅ successful password => reset lockout counters (but DO NOT set lastLoginAt here if doing 2FA)
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastFailedLoginAt: null,
+      } as any,
+    });
+
+    // If must change password, keep your current flow
     if (user.mustChangePassword) {
       const payload = {
         sub: user.id,
@@ -366,7 +475,9 @@ export class AuthService {
         mcp: true,
         clientCode: user.clientCode ?? null,
       };
-      const accessToken = this.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+      const accessToken = this.jwt.sign(payload, {
+        expiresIn: ACCESS_TOKEN_TTL,
+      });
 
       return {
         requiresPasswordReset: true,
@@ -382,7 +493,17 @@ export class AuthService {
       };
     }
 
-    // Normal login: Issue JWT (✅ MUST expire)
+    // ✅ no 2FA => issue token + update lastLoginAt/lastActivityAt
+    setRequestContext({ skipAudit: true });
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
+      });
+    } finally {
+      setRequestContext({ skipAudit: false });
+    }
+
     const payload = {
       sub: user.id,
       role: user.role,
@@ -412,6 +533,87 @@ export class AuthService {
         clientCode: user.clientCode ?? null,
       },
     };
+  }
+
+  async resendTwoFactor(body: { userId: string }, req?: any) {
+    const userId = (body.userId ?? '').trim().toLowerCase();
+    if (!userId) {
+      throw new BadRequestException({
+        code: 'MISSING_FIELDS',
+        message: 'Missing userId.',
+      });
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        userId: true,
+        email: true,
+        role: true,
+        name: true,
+        active: true,
+        twoFactorEnabled: true,
+
+        // current challenge
+        twoFactorExpiresAt: true,
+      },
+    });
+
+    if (!user || !user.active) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid session.',
+      });
+    }
+
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException({
+        code: '2FA_NOT_ENABLED',
+        message: 'Two-factor is not enabled.',
+      });
+    }
+
+    // OPTIONAL: throttle resend to avoid spam (recommended)
+    // If the existing OTP is still valid for more than ~9 minutes, allow resend anyway,
+    // but if they spam-click resend, you should block.
+    // Here: block if last OTP was generated within last 30 seconds
+    const now = Date.now();
+    if (user.twoFactorExpiresAt) {
+      const issuedAtApprox =
+        new Date(user.twoFactorExpiresAt).getTime() - 10 * 60 * 1000; // since you set expiry = now+10m
+      if (now - issuedAtApprox < 30_000) {
+        throw new BadRequestException({
+          code: 'OTP_RESEND_THROTTLED',
+          message: 'Please wait a few seconds before requesting a new code.',
+        });
+      }
+    }
+
+    // Reuse your existing generator + mail sender
+    const { method, expiresAt } = await this.start2FA(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        phoneNumber: null,
+        name: user.name ?? null,
+      },
+      req,
+    );
+
+    // Audit (optional but nice)
+    await this.logAuthEvent({
+      action: 'LOGIN_FAILED', // or create a new action like 'OTP_RESENT'
+      userId: user.id,
+      role: user.role as any,
+      ip: this.getIp(req),
+      entityId: user.userId ?? user.email,
+      details: '2FA OTP resent',
+      meta: { method, userAgent: this.getUA(req) },
+    });
+
+    return { ok: true, method, expiresAt: expiresAt.toISOString() };
   }
 
   // ---------------------------
@@ -482,15 +684,139 @@ export class AuthService {
 
     return { ok: true };
   }
+
+  async verifyTwoFactor(body: { userId: string; code: string }, req?: any) {
+    const userId = (body.userId ?? '').trim().toLowerCase();
+    const code = (body.code ?? '').trim();
+
+    if (!userId || !code) {
+      throw new BadRequestException({
+        code: 'MISSING_FIELDS',
+        message: 'Missing code.',
+      });
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        name: true,
+        active: true,
+        mustChangePassword: true,
+        userId: true,
+        clientCode: true,
+
+        twoFactorCodeHash: true,
+        twoFactorExpiresAt: true,
+        twoFactorAttempts: true,
+      },
+    });
+
+    if (!user || !user.active) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid credentials.',
+      });
+    }
+
+    if (!user.twoFactorCodeHash || !user.twoFactorExpiresAt) {
+      throw new UnauthorizedException({
+        code: 'NO_2FA_CHALLENGE',
+        message: 'No verification in progress. Please login again.',
+      });
+    }
+
+    if (user.twoFactorExpiresAt < new Date()) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          twoFactorCodeHash: null,
+          twoFactorExpiresAt: null,
+          twoFactorAttempts: 0,
+        } as any,
+      });
+
+      throw new UnauthorizedException({
+        code: 'OTP_EXPIRED',
+        message: 'Code expired. Please login again.',
+      });
+    }
+
+    if ((user.twoFactorAttempts ?? 0) >= 5) {
+      throw new UnauthorizedException({
+        code: 'OTP_LOCKED',
+        message: 'Too many incorrect codes. Please login again.',
+      });
+    }
+
+    const ok = await bcrypt.compare(code, user.twoFactorCodeHash);
+    if (!ok) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { twoFactorAttempts: { increment: 1 } } as any,
+      });
+
+      throw new UnauthorizedException({
+        code: 'OTP_INVALID',
+        message: 'Invalid code.',
+      });
+    }
+
+    // ✅ clear OTP state + update activity
+    setRequestContext({ skipAudit: true });
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          twoFactorCodeHash: null,
+          twoFactorExpiresAt: null,
+          twoFactorAttempts: 0,
+          lastLoginAt: new Date(),
+          lastActivityAt: new Date(),
+        } as any,
+      });
+    } finally {
+      setRequestContext({ skipAudit: false });
+    }
+
+    const payload = {
+      sub: user.id,
+      role: user.role,
+      uid: user.userId ?? null,
+      clientCode: user.clientCode ?? null,
+    };
+    const accessToken = this.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+
+    await this.logAuthEvent({
+      action: 'LOGIN',
+      userId: user.id,
+      role: user.role as any,
+      ip: this.getIp(req),
+      entityId: user.userId ?? user.email,
+      details: 'User login successful (2FA)',
+      meta: { userAgent: this.getUA(req) },
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name ?? undefined,
+        mustChangePassword: user.mustChangePassword,
+        clientCode: user.clientCode ?? null,
+      },
+    };
+  }
 }
 
 function throwIfInvalidUser(user: any): asserts user is any {
   if (!user || !user.active)
     throw new UnauthorizedException('Invalid credentials');
 }
-
-
-
 
 // import {
 //   Injectable,

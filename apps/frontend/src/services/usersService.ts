@@ -1,5 +1,3 @@
-
-
 import { api } from "../lib/api";
 
 export type Role =
@@ -83,6 +81,20 @@ export async function fetchUsers(params: {
 /* ------------------------------------------------------------------
  * ADMIN ACTIONS
  * ------------------------------------------------------------------ */
+
+export async function setUserName(id: string, name: string | null) {
+  return api(`/users/${id}}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function setUserEmail(id: string, email: string) {
+  return api(`/users/${id}/email`, {
+    method: "PATCH",
+    body: JSON.stringify({ email }),
+  });
+}
 
 export async function setUserActive(id: string, active: boolean) {
   return api(`/users/${id}/active`, {

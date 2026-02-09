@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from 'src/common/jwt.strategy';
 import { PrismaService } from 'prisma/prisma.service';
+import { MailModule } from 'src/mail/mail.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PrismaService } from 'prisma/prisma.service';
 
     // make sure config is available here (even if isGlobal: true, this is safe)
     ConfigModule,
+    MailModule,
 
     JwtModule.registerAsync({
       imports: [ConfigModule],

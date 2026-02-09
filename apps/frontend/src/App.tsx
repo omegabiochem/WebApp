@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import {
   QueryClient,
@@ -17,6 +17,11 @@ const qc = new QueryClient();
 function AppShell() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const location = useLocation();
+
+  const isPublicLegal =
+    location.pathname === "/privacy-policy" ||
+    location.pathname === "/terms-and-conditions";
 
   useEffect(() => {
     const onConnect = () => console.log("✅ socket connected", socket.id);
@@ -53,7 +58,7 @@ function AppShell() {
         <Outlet />
       </main>
 
-      {user && <SupportWidget />}
+      {user && !isPublicLegal && <SupportWidget />}
     </div>
   );
 }
