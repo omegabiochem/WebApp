@@ -33,6 +33,9 @@ import ManageUsers from "./pages/Admin/ManageUsers";
 import MCDashboard from "./pages/Dashboard/MCDashboard";
 import ChemistryLoginBook from "./loginbooks/ChemistryLoginBook";
 import MicroLoginBook from "./loginbooks/MicroLoginBook";
+import Verify2FA from "./pages/Auth/Verify2FA";
+import PrivacyPolicy from "./pages/Legal/PrivacyPolicy";
+import TermsAndConditions from "./pages/Legal/TermsAndConditions";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -41,10 +44,14 @@ export const router = createBrowserRouter([
     path: "/",
     element: <App />, // ensure <App /> renders <Outlet />
     children: [
+      // Public legal pages (Twilio A2P)
+      { path: "privacy-policy", element: <PrivacyPolicy /> },
+      { path: "terms-and-conditions", element: <TermsAndConditions /> },
       { index: true, element: <Root /> },
 
       // Public
       { path: "login", element: <Login /> },
+      { path: "auth/verify-2fa", element: <Verify2FA /> },
 
       // Auth-only utility routes
       {
