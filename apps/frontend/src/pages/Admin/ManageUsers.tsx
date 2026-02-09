@@ -12,6 +12,8 @@ import {
   resetUserPassword,
   forceUserSignout,
   createUserByAdmin,
+  setUserName,
+  setUserEmail,
   type Role,
   type UserRow,
 } from "../../services/usersService";
@@ -269,6 +271,9 @@ export default function UsersAdmin() {
   const [editRole, setEditRole] = useState<Role>("CLIENT");
   const [editClientCode, setEditClientCode] = useState("");
 
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+
   /* -------------------- reset password modal -------------------- */
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const [pwUserLabel, setPwUserLabel] = useState("");
@@ -353,6 +358,8 @@ export default function UsersAdmin() {
     setSelected(u);
     setEditRole(u.role);
     setEditClientCode(u.clientCode ?? "");
+    setEditName(u.name ?? "");
+    setEditEmail(u.email ?? "");
     setManageModalOpen(true);
   };
 
@@ -360,6 +367,18 @@ export default function UsersAdmin() {
     if (!selected) return;
 
     try {
+      const nextName = editName.trim() || null;
+      const nextEmail = editEmail.trim().toLowerCase();
+
+      // ✅ name
+      if ((selected.name ?? null) !== nextName) {
+        await setUserName(selected.id, nextName);
+      }
+
+      // ✅ email
+      if (selected.email.toLowerCase() !== nextEmail) {
+        await setUserEmail(selected.id, nextEmail);
+      }
       if (editRole !== selected.role) {
         await setUserRole(selected.id, editRole);
       }
@@ -1147,6 +1166,32 @@ export default function UsersAdmin() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-600 mb-1">
+                  Name
+                </label>
+                <input
+                  className={inputBase}
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Jane Doe"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-600 mb-1">
+                  Email
+                </label>
+                <input
+                  className={inputBase}
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="user@omegabiochemlab.com"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Changing email may affect login + notifications.
+                </p>
+              </div>
               <div>
                 <label className="block text-xs text-slate-600 mb-1">
                   Role
