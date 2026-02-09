@@ -24,7 +24,7 @@ async function bootstrap() {
     exposedHeaders: ['Content-Disposition'],
   });
 
-  const port = Number(process.env.PORT) || 3000;
+  const port = Number(process.env.PORT || 3000);
   console.log('JWT_SECRET present?', !!process.env.JWT_SECRET);
   console.log('JWT_SECRET length:', process.env.JWT_SECRET?.length);
 
