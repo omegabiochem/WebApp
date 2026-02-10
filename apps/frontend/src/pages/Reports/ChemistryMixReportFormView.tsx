@@ -872,7 +872,9 @@ export default function ChemistryMixReportFormView(
                       readOnly
                       disabled
                     />
-                    <span className="shrink-0">%</span>
+                    {row.showPercent !== false && (
+                      <span className="shrink-0">%</span>
+                    )}
                   </div>
                 </div>
 
@@ -885,7 +887,9 @@ export default function ChemistryMixReportFormView(
                       readOnly
                       disabled
                     />
-                    <span className="shrink-0">%</span>
+                    {row.showPercent !== false && (
+                      <span className="shrink-0">%</span>
+                    )}
                   </div>
                 </div>
 

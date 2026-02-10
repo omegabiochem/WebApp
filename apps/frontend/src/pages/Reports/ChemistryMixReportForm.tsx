@@ -1818,6 +1818,7 @@ export default function ChemistryMixReportForm({
             const { date, initial } = splitDateInitial(row.dateTestedInitial);
 
             const isOther = row.key === "OTHER" || row.key.startsWith("OTHER_");
+            const showPct = row.showPercent !== false;
 
             return (
               <div
@@ -2057,6 +2058,7 @@ export default function ChemistryMixReportForm({
                       role !== "CLIENT" ||
                       selectingCorrections
                     }
+                    placeholder={showPct ? "%" : ""}
                     onChange={(e) => {
                       if (
                         lock("actives") ||
@@ -2068,9 +2070,11 @@ export default function ChemistryMixReportForm({
                     }}
                   />
 
-                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px] text-center">
-                    %
-                  </span>
+                  {showPct && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                      %
+                    </span>
+                  )}
                 </div>
 
                 {/* RESULTS */}
@@ -2097,6 +2101,7 @@ export default function ChemistryMixReportForm({
                       role === "CLIENT" ||
                       selectingCorrections
                     }
+                    placeholder={showPct ? "%" : ""}
                     onChange={(e) => {
                       if (
                         lock("actives") ||
@@ -2108,9 +2113,11 @@ export default function ChemistryMixReportForm({
                     }}
                   />
 
-                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
-                    %
-                  </span>
+                  {showPct && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                      %
+                    </span>
+                  )}
                 </div>
 
                 {/* DATE TESTED / INITIAL */}
