@@ -13,6 +13,7 @@ export type ChemActiveRow = {
   result: string; // %
   dateTestedInitial: string; // "MM/DD/YYYY / AB"
   otherName?: string; // for "OTHER" active
+  showPercent?: boolean; // whether to show formulaContent and result fields (some actives don't use %)
 };
 
 // Default actives from the template
@@ -96,6 +97,17 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     formulaContent: "",
     result: "",
     dateTestedInitial: "",
+  },
+  {
+    key: "CONTENT_UNIFORMITY",
+    label: "CONTENT UNIFORMITY",
+    checked: false,
+    bulkActiveLot: "",
+    sopNo: "",
+    formulaContent: "",
+    result: "",
+    dateTestedInitial: "",
+    showPercent: false,
   },
   {
     key: "DIMETHICONE",
@@ -258,16 +270,6 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     dateTestedInitial: "",
   },
   {
-    key: "CONTENT_UNIFORMITY",
-    label: "CONTENT UNIFORMITY",
-    checked: false,
-    bulkActiveLot: "",
-    sopNo: "",
-    formulaContent: "",
-    result: "",
-    dateTestedInitial: "",
-  },
-  {
     key: "ZINC_OXIDE",
     label: "ZINC OXIDE",
     checked: false,
@@ -287,6 +289,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     result: "",
     dateTestedInitial: "",
     otherName: "",
+    showPercent: false,
   },
   // ✅ NEW extra OTHER row
   {
@@ -299,6 +302,7 @@ export const DEFAULT_CHEM_ACTIVES: ChemActiveRow[] = [
     formulaContent: "",
     result: "",
     dateTestedInitial: "",
+    showPercent: false,
   },
 ];
 

@@ -20,8 +20,10 @@ type InboxLastMessage = {
 
 // ✅ NEW DTO shape returned to frontend
 type InboxThreadDto = {
-  id: string;
+  id: string | null;
   clientCode: string;
+  clientName: string | null;
+  clientEmail: string | null;
   lastMessage: InboxLastMessage | null;
   unreadCount: number;
 };
@@ -148,6 +150,86 @@ export class MessagesService {
 
   // ✅ NEW: inbox is filtered by what the viewer can see
 
+  // async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
+  //   const canSeeAll = PRIVILEGED.includes(viewerRole);
+
+  //   const visibleMessageFilter = canSeeAll
+  //     ? undefined
+  //     : {
+  //         OR: [
+  //           { mentions: { has: viewerRole } },
+  //           { senderRole: viewerRole },
+  //           { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
+  //         ],
+  //       };
+
+  //   // 1) fetch threads + last message (for preview)
+  //   const threads = await this.prisma.messageThread.findMany({
+  //     where: {
+  //       ...(visibleMessageFilter
+  //         ? { messages: { some: visibleMessageFilter as any } }
+  //         : {}),
+  //     },
+  //     orderBy: { updatedAt: 'desc' },
+  //     include: {
+  //       messages: {
+  //         where: visibleMessageFilter as any,
+  //         take: 1,
+  //         orderBy: { createdAt: 'desc' },
+  //         select: {
+  //           id: true,
+  //           body: true,
+  //           createdAt: true,
+  //           senderRole: true,
+  //         },
+  //       },
+  //       // get lastReadAt for this viewer
+  //       reads: {
+  //         where: { userId: viewerUserId },
+  //         take: 1,
+  //         select: { lastReadAt: true },
+  //       },
+  //     },
+  //   });
+
+  //   // 2) for each thread compute unread count (real count)
+  //   // Note: we will count only CLIENT messages by default.
+  //   const result: InboxThreadDto[] = await Promise.all(
+  //     threads.map(async (t) => {
+  //       const lastReadAt = t.reads?.[0]?.lastReadAt ?? new Date(0);
+
+  //       const unreadCount = await this.prisma.message.count({
+  //         where: {
+  //           threadId: t.id,
+  //           ...(visibleMessageFilter ? (visibleMessageFilter as any) : {}),
+  //           createdAt: { gt: lastReadAt },
+  //           senderRole: 'CLIENT', // ✅ recommended
+  //         } as any,
+  //       });
+
+  //       return {
+  //         id: t.id,
+  //         clientCode: t.clientCode,
+  //         lastMessage: t.messages?.[0] ?? null,
+  //         unreadCount,
+  //       };
+  //     }),
+  //   );
+
+  //   // 3) sort by latest message time (not updatedAt) to ensure correct ordering
+  //   result.sort((a, b) => {
+  //     const at = a.lastMessage
+  //       ? new Date(a.lastMessage.createdAt).getTime()
+  //       : 0;
+  //     const bt = b.lastMessage
+  //       ? new Date(b.lastMessage.createdAt).getTime()
+  //       : 0;
+  //     return bt - at;
+  //   });
+
+  //   return result;
+  // }
+
   async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
     const canSeeAll = PRIVILEGED.includes(viewerRole);
 
@@ -161,60 +243,85 @@ export class MessagesService {
           ],
         };
 
-    // 1) fetch threads + last message (for preview)
+    // 1) get ALL clients (one row per clientCode)
+    // If you can have multiple client users per clientCode, pick “primary” name/email or first one.
+    const clientUsers = await this.prisma.user.findMany({
+      where: { role: 'CLIENT', clientCode: { not: null } },
+      select: { clientCode: true, name: true, email: true },
+      orderBy: { clientCode: 'asc' },
+    });
+
+    // Deduplicate by clientCode
+    const clientMap = new Map<
+      string,
+      { name?: string | null; email?: string | null }
+    >();
+    for (const u of clientUsers) {
+      if (!u.clientCode) continue;
+      if (!clientMap.has(u.clientCode)) {
+        clientMap.set(u.clientCode, {
+          name: u.name ?? null,
+          email: u.email ?? null,
+        });
+      }
+    }
+    const clientCodes = Array.from(clientMap.keys());
+
+    if (clientCodes.length === 0) return [];
+
+    // 2) fetch threads for those clients (even if no visible messages, thread still returned)
     const threads = await this.prisma.messageThread.findMany({
-      where: {
-        ...(visibleMessageFilter
-          ? { messages: { some: visibleMessageFilter as any } }
-          : {}),
-      },
-      orderBy: { updatedAt: 'desc' },
+      where: { clientCode: { in: clientCodes } },
       include: {
         messages: {
           where: visibleMessageFilter as any,
           take: 1,
           orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            body: true,
-            createdAt: true,
-            senderRole: true,
-          },
+          select: { id: true, body: true, createdAt: true, senderRole: true },
         },
-        // get lastReadAt for this viewer
         reads: {
           where: { userId: viewerUserId },
           take: 1,
           select: { lastReadAt: true },
         },
       },
+      orderBy: { updatedAt: 'desc' },
     });
 
-    // 2) for each thread compute unread count (real count)
-    // Note: we will count only CLIENT messages by default.
-    const result: InboxThreadDto[] = await Promise.all(
-      threads.map(async (t) => {
-        const lastReadAt = t.reads?.[0]?.lastReadAt ?? new Date(0);
+    const threadByClient = new Map<string, (typeof threads)[number]>();
+    for (const t of threads) threadByClient.set(t.clientCode, t);
 
-        const unreadCount = await this.prisma.message.count({
-          where: {
-            threadId: t.id,
-            ...(visibleMessageFilter ? (visibleMessageFilter as any) : {}),
-            createdAt: { gt: lastReadAt },
-            senderRole: 'CLIENT', // ✅ recommended
-          } as any,
-        });
+    // 3) build rows for ALL clients
+    const result: InboxThreadDto[] = await Promise.all(
+      clientCodes.map(async (clientCode) => {
+        const t = threadByClient.get(clientCode);
+        const lastReadAt = t?.reads?.[0]?.lastReadAt ?? new Date(0);
+
+        const unreadCount = t
+          ? await this.prisma.message.count({
+              where: {
+                threadId: t.id,
+                ...(visibleMessageFilter ? (visibleMessageFilter as any) : {}),
+                createdAt: { gt: lastReadAt },
+                senderRole: 'CLIENT',
+              } as any,
+            })
+          : 0;
+
+        const info = clientMap.get(clientCode);
 
         return {
-          id: t.id,
-          clientCode: t.clientCode,
-          lastMessage: t.messages?.[0] ?? null,
+          id: t?.id ?? null,
+          clientCode,
+          clientName: info?.name ?? null,
+          clientEmail: info?.email ?? null,
+          lastMessage: t?.messages?.[0] ?? null,
           unreadCount,
         };
       }),
     );
 
-    // 3) sort by latest message time (not updatedAt) to ensure correct ordering
+    // 4) sort: clients with lastMessage first, then by newest message date, then by clientCode
     result.sort((a, b) => {
       const at = a.lastMessage
         ? new Date(a.lastMessage.createdAt).getTime()
@@ -222,7 +329,8 @@ export class MessagesService {
       const bt = b.lastMessage
         ? new Date(b.lastMessage.createdAt).getTime()
         : 0;
-      return bt - at;
+      if (bt !== at) return bt - at;
+      return a.clientCode.localeCompare(b.clientCode);
     });
 
     return result;

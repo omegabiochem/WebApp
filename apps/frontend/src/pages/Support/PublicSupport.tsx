@@ -14,7 +14,7 @@ type IssueType =
   | "Other";
 
 export default function PublicSupport() {
-  const supportEmail = "support@yourlims.com";
+  const supportEmail = "tech@omegabiochemlab.com";
 
   const [issueType, setIssueType] = useState<IssueType>(
     "Request Login Credentials",
@@ -255,7 +255,7 @@ export default function PublicSupport() {
                 <div className="font-semibold text-slate-900">
                   Support Hours
                 </div>
-                <div className="mt-1">Mon–Fri · 9:00 AM – 6:00 PM</div>
+                <div className="mt-1">Mon–Fri · 9:00 AM – 5:00 PM</div>
                 <div className="mt-1 text-slate-500">
                   For urgent production issues, add{" "}
                   <span className="font-medium">URGENT</span> in the subject.
