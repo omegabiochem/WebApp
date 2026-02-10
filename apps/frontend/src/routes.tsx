@@ -36,6 +36,8 @@ import MicroLoginBook from "./loginbooks/MicroLoginBook";
 import Verify2FA from "./pages/Auth/Verify2FA";
 import PrivacyPolicy from "./pages/Legal/PrivacyPolicy";
 import TermsAndConditions from "./pages/Legal/TermsAndConditions";
+import SupportHelpPage from "./pages/Support/supportHelpPage";
+import PublicSupport from "./pages/Support/PublicSupport";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -48,6 +50,7 @@ export const router = createBrowserRouter([
       { path: "privacy-policy", element: <PrivacyPolicy /> },
       { path: "terms-and-conditions", element: <TermsAndConditions /> },
       { index: true, element: <Root /> },
+      { path: "publicsupport", element: <PublicSupport /> },
 
       // Public
       { path: "login", element: <Login /> },
@@ -426,6 +429,28 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["MICRO", "MC"]}>
               <MicroLoginBook />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "support",
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "CLIENT",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "MC",
+                "QA",
+              ]}
+            >
+              <SupportHelpPage />
             </RequireRole>
           </RequireAuth>
         ),

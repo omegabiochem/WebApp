@@ -13,7 +13,7 @@ async function seedAdmin() {
   await prisma.user.upsert({
     where: { userId: 'admin' },
     update: {
-      email: 'admin@lab.test',
+      email: 'tech@omegabiochemlab.com',
       role: 'ADMIN',
       name: 'Admin',
       active: true,
@@ -21,7 +21,7 @@ async function seedAdmin() {
       passwordVersion: 1,
     },
     create: {
-      email: 'admin@lab.test',
+      email: 'tech@omegabiochemlab.com',
       userId: 'admin',
       name: 'Admin',
       role: 'ADMIN',
