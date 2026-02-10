@@ -166,6 +166,11 @@ model User {
   supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
   supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
 
+
+  refreshTokenHash   String?   // bcrypt hash of refresh token
+  refreshTokenExpAt  DateTime? // expiry timestamp
+  refreshTokenRotatedAt DateTime? // optional: last rotation time (audit/debug)
+
   @@index([clientCode, role])
 }
 
