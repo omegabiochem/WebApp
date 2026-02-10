@@ -14,7 +14,7 @@ async function seedAdmin() {
   await prisma.user.upsert({
     where: { userId: 'admin' }, // ✅ must be unique
     update: {
-      email: 'admin@lab.test',
+      email: 'tech@omegabiochemlab.com',
       name: 'Admin',
       role: 'ADMIN',
       active: true,
@@ -22,7 +22,7 @@ async function seedAdmin() {
       passwordVersion: 1,
     },
     create: {
-      email: 'admin@lab.test',
+      email: 'tech@omegabiochemlab.com',
       userId: 'admin',
       userIdSetAt: new Date(), // ✅ optional but good
       name: 'Admin',

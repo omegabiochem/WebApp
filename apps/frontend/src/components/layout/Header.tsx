@@ -27,12 +27,14 @@ export default function Header() {
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
+      { label: "Support", path: "/support" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
       { label: "Audit and Trail", path: "/clientAudit" },
       { label: "Forms", path: "/formmenu" },
       { label: "Results", path: "/results" },
+      { label: "Support", path: "/support" },
     ],
     SYSTEMADMIN: [
       { label: "Home", path: "/systemAdminDashboard" },
@@ -40,30 +42,36 @@ export default function Header() {
       { label: "New Reports", path: "/reports/new" },
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
+      { label: "Support", path: "/support" },
     ],
     MICRO: [
       { label: "Home", path: "/microDashboard" },
       { label: "Results", path: "/results" },
       { label: "Login Book", path: "/microLoginBook" },
+      { label: "Support", path: "/support" },
     ],
     CHEMISTRY: [
       { label: "Home", path: "/chemistryDashboard" },
       { label: "Results", path: "/results" },
       { label: "Login Book", path: "/chemistryLoginBook" },
+      { label: "Support", path: "/support" },
     ],
     MC: [
       { label: "Home", path: "/mcDashboard" },
       { label: "Results", path: "/results" },
       { label: "Micro Login Book", path: "/microLoginBook" },
       { label: "Chemistry Login Book", path: "/chemistryLoginBook" },
+      { label: "Support", path: "/support" },
     ],
     QA: [
       { label: "Home", path: "/qaDashboard" },
       { label: "Results", path: "/results" },
+      { label: "Support", path: "/support" },
     ],
     FRONTDESK: [
       { label: "Home", path: "/frontdeskDashboard" },
       { label: "Results", path: "/results" },
+      { label: "Support", path: "/support" },
     ],
     DEFAULT: [{ label: "Home", path: "/home" }],
   };
@@ -100,6 +108,9 @@ export default function Header() {
             <>
               <Link to="/home" className="hover:underline">
                 Home
+              </Link>
+               <Link to="/publicsupport" className="hover:underline">
+                Support
               </Link>
               <Link
                 to="/login"

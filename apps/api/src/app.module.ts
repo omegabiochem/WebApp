@@ -23,6 +23,7 @@ import { MessagesModule } from './messages/messages.module';
 import { AttachmentsGlobalModule } from './attachments/attachments.global.module';
 import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
 import { AdminModule } from './admin/admin.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AdminModule } from './admin/admin.module';
     MessagesModule,
     AttachmentsGlobalModule,
     AdminModule,
+    SupportModule,
   ],
   controllers: [HealthController, FaviconController],
   providers: [

@@ -124,29 +124,27 @@ enum TwoFactorMethod {
 }
 
 model User {
-  id                        String           @id @default(cuid())
-  email                     String
-  name                      String?
-  role                      UserRole         @default(CLIENT)
-  passwordHash              String
-  mustChangePassword        Boolean          @default(false)
+  id                 String   @id @default(cuid())
+  email              String
+  name               String?
+  role               UserRole @default(CLIENT)
+  passwordHash       String
+  mustChangePassword Boolean  @default(false)
 
+  // ✅ add these
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  lastFailedLoginAt DateTime?
 
-    // ✅ add these
-  failedLoginCount          Int      @default(0)
-  lockedUntil               DateTime?
-  lastFailedLoginAt         DateTime?
-
-  phoneNumber     String?   // for non-client roles (SMS)
-  twoFactorEnabled Boolean  @default(true)
-  twoFactorMethod    TwoFactorMethod?
+  phoneNumber      String? // for non-client roles (SMS)
+  twoFactorEnabled Boolean          @default(true)
+  twoFactorMethod  TwoFactorMethod?
 
   // OTP challenge state (minimal)
-  twoFactorCodeHash   String?
-  twoFactorExpiresAt  DateTime?
-  twoFactorAttempts   Int      @default(0)
+  twoFactorCodeHash  String?
+  twoFactorExpiresAt DateTime?
+  twoFactorAttempts  Int       @default(0)
 
-  
   active                    Boolean          @default(true)
   createdAt                 DateTime         @default(now())
   updatedAt                 DateTime         @updatedAt
@@ -163,6 +161,10 @@ model User {
   emailNotificationsEnabled Boolean          @default(true)
   auditTrails               AuditTrail[]
   readings                  BalanceReading[]
+
+  // Support Tickets (relations)
+  supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
+  supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
 
   @@index([clientCode, role])
 }
@@ -515,4 +517,49 @@ enum ClientNotifyMode {
   USERS_ONLY
   CUSTOM_ONLY
   USERS_PLUS_CUSTOM
+}
+
+enum SupportTicketCategory {
+  LOGIN_ACCESS
+  OTP_VERIFICATION
+  REPORTS_WORKFLOW
+  ATTACHMENTS_PRINTING
+  PERFORMANCE
+  BUG_ERROR
+  OTHER
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdById String?
+  createdBy   User?   @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  category SupportTicketCategory
+  status   SupportTicketStatus   @default(OPEN)
+
+  reportId    String?
+  reportType  String?
+  description String
+
+  userAgent  String?
+  clientTime String?
+  meta       Json?
+
+  assignedToId String?
+  assignedTo   User?   @relation("SupportTicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([category])
+  @@index([createdById])
 }

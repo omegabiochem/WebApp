@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
         </p>
 
         <h2 className="text-lg font-semibold">6. Contact</h2>
-        <p>Email: support@omegabiochemlab.com</p>
+        <p>Email: tech@omegabiochemlab.com</p>
       </div>
     </div>
   );

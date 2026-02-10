@@ -33,7 +33,7 @@ export default function TermsAndConditions() {
         </p>
 
         <h2 className="text-lg font-semibold">5. Contact</h2>
-        <p>Email: support@omegabiochemlab.com</p>
+        <p>Email: tech@omegabiochemlab.com</p>
       </div>
     </div>
   );
