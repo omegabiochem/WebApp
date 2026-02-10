@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -18,11 +19,13 @@ async function bootstrap() {
       'https://omega-lims.fly.dev',
       'https://omega-lims-staging.fly.dev',
     ],
-    credentials: false,
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Content-Disposition'],
   });
+
+  app.use(cookieParser());
 
   const port = Number(process.env.PORT || 3000);
   console.log('JWT_SECRET present?', !!process.env.JWT_SECRET);
