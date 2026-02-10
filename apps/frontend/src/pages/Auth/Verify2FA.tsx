@@ -129,6 +129,7 @@ export default function Verify2FA() {
     try {
       const res = await api<{
         accessToken: string;
+        requiresPasswordReset?: boolean;
         user: {
           id: string;
           email: string;
@@ -147,6 +148,15 @@ export default function Verify2FA() {
 
       sessionStorage.removeItem("pendingUserId");
       login(res.accessToken, res.user);
+
+      if (res.requiresPasswordReset || res.user.mustChangePassword) {
+        setBanner({
+          type: "success",
+          text: "Verified. Please create a new password…",
+        });
+        nav("/auth/change-password", { replace: true });
+        return;
+      }
 
       setBanner({ type: "success", text: "Verified. Signing you in…" });
       nav(roleHomePath[res.user.role] ?? "/home", { replace: true });
@@ -250,13 +260,18 @@ export default function Verify2FA() {
             Verify your sign-in
           </h1>
           <p className="mt-1 text-sm text-gray-600">
-            Enter the 6-digit code sent to your email or phone.
+            Enter the 6-digit code sent to your Registered email.
           </p>
 
           {/* 10-minute timer */}
           <div className="mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-gray-700 bg-white">
             <span className="font-medium">Time remaining:</span>
-            <span className={cn("font-semibold", secondsLeft <= 30 && "text-red-600")}>
+            <span
+              className={cn(
+                "font-semibold",
+                secondsLeft <= 30 && "text-red-600",
+              )}
+            >
               {pad2(mm)}:{pad2(ss)}
             </span>
           </div>
@@ -269,7 +284,7 @@ export default function Verify2FA() {
                 "mb-4 rounded-xl px-4 py-3 text-sm border",
                 banner.type === "success"
                   ? "bg-green-50 text-green-800 border-green-200"
-                  : "bg-red-50 text-red-800 border-red-200"
+                  : "bg-red-50 text-red-800 border-red-200",
               )}
               role="alert"
               aria-live="polite"
@@ -298,7 +313,7 @@ export default function Verify2FA() {
             className={cn(
               "w-full rounded-xl border px-4 py-3 text-center text-xl tracking-[0.35em] font-semibold",
               "focus:outline-none focus:ring-2 focus:ring-[color:var(--brand)]/30 focus:border-[color:var(--brand)]",
-              "disabled:bg-gray-50 disabled:text-gray-500"
+              "disabled:bg-gray-50 disabled:text-gray-500",
             )}
             disabled={busy || secondsLeft === 0}
             aria-invalid={!!(banner?.type === "error")}
@@ -317,7 +332,7 @@ export default function Verify2FA() {
                 "text-xs font-medium underline underline-offset-4",
                 busy || cooldown > 0 || secondsLeft === 0
                   ? "text-gray-400 cursor-not-allowed"
-                  : "text-[color:var(--brand)]"
+                  : "text-[color:var(--brand)]",
               )}
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
@@ -330,7 +345,7 @@ export default function Verify2FA() {
             className={cn(
               "mt-5 w-full rounded-xl px-4 py-3 font-semibold text-white",
               "bg-[var(--brand)] hover:opacity-95 active:opacity-90",
-              "disabled:opacity-60 disabled:cursor-not-allowed"
+              "disabled:opacity-60 disabled:cursor-not-allowed",
             )}
           >
             {busy ? "Verifying…" : "Verify"}

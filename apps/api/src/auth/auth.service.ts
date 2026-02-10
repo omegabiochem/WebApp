@@ -352,7 +352,7 @@ export class AuthService {
       });
     }
 
-    // ✅ check lock BEFORE password compare
+    // Locked?
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       await this.logAuthEvent({
         action: 'LOGIN_FAILED',
@@ -411,7 +411,7 @@ export class AuthService {
       });
     }
 
-    // ✅ temp password expiry check BEFORE anything else
+    // Temp password expired? (still check, even though OTP comes next)
     if (user.mustChangePassword) {
       if (
         user.tempPasswordExpiresAt &&
@@ -434,7 +434,17 @@ export class AuthService {
       }
     }
 
-    // ✅ then do 2FA
+    // ✅ Successful password => reset lockout counters
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastFailedLoginAt: null,
+      } as any,
+    });
+
+    // ✅ OTP FIRST (if enabled)
     if (user.twoFactorEnabled) {
       const { method, expiresAt } = await this.start2FA(
         {
@@ -451,22 +461,12 @@ export class AuthService {
         requiresTwoFactor: true,
         method,
         expiresAt: expiresAt.toISOString(),
-        userId: user.userId, // ✅
-        mustChangePassword: user.mustChangePassword, // ✅ optional but useful for FE
+        userId: user.userId, // FE will store in sessionStorage and verify OTP
+        mustChangePassword: user.mustChangePassword, // optional hint for FE
       };
     }
 
-    // ✅ successful password => reset lockout counters (but DO NOT set lastLoginAt here if doing 2FA)
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLoginCount: 0,
-        lockedUntil: null,
-        lastFailedLoginAt: null,
-      } as any,
-    });
-
-    // If must change password, keep your current flow
+    // ✅ If OTP not enabled, and mustChangePassword => force reset now
     if (user.mustChangePassword) {
       const payload = {
         sub: user.id,
@@ -475,6 +475,7 @@ export class AuthService {
         mcp: true,
         clientCode: user.clientCode ?? null,
       };
+
       const accessToken = this.jwt.sign(payload, {
         expiresIn: ACCESS_TOKEN_TTL,
       });
@@ -493,7 +494,7 @@ export class AuthService {
       };
     }
 
-    // ✅ no 2FA => issue token + update lastLoginAt/lastActivityAt
+    // ✅ No OTP and no reset => issue token + update activity
     setRequestContext({ skipAudit: true });
     try {
       await this.prisma.user.update({
@@ -529,7 +530,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         name: user.name ?? undefined,
-        mustChangePassword: user.mustChangePassword,
+        mustChangePassword: false,
         clientCode: user.clientCode ?? null,
       },
     };
@@ -643,16 +644,71 @@ export class AuthService {
   // ---------------------------
   // Change own password (post-auth)
   // ---------------------------
+  // async changeOwnPassword(
+  //   userDbId: string,
+  //   currentPassword: string,
+  //   newPassword: string,
+  //   req?: any,
+  // ) {
+  //   const user = await this.prisma.user.findUnique({ where: { id: userDbId } });
+  //   throwIfInvalidUser(user);
+
+  //   const ok = await bcrypt.compare(currentPassword, user?.passwordHash);
+  //   if (!ok) throw new BadRequestException('Current password is incorrect');
+
+  //   if (!this.passwordOk(newPassword)) {
+  //     throw new BadRequestException(
+  //       'New password does not meet policy (min 8 chars)',
+  //     );
+  //   }
+
+  //   const passwordHash = await bcrypt.hash(newPassword, 12);
+  //   await this.prisma.user.update({
+  //     where: { id: userDbId },
+  //     data: {
+  //       passwordHash,
+  //       passwordUpdatedAt: new Date(),
+  //       passwordVersion: { increment: 1 },
+  //       mustChangePassword: false,
+  //     },
+  //   });
+
+  //   await this.logAuthEvent({
+  //     action: 'PASSWORD_CHANGE',
+  //     userId: user?.id,
+  //     role: (user?.role as any) ?? null,
+  //     ip: this.getIp(req),
+  //     entityId: (user as any)?.userId ?? user?.email ?? user?.id,
+  //     details: 'Password changed',
+  //     meta: { userAgent: this.getUA(req) },
+  //   });
+
+  //   return { ok: true };
+  // }
+
   async changeOwnPassword(
     userDbId: string,
     currentPassword: string,
     newPassword: string,
     req?: any,
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userDbId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userDbId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        name: true,
+        userId: true,
+        clientCode: true,
+        active: true,
+        passwordHash: true,
+      },
+    });
+
     throwIfInvalidUser(user);
 
-    const ok = await bcrypt.compare(currentPassword, user?.passwordHash);
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!ok) throw new BadRequestException('Current password is incorrect');
 
     if (!this.passwordOk(newPassword)) {
@@ -662,6 +718,8 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // ✅ update password + clear mustChangePassword
     await this.prisma.user.update({
       where: { id: userDbId },
       data: {
@@ -674,17 +732,46 @@ export class AuthService {
 
     await this.logAuthEvent({
       action: 'PASSWORD_CHANGE',
-      userId: user?.id,
-      role: (user?.role as any) ?? null,
+      userId: user.id,
+      role: (user.role as any) ?? null,
       ip: this.getIp(req),
-      entityId: (user as any)?.userId ?? user?.email ?? user?.id,
+      entityId: user.userId ?? user.email ?? user.id,
       details: 'Password changed',
       meta: { userAgent: this.getUA(req) },
     });
 
-    return { ok: true };
-  }
+    // ✅ now they are fully authenticated (OTP already done), issue normal token
+    setRequestContext({ skipAudit: true });
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date(), lastActivityAt: new Date() },
+      });
+    } finally {
+      setRequestContext({ skipAudit: false });
+    }
 
+    const payload = {
+      sub: user.id,
+      role: user.role,
+      uid: user.userId ?? null,
+      clientCode: user.clientCode ?? null,
+    };
+
+    const accessToken = this.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name ?? undefined,
+        mustChangePassword: false,
+        clientCode: user.clientCode ?? null,
+      },
+    };
+  }
   async verifyTwoFactor(body: { userId: string; code: string }, req?: any) {
     const userId = (body.userId ?? '').trim().toLowerCase();
     const code = (body.code ?? '').trim();
@@ -781,6 +868,33 @@ export class AuthService {
       setRequestContext({ skipAudit: false });
     }
 
+    if (user.mustChangePassword) {
+      const payload = {
+        sub: user.id,
+        role: user.role,
+        uid: user.userId ?? null,
+        mcp: true,
+        clientCode: user.clientCode ?? null,
+      };
+
+      const accessToken = this.jwt.sign(payload, {
+        expiresIn: ACCESS_TOKEN_TTL,
+      });
+
+      return {
+        requiresPasswordReset: true,
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          name: user.name ?? undefined,
+          mustChangePassword: true,
+          clientCode: user.clientCode ?? null,
+        },
+      };
+    }
+
     const payload = {
       sub: user.id,
       role: user.role,
@@ -812,10 +926,18 @@ export class AuthService {
     };
   }
 }
-
-function throwIfInvalidUser(user: any): asserts user is any {
-  if (!user || !user.active)
+function throwIfInvalidUser(
+  user: {
+    id: string;
+    active: boolean;
+  } | null,
+): asserts user is {
+  id: string;
+  active: true;
+} {
+  if (!user || !user.active) {
     throw new UnauthorizedException('Invalid credentials');
+  }
 }
 
 // import {

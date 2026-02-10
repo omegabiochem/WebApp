@@ -799,4 +799,43 @@ If you did not request this, contact support: ${supportEmail}
 
     this.log.log(`2FA email OTP sent to ${to}`);
   }
+
+  async sendSupportTicketEmail(args: {
+    to: string;
+    ticketId: string;
+    category: string;
+    createdBy: string;
+    description: string;
+    reportId?: string;
+    reportType?: string;
+  }) {
+    const {
+      to,
+      ticketId,
+      category,
+      createdBy,
+      description,
+      reportId,
+      reportType,
+    } = args;
+
+    const subject = `[Omega LIMS] New Support Ticket (${category}) - ${ticketId}`;
+    const text = `New support ticket created
+
+Ticket ID: ${ticketId}
+Category: ${category}
+Created By: ${createdBy}
+Report: ${reportType ?? '-'} ${reportId ?? '-'}
+
+Description:
+${description}
+`;
+
+    await this.client.sendEmail({
+      From: process.env.POSTMARK_FROM_EMAIL!,
+      To: to,
+      Subject: subject,
+      TextBody: text,
+    });
+  }
 }
