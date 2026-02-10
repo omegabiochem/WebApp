@@ -1515,7 +1515,7 @@ export default function ChemistryMixReportForm({
                 <input
                   className={inputClass("manufactureDate", "flex-1")}
                   type="date"
-                  min={todayISO()}
+                  // min={todayISO()}
                   value={formatDateForInput(manufactureDate)}
                   onChange={(e) => {
                     if (selectingCorrections) return;

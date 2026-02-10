@@ -1872,7 +1872,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
-                  min={todayISO()}
+                  // min={todayISO()}
                   value={samplingDate ? formatDateForInput(samplingDate) : "NA"}
                   onChange={(e) => {
                     setsamplingDate(e.target.value);
