@@ -38,6 +38,7 @@ import PrivacyPolicy from "./pages/Legal/PrivacyPolicy";
 import TermsAndConditions from "./pages/Legal/TermsAndConditions";
 import SupportHelpPage from "./pages/Support/supportHelpPage";
 import PublicSupport from "./pages/Support/PublicSupport";
+import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -451,6 +452,17 @@ export const router = createBrowserRouter([
               ]}
             >
               <SupportHelpPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "supportTickets",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+              <SupportTicketsPage />
             </RequireRole>
           </RequireAuth>
         ),

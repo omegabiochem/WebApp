@@ -26,6 +26,47 @@ function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
+const UI = {
+  pageBg: "bg-slate-50", // keep clean white-ish background
+  card: "bg-white border border-slate-200 shadow-sm",
+  border: "border-slate-200",
+  text: {
+    heading: "text-slate-900",
+    body: "text-slate-700",
+    muted: "text-slate-600",
+    subtle: "text-slate-500",
+  },
+
+  // ✅ Brand (blue)
+  brand: {
+    text: "text-sky-700",
+    textHover: "hover:text-sky-800",
+    bg: "bg-sky-600",
+    bgHover: "hover:bg-sky-700",
+    ring: "ring-sky-200",
+    border: "border-sky-200",
+    softBg: "bg-sky-50",
+  },
+
+  // Inputs
+  input:
+    "rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100",
+
+  // Pills / chips
+  chipBase: "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset",
+  chipOn: "bg-sky-600 text-white ring-sky-600",
+  chipOff: "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50",
+
+  // Buttons
+  btnPrimary:
+    "rounded-xl px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700",
+  btnPrimaryDisabled:
+    "rounded-xl px-4 py-2 text-sm font-medium text-white bg-slate-400 cursor-not-allowed",
+  btnGhost:
+    "rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50",
+
+  link: "text-sky-700 hover:underline",
+};
 function Badge({ status }: { status: StatusItem["status"] }) {
   const label =
     status === "operational"
@@ -63,9 +104,17 @@ function Section({
   return (
     <section id={id} className="scroll-mt-24">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <h2 className={cn("text-lg font-semibold", UI.text.heading)}>
+          <span
+            className={cn(
+              "mr-2 inline-block h-2 w-2 rounded-full",
+              UI.brand.bg,
+            )}
+          />
+          {title}
+        </h2>
         {subtitle ? (
-          <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+          <p className={cn("mt-1 text-sm", UI.text.muted)}>{subtitle}</p>
         ) : null}
       </div>
       {children}
@@ -169,6 +218,28 @@ export default function SupportHelpPage() {
     description: "",
   });
 
+  const downloadUserManual = async () => {
+    try {
+      const data = await api<{ url: string; filename?: string }>(
+        "/support/docs/user-manual-url",
+        { method: "GET" },
+      );
+
+      const a = document.createElement("a");
+      a.href = data.url;
+      a.download = data.filename || "Omega_LIMS_Client_User_Guide.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      console.error(err);
+      setTicketMsg({
+        type: "err",
+        text: "Unable to download the User Manual. Please try again or contact support.",
+      });
+    }
+  };
+
   const kb: Article[] = useMemo(
     () => [
       {
@@ -211,7 +282,7 @@ export default function SupportHelpPage() {
             <div className="pt-2">
               <a
                 className="text-xs font-semibold text-slate-800 hover:underline"
-                href={`mailto:${labSupportEmail}?subject=${encodeURIComponent(
+                href={`mailto:${techSupportEmail}?subject=${encodeURIComponent(
                   "[Omega LIMS] Password Reset Request",
                 )}&body=${encodeURIComponent(
                   "Name:\nCompany/Lab:\nRole:\nEmail used for login:\nIssue:\n",
@@ -246,40 +317,238 @@ export default function SupportHelpPage() {
       },
       {
         id: "workflow-status",
-        title: "Report status workflow (Draft → Review → Approved → Released)",
+        title: "Report Status Workflow (Micro / Micro Water / Chemistry)",
         category: "Reports & Workflows",
         keywords: [
-          "status",
+          "micro",
+          "micro water",
+          "chemistry",
           "workflow",
-          "draft",
-          "review",
+          "status",
+          "testing",
+          "qa",
+          "admin",
           "approved",
-          "released",
+          "locked",
+          "correction",
+          "hold",
         ],
         body: (
-          <div className="space-y-2">
+          <div className="space-y-5">
             <p>
-              Reports move through controlled statuses. Editing permissions
-              change by status and role.
+              Omega LIMS uses a controlled workflow to ensure accuracy,
+              traceability, and regulatory compliance. Editing permissions
+              change depending on the current status. Once finalized, reports
+              become locked.
             </p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                <span className="font-medium">Draft</span>: report creation and
-                edits.
-              </li>
-              <li>
-                <span className="font-medium">Review</span>: QA/Reviewer checks,
-                may request corrections.
-              </li>
-              <li>
-                <span className="font-medium">Approved</span>: e-signature
-                applied; limited edits.
-              </li>
-              <li>
-                <span className="font-medium">Released</span>: finalized;
-                read-only for most roles.
-              </li>
-            </ul>
+
+            {/* ================= MICRO / MICRO WATER ================= */}
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">
+                Micro / Micro Water Workflow
+              </div>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                1️⃣ Client Creation & Submission
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>DRAFT</strong>: Client creates and edits report.
+                </li>
+                <li>
+                  <strong>SUBMITTED_BY_CLIENT</strong>: Client submits → becomes
+                  read-only.
+                </li>
+              </ul>
+
+              <div className="mt-4 text-sm font-medium text-slate-900">
+                2️⃣ Preliminary Testing & QA Phase
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>UNDER_PRELIMINARY_TESTING_REVIEW</strong>: Lab testing
+                  in progress.
+                </li>
+                <li>
+                  <strong>PRELIMINARY_TESTING_ON_HOLD</strong>: Testing paused.
+                </li>
+                <li>
+                  <strong>UNDER_QA_PRELIMINARY_REVIEW</strong>: QA reviews
+                  preliminary data.
+                </li>
+                <li>
+                  <strong>QA_NEEDS_PRELIMINARY_CORRECTION</strong>: Returned to
+                  testing team.
+                </li>
+              </ul>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                If Client Correction Is Required (Preliminary)
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>PRELIMINARY_TESTING_NEEDS_CORRECTION</strong>
+                </li>
+                <li>
+                  <strong>UNDER_CLIENT_PRELIMINARY_CORRECTION</strong>: Client
+                  edits flagged fields only.
+                </li>
+                <li>
+                  <strong>PRELIMINARY_RESUBMISSION_BY_CLIENT</strong>: Client
+                  resubmits.
+                </li>
+              </ul>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                Preliminary Complete
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>PRELIMINARY_APPROVED</strong>: Moves to Final Testing
+                  Phase.
+                </li>
+              </ul>
+
+              <div className="mt-4 text-sm font-medium text-slate-900">
+                3️⃣ Final Testing & QA Phase
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>UNDER_FINAL_TESTING_REVIEW</strong>
+                </li>
+                <li>
+                  <strong>FINAL_TESTING_ON_HOLD</strong>
+                </li>
+                <li>
+                  <strong>UNDER_QA_FINAL_REVIEW</strong>
+                </li>
+                <li>
+                  <strong>QA_NEEDS_FINAL_CORRECTION</strong>
+                </li>
+              </ul>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                If Client Correction Is Required (Final)
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>FINAL_TESTING_NEEDS_CORRECTION</strong>
+                </li>
+                <li>
+                  <strong>UNDER_CLIENT_FINAL_CORRECTION</strong>: Client updates
+                  flagged fields.
+                </li>
+                <li>
+                  <strong>FINAL_RESUBMISSION_BY_CLIENT</strong>
+                </li>
+              </ul>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                4️⃣ Final Routing & Approval
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>RECEIVED_BY_FRONTDESK</strong>: Routed for final
+                  release.
+                </li>
+                <li>
+                  <strong>FRONTDESK_ON_HOLD</strong>: Temporarily paused.
+                </li>
+                <li>
+                  <strong>UNDER_CLIENT_FINAL_REVIEW</strong>: Client final
+                  confirmation.
+                </li>
+                <li>
+                  <strong>FINAL_APPROVED</strong>: Signed final report
+                  generated.
+                </li>
+                <li>
+                  <strong>LOCKED</strong>: Immutable final state.
+                </li>
+              </ul>
+            </div>
+
+            {/* ================= CHEMISTRY ================= */}
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-semibold text-slate-900">
+                Chemistry Workflow
+              </div>
+
+              <div className="mt-3 text-sm font-medium text-slate-900">
+                1️⃣ Draft & Submission
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>DRAFT</strong>: Client enters report data.
+                </li>
+                <li>
+                  <strong>SUBMITTED_BY_CLIENT</strong>: Becomes read-only.
+                </li>
+              </ul>
+
+              <div className="mt-4 text-sm font-medium text-slate-900">
+                2️⃣ Client Correction Cycle (If Needed)
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>CLIENT_NEEDS_CORRECTION</strong>
+                </li>
+                <li>
+                  <strong>UNDER_CLIENT_CORRECTION</strong>: Client edits flagged
+                  fields.
+                </li>
+                <li>
+                  <strong>RESUBMISSION_BY_CLIENT</strong>
+                </li>
+                <li>
+                  <strong>UNDER_CLIENT_REVIEW</strong>
+                </li>
+              </ul>
+
+              <div className="mt-4 text-sm font-medium text-slate-900">
+                3️⃣ Internal Processing
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>RECEIVED_BY_FRONTDESK</strong>
+                </li>
+                <li>
+                  <strong>UNDER_TESTING_REVIEW</strong>
+                </li>
+                <li>
+                  <strong>TESTING_ON_HOLD</strong>
+                </li>
+                <li>
+                  <strong>UNDER_QA_REVIEW</strong>
+                </li>
+              </ul>
+
+              <div className="mt-4 text-sm font-medium text-slate-900">
+                4️⃣ Admin Review & Finalization
+              </div>
+              <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-slate-700">
+                <li>
+                  <strong>UNDER_ADMIN_REVIEW</strong>
+                </li>
+                <li>
+                  <strong>ADMIN_NEEDS_CORRECTION</strong>
+                </li>
+                <li>
+                  <strong>APPROVED</strong>: Final signed PDF generated.
+                </li>
+                <li>
+                  <strong>LOCKED</strong>: Report permanently finalized.
+                </li>
+              </ul>
+            </div>
+
+            <div className="text-sm text-slate-600">
+              <strong>Important:</strong> All status transitions, corrections,
+              approvals, and reviews are audit-tracked. Once a report reaches
+              <strong> LOCKED</strong>, it cannot be edited.
+            </div>
           </div>
         ),
       },
@@ -424,9 +693,9 @@ export default function SupportHelpPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className={cn("min-h-screen", UI.pageBg)}>
       {/* Header */}
-      <div className="border-b border-slate-200 bg-white">
+      <div className={cn("border-b bg-white", UI.border)}>
         <div className="mx-auto max-w-6xl px-4 py-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -450,13 +719,17 @@ export default function SupportHelpPage() {
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Search: login, OTP, workflow, printing..."
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none ring-0 placeholder:text-slate-400 focus:border-slate-400"
+                  className={UI.input}
                 />
                 {q ? (
                   <button
                     type="button"
                     onClick={() => setQ("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                    className={cn(
+                      "absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs",
+                      UI.text.muted,
+                      "hover:bg-slate-100",
+                    )}
                   >
                     Clear
                   </button>
@@ -471,7 +744,13 @@ export default function SupportHelpPage() {
               <a
                 key={l.href}
                 href={l.href}
-                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium border",
+                  UI.border,
+                  UI.brand.softBg,
+                  UI.brand.text,
+                  "hover:bg-white",
+                )}
               >
                 {l.label}
               </a>
@@ -496,7 +775,7 @@ export default function SupportHelpPage() {
                 subtitle="Password, account lockout, access errors"
                 right={
                   <a
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     href="#quick-login"
                   >
                     Open
@@ -514,7 +793,7 @@ export default function SupportHelpPage() {
                 subtitle="Didn’t receive code, code expired"
                 right={
                   <a
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     href="#quick-otp"
                   >
                     Open
@@ -529,12 +808,9 @@ export default function SupportHelpPage() {
 
               <Card
                 title="Report workflow help"
-                subtitle="Draft → Review → Approved → Released"
+                subtitle="Draft → Submitted → Testing/QA → Corrections (if any) → Approved → Locked"
                 right={
-                  <a
-                    className="text-xs font-medium text-slate-700 hover:underline"
-                    href="#kb"
-                  >
+                  <a className={cn("text-xs font-medium", UI.link)} href="#kb">
                     Browse
                   </a>
                 }
@@ -548,10 +824,7 @@ export default function SupportHelpPage() {
                 title="Attachments & printing"
                 subtitle="Upload issues, bulk print, previews"
                 right={
-                  <a
-                    className="text-xs font-medium text-slate-700 hover:underline"
-                    href="#kb"
-                  >
+                  <a className={cn("text-xs font-medium", UI.link)} href="#kb">
                     Browse
                   </a>
                 }
@@ -592,7 +865,7 @@ export default function SupportHelpPage() {
                       <div className="pt-2">
                         <a
                           className="text-xs font-semibold text-slate-800 hover:underline"
-                          href={`mailto:${labSupportEmail}?subject=${encodeURIComponent(
+                          href={`mailto:${techSupportEmail}?subject=${encodeURIComponent(
                             "[Omega LIMS] Password Reset Request",
                           )}&body=${encodeURIComponent(
                             "Name:\nCompany/Lab:\nRole:\nEmail used for login:\nIssue:\n",
@@ -671,10 +944,8 @@ export default function SupportHelpPage() {
                 type="button"
                 onClick={() => setActiveCategory("All")}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset",
-                  activeCategory === "All"
-                    ? "bg-slate-900 text-white ring-slate-900"
-                    : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50",
+                  UI.chipBase,
+                  activeCategory === "All" ? UI.chipOn : UI.chipOff,
                 )}
               >
                 All
@@ -685,10 +956,8 @@ export default function SupportHelpPage() {
                   type="button"
                   onClick={() => setActiveCategory(c)}
                   className={cn(
-                    "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset",
-                    activeCategory === c
-                      ? "bg-slate-900 text-white ring-slate-900"
-                      : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50",
+                    UI.chipBase,
+                    activeCategory === c ? UI.chipOn : UI.chipOff,
                   )}
                 >
                   {c}
@@ -852,21 +1121,17 @@ export default function SupportHelpPage() {
                 </div>
 
                 <div className="sm:col-span-2 flex items-center justify-end gap-2">
-                  <button
-                    type="reset"
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
+                  <button type="reset" className={UI.btnGhost}>
                     Clear
                   </button>
                   <button
                     type="submit"
                     disabled={ticketBusy || !ticket.description.trim()}
-                    className={cn(
-                      "rounded-xl px-4 py-2 text-sm font-medium text-white",
+                    className={
                       ticketBusy || !ticket.description.trim()
-                        ? "bg-slate-400 cursor-not-allowed"
-                        : "bg-slate-900 hover:bg-slate-800",
-                    )}
+                        ? UI.btnPrimaryDisabled
+                        : UI.btnPrimary
+                    }
                   >
                     {ticketBusy ? "Submitting..." : "Submit Ticket"}
                   </button>
@@ -895,7 +1160,13 @@ export default function SupportHelpPage() {
                     <span className="font-medium">{techSupportEmail}</span>
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                      className={cn(
+                        "rounded-lg px-2.5 py-1 text-xs font-semibold border",
+                        UI.border,
+                        UI.brand.text,
+                        UI.brand.softBg,
+                        "hover:bg-white",
+                      )}
                       onClick={techCopyEmail}
                     >
                       {techcopied ? "Copied" : "Copy"}
@@ -917,7 +1188,13 @@ export default function SupportHelpPage() {
                     <span className="font-medium">{labSupportEmail}</span>
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                      className={cn(
+                        "rounded-lg px-2.5 py-1 text-xs font-semibold border",
+                        UI.border,
+                        UI.brand.text,
+                        UI.brand.softBg,
+                        "hover:bg-white",
+                      )}
                       onClick={labCopyEmail}
                     >
                       {labcopied ? "Copied" : "Copy"}
@@ -977,27 +1254,28 @@ export default function SupportHelpPage() {
                 <li className="flex items-center justify-between">
                   <span className="text-slate-700">User Manual (PDF)</span>
                   <button
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     type="button"
+                    onClick={downloadUserManual}
                   >
                     Download
                   </button>
                 </li>
-                <li className="flex items-center justify-between">
+                {/* <li className="flex items-center justify-between">
                   <span className="text-slate-700">Role Quick Guide (PDF)</span>
                   <button
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     type="button"
                   >
                     Download
                   </button>
-                </li>
-                <li className="flex items-center justify-between">
+                </li> */}
+                {/* <li className="flex items-center justify-between">
                   <span className="text-slate-700">
                     Security & Backup Overview (PDF)
                   </span>
                   <button
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     type="button"
                   >
                     Download
@@ -1008,12 +1286,12 @@ export default function SupportHelpPage() {
                     Compliance Overview (PDF)
                   </span>
                   <button
-                    className="text-xs font-medium text-slate-700 hover:underline"
+                    className={cn("text-xs font-medium", UI.link)}
                     type="button"
                   >
                     Download
                   </button>
-                </li>
+                </li> */}
               </ul>
               <p className="mt-4 text-xs text-slate-500">
                 Wire these buttons to your file URLs or an attachments endpoint.

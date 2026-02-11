@@ -37,12 +37,12 @@ export default function Header() {
       { label: "Support", path: "/support" },
     ],
     SYSTEMADMIN: [
-         { label: "Home", path: "/systemAdminDashboard" },
+      { label: "Home", path: "/systemAdminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
-      { label: "Support", path: "/support" },
+      { label: "Support Tickets", path: "/supportTickets" },
     ],
     MICRO: [
       { label: "Home", path: "/microDashboard" },
@@ -109,7 +109,7 @@ export default function Header() {
               <Link to="/home" className="hover:underline">
                 Home
               </Link>
-               <Link to="/publicsupport" className="hover:underline">
+              <Link to="/publicsupport" className="hover:underline">
                 Support
               </Link>
               <Link

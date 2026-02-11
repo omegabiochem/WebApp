@@ -1,27 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
-import {
-  CreateSupportTicketDto,
-  SupportTicketCategory,
-} from './dto/create-support-ticket.dto';
+import { SupportTicketCategory, SupportTicketStatus } from '@prisma/client';
+import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 
 @Injectable()
 export class SupportService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly mail: MailService,
-  ) {}
-
-  private routeEmail(category: SupportTicketCategory) {
-    if (
-      category === SupportTicketCategory.REPORTS_WORKFLOW ||
-      category === SupportTicketCategory.LOGIN_ACCESS
-    )
-      return process.env.LAB_SUPPORT_EMAIL;
-
-    return process.env.TECH_SUPPORT_EMAIL;
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
   async createTicket(args: {
     userId: string;
@@ -32,7 +16,7 @@ export class SupportService {
 
     const ticket = await this.prisma.supportTicket.create({
       data: {
-        createdById: userId,
+        createdById: userId, // IMPORTANT
         category: dto.category as any,
         reportId: dto.reportId ?? null,
         reportType: dto.reportType ?? null,
@@ -45,22 +29,106 @@ export class SupportService {
         createdBy: {
           select: { id: true, name: true, email: true, role: true },
         },
+        assignedTo: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
 
-    const to = this.routeEmail(dto.category);
-    if (to) {
-      await this.mail.sendSupportTicketEmail({
-        to,
-        ticketId: ticket.id,
-        category: ticket.category,
-        createdBy: ticket.createdBy?.email ?? 'unknown',
-        description: ticket.description,
-        reportId: ticket.reportId ?? undefined,
-        reportType: ticket.reportType ?? undefined,
-      });
-    }
+    // (optional) email logic here...
 
     return { id: ticket.id };
+  }
+
+  async listTickets(args: {
+    q?: string;
+    category?: SupportTicketCategory;
+    status?: SupportTicketStatus;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const page = Math.max(1, args.page ?? 1);
+    const pageSize = Math.min(100, Math.max(10, args.pageSize ?? 20));
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+    if (args.category) where.category = args.category;
+    if (args.status) where.status = args.status;
+
+    if (args.q?.trim()) {
+      const q = args.q.trim();
+      where.OR = [
+        { id: { contains: q, mode: 'insensitive' } },
+        { reportId: { contains: q, mode: 'insensitive' } },
+        { reportType: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { createdBy: { email: { contains: q, mode: 'insensitive' } } },
+        { createdBy: { name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.supportTicket.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+          assignedTo: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      }),
+      this.prisma.supportTicket.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async getTicket(id: string) {
+    const t = await this.prisma.supportTicket.findUnique({
+      where: { id },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        assignedTo: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+    if (!t) throw new Error('Ticket not found');
+    return t;
+  }
+
+  async updateStatus(args: {
+    id: string;
+    status: SupportTicketStatus;
+    actorId: string;
+  }) {
+    return this.prisma.supportTicket.update({
+      where: { id: args.id },
+      data: { status: args.status },
+    });
+  }
+
+  async assignTicket(args: {
+    id: string;
+    assignedToId: string | null;
+    actorId: string;
+  }) {
+    return this.prisma.supportTicket.update({
+      where: { id: args.id },
+      data: { assignedToId: args.assignedToId },
+    });
   }
 }

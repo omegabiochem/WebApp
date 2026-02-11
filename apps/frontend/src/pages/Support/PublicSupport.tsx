@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-// function cn(...xs: Array<string | false | null | undefined>) {
-//   return xs.filter(Boolean).join(" ");
-// }
-
 type IssueType =
   | "Request Login Credentials"
   | "Temp Password Expired / Not Working"
@@ -12,6 +8,49 @@ type IssueType =
   | "Not Authorized / Access Denied"
   | "Portal Not Loading"
   | "Other";
+
+function cn(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
+}
+
+const UI = {
+  pageBg: "bg-slate-50",
+  card: "bg-white border border-slate-200 shadow-sm",
+  border: "border-slate-200",
+  text: {
+    heading: "text-slate-900",
+    body: "text-slate-700",
+    muted: "text-slate-600",
+    subtle: "text-slate-500",
+  },
+
+  // Brand (blue)
+  brand: {
+    text: "text-sky-700",
+    textHover: "hover:text-sky-800",
+    bg: "bg-sky-600",
+    bgHover: "hover:bg-sky-700",
+    ring: "ring-sky-200",
+    border: "border-sky-200",
+    softBg: "bg-sky-50",
+  },
+
+  // Inputs
+  input:
+    "rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100",
+
+  // Buttons
+  btnPrimary:
+    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white bg-sky-600 hover:bg-sky-700 shadow-sm",
+  btnGhost:
+    "rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50",
+
+  // Small controls
+  btnMini:
+    "rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100",
+
+  link: "text-sky-700 hover:underline",
+};
 
 export default function PublicSupport() {
   const supportEmail = "tech@omegabiochemlab.com";
@@ -34,25 +73,27 @@ export default function PublicSupport() {
   const subject = `[Omega LIMS Support] ${issueType}`;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className={cn("min-h-screen", UI.pageBg)}>
       {/* Header */}
-      <div className="border-b border-slate-200 bg-white">
+      <div className={cn("border-b bg-white", UI.border)}>
         <div className="mx-auto max-w-5xl px-4 py-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+              <h1
+                className={cn(
+                  "text-2xl font-semibold tracking-tight",
+                  UI.text.heading,
+                )}
+              >
                 Support & Help
               </h1>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className={cn("mt-1 text-sm", UI.text.muted)}>
                 If you’re unable to log in, contact Support and we’ll assist
                 with access and credentials.
               </p>
             </div>
 
-            <Link
-              to="/login"
-              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-            >
+            <Link to="/login" className={UI.btnPrimary}>
               Go to Login
             </Link>
           </div>
@@ -65,41 +106,61 @@ export default function PublicSupport() {
           {/* Left */}
           <div className="lg:col-span-2 space-y-6">
             {/* How access works */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
+            <div className={cn("rounded-2xl p-6", UI.card)}>
+              <h2 className={cn("text-sm font-semibold", UI.text.heading)}>
                 How Login Access Works
               </h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className={cn("mt-1 text-sm", UI.text.muted)}>
                 For security and compliance, accounts are created by Support or
                 your organization Admin.
               </p>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-sm font-semibold text-slate-900">
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    UI.border,
+                    UI.brand.softBg,
+                  )}
+                >
+                  <div className={cn("text-sm font-semibold", UI.text.heading)}>
                     Request credentials
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className={cn("mt-1 text-sm", UI.text.muted)}>
                     Email Support to request a User ID and temporary password.
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-sm font-semibold text-slate-900">
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    UI.border,
+                    UI.brand.softBg,
+                  )}
+                >
+                  <div className={cn("text-sm font-semibold", UI.text.heading)}>
                     First login
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className={cn("mt-1 text-sm", UI.text.muted)}>
                     You’ll sign in using the temporary password and may be asked
                     to verify via OTP.
                   </p>
                 </div>
               </div>
 
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                <div className="font-semibold text-slate-900">
+              <div
+                className={cn(
+                  "mt-4 rounded-xl border bg-white p-4 text-sm",
+                  UI.border,
+                  UI.text.body,
+                )}
+              >
+                <div className={cn("font-semibold", UI.text.heading)}>
                   What Support will send you
                 </div>
-                <ul className="mt-2 list-disc pl-5 space-y-1 text-slate-600">
+                <ul
+                  className={cn("mt-2 list-disc pl-5 space-y-1", UI.text.muted)}
+                >
                   <li>User ID</li>
                   <li>Temporary password (time-limited)</li>
                   <li>Login URL</li>
@@ -108,70 +169,88 @@ export default function PublicSupport() {
             </div>
 
             {/* Common blockers */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
+            <div className={cn("rounded-2xl p-6", UI.card)}>
+              <h2 className={cn("text-sm font-semibold", UI.text.heading)}>
                 Common Login Issues
               </h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className={cn("mt-1 text-sm", UI.text.muted)}>
                 These quick checks solve most access problems.
               </p>
 
               <div className="mt-4 space-y-3">
-                <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                    Temporary password not working / expired{" "}
-                    <span className="ml-2 text-slate-400">⌄</span>
-                  </summary>
-                  <ul className="mt-3 list-disc pl-5 text-sm text-slate-600 space-y-1">
-                    <li>Temporary passwords can expire for security.</li>
-                    <li>Ensure there are no extra spaces when copying.</li>
-                    <li>
-                      Contact Support to re-issue a new temporary password.
-                    </li>
-                  </ul>
-                </details>
-
-                <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                    Didn’t receive OTP / verification email{" "}
-                    <span className="ml-2 text-slate-400">⌄</span>
-                  </summary>
-                  <ul className="mt-3 list-disc pl-5 text-sm text-slate-600 space-y-1">
-                    <li>Wait 30–60 seconds (email delays happen).</li>
-                    <li>Check spam/quarantine folders.</li>
-                    <li>
-                      Click “Resend code” once — only the latest code works.
-                    </li>
-                  </ul>
-                </details>
-
-                <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                    Not authorized / access denied{" "}
-                    <span className="ml-2 text-slate-400">⌄</span>
-                  </summary>
-                  <ul className="mt-3 list-disc pl-5 text-sm text-slate-600 space-y-1">
-                    <li>Your role may not have access to that page.</li>
-                    <li>Your account may be pending activation by Admin.</li>
-                    <li>Send Support the exact message shown on screen.</li>
-                  </ul>
-                </details>
-
-                <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                    Portal not loading / blank screen{" "}
-                    <span className="ml-2 text-slate-400">⌄</span>
-                  </summary>
-                  <ul className="mt-3 list-disc pl-5 text-sm text-slate-600 space-y-1">
-                    <li>Try Chrome/Edge and refresh.</li>
-                    <li>Disable ad blockers for the portal domain.</li>
-                    <li>Try an incognito/private window.</li>
-                  </ul>
-                </details>
+                {[
+                  {
+                    title: "Temporary password not working / expired",
+                    items: [
+                      "Temporary passwords can expire for security.",
+                      "Ensure there are no extra spaces when copying.",
+                      "Contact Support to re-issue a new temporary password.",
+                    ],
+                  },
+                  {
+                    title: "Didn’t receive OTP / verification email",
+                    items: [
+                      "Wait 30–60 seconds (email delays happen).",
+                      "Check spam/quarantine folders.",
+                      "Click “Resend code” once — only the latest code works.",
+                    ],
+                  },
+                  {
+                    title: "Not authorized / access denied",
+                    items: [
+                      "Your role may not have access to that page.",
+                      "Your account may be pending activation by Admin.",
+                      "Send Support the exact message shown on screen.",
+                    ],
+                  },
+                  {
+                    title: "Portal not loading / blank screen",
+                    items: [
+                      "Try Chrome/Edge and refresh.",
+                      "Disable ad blockers for the portal domain.",
+                      "Try an incognito/private window.",
+                    ],
+                  },
+                ].map((d) => (
+                  <details
+                    key={d.title}
+                    className={cn(
+                      "rounded-xl border p-4",
+                      UI.border,
+                      UI.brand.softBg,
+                    )}
+                  >
+                    <summary
+                      className={cn(
+                        "cursor-pointer list-none text-sm font-semibold",
+                        UI.text.heading,
+                      )}
+                    >
+                      {d.title}{" "}
+                      <span className={cn("ml-2", UI.text.subtle)}>⌄</span>
+                    </summary>
+                    <ul
+                      className={cn(
+                        "mt-3 list-disc pl-5 text-sm space-y-1",
+                        UI.text.muted,
+                      )}
+                    >
+                      {d.items.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </details>
+                ))}
               </div>
 
-              <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600">
-                <div className="font-semibold text-slate-900">
+              <div
+                className={cn(
+                  "mt-5 rounded-xl border bg-white p-4 text-xs",
+                  UI.border,
+                  UI.text.muted,
+                )}
+              >
+                <div className={cn("font-semibold", UI.text.heading)}>
                   Security note
                 </div>
                 <p className="mt-1">
@@ -184,23 +263,23 @@ export default function PublicSupport() {
 
           {/* Right: Contact */}
           <aside className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
+            <div className={cn("rounded-2xl p-6", UI.card)}>
+              <h2 className={cn("text-sm font-semibold", UI.text.heading)}>
                 Contact Support
               </h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className={cn("mt-1 text-sm", UI.text.muted)}>
                 Email Support and we will respond with credentials or
                 troubleshooting steps.
               </p>
 
               <div className="mt-4">
-                <label className="text-xs font-medium text-slate-700">
+                <label className={cn("text-xs font-medium", UI.text.body)}>
                   Issue type
                 </label>
                 <select
                   value={issueType}
                   onChange={(e) => setIssueType(e.target.value as IssueType)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-400"
+                  className={cn("mt-1 w-full", UI.input, "px-3 py-2")}
                 >
                   <option>Request Login Credentials</option>
                   <option>Temp Password Expired / Not Working</option>
@@ -211,32 +290,48 @@ export default function PublicSupport() {
                 </select>
               </div>
 
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div
+                className={cn(
+                  "mt-4 rounded-xl border p-3",
+                  UI.border,
+                  UI.brand.softBg,
+                )}
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-slate-900">
+                  <div className={cn("text-sm font-semibold", UI.text.heading)}>
                     {supportEmail}
                   </div>
                   <button
                     type="button"
                     onClick={copyEmail}
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                    className={cn(
+                      "rounded-lg px-2.5 py-1 text-xs font-semibold border",
+                      UI.border,
+                      UI.brand.text,
+                      "bg-white hover:bg-slate-50",
+                    )}
                   >
                     {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
 
-                <div className="mt-3 text-xs text-slate-600">
-                  <div className="font-semibold text-slate-900">
+                <div className={cn("mt-3 text-xs", UI.text.muted)}>
+                  <div className={cn("font-semibold", UI.text.heading)}>
                     Suggested subject
                   </div>
-                  <div className="mt-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <div
+                    className={cn(
+                      "mt-1 rounded-lg border bg-white px-2 py-1",
+                      UI.border,
+                    )}
+                  >
                     {subject}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 text-xs text-slate-600">
-                <div className="font-semibold text-slate-900">
+              <div className={cn("mt-4 text-xs", UI.text.muted)}>
+                <div className={cn("font-semibold", UI.text.heading)}>
                   Include in your email
                 </div>
                 <ul className="mt-2 list-disc pl-5 space-y-1">
@@ -251,19 +346,34 @@ export default function PublicSupport() {
                 </ul>
               </div>
 
-              <div className="mt-5 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                <div className="font-semibold text-slate-900">
+              <div
+                className={cn(
+                  "mt-5 rounded-xl border bg-white p-3 text-xs",
+                  UI.border,
+                  UI.text.muted,
+                )}
+              >
+                <div className={cn("font-semibold", UI.text.heading)}>
                   Support Hours
                 </div>
                 <div className="mt-1">Mon–Fri · 9:00 AM – 5:00 PM</div>
-                <div className="mt-1 text-slate-500">
+                <div className={cn("mt-1", UI.text.subtle)}>
                   For urgent production issues, add{" "}
-                  <span className="font-medium">URGENT</span> in the subject.
+                  <span className={cn("font-medium", UI.text.heading)}>
+                    URGENT
+                  </span>{" "}
+                  in the subject.
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-500 shadow-sm">
+            <div
+              className={cn(
+                "rounded-2xl border bg-white p-5 text-xs shadow-sm",
+                UI.border,
+                UI.text.subtle,
+              )}
+            >
               <div className="flex items-center justify-between">
                 <span>Omega LIMS</span>
                 <span>Public Support</span>
@@ -273,11 +383,11 @@ export default function PublicSupport() {
                 report/workflow help.
               </div>
               <div className="mt-2">
-                <Link to="/privacy-policy" className="hover:underline">
+                <Link to="/privacy-policy" className={UI.link}>
                   Privacy Policy
                 </Link>
                 <span className="mx-2">·</span>
-                <Link to="/terms-and-conditions" className="hover:underline">
+                <Link to="/terms-and-conditions" className={UI.link}>
                   Terms
                 </Link>
               </div>
