@@ -16,9 +16,9 @@ import { SmsService } from 'src/mail/sms.service';
 const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 
 // Policies
-const ACCESS_TOKEN_TTL = '15m';
+const ACCESS_TOKEN_TTL = '1m';
 const LOCK_AFTER_FAILED = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const LOCK_DURATION_MS = 1 * 60 * 1000; // 15 minutes
 
 const REFRESH_TOKEN_TTL = '14d';
 const REFRESH_COOKIE_NAME = 'omega_rt';
@@ -108,8 +108,7 @@ export class AuthService {
     res.cookie('omega_rt', token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      // ✅ allow across omegabiochemlab subdomains
+      sameSite: isProd ? 'lax' : 'lax',
       ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
       path: '/auth/refresh',
       expires: expAt,
@@ -122,7 +121,7 @@ export class AuthService {
     res.clearCookie('omega_rt', {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
+      sameSite: isProd ? 'lax' : 'lax',
       ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
       path: '/auth/refresh',
     });
