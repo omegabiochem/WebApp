@@ -102,31 +102,51 @@ export class AuthService {
     return { token, jti };
   }
 
-  private setRefreshCookie(res: any, token: string, expAt: Date) {
-    const isProd = process.env.NODE_ENV === 'production';
+  private cookieOpts() {
+    const isHttps = (process.env.COOKIE_SECURE ?? 'true') === 'true'; // set in Fly
+    const domain = process.env.COOKIE_DOMAIN || '.omegabiochemlab.com';
 
-    res.cookie('omega_rt', token, {
+    return {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      // ✅ allow across omegabiochemlab subdomains
-      ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
+      secure: isHttps,
+      sameSite: 'none' as const,
+      domain,
       path: '/auth/refresh',
-      expires: expAt,
-    });
+    };
+  }
+
+  private setRefreshCookie(res: any, token: string, expAt: Date) {
+    res.cookie('omega_rt', token, { ...this.cookieOpts(), expires: expAt });
   }
 
   private clearRefreshCookie(res: any) {
-    const isProd = process.env.NODE_ENV === 'production';
-
-    res.clearCookie('omega_rt', {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
-      path: '/auth/refresh',
-    });
+    res.clearCookie('omega_rt', this.cookieOpts());
   }
+
+  // private setRefreshCookie(res: any, token: string, expAt: Date) {
+  //   const isProd = process.env.NODE_ENV === 'production';
+
+  //   res.cookie('omega_rt', token, {
+  //     httpOnly: true,
+  //     secure: isProd,
+  //     sameSite: isProd ? 'lax' : 'lax',
+  //     ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
+  //     path: '/auth/refresh',
+  //     expires: expAt,
+  //   });
+  // }
+
+  // private clearRefreshCookie(res: any) {
+  //   const isProd = process.env.NODE_ENV === 'production';
+
+  //   res.clearCookie('omega_rt', {
+  //     httpOnly: true,
+  //     secure: isProd,
+  //     sameSite: isProd ? 'lax' : 'lax',
+  //     ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
+  //     path: '/auth/refresh',
+  //   });
+  // }
 
   private async issueRefreshForUser(userDbId: string, res: any) {
     const { token, jti } = this.signRefreshToken(userDbId);

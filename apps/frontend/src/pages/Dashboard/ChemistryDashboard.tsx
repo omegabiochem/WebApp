@@ -36,6 +36,7 @@ type Report = {
   version: number;
   selectedActives?: string[];
   selectedActivesText?: string;
+  createdAt: string;
 };
 
 // -----------------------------
@@ -180,7 +181,7 @@ export default function ChemistryDashboard() {
   const [statusFilter, setStatusFilter] =
     useState<(typeof CHEMISTRY_STATUSES)[number]>("ALL");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
+  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -280,7 +281,7 @@ export default function ChemistryDashboard() {
 
     // 3.5) date range filter (by dateSent)
     const byDate = byActive.filter((r) =>
-      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+      matchesDateRange(r.createdAt, fromDate || undefined, toDate || undefined),
     );
 
     const sorted = [...byDate].sort((a, b) => {
@@ -289,8 +290,8 @@ export default function ChemistryDashboard() {
         const bK = (b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
 
@@ -490,7 +491,7 @@ export default function ChemistryDashboard() {
     return (
       statusFilter !== "ALL" ||
       search.trim() !== "" ||
-      sortBy !== "dateSent" ||
+      sortBy !== "createdAt" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
@@ -513,7 +514,7 @@ export default function ChemistryDashboard() {
   const clearAllFilters = () => {
     setStatusFilter("ALL");
     setSearch("");
-    setSortBy("dateSent");
+    setSortBy("createdAt");
     setSortDir("desc");
     setPerPage(10);
     setDatePreset("ALL");
@@ -802,7 +803,7 @@ export default function ChemistryDashboard() {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              <option value="dateSent">Date Sent</option>
+              <option value="createdAt">Date Sent</option>
               <option value="reportNumber">Report #</option>
             </select>
             <button
@@ -1015,7 +1016,7 @@ export default function ChemistryDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
 
                       <td className="px-4 py-3">
                         <span
