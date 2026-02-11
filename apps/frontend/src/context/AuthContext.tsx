@@ -42,7 +42,7 @@ function connectSocketWithToken(t: string) {
   socket.connect();
 }
 
-const IDLE_MS = 15 * 60 * 1000; // 15 minutes
+const IDLE_MS = 1 * 60 * 1000; // 15 minutes
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);

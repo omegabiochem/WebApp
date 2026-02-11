@@ -26,7 +26,7 @@ export class IdleTimeoutGuard implements CanActivate {
     const last = dbUser?.lastActivityAt;
 
     // 15 minutes idle
-    if (last && now.getTime() - new Date(last).getTime() > 15 * 60 * 1000) {
+    if (last && now.getTime() - new Date(last).getTime() > 1 * 60 * 1000) {
       throw new UnauthorizedException({
         code: 'IDLE_TIMEOUT',
         message: 'Session expired due to inactivity. Please sign in again.',
