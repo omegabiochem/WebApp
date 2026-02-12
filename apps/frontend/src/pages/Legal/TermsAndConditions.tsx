@@ -2,7 +2,9 @@ export default function TermsAndConditions() {
   return (
     <div className="max-w-3xl mx-auto bg-white rounded-xl shadow p-6">
       <h1 className="text-2xl font-semibold mb-2">Terms and Conditions</h1>
-      <p className="text-sm text-gray-500 mb-6">Effective Date: February 2026</p>
+      <p className="text-sm text-gray-500 mb-6">
+        Effective Date: February 2026
+      </p>
 
       <div className="space-y-4 text-sm leading-6 text-gray-800">
         <h2 className="text-lg font-semibold">1. Program Description</h2>
@@ -14,7 +16,14 @@ export default function TermsAndConditions() {
 
         <h2 className="text-lg font-semibold">2. SMS Messaging & OTP</h2>
         <ul className="list-disc pl-5">
-          <li>Messages are sent only when you initiate a login/verification request</li>
+          <li>
+            Messages are sent only when you initiate a login/verification
+            request
+          </li>
+          <li>
+            Consent is obtained via an explicit opt-in checkbox during account
+            registration.{" "}
+          </li>
           <li>No marketing or promotional messages are sent</li>
           <li>Message frequency varies based on user actions</li>
           <li>Message and data rates may apply</li>
@@ -22,8 +31,8 @@ export default function TermsAndConditions() {
 
         <h2 className="text-lg font-semibold">3. Opt-Out and Support</h2>
         <p>
-          <b>Reply STOP</b> to opt out. <b>Reply HELP</b> for assistance. Opting out
-          may prevent secure login via SMS OTP.
+          <b>Reply STOP</b> to opt out. <b>Reply HELP</b> for assistance. Opting
+          out may prevent secure login via SMS OTP.
         </p>
 
         <h2 className="text-lg font-semibold">4. Privacy Policy</h2>
