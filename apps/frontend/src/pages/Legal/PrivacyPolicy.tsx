@@ -2,7 +2,9 @@ export default function PrivacyPolicy() {
   return (
     <div className="max-w-3xl mx-auto bg-white rounded-xl shadow p-6">
       <h1 className="text-2xl font-semibold mb-2">Privacy Policy</h1>
-      <p className="text-sm text-gray-500 mb-6">Effective Date: February 2026</p>
+      <p className="text-sm text-gray-500 mb-6">
+        Effective Date: February 2026
+      </p>
 
       <div className="space-y-4 text-sm leading-6 text-gray-800">
         <p>
@@ -21,7 +23,9 @@ export default function PrivacyPolicy() {
           <li>Laboratory-related operational data entered into the system</li>
         </ul>
 
-        <h2 className="text-lg font-semibold">2. How We Use Your Information</h2>
+        <h2 className="text-lg font-semibold">
+          2. How We Use Your Information
+        </h2>
         <ul className="list-disc pl-5">
           <li>Account creation and management</li>
           <li>Secure authentication and login verification</li>
@@ -33,9 +37,18 @@ export default function PrivacyPolicy() {
         <h2 className="text-lg font-semibold">3. SMS Messaging & OTP</h2>
         <ul className="list-disc pl-5">
           <li>SMS is used only for authentication and security purposes</li>
-          <li>Messages are sent only when a user initiates a login/verification request</li>
+          <li>
+            Messages are sent only when a user initiates a login/verification
+            request
+          </li>
+          <li>
+            Consent to receive SMS authentication messages is collected via an
+            explicit checkbox during account registration.
+          </li>
           <li>No marketing or promotional messages are sent</li>
-          <li>Reply <b>STOP</b> to opt out, <b>HELP</b> for assistance</li>
+          <li>
+            Reply <b>STOP</b> to opt out, <b>HELP</b> for assistance
+          </li>
           <li>Message and data rates may apply</li>
         </ul>
 
