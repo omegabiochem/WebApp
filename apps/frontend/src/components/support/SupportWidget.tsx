@@ -397,9 +397,31 @@ export default function SupportWidget() {
     }
   }
 
+  // async function uploadChatFile(file: File) {
+  //   const fd = new FormData();
+  //   fd.append("file", file);
+
+  //   return api<{
+  //     url: string;
+  //     storageKey: string;
+  //     filename: string;
+  //     contentType: string;
+  //     size: number;
+  //   }>(`/messages/uploads`, {
+  //     method: "POST",
+  //     body: fd as any,
+  //   });
+  // }
+
   async function uploadChatFile(file: File) {
     const fd = new FormData();
     fd.append("file", file);
+
+    // ✅ send clientCode for lab uploads
+    const qs =
+      isLab && selectedThread?.clientCode
+        ? `?clientCode=${encodeURIComponent(selectedThread.clientCode)}`
+        : "";
 
     return api<{
       url: string;
@@ -407,7 +429,7 @@ export default function SupportWidget() {
       filename: string;
       contentType: string;
       size: number;
-    }>(`/messages/uploads`, {
+    }>(`/messages/uploads${qs}`, {
       method: "POST",
       body: fd as any,
     });
