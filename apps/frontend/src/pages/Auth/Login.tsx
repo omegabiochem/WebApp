@@ -1,4 +1,3 @@
-
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api } from "../../lib/api";
@@ -122,6 +121,25 @@ export default function Login() {
       setBanner({ type: "success", text: "Login successful!" });
       navigate(roleHomePath[res.user.role] ?? "/home", { replace: true });
     } catch (err: any) {
+      // ✅ IP allowlist block (403)
+      if (err?.status === 403) {
+        const code = err?.body?.code || err?.body?.message?.code;
+
+        const msg =
+          err?.body?.message?.message || // when backend sends { code, message } inside message
+          err?.body?.message || // when backend sends message string
+          err?.message || // fallback
+          "Access restricted.";
+
+        if (
+          code === "IP_NOT_ALLOWED" ||
+          String(msg).toLowerCase().includes("access restricted")
+        ) {
+          setBanner({ type: "error", text: msg });
+          setError("userId", { type: "server", message: msg });
+          return;
+        }
+      }
       const code = err?.body?.code;
       const remaining = err?.body?.remaining;
 
@@ -179,7 +197,9 @@ export default function Login() {
             {...register("userId", { required: "User ID is required" })}
           />
           {errors.userId && (
-            <span className="text-xs text-red-600">{errors.userId.message}</span>
+            <span className="text-xs text-red-600">
+              {errors.userId.message}
+            </span>
           )}
         </div>
 
