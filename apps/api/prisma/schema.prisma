@@ -568,3 +568,16 @@ model SupportTicket {
   @@index([category])
   @@index([createdById])
 }
+
+
+model ChatUpload {
+  id          String   @id @default(cuid())
+  storageKey  String   @unique
+  filename    String
+  contentType String
+  size        Int
+
+  clientCode  String?  // set for client uploads
+  uploadedBy  String   // userId
+  createdAt   DateTime @default(now())
+}
