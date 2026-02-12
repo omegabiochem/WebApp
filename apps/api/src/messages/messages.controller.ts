@@ -115,7 +115,11 @@ export class MessagesController {
       limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
     }),
   )
-  async upload(@Req() req: any, @UploadedFile() file: Express.Multer.File) {
+  async upload(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('clientCode') clientCodeQ?: string,
+  ) {
     if (!file) throw new BadRequestException('file is required');
 
     const ok =
@@ -132,6 +136,11 @@ export class MessagesController {
       subdir: 'chat',
     });
 
+    const uploadClientCode =
+      role === 'CLIENT'
+        ? (req.user?.clientCode ?? null)
+        : (clientCodeQ ?? null);
+
     await this.prisma.chatUpload.create({
       data: {
         storageKey,
@@ -139,7 +148,7 @@ export class MessagesController {
         contentType: file.mimetype,
         size: file.size,
         uploadedBy: userId,
-        clientCode: role === 'CLIENT' ? (req.user?.clientCode ?? null) : null,
+        clientCode: uploadClientCode,
       },
     });
 
