@@ -3,6 +3,8 @@ import { AppModule } from './app.module';
 import helmet from 'helmet';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+import * as express from 'express';
+import * as path from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -26,6 +28,7 @@ async function bootstrap() {
   });
 
   app.use(cookieParser());
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   const port = Number(process.env.PORT || 3000);
   console.log('JWT_SECRET present?', !!process.env.JWT_SECRET);
