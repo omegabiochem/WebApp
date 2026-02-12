@@ -19,6 +19,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
 
 // -----------------------------
 // Types
@@ -35,6 +36,7 @@ type Report = {
   version: number;
   selectedActives?: string[];
   selectedActivesText?: string;
+  createdAt: string;
 };
 
 // -----------------------------
@@ -179,7 +181,7 @@ export default function ChemistryDashboard() {
   const [statusFilter, setStatusFilter] =
     useState<(typeof CHEMISTRY_STATUSES)[number]>("ALL");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
+  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -279,7 +281,7 @@ export default function ChemistryDashboard() {
 
     // 3.5) date range filter (by dateSent)
     const byDate = byActive.filter((r) =>
-      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+      matchesDateRange(r.createdAt, fromDate || undefined, toDate || undefined),
     );
 
     const sorted = [...byDate].sort((a, b) => {
@@ -288,8 +290,8 @@ export default function ChemistryDashboard() {
         const bK = (b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
 
@@ -364,10 +366,22 @@ export default function ChemistryDashboard() {
       });
     }
   };
-
   const handlePrintSelected = () => {
-    if (printingBulk) return;
+    if (printingBulk) return; // 🚫 prevent double
     if (!selectedIds.length) return;
+
+    // ✅ AUDIT: bulk print
+    logUiEvent({
+      action: "UI_PRINT_SELECTED",
+      entity: "Report",
+      details: `Printed selected reports (${selectedIds.length})`,
+      entityId:selectedIds.join(","),
+      meta: {
+        reportIds: selectedIds,
+        count: selectedIds.length,
+      },
+    });
+
     setPrintingBulk(true);
     setIsBulkPrinting(true);
   };
@@ -477,7 +491,7 @@ export default function ChemistryDashboard() {
     return (
       statusFilter !== "ALL" ||
       search.trim() !== "" ||
-      sortBy !== "dateSent" ||
+      sortBy !== "createdAt" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
@@ -500,7 +514,7 @@ export default function ChemistryDashboard() {
   const clearAllFilters = () => {
     setStatusFilter("ALL");
     setSearch("");
-    setSortBy("dateSent");
+    setSortBy("createdAt");
     setSortDir("desc");
     setPerPage(10);
     setDatePreset("ALL");
@@ -789,7 +803,7 @@ export default function ChemistryDashboard() {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              <option value="dateSent">Date Sent</option>
+              <option value="createdAt">Date Sent</option>
               <option value="reportNumber">Report #</option>
             </select>
             <button
@@ -1002,7 +1016,7 @@ export default function ChemistryDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
 
                       <td className="px-4 py-3">
                         <span
@@ -1020,10 +1034,32 @@ export default function ChemistryDashboard() {
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button
+                          {/* <button
                             disabled={rowBusy}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
+                          >
+                            View
+                          </button> */}
+
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => {
+                              logUiEvent({
+                                action: "UI_VIEW",
+                                entity: "ChemistryReport",
+                                entityId: r.id,
+                                details: `Viewed ${r.formNumber}`,
+                                meta: {
+                                  formNumber: r.formNumber,
+                                  formType: r.formType,
+                                  status: r.status,
+                                },
+                              });
+
+                              setSelectedReport(r);
+                            }}
+                            disabled={rowBusy}
                           >
                             View
                           </button>
@@ -1133,6 +1169,15 @@ export default function ChemistryDashboard() {
                   className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                   onClick={() => {
                     if (printingSingle) return;
+                    logUiEvent({
+                      action: "UI_PRINT_SINGLE",
+                      entity:
+                        selectedReport.formType === "CHEMISTRY_MIX"
+                          ? "ChemistryReport"
+                          : "MicroReport",
+                      entityId: selectedReport.id,
+                      details: `Printed ${selectedReport.formNumber}`,
+                    });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);
                   }}

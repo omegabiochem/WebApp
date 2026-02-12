@@ -10,26 +10,25 @@ datasource db {
 }
 
 model Report {
-  id                       String                    @id @default(cuid())
-  clientCode               String?
-  formNumber               String                    @unique
-  reportNumber             String?                   @unique
-  prefix                   String                    @default("OM")
-  status                   ReportStatus              @default(DRAFT)
-  lockedAt                 DateTime?
-  createdBy                String?
-  updatedBy                String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  formType                 FormType
-  attachments              Attachment[]
-  microMix                 MicroMixDetails?
-  microMixWater            MicroMixWaterDetails?
-  
-  statusHistory            StatusHistory[]
-  version                  Int                       @default(1)
+  id            String                @id @default(cuid())
+  formNumber    String                @unique
+  reportNumber  String?               @unique
+  prefix        String                @default("OM")
+  status        ReportStatus          @default(DRAFT)
+  lockedAt      DateTime?
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  formType      FormType
+  clientCode    String?
+  version       Int                   @default(1)
+  attachments   Attachment[]
+  microMix      MicroMixDetails?
+  microMixWater MicroMixWaterDetails?
+  statusHistory StatusHistory[]
 }
- 
+
 model MicroMixDetails {
   reportId               String       @id
   client                 String?
@@ -119,32 +118,58 @@ model Sample {
   updatedAt  DateTime @updatedAt
 }
 
+enum TwoFactorMethod {
+  EMAIL
+  SMS
+}
+
 model User {
-  id                    String           @id @default(cuid())
-  email                 String           
-  name                  String?
-  role                  UserRole         @default(CLIENT)
-  passwordHash          String
-  mustChangePassword    Boolean          @default(false)
-  active                Boolean          @default(true)
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  inviteToken           String?          @unique
-  inviteTokenExpiresAt  DateTime?
-  passwordUpdatedAt     DateTime?
-  passwordVersion       Int              @default(1)
-  tempPasswordExpiresAt DateTime?
-  userId                String?          @unique
-  userIdSetAt           DateTime?
-  clientCode            String?
-  lastLoginAt           DateTime?        @db.Timestamp(6)
-  lastActivityAt        DateTime?        @db.Timestamp(6)
-  auditTrails           AuditTrail[]
-  readings              BalanceReading[]
+  id                 String   @id @default(cuid())
+  email              String
+  name               String?
+  role               UserRole @default(CLIENT)
+  passwordHash       String
+  mustChangePassword Boolean  @default(false)
+
+  // ✅ add these
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  lastFailedLoginAt DateTime?
+
+  phoneNumber      String? // for non-client roles (SMS)
+  twoFactorEnabled Boolean          @default(true)
+  twoFactorMethod  TwoFactorMethod?
+
+  // OTP challenge state (minimal)
+  twoFactorCodeHash  String?
+  twoFactorExpiresAt DateTime?
+  twoFactorAttempts  Int       @default(0)
+
+  active                    Boolean          @default(true)
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  inviteToken               String?          @unique
+  inviteTokenExpiresAt      DateTime?
+  passwordUpdatedAt         DateTime?
+  passwordVersion           Int              @default(1)
+  tempPasswordExpiresAt     DateTime?
+  userId                    String?          @unique
+  userIdSetAt               DateTime?
+  clientCode                String?
+  lastActivityAt            DateTime?        @db.Timestamp(6)
+  lastLoginAt               DateTime?        @db.Timestamp(6)
+  emailNotificationsEnabled Boolean          @default(true)
+  auditTrails               AuditTrail[]
+  readings                  BalanceReading[]
+
+  // Support Tickets (relations)
+  supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
+  supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
 
 
- // ✅ notification toggles
-  emailNotificationsEnabled Boolean @default(true)
+  refreshTokenHash   String?   // bcrypt hash of refresh token
+  refreshTokenExpAt  DateTime? // expiry timestamp
+  refreshTokenRotatedAt DateTime? // optional: last rotation time (audit/debug)
 
   @@index([clientCode, role])
 }
@@ -152,7 +177,6 @@ model User {
 model ClientSequence {
   clientCode String @id
   lastNumber Int    @default(0)
-
 }
 
 model LabReportSequence {
@@ -188,20 +212,20 @@ model AuditTrail {
 }
 
 model Attachment {
-  id         String         @id @default(cuid())
-  reportId   String
-  kind       AttachmentKind
-  filename   String
-  storageKey String
-  storageDriver String         @default("local") // "local" | "s3"
+  id            String         @id @default(cuid())
+  reportId      String
+  kind          AttachmentKind
+  filename      String
+  storageKey    String
+  checksum      String
+  pages         Int?
+  source        String
+  meta          Json?
+  createdAt     DateTime       @default(now())
+  createdBy     String?
   storageBucket String?
-  checksum   String
-  pages      Int?
-  source     String
-  meta       Json?
-  createdAt  DateTime       @default(now())
-  createdBy  String?
-  report     Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  storageDriver String         @default("local")
+  report        Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, checksum])
   @@index([reportId])
@@ -232,6 +256,157 @@ model MachineClient {
   lastUsedAt DateTime?
 }
 
+model ChemistryReport {
+  id            String                         @id @default(cuid())
+  formNumber    String                         @unique
+  reportNumber  String?                        @unique
+  prefix        String                         @default("BC")
+  lockedAt      DateTime?
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime                       @default(now())
+  updatedAt     DateTime                       @updatedAt
+  formType      FormType                       @default(CHEMISTRY_MIX)
+  status        ChemistryReportStatus          @default(DRAFT)
+  clientCode    String?
+  version       Int                            @default(1)
+  attachments   ChemistryAttachment[]
+  chemistryMix  ChemistryMixDetails?
+  statusHistory ChemistryReportStatusHistory[]
+}
+
+model ChemistryMixDetails {
+  client            String?
+  dateSent          DateTime?
+  sampleDescription String?
+  sampleCollected   SampleCollected[]
+  comments          String?
+  corrections       Json?
+  createdAt         DateTime              @default(now())
+  createdBy         String?
+  formulaId         String?
+  lockedAt          DateTime?
+  lotBatchNo        String?
+  manufactureDate   DateTime?
+  numberOfActives   String?
+  reviewedBy        String?
+  reviewedDate      DateTime?
+  sampleSize        String?
+  sampleTypes       SampleType[]
+  testTypes         TestType[]
+  testedBy          String?
+  testedDate        DateTime?
+  updatedAt         DateTime              @updatedAt
+  updatedBy         String?
+  chemistryId       String                @id
+  actives           Json?
+  status            ChemistryReportStatus @default(DRAFT)
+  dateReceived      DateTime?
+  stabilityNote     String?
+  chemistryReport   ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+}
+
+model ChemistryReportStatusHistory {
+  id          String                @id @default(cuid())
+  chemistryId String
+  from        ChemistryReportStatus
+  to          ChemistryReportStatus
+  reason      String?
+  createdAt   DateTime              @default(now())
+  userId      String?
+  role        UserRole?
+  ipAddress   String?
+  report      ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@index([chemistryId, createdAt])
+}
+
+model ChemistryAttachment {
+  id            String          @id @default(cuid())
+  chemistryId   String
+  filename      String
+  storageKey    String
+  checksum      String
+  pages         Int?
+  source        String
+  meta          Json?
+  createdAt     DateTime        @default(now())
+  createdBy     String?
+  kind          AttachmentKind
+  storageBucket String?
+  storageDriver String          @default("local")
+  report        ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@unique([chemistryId, checksum])
+  @@index([chemistryId])
+}
+
+model MessageThread {
+  id          String              @id @default(cuid())
+  clientCode  String
+  reportId    String?
+  chemistryId String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  messages    Message[]
+  reads       MessageThreadRead[]
+
+  @@index([clientCode])
+  @@index([reportId])
+  @@index([chemistryId])
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  threadId    String
+  senderId    String
+  senderRole  UserRole
+  senderName  String?
+  body        String
+  mentions    UserRole[]    @default([])
+  attachments Json?
+  createdAt   DateTime      @default(now())
+  readAt      DateTime?
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model MessageThreadRead {
+  id         String        @id @default(cuid())
+  threadId   String
+  userId     String
+  lastReadAt DateTime      @default(now())
+  thread     MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@index([threadId])
+}
+
+model ClientNotificationConfig {
+  clientCode String                    @id
+  mode       ClientNotifyMode          @default(USERS_PLUS_CUSTOM)
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+  emails     ClientNotificationEmail[]
+
+  @@index([mode])
+}
+
+model ClientNotificationEmail {
+  id         String                   @id @default(cuid())
+  clientCode String
+  email      String
+  label      String?
+  active     Boolean                  @default(true)
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+  config     ClientNotificationConfig @relation(fields: [clientCode], references: [clientCode], onDelete: Cascade)
+
+  @@unique([clientCode, email])
+  @@index([clientCode, active])
+}
 
 enum FormType {
   MICRO_MIX
@@ -294,90 +469,6 @@ enum AttachmentKind {
   OTHER
 }
 
-
-
-
-
-
-model ChemistryReport {
-  id                       String                    @id @default(cuid())
-  clientCode               String?
-  formNumber               String                    @unique
-  reportNumber             String?                   @unique
-  prefix                   String                    @default("BC")
-  status                   ChemistryReportStatus           @default(DRAFT)
-  lockedAt                 DateTime?
-  createdBy                String?
-  updatedBy                String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  formType                 FormType                  @default(CHEMISTRY_MIX)
-  attachments              ChemistryAttachment[]
-
-  
-  chemistryMix             ChemistryMixDetails?
-  statusHistory            ChemistryReportStatusHistory[]
-  version                  Int                        @default(1)
-}
-
-
-// ---------------------------
-// CHEMISTRY MIX (full form)
-// ---------------------------
-model ChemistryMixDetails {
-  // follow same pattern as Micro: 1:1 with Report using reportId as PK
-  chemistryId          String        @id
-  chemistryReport            ChemistryReport        @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
-
-  // Header / sample info
-  client            String?
-  dateSent          DateTime?
-  sampleDescription String?
-
-  // TYPE OF TEST – multiple checkboxes
-  testTypes         TestType[]    // ID, PERCENT_ASSAY, CONTENT_UNIFORMITY
-
-  // SAMPLE COLLECTED –  multiple checkboxes
-  sampleCollected   SampleCollected[]
-
-  // LOT / MFG / FORMULA / SAMPLE SIZE / NUMBER OF ACTIVES
-  lotBatchNo        String?
-  manufactureDate   DateTime?
-  formulaId         String?
-  sampleSize        String?
-  numberOfActives   String?
-
-  // SAMPLE TYPE – multiple checkboxes across the row
-  sampleTypes       SampleType[]  // BULK / FINISHED_GOOD / etc.
-
-  stabilityNote String?
-  dateReceived      DateTime?
-
-  // “ACTIVE TO BE TESTED” rows
-  actives           Json?
-
-  // Comments + signatures block
-  comments          String?
-  testedBy          String?
-  testedDate        DateTime?
-  reviewedBy        String?
-  reviewedDate      DateTime?
-
-  // Per-form status, like MicroMixDetails
-  status            ChemistryReportStatus  @default(DRAFT)
-  lockedAt          DateTime?
-  createdBy         String?
-  updatedBy         String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  corrections       Json?
-}
-
-
-
-
-
-
 enum ChemistryReportStatus {
   DRAFT
   SUBMITTED_BY_CLIENT
@@ -389,59 +480,20 @@ enum ChemistryReportStatus {
   FRONTDESK_ON_HOLD
   FRONTDESK_NEEDS_CORRECTION
   UNDER_CLIENT_REVIEW
-  UNDER_TESTING_REVIEW 
+  UNDER_TESTING_REVIEW
   TESTING_ON_HOLD
   TESTING_NEEDS_CORRECTION
   RESUBMISSION_BY_TESTING
   UNDER_QA_REVIEW
   QA_NEEDS_CORRECTION
-  UNDER_RESUBMISSION_QA_REVIEW
   UNDER_ADMIN_REVIEW
   ADMIN_NEEDS_CORRECTION
   ADMIN_REJECTED
   UNDER_RESUBMISSION_ADMIN_REVIEW
   APPROVED
   LOCKED
+  UNDER_RESUBMISSION_QA_REVIEW
 }
-
-model ChemistryReportStatusHistory {
-  id           String           @id @default(cuid())
-  chemistryId  String
-  from         ChemistryReportStatus
-  to           ChemistryReportStatus
-  reason       String?
-  createdAt    DateTime         @default(now())
-  userId       String?
-  role         UserRole?
-  ipAddress    String?
-
-  report    ChemistryReport  @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
-
-  @@index([chemistryId, createdAt])
-}
-
-
-model ChemistryAttachment {
-  id         String          @id @default(cuid())
-  chemistryId   String
-  filename   String
-  kind       AttachmentKind
-  storageKey String
-  storageDriver String          @default("local")
-  storageBucket String?
-  checksum   String
-  pages      Int?
-  source     String
-  meta       Json?
-  createdAt  DateTime        @default(now())
-  createdBy  String?
-
-  report     ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
-
-  @@unique([chemistryId, checksum])
-  @@index([chemistryId])
-}
-
 
 enum TestType {
   ID
@@ -466,111 +518,53 @@ enum SampleType {
   STABILITY
 }
 
-
-
-
-
-
-
-model MessageThread {
-  id          String   @id @default(cuid())
-
-  // CRITICAL: isolates clients
-  clientCode  String
-
-  // Optional context binding
-  reportId    String?
-  chemistryId String?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  messages    Message[]
-
-  reads       MessageThreadRead[]
-
-  @@index([clientCode])
-  @@index([reportId])
-  @@index([chemistryId])
-}
-
-model Message {
-  id          String    @id @default(cuid())
-
-  threadId    String
-  senderId    String
-  senderRole  UserRole
-  senderName  String?
-
-  body        String
-
-  // Role mentions: ["QA", "MICRO"]
-  mentions    UserRole[] @default([])
-
-  // Attachments / linked reports
-  attachments Json?
-
-  createdAt   DateTime  @default(now())
-  readAt      DateTime?
-
-  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  @@index([threadId, createdAt])
-}
-
-
-model MessageThreadRead {
-  id         String   @id @default(cuid())
-  threadId   String
-  userId     String
-  lastReadAt DateTime @default(now())
-
-  thread     MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  @@unique([threadId, userId])
-  @@index([userId])
-  @@index([threadId])
-}
-
-
-
-
 enum ClientNotifyMode {
   USERS_ONLY
   CUSTOM_ONLY
   USERS_PLUS_CUSTOM
 }
 
-model ClientNotificationConfig {
-  clientCode String @id
-  mode       ClientNotifyMode @default(USERS_PLUS_CUSTOM)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  emails     ClientNotificationEmail[]
-
-  @@index([mode])
+enum SupportTicketCategory {
+  LOGIN_ACCESS
+  OTP_VERIFICATION
+  REPORTS_WORKFLOW
+  ATTACHMENTS_PRINTING
+  PERFORMANCE
+  BUG_ERROR
+  OTHER
 }
 
-model ClientNotificationEmail {
-  id         String @id @default(cuid())
-  clientCode String
-
-  email      String
-  label      String?
-  active     Boolean @default(true)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  config     ClientNotificationConfig @relation(fields: [clientCode], references: [clientCode], onDelete: Cascade)
-
-  @@unique([clientCode, email])
-  @@index([clientCode, active])
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
 }
 
+model SupportTicket {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  createdById String
+  createdBy   User     @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
+  category SupportTicketCategory
+  status   SupportTicketStatus @default(OPEN)
 
+  reportId    String?
+  reportType  String?
+  description String
 
+  userAgent  String?
+  clientTime String?
+  meta       Json?
+
+  assignedToId String?
+  assignedTo   User?   @relation("SupportTicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([category])
+  @@index([createdById])
+}

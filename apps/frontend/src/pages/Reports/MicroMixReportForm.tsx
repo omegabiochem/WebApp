@@ -1920,7 +1920,7 @@ export default function MicroMixReportForm({
                       : ""
                   } `}
                   type="date"
-                  min={todayISO()}
+                  // min={todayISO()}
                   value={
                     manufactureDate ? formatDateForInput(manufactureDate) : "NA"
                   }

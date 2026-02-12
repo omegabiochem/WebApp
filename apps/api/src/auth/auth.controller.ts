@@ -8,6 +8,7 @@ import {
   BadRequestException,
   Get,
   UnauthorizedException,
+  Res,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
@@ -27,10 +28,13 @@ export class AuthController {
   // ✅ Login with userId + password (pass req so we can capture IP/UA for audit)
   @Public()
   @Post('login')
-  login(@Req() req: any, @Body() body: { userId: string; password: string }) {
-    return this.auth.loginWithUserId(body.userId, body.password, req);
+  login(
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { userId: string; password: string },
+  ) {
+    return this.auth.loginWithUserId(body.userId, body.password, req, res);
   }
-
   // ✅ Who am I?
   @UseGuards(JwtAuthGuard)
   @Get('me')
@@ -76,9 +80,9 @@ export class AuthController {
   // ✅ NEW: Logout endpoint (audited)
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  logout(@Req() req: any) {
+  logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { sub, role, uid, jti } = req.user ?? {};
-    return this.auth.logout(req, { id: sub, role, userId: uid }, jti);
+    return this.auth.logout(req, { id: sub, role, userId: uid }, jti, res);
   }
 
   @Post('m2m/token')
@@ -119,5 +123,27 @@ export class AuthController {
       select current_database() as db, current_setting('neon.branch', true) as branch
     `;
     return rows?.[0] ?? {};
+  }
+
+  @Public()
+  @Post('verify-2fa')
+  verify2fa(
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { userId: string; code: string },
+  ) {
+    return this.auth.verifyTwoFactor(body, req, res);
+  }
+
+  @Public()
+  @Post('resend-2fa')
+  resend2fa(@Req() req: any, @Body() body: { userId: string }) {
+    return this.auth.resendTwoFactor(body, req);
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+    return this.auth.refresh(req, res);
   }
 }

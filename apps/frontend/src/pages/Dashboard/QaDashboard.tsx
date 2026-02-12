@@ -25,6 +25,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
 
 // ---------------------------------
 // Types
@@ -856,9 +857,34 @@ export default function QaDashboard() {
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button
+                          {/* <button
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
+                            disabled={rowBusy}
+                          >
+                            View
+                          </button> */}
+
+                          <button
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            onClick={() => {
+                              logUiEvent({
+                                action: "UI_VIEW",
+                                entity:
+                                  r.formType === "CHEMISTRY_MIX"
+                                    ? "ChemistryReport"
+                                    : "Micro Report",
+                                entityId: r.id,
+                                details: `Viewed ${r.formNumber}`,
+                                meta: {
+                                  formNumber: r.formNumber,
+                                  formType: r.formType,
+                                  status: r.status,
+                                },
+                              });
+
+                              setSelectedReport(r);
+                            }}
                             disabled={rowBusy}
                           >
                             View

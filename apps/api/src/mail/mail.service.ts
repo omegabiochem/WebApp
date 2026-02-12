@@ -702,4 +702,140 @@ If you did not expect this email, contact support at ${supportEmail}.
       Headers: [{ Name: 'X-PM-Sender', Value: techSender }],
     });
   }
+
+  async sendTwoFactorOtpEmail(args: {
+    to: string;
+    name?: string | null;
+    code: string;
+    expiresAt: Date;
+    purpose?: string; // optional: "Login verification"
+  }) {
+    const { to, name, code, expiresAt } = args;
+
+    const from =
+      process.env.MAIL_FROM || 'Omega LIMS <no-reply@omegabiochemlab.com>';
+    const replyTo = process.env.MAIL_REPLY_TO || 'no-reply@omegabiochemlab.com';
+
+    const brandName = process.env.MAIL_BRAND_NAME || 'Omega BioChem Lab';
+    const supportEmail =
+      process.env.SUPPORT_EMAIL || 'tech@omegabiochemlab.com';
+
+    const exp = new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    }).format(expiresAt);
+
+    const displayName = name?.trim() ? name.trim() : 'there';
+    const subject = 'Omega LIMS — Your verification code';
+
+    const htmlBody = `
+<!doctype html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0; padding:0; background:#f3f6fb;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb; padding:24px 0;">
+    <tr><td align="center" style="padding:0 12px;">
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0"
+             style="width:640px; max-width:640px; background:#fff; border:1px solid #e6eaf2; border-radius:14px; overflow:hidden;">
+        <tr>
+          <td style="background:#0b3a83; padding:18px 22px;">
+            <div style="font-family:Arial; color:#fff; font-size:18px; font-weight:800;">${escapeHtml(brandName)}</div>
+            <div style="font-family:Arial; color:#dbe8ff; font-size:13px; font-weight:600; margin-top:4px;">Two-Factor Verification</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:22px; font-family:Arial; color:#111827; font-size:14px; line-height:1.6;">
+            <p style="margin:0 0 10px 0;">Hello <strong>${escapeHtml(displayName)}</strong>,</p>
+            <p style="margin:0 0 12px 0;">Use this verification code to complete your sign-in:</p>
+
+            <div style="display:inline-block; font-size:24px; font-weight:900; letter-spacing:6px;
+                        background:#f6f8fc; border:1px solid #e6eaf2; padding:10px 14px; border-radius:12px;">
+              ${escapeHtml(code)}
+            </div>
+
+            <p style="margin:12px 0 0 0; color:#374151;">This code expires at <strong>${escapeHtml(exp)}</strong>.</p>
+            <p style="margin:14px 0 0 0; color:#6b7280; font-size:12px;">
+              If you did not request this code, please contact support at
+              <a href="mailto:${escapeHtml(supportEmail)}" style="color:#0b3a83; font-weight:700; text-decoration:none;">
+                ${escapeHtml(supportEmail)}
+              </a>.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const textBody = `Hello ${displayName},
+
+Your Omega LIMS verification code is: ${code}
+
+Expires: ${exp}
+
+If you did not request this, contact support: ${supportEmail}
+— ${brandName}
+`;
+
+    await this.client.sendEmail({
+      From: from,
+      To: to,
+      Subject: subject,
+      HtmlBody: htmlBody,
+      TextBody: textBody,
+      ReplyTo: replyTo,
+      MessageStream: 'outbound',
+      Tag: '2fa',
+      TrackOpens: true,
+      TrackLinks: 'HtmlAndText' as any,
+      Metadata: { emailType: '2fa', app: 'omega-lims' },
+    });
+
+    this.log.log(`2FA email OTP sent to ${to}`);
+  }
+
+  async sendSupportTicketEmail(args: {
+    to: string;
+    ticketId: string;
+    category: string;
+    createdBy: string;
+    description: string;
+    reportId?: string;
+    reportType?: string;
+  }) {
+    const {
+      to,
+      ticketId,
+      category,
+      createdBy,
+      description,
+      reportId,
+      reportType,
+    } = args;
+
+    const subject = `[Omega LIMS] New Support Ticket (${category}) - ${ticketId}`;
+    const text = `New support ticket created
+
+Ticket ID: ${ticketId}
+Category: ${category}
+Created By: ${createdBy}
+Report: ${reportType ?? '-'} ${reportId ?? '-'}
+
+Description:
+${description}
+`;
+
+    await this.client.sendEmail({
+      From: process.env.POSTMARK_FROM_EMAIL!,
+      To: to,
+      Subject: subject,
+      TextBody: text,
+    });
+  }
 }

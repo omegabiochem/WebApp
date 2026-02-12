@@ -22,8 +22,9 @@
     "start:staging": "dotenv -e .env.staging -- nest start --watch"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.958.0",
+    "@aws-sdk/client-s3": "^3.987.0",
     "@aws-sdk/lib-storage": "^3.958.0",
+    "@aws-sdk/s3-request-presigner": "^3.987.0",
     "@nestjs/common": "^11.1.11",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.11",
@@ -38,6 +39,7 @@
     "bcryptjs": "^3.0.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
     "fs-extra": "^11.3.2",
@@ -55,6 +57,7 @@
     "rxjs": "^7.8.1",
     "serialport": "^13.0.0",
     "socket.io": "^4.8.1",
+    "twilio": "^5.12.1",
     "zod": "^4.0.17"
   },
   "devDependencies": {
@@ -72,6 +75,7 @@
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "@types/twilio": "^3.19.2",
     "dotenv-cli": "^10.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
