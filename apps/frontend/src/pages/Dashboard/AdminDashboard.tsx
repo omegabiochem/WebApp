@@ -1,31 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
+// AdminDashboard.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
+
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+
 import { useAuth } from "../../context/AuthContext";
-// import io from "socket.io-client";
+import { api } from "../../lib/api";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
+
 import {
   canShowUpdateButton,
   STATUS_COLORS,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
-import toast from "react-hot-toast";
-import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+
 import {
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
-import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+
 import {
   formatDate,
   matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
-import { logUiEvent } from "../../lib/uiAudit";
 
 // ---------------------------------
 // Types
@@ -36,9 +42,10 @@ type Report = {
   formType: string;
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | string;
-  reportNumber: number;
+  reportNumber: string | number | null;
   formNumber: string | null;
   createdAt: string;
+  version?: number; // optional; not required for printing
 };
 
 // ---------------------------------
@@ -134,7 +141,7 @@ function niceStatus(s: string) {
 }
 
 function displayReportNo(r: Report) {
-  return r.reportNumber || "-";
+  return r.reportNumber ?? "-";
 }
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -163,6 +170,91 @@ const ADMIN_FIELDS_ON_FORM = [
   "approvedDate",
   "adminNotes",
 ];
+
+// -----------------------------
+// Bulk print area (Admin)
+// -----------------------------
+function BulkPrintArea({
+  reports,
+  onAfterPrint,
+}: {
+  reports: Report[];
+  onAfterPrint: () => void;
+}) {
+  if (!reports.length) return null;
+
+  const isSingle = reports.length === 1;
+
+  React.useEffect(() => {
+    const tid = window.setTimeout(() => window.print(), 200);
+
+    const handleAfterPrint = () => onAfterPrint();
+    window.addEventListener("afterprint", handleAfterPrint);
+
+    return () => {
+      clearTimeout(tid);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [reports, onAfterPrint]);
+
+  return (
+    <div
+      id="bulk-print-root"
+      className={isSingle ? "hidden print:block" : "hidden print:block multi-print"}
+    >
+      {reports.map((r) => {
+        if (r.formType === "MICRO_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "MICRO_MIX_WATER") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixWaterReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "CHEMISTRY_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <ChemistryMixReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        return (
+          <div key={r.id} className="report-page">
+            <h1>{r.formNumber}</h1>
+            <p>Unknown form type: {r.formType}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------
 // Component
@@ -210,61 +302,20 @@ export default function AdminDashboard() {
 
   const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
 
+  // -----------------------------
+  // Selection + Printing (Admin)
+  // -----------------------------
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkPrinting, setIsBulkPrinting] = useState(false);
+  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
+    null,
+  );
+
+  const [printingBulk, setPrintingBulk] = useState(false);
+  const [printingSingle, setPrintingSingle] = useState(false);
+
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  // Socket (live updates)
-  // const socketRef = useRef<ReturnType<typeof io> | null>(null);
-
-  // useEffect(() => {
-  //   const t = getToken();
-  //   const url =
-  //     window.location.protocol === "https:"
-  //       ? API_URL.replace(/^http:/, "https:")
-  //       : API_URL;
-
-  //   socketRef.current = io(url, {
-  //     transports: ["websocket"],
-  //     auth: t ? { token: t } : undefined,
-  //     path: "/socket.io",
-  //   });
-
-  //   // ✅ update BOTH micro & chem status if your backend emits them
-  //   socketRef.current.on(
-  //     "microMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-
-  //   socketRef.current.on("microMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   // OPTIONAL: if you emit chemistry events too
-  //   socketRef.current.on(
-  //     "chemistryMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-
-  //   socketRef.current.on("chemistryMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   return () => {
-  //     socketRef.current?.disconnect();
-  //   };
-  // }, []);
 
   async function setStatus(
     r: Report,
@@ -277,9 +328,7 @@ export default function AdminDashboard() {
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    const body = isChem
-      ? { status: nextStatus }
-      : { reason: reasonText, status: nextStatus };
+    const body = isChem ? { status: nextStatus } : { reason: reasonText, status: nextStatus };
 
     await api(endpoint, {
       method: "PATCH",
@@ -310,6 +359,7 @@ export default function AdminDashboard() {
     return () => {
       abort = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ✅ Reset invalid status when switching formFilter
@@ -328,10 +378,8 @@ export default function AdminDashboard() {
         ? reports
         : reports.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "MICROWATER") return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "CHEMISTRY") return r.formType === "CHEMISTRY_MIX";
             return true;
           });
 
@@ -348,9 +396,7 @@ export default function AdminDashboard() {
 
     const byReport = searchReport.trim()
       ? byClient.filter((r) =>
-          String(displayReportNo(r))
-            .toLowerCase()
-            .includes(searchReport.toLowerCase()),
+          String(displayReportNo(r)).toLowerCase().includes(searchReport.toLowerCase()),
         )
       : byClient;
 
@@ -363,15 +409,7 @@ export default function AdminDashboard() {
       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return bT - aT;
     });
-  }, [
-    reports,
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-  ]);
+  }, [reports, formFilter, statusFilter, searchClient, searchReport, dateFrom, dateTo]);
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -382,15 +420,57 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-    formFilter,
-  ]);
+  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage, formFilter]);
+
+  // -----------------------------
+  // Selection helpers
+  // -----------------------------
+  const isRowSelected = (id: string) => selectedIds.includes(id);
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !pageRows.some((r) => r.id === id)));
+    } else {
+      setSelectedIds((prev) => {
+        const set = new Set(prev);
+        pageRows.forEach((r) => set.add(r.id));
+        return Array.from(set);
+      });
+    }
+  };
+
+  const selectedReportObjects = selectedIds
+    .map((id) => reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
+
+  const handlePrintSelected = () => {
+    if (printingBulk) return;
+    if (!selectedIds.length) return;
+
+    logUiEvent({
+      action: "UI_PRINT_SELECTED",
+      entity: "Report",
+      details: `Printed selected reports (${selectedIds.length})`,
+      entityId: selectedIds.join(","),
+      meta: { reportIds: selectedIds, count: selectedIds.length },
+    });
+
+    setPrintingBulk(true);
+    setIsBulkPrinting(true);
+  };
+
+  // optional: clear selection when filters change (avoids printing hidden rows)
+  useEffect(() => {
+    setSelectedIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formFilter, statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -447,11 +527,7 @@ export default function AdminDashboard() {
         }),
       });
 
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === report.id ? { ...r, status: nextStatus } : r,
-        ),
-      );
+      setReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, status: nextStatus } : r)));
 
       setChangeStatusReport(null);
       setReason("");
@@ -569,16 +645,7 @@ export default function AdminDashboard() {
       dateTo !== "" ||
       perPage !== 10
     );
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    datePreset,
-    dateFrom,
-    dateTo,
-    perPage,
-  ]);
+  }, [formFilter, statusFilter, searchClient, searchReport, datePreset, dateFrom, dateTo, perPage]);
 
   const clearFilters = () => {
     setSearchClient("");
@@ -594,25 +661,64 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-    formFilter,
-    datePreset,
-  ]);
+  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage, formFilter, datePreset]);
 
   useLiveReportStatus(setReports);
 
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
   return (
     <div className="p-6">
+      {/* -----------------------------
+          PRINT PORTAL (bulk + single)
+         ----------------------------- */}
+      {(isBulkPrinting || !!singlePrintReport) &&
+        createPortal(
+          <>
+            <style>
+              {`
+                @media print {
+                  body > *:not(#bulk-print-root) { display: none !important; }
+                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+                  #bulk-print-root .sheet {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                  }
+
+                  #bulk-print-root .report-page {
+                    break-inside: avoid-page;
+                    page-break-inside: avoid;
+                  }
+
+                  #bulk-print-root .report-page + .report-page {
+                    break-before: page;
+                    page-break-before: always;
+                  }
+
+                  @supports (margin-trim: block) {
+                    @page { margin-trim: block; }
+                  }
+                }
+              `}
+            </style>
+
+            <BulkPrintArea
+              reports={isBulkPrinting ? selectedReportObjects : [singlePrintReport!]}
+              onAfterPrint={() => {
+                if (isBulkPrinting) setIsBulkPrinting(false);
+                if (singlePrintReport) setSinglePrintReport(null);
+                setPrintingBulk(false);
+                setPrintingSingle(false);
+              }}
+            />
+          </>,
+          document.body,
+        )}
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
@@ -621,7 +727,25 @@ export default function AdminDashboard() {
             Oversee all reports and manage status transitions.
           </p>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* ✅ Print selected */}
+          <button
+            type="button"
+            onClick={handlePrintSelected}
+            disabled={!selectedIds.length || printingBulk}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+              selectedIds.length
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-200 text-slate-500",
+            )}
+          >
+            {printingBulk ? <Spinner /> : "🖨️"}
+            {printingBulk ? "Preparing..." : `Print selected (${selectedIds.length})`}
+          </button>
+
+          {/* Refresh */}
           <button
             type="button"
             disabled={refreshing}
@@ -697,8 +821,8 @@ export default function AdminDashboard() {
           <select
             value={String(statusFilter)}
             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
-         ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
             {statusOptions.map((s) => (
               <option key={String(s)} value={String(s)}>
@@ -712,8 +836,8 @@ export default function AdminDashboard() {
             placeholder="Search by client"
             value={searchClient}
             onChange={(e) => setSearchClient(e.target.value)}
-            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
-         ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
           {/* Search report */}
@@ -721,18 +845,17 @@ export default function AdminDashboard() {
             placeholder="Search by report #"
             value={searchReport}
             onChange={(e) => setSearchReport(e.target.value)}
-            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm 
-         ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
           {/* Custom range */}
           <div className="flex gap-5">
-            {/* Date preset */}
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
-         ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
+                ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -745,6 +868,7 @@ export default function AdminDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
+
             <input
               type="date"
               value={dateFrom}
@@ -794,15 +918,20 @@ export default function AdminDashboard() {
       {/* Table */}
       <div className="rounded-2xl border bg-white shadow-sm">
         {error && (
-          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
-            {error}
-          </div>
+          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
         )}
 
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
+                <th className="px-4 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectPage}
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
                 <th className="px-4 py-3 font-medium">Client</th>
@@ -817,13 +946,16 @@ export default function AdminDashboard() {
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
                     <td className="px-4 py-3">
+                      <div className="h-4 w-4 rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                     </td>
                     <td className="px-4 py-3">
                       <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
                     </td>
                     <td className="px-4 py-3">
                       <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
@@ -840,19 +972,26 @@ export default function AdminDashboard() {
               {!loading &&
                 pageRows.map((r) => {
                   const isMicro =
-                    r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   const rowBusy = updatingId === r.id;
 
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium">
-                        {displayReportNo(r)}
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isRowSelected(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                          disabled={rowBusy}
+                        />
                       </td>
+
+                      <td className="px-4 py-3 font-medium">{displayReportNo(r)}</td>
                       <td className="px-4 py-3">{r.formNumber}</td>
                       <td className="px-4 py-3">{r.client}</td>
                       <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
+
                       <td className="px-4 py-3">
                         <span
                           className={classNames(
@@ -863,18 +1002,11 @@ export default function AdminDashboard() {
                           {niceStatus(String(r.status))}
                         </span>
                       </td>
+
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {/* <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                            onClick={() => setSelectedReport(r)}
-                            disabled={rowBusy}
-                          >
-                            View
-                          </button> */}
-
                           <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => {
                               logUiEvent({
                                 action: "UI_VIEW",
@@ -890,7 +1022,6 @@ export default function AdminDashboard() {
                                   status: r.status,
                                 },
                               });
-
                               setSelectedReport(r);
                             }}
                             disabled={rowBusy}
@@ -906,26 +1037,19 @@ export default function AdminDashboard() {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
                                 try {
-                                  if (
-                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
-                                  ) {
-                                    const next =
-                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                  if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
+                                    const next = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: next }
-                                          : x,
+                                        x.id === r.id ? { ...x, status: next } : x,
                                       ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to update status",
-                                  );
+                                  toast.error(e?.message || "Failed to update status");
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -945,23 +1069,18 @@ export default function AdminDashboard() {
                                 setUpdatingId(r.id);
                                 try {
                                   if (r.status === "CLIENT_NEEDS_CORRECTION") {
-                                    const next =
-                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                    const next = "UNDER_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: next }
-                                          : x,
+                                        x.id === r.id ? { ...x, status: next } : x,
                                       ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to update status",
-                                  );
+                                  toast.error(e?.message || "Failed to update status");
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -1002,10 +1121,7 @@ export default function AdminDashboard() {
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                     No reports match filters.
                   </td>
                 </tr>
@@ -1018,9 +1134,9 @@ export default function AdminDashboard() {
         {!loading && total > 0 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
-              Showing <span className="font-medium">{start + 1}</span>–
-              <span className="font-medium">{Math.min(end, total)}</span> of
-              <span className="font-medium"> {total}</span>
+              Showing <span className="font-medium">{start + 1}</span>–{" "}
+              <span className="font-medium">{Math.min(end, total)}</span> of{" "}
+              <span className="font-medium">{total}</span>
             </div>
             <div className="flex items-center gap-2">
               <label htmlFor="perPage" className="sr-only">
@@ -1108,6 +1224,36 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
+                {/* ✅ Print single */}
+                <button
+                  disabled={printingSingle}
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  onClick={() => {
+                    if (printingSingle) return;
+
+                    logUiEvent({
+                      action: "UI_PRINT_SINGLE",
+                      entity:
+                        selectedReport.formType === "CHEMISTRY_MIX"
+                          ? "ChemistryReport"
+                          : "MicroReport",
+                      entityId: selectedReport.id,
+                      details: `Printed ${selectedReport.formNumber ?? selectedReport.id}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                    });
+
+                    setPrintingSingle(true);
+                    setSinglePrintReport(selectedReport);
+                  }}
+                >
+                  {printingSingle ? <SpinnerDark /> : "🖨️"}
+                  {printingSingle ? "Preparing..." : "Print"}
+                </button>
+
                 {/* ✅ show Update in modal for micro or chem */}
                 {(selectedReport.formType === "CHEMISTRY_MIX"
                   ? canUpdateThisChem(selectedReport, user)
@@ -1124,15 +1270,9 @@ export default function AdminDashboard() {
                           r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(
-                            r,
-                            next,
-                            "Sent back to client for correction",
-                          );
+                          await setStatus(r, next, "Sent back to client for correction");
                           setReports((prev) =>
-                            prev.map((x) =>
-                              x.id === r.id ? { ...x, status: next } : x,
-                            ),
+                            prev.map((x) => (x.id === r.id ? { ...x, status: next } : x)),
                           );
                         }
 
@@ -1183,8 +1323,7 @@ export default function AdminDashboard() {
                 />
               ) : (
                 <div className="text-sm text-slate-600">
-                  This form type ({selectedReport?.formType}) doesn’t have a
-                  viewer yet.
+                  This form type ({selectedReport?.formType}) doesn’t have a viewer yet.
                 </div>
               )}
             </div>
@@ -1205,8 +1344,7 @@ export default function AdminDashboard() {
               Change Status of {changeStatusReport.formType}
             </h2>
             <p className="mb-3 text-sm text-slate-600">
-              <strong>Current:</strong>{" "}
-              {niceStatus(String(changeStatusReport.status))}
+              <strong>Current:</strong> {niceStatus(String(changeStatusReport.status))}
             </p>
 
             <form
@@ -1258,24 +1396,14 @@ export default function AdminDashboard() {
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      opacity: 0,
-                      height: 0,
-                      width: 0,
-                    }}
+                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
                   />
                   <input
                     type="password"
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      opacity: 0,
-                      height: 0,
-                      width: 0,
-                    }}
+                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
                   />
 
                   <div className="mb-2 flex items-stretch gap-2">
@@ -1301,9 +1429,8 @@ export default function AdminDashboard() {
                       data-form-type="other"
                     />
                   </div>
-                  {eSignError && (
-                    <p className="mb-2 text-xs text-rose-600">{eSignError}</p>
-                  )}
+
+                  {eSignError && <p className="mb-2 text-xs text-rose-600">{eSignError}</p>}
                 </div>
               )}
 
@@ -1319,11 +1446,7 @@ export default function AdminDashboard() {
                 <button
                   type="submit"
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
-                  disabled={
-                    saving ||
-                    !reason.trim() ||
-                    (needsESign(newStatus) && !eSignPassword)
-                  }
+                  disabled={saving || !reason.trim() || (needsESign(newStatus) && !eSignPassword)}
                 >
                   {saving ? <Spinner /> : null}
                   {saving ? "Saving…" : "Save"}
