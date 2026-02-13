@@ -1,31 +1,35 @@
-import { useEffect, useMemo, useState } from "react";
+// QaDashboard.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
+
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+
 import { useAuth } from "../../context/AuthContext";
-// import io from "socket.io-client";
+import { api } from "../../lib/api";
+import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+import { logUiEvent } from "../../lib/uiAudit";
+
 import {
   canShowUpdateButton,
   STATUS_COLORS,
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
-import toast from "react-hot-toast";
-import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import {
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
-import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
   formatDate,
   matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
-import { logUiEvent } from "../../lib/uiAudit";
 
 // ---------------------------------
 // Types
@@ -38,6 +42,11 @@ type Report = {
   status: ReportStatus | ChemistryReportStatus | string;
   reportNumber: number;
   formNumber: string | null;
+
+  // Optional (helps printing + filters). If your API doesn't send these,
+  // everything still works.
+  createdAt?: string;
+  version?: number;
 };
 
 // ---------------------------------
@@ -130,7 +139,6 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 function niceStatus(s: string) {
   return s.replace(/_/g, " ");
 }
-
 function displayReportNo(r: Report) {
   return r.reportNumber || "-";
 }
@@ -160,6 +168,93 @@ const QA_FIELDS_ON_FORM = [
   "approvedDate",
   "adminNotes",
 ];
+
+// -----------------------------
+// Bulk print area (QA)
+// -----------------------------
+// type PrintJob = {
+//   report: Report;
+//   isSingle: boolean;
+// };
+
+function BulkPrintAreaQA({
+  reports,
+  onAfterPrint,
+}: {
+  reports: Report[];
+  onAfterPrint: () => void;
+}) {
+  if (!reports.length) return null;
+
+  const isSingle = reports.length === 1;
+
+  React.useEffect(() => {
+    const tid = window.setTimeout(() => window.print(), 200);
+
+    const handleAfterPrint = () => onAfterPrint();
+    window.addEventListener("afterprint", handleAfterPrint);
+
+    return () => {
+      clearTimeout(tid);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [reports, onAfterPrint]);
+
+  return (
+    <div id="bulk-print-root" className="hidden print:block">
+      {reports.map((r) => {
+        if (r.formType === "MICRO_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "MICRO_MIX_WATER") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixWaterReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "CHEMISTRY_MIX") {
+          return (
+            <div key={r.id} className="report-page">
+              <ChemistryMixReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        return (
+          <div key={r.id} className="report-page">
+            <h1>{r.formNumber}</h1>
+            <p>Unknown form type: {r.formType}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------
 // Component
@@ -208,56 +303,31 @@ export default function QaDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Socket (live updates)
-  // const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  // -----------------------------
+  // Selection + Printing (QA)
+  // -----------------------------
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkPrinting, setIsBulkPrinting] = useState(false);
+  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
+    null,
+  );
+  const [printingBulk, setPrintingBulk] = useState(false);
+  const [printingSingle, setPrintingSingle] = useState(false);
 
-  // useEffect(() => {
-  //   const t = getToken();
-  //   const url =
-  //     window.location.protocol === "https:"
-  //       ? API_URL.replace(/^http:/, "https:")
-  //       : API_URL;
+  const isRowSelected = (id: string) => selectedIds.includes(id);
 
-  //   socketRef.current = io(url, {
-  //     transports: ["websocket"],
-  //     auth: t ? { token: t } : undefined,
-  //     path: "/socket.io",
-  //   });
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
-  //   socketRef.current.on(
-  //     "microMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-
-  //   socketRef.current.on("microMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   // OPTIONAL: chemistry events (if your backend emits them)
-  //   socketRef.current.on(
-  //     "chemistryMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-  //   socketRef.current.on("chemistryMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   return () => {
-  //     socketRef.current?.disconnect();
-  //   };
-  // }, []);
+  // const allOnPageSelected =
+  //   reports.length > 0 &&
+  //   (() => {
+  //     // computed later with pageRows; placeholder to avoid TS issues
+  //     return false;
+  //   })();
 
   // ✅ IMPORTANT: chemistry /status endpoint usually does NOT require reason
   async function setStatus(
@@ -346,6 +416,8 @@ export default function QaDashboard() {
             .includes(searchReport.toLowerCase()),
         )
       : byClient;
+
+    // keep your behavior: filter/sort using dateSent
     const byDate = byReport.filter((r) =>
       matchesDateRange(r.dateSent, dateFrom || undefined, dateTo || undefined),
     );
@@ -382,6 +454,58 @@ export default function QaDashboard() {
     dateTo,
     perPage,
     formFilter,
+  ]);
+
+  const allOnPageSelectedNow =
+    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectPage = () => {
+    if (allOnPageSelectedNow) {
+      setSelectedIds((prev) =>
+        prev.filter((id) => !pageRows.some((r) => r.id === id)),
+      );
+    } else {
+      setSelectedIds((prev) => {
+        const set = new Set(prev);
+        pageRows.forEach((r) => set.add(r.id));
+        return Array.from(set);
+      });
+    }
+  };
+
+  const selectedReportObjects = selectedIds
+    .map((id) => reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
+
+  const handlePrintSelected = () => {
+    if (printingBulk) return;
+    if (!selectedIds.length) return;
+
+    logUiEvent({
+      action: "UI_PRINT_SELECTED",
+      entity: "Report",
+      details: `QA printed selected reports (${selectedIds.length})`,
+      entityId: selectedIds.join(","),
+      meta: { reportIds: selectedIds, count: selectedIds.length },
+    });
+
+    setPrintingBulk(true);
+    setIsBulkPrinting(true);
+  };
+
+  // clear selection when filters change (recommended)
+  useEffect(() => {
+    setSelectedIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    datePreset,
   ]);
 
   // Permissions
@@ -597,12 +721,62 @@ export default function QaDashboard() {
 
   useLiveReportStatus(setReports);
 
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
   return (
     <div className="p-6">
+      {/* -----------------------------
+          PRINT PORTAL (bulk + single)
+         ----------------------------- */}
+      {(isBulkPrinting || !!singlePrintReport) &&
+        createPortal(
+          <>
+            <style>
+              {`
+                @media print {
+                  body > *:not(#bulk-print-root) { display: none !important; }
+                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+                  #bulk-print-root .sheet {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                  }
+
+                  #bulk-print-root .report-page {
+                    break-inside: avoid-page;
+                    page-break-inside: avoid;
+                  }
+
+                  #bulk-print-root .report-page + .report-page {
+                    break-before: page;
+                    page-break-before: always;
+                  }
+
+                  @supports (margin-trim: block) {
+                    @page { margin-trim: block; }
+                  }
+                }
+              `}
+            </style>
+
+            <BulkPrintAreaQA
+              reports={
+                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+              }
+              onAfterPrint={() => {
+                if (isBulkPrinting) setIsBulkPrinting(false);
+                if (singlePrintReport) setSinglePrintReport(null);
+                setPrintingBulk(false);
+                setPrintingSingle(false);
+              }}
+            />
+          </>,
+          document.body,
+        )}
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
@@ -613,6 +787,24 @@ export default function QaDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ✅ Print selected */}
+          <button
+            type="button"
+            onClick={handlePrintSelected}
+            disabled={!selectedIds.length || printingBulk}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+              selectedIds.length
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-200 text-slate-500",
+            )}
+          >
+            {printingBulk ? <Spinner /> : "🖨️"}
+            {printingBulk
+              ? "Preparing..."
+              : `Print selected (${selectedIds.length})`}
+          </button>
+
           <button
             type="button"
             disabled={refreshing}
@@ -688,8 +880,8 @@ export default function QaDashboard() {
           <select
             value={String(statusFilter)}
             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
-               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
             {statusOptions.map((s) => (
               <option key={String(s)} value={String(s)}>
@@ -703,8 +895,8 @@ export default function QaDashboard() {
             placeholder="Search by client"
             value={searchClient}
             onChange={(e) => setSearchClient(e.target.value)}
-            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm 
-               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
           {/* Search report */}
@@ -712,18 +904,17 @@ export default function QaDashboard() {
             placeholder="Search by report #"
             value={searchReport}
             onChange={(e) => setSearchReport(e.target.value)}
-            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm 
-               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
+              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
-          {/* Custom range */}
+          {/* Date preset + custom */}
           <div className="flex gap-5">
-            {/* Date preset */}
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm 
-               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
+                ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -736,6 +927,7 @@ export default function QaDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
+
             <input
               type="date"
               value={dateFrom}
@@ -794,6 +986,15 @@ export default function QaDashboard() {
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
+                {/* ✅ selection column */}
+                <th className="px-4 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelectedNow}
+                    onChange={toggleSelectPage}
+                  />
+                </th>
+
                 <th className="px-4 py-3 font-medium">Report #</th>
                 <th className="px-4 py-3 font-medium">Form #</th>
                 <th className="px-4 py-3 font-medium">Client</th>
@@ -807,6 +1008,9 @@ export default function QaDashboard() {
               {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
+                    <td className="px-4 py-3">
+                      <div className="h-4 w-4 rounded bg-slate-200" />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                     </td>
@@ -838,12 +1042,23 @@ export default function QaDashboard() {
 
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
+                      {/* ✅ row checkbox */}
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isRowSelected(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                          disabled={rowBusy}
+                        />
+                      </td>
+
                       <td className="px-4 py-3 font-medium">
                         {displayReportNo(r)}
                       </td>
                       <td className="px-4 py-3">{r.formNumber}</td>
                       <td className="px-4 py-3">{r.client}</td>
                       <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+
                       <td className="px-4 py-3">
                         <span
                           className={classNames(
@@ -857,16 +1072,8 @@ export default function QaDashboard() {
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {/* <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                            onClick={() => setSelectedReport(r)}
-                            disabled={rowBusy}
-                          >
-                            View
-                          </button> */}
-
                           <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => {
                               logUiEvent({
                                 action: "UI_VIEW",
@@ -890,6 +1097,7 @@ export default function QaDashboard() {
                             View
                           </button>
 
+                          {/* ✅ Update buttons with your existing transitions */}
                           {isMicro && canUpdateThisMicro(r, user) && (
                             <button
                               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
@@ -964,6 +1172,7 @@ export default function QaDashboard() {
                             </button>
                           )}
 
+                          {/* Change status dialog */}
                           <button
                             className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
                             onClick={() => {
@@ -997,7 +1206,7 @@ export default function QaDashboard() {
               {!loading && pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports match filters.
@@ -1012,9 +1221,9 @@ export default function QaDashboard() {
         {!loading && total > 0 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
-              Showing <span className="font-medium">{start + 1}</span>–
-              <span className="font-medium">{Math.min(end, total)}</span> of
-              <span className="font-medium"> {total}</span>
+              Showing <span className="font-medium">{start + 1}</span>–{" "}
+              <span className="font-medium">{Math.min(end, total)}</span> of{" "}
+              <span className="font-medium">{total}</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1075,6 +1284,7 @@ export default function QaDashboard() {
                 Report #{displayReportNo(selectedReport)}
               </h2>
 
+              {/* ✅ Pane switcher */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
                 <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
                   <button
@@ -1105,6 +1315,36 @@ export default function QaDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
+                {/* ✅ Print single */}
+                <button
+                  disabled={printingSingle}
+                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  onClick={() => {
+                    if (printingSingle) return;
+
+                    logUiEvent({
+                      action: "UI_PRINT_SINGLE",
+                      entity:
+                        selectedReport.formType === "CHEMISTRY_MIX"
+                          ? "ChemistryReport"
+                          : "MicroReport",
+                      entityId: selectedReport.id,
+                      details: `QA printed ${selectedReport.formNumber ?? selectedReport.id}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                    });
+
+                    setPrintingSingle(true);
+                    setSinglePrintReport(selectedReport);
+                  }}
+                >
+                  {printingSingle ? <SpinnerDark /> : "🖨️"}
+                  {printingSingle ? "Preparing..." : "Print"}
+                </button>
+
                 {/* ✅ show Update in modal for micro OR chem */}
                 {(selectedReport.formType === "CHEMISTRY_MIX"
                   ? canUpdateThisChem(selectedReport, user)
@@ -1249,7 +1489,7 @@ export default function QaDashboard() {
                     <span>E-signature password</span>
                   </div>
 
-                  {/* Decoys */}
+                  {/* decoys */}
                   <input
                     type="text"
                     tabIndex={-1}
