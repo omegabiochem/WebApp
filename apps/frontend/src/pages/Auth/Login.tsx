@@ -92,6 +92,23 @@ export default function Login() {
 
       if (res.requiresTwoFactor) {
         sessionStorage.setItem("pendingUserId", data.userId);
+
+        // If backend gives expiresAt (ISO string), store it:
+        if (res.expiresAt) {
+          const t = Date.parse(res.expiresAt);
+          if (!Number.isNaN(t))
+            sessionStorage.setItem("otpExpiresAt", String(t));
+        } else {
+          // fallback: start from now
+          sessionStorage.setItem(
+            "otpExpiresAt",
+            String(Date.now() + 10 * 60 * 1000),
+          );
+        }
+
+        // clear any prior cooldown
+        sessionStorage.removeItem("otpCooldownUntil");
+
         navigate("/auth/verify-2fa", { replace: true });
         return;
       }
