@@ -171,6 +171,8 @@ model User {
   refreshTokenExpAt  DateTime? // expiry timestamp
   refreshTokenRotatedAt DateTime? // optional: last rotation time (audit/debug)
 
+  resultsLastSeenAt  DateTime?  @db.Timestamp(6)
+
   @@index([clientCode, role])
 }
 
