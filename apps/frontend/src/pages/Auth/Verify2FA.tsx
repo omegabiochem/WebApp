@@ -1,3 +1,4 @@
+// Verify2FA.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
@@ -35,9 +36,54 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+// storage keys
+const OTP_EXPIRES_AT_KEY = "otpExpiresAt";
+const OTP_COOLDOWN_UNTIL_KEY = "otpCooldownUntil";
+
+function secondsUntil(ts: number) {
+  return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
+}
+
+function readNumber(key: string): number | null {
+  const raw = sessionStorage.getItem(key);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function clearOtpStorage() {
+  sessionStorage.removeItem(OTP_EXPIRES_AT_KEY);
+  sessionStorage.removeItem(OTP_COOLDOWN_UNTIL_KEY);
+}
+
+function initOtpWindow(now = Date.now()) {
+  const expiresAt = readNumber(OTP_EXPIRES_AT_KEY);
+  // if missing or expired, start a new 10-min window
+  if (!expiresAt || expiresAt <= now) {
+    const next = now + OTP_WINDOW_SECONDS * 1000;
+    sessionStorage.setItem(OTP_EXPIRES_AT_KEY, String(next));
+    return next;
+  }
+  return expiresAt;
+}
+
+function getSecondsLeftFromStorage() {
+  const expiresAt = readNumber(OTP_EXPIRES_AT_KEY);
+  if (!expiresAt) return OTP_WINDOW_SECONDS; // fallback (should be rare)
+  return secondsUntil(expiresAt);
+}
+
+function getCooldownFromStorage() {
+  const until = readNumber(OTP_COOLDOWN_UNTIL_KEY);
+  if (!until) return 0;
+  return secondsUntil(until);
+}
+
 export default function Verify2FA() {
   const nav = useNavigate();
   const { login } = useAuth();
+
+  const pendingUserId = sessionStorage.getItem("pendingUserId");
 
   const [code, setCode] = useState("");
   const [banner, setBanner] = useState<{
@@ -46,30 +92,56 @@ export default function Verify2FA() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // resend cooldown
-  const [cooldown, setCooldown] = useState(0);
-
-  // 10-minute OTP countdown
-  const [secondsLeft, setSecondsLeft] = useState(OTP_WINDOW_SECONDS);
-
-  const pendingUserId = sessionStorage.getItem("pendingUserId");
+  // Persisted cooldown + persisted OTP expiry
+  const [cooldown, setCooldown] = useState(() => getCooldownFromStorage());
+  const [secondsLeft, setSecondsLeft] = useState(() => getSecondsLeftFromStorage());
 
   const codeDigits = useMemo(() => code.trim(), [code]);
   const isComplete = codeDigits.length === 6;
 
-  // Track whether user has ever typed anything into OTP box
+  // Track whether user typed anything
   const hasTypedRef = useRef(false);
 
-  // --- Start countdown tick for OTP window ---
+  // If missing pendingUserId, leave immediately (avoid weird state)
   useEffect(() => {
-    const t = setInterval(() => {
-      setSecondsLeft((s) => Math.max(0, s - 1));
-    }, 1000);
-    return () => clearInterval(t);
+    if (pendingUserId) return;
+
+    setBanner({
+      type: "error",
+      text: "No verification session found. Please sign in again.",
+    });
+
+    clearOtpStorage();
+
+    const t = setTimeout(() => nav("/home", { replace: true }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- When OTP window reaches 0 => expire session and go home ---
+  // Start OTP window only when we have a pending session
   useEffect(() => {
+    if (!pendingUserId) return;
+    initOtpWindow();
+    setSecondsLeft(getSecondsLeftFromStorage());
+    setCooldown(getCooldownFromStorage());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingUserId]);
+
+  // Tick timers (reads from storage so refresh keeps them correct)
+  useEffect(() => {
+    if (!pendingUserId) return;
+
+    const t = setInterval(() => {
+      setSecondsLeft(getSecondsLeftFromStorage());
+      setCooldown(getCooldownFromStorage());
+    }, 500);
+
+    return () => clearInterval(t);
+  }, [pendingUserId]);
+
+  // When OTP window reaches 0 => expire session and go home
+  useEffect(() => {
+    if (!pendingUserId) return;
     if (secondsLeft !== 0) return;
 
     setBanner({
@@ -78,29 +150,17 @@ export default function Verify2FA() {
     });
 
     sessionStorage.removeItem("pendingUserId");
+    clearOtpStorage();
 
-    // Small delay so user sees the banner flash briefly (optional)
     const t = setTimeout(() => nav("/home", { replace: true }), 400);
     return () => clearTimeout(t);
-  }, [secondsLeft, nav]);
-
-  // --- If user did NOT enter any OTP at all within 10 minutes => go home ---
-  useEffect(() => {
-    if (secondsLeft !== 0) return;
-    // This effect already redirects on expiry. But you asked specifically:
-    // "if they did not enter any otp, get back to home"
-    // That is covered because secondsLeft hits 0 and we redirect.
-  }, [secondsLeft]);
-
-  // --- Resend cooldown tick ---
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
-  }, [cooldown]);
+  }, [secondsLeft, nav, pendingUserId]);
 
   const resetOtpWindow = () => {
-    setSecondsLeft(OTP_WINDOW_SECONDS);
+    const nextExpiresAt = Date.now() + OTP_WINDOW_SECONDS * 1000;
+    sessionStorage.setItem(OTP_EXPIRES_AT_KEY, String(nextExpiresAt));
+    setSecondsLeft(secondsUntil(nextExpiresAt));
+
     hasTypedRef.current = false;
     setCode("");
   };
@@ -113,6 +173,7 @@ export default function Verify2FA() {
         type: "error",
         text: "No verification session found. Please sign in again.",
       });
+      clearOtpStorage();
       nav("/home", { replace: true });
       return;
     }
@@ -146,7 +207,10 @@ export default function Verify2FA() {
         }),
       });
 
+      // ✅ Success: clear pending + timers
       sessionStorage.removeItem("pendingUserId");
+      clearOtpStorage();
+
       login(res.accessToken, res.user);
 
       if (res.requiresPasswordReset || res.user.mustChangePassword) {
@@ -174,8 +238,10 @@ export default function Verify2FA() {
 
       setBanner({ type: "error", text: msg });
 
+      // If expired/locked, force restart sign-in and clear storage
       if (codeErr === "OTP_EXPIRED" || codeErr === "OTP_LOCKED") {
         sessionStorage.removeItem("pendingUserId");
+        clearOtpStorage();
         nav("/home", { replace: true });
       }
     } finally {
@@ -191,13 +257,16 @@ export default function Verify2FA() {
         type: "error",
         text: "Please sign in again to resend a code.",
       });
+      clearOtpStorage();
       nav("/home", { replace: true });
       return;
     }
+
     if (cooldown > 0) return;
 
     try {
       setBusy(true);
+
       await api("/auth/resend-2fa", {
         method: "POST",
         body: JSON.stringify({ userId: pendingUserId }),
@@ -208,9 +277,12 @@ export default function Verify2FA() {
         text: "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine.",
       });
 
+      // start cooldown
+      const until = Date.now() + RESEND_COOLDOWN_SECONDS * 1000;
+      sessionStorage.setItem(OTP_COOLDOWN_UNTIL_KEY, String(until));
       setCooldown(RESEND_COOLDOWN_SECONDS);
 
-      // Reset 10-minute window for the new code
+      // reset 10-min window for new code
       resetOtpWindow();
     } catch (e: any) {
       const codeErr = e?.body?.code;
@@ -224,20 +296,20 @@ export default function Verify2FA() {
     }
   };
 
-  // If we are missing pendingUserId, leave immediately (avoid weird state)
-  useEffect(() => {
-    if (pendingUserId) return;
-    setBanner({
-      type: "error",
-      text: "No verification session found. Please sign in again.",
-    });
-    const t = setTimeout(() => nav("/home", { replace: true }), 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const mm = Math.floor(secondsLeft / 60);
   const ss = secondsLeft % 60;
+
+  const onBackToSignIn = () => {
+    sessionStorage.removeItem("pendingUserId");
+    clearOtpStorage();
+    nav("/home", { replace: true });
+  };
+
+  const onCancel = () => {
+    sessionStorage.removeItem("pendingUserId");
+    clearOtpStorage();
+    nav("/home", { replace: true });
+  };
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">
@@ -260,10 +332,10 @@ export default function Verify2FA() {
             Verify your sign-in
           </h1>
           <p className="mt-1 text-sm text-gray-600">
-            Enter the 6-digit code sent to your Registered email.
+            Enter the 6-digit code sent to your registered email.
           </p>
 
-          {/* 10-minute timer */}
+          {/* Timer */}
           <div className="mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-gray-700 bg-white">
             <span className="font-medium">Time remaining:</span>
             <span
@@ -355,10 +427,7 @@ export default function Verify2FA() {
             <button
               type="button"
               disabled={busy}
-              onClick={() => {
-                sessionStorage.removeItem("pendingUserId");
-                nav("/home", { replace: true });
-              }}
+              onClick={onBackToSignIn}
               className="text-sm text-gray-700 hover:text-gray-900 underline underline-offset-4 disabled:opacity-60"
             >
               Back to sign in
@@ -367,7 +436,7 @@ export default function Verify2FA() {
             <button
               type="button"
               disabled={busy}
-              onClick={() => nav("/home", { replace: true })}
+              onClick={onCancel}
               className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-60"
             >
               Cancel
