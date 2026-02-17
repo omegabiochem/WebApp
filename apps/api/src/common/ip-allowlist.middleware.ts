@@ -7,7 +7,19 @@ function getClientIp(req: any) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) return String(xff).split(',')[0].trim();
 
-  return req.ip;
+  return String(req.ip || '').trim();
+}
+
+function normalizeIp(ipRaw: string) {
+  let ip = (ipRaw || '').trim();
+
+  // ::ffff:1.2.3.4 -> 1.2.3.4
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+
+  // remove zone index if present
+  if (ip.includes('%')) ip = ip.split('%')[0];
+
+  return ip;
 }
 
 function isValidIpv4(ip: string) {
@@ -22,13 +34,20 @@ export class IpAllowlistMiddleware implements NestMiddleware {
     const enabled = process.env.IP_ALLOWLIST_ENABLED === 'true';
     if (!enabled) return next();
 
-    const ip = getClientIp(req);
+    const raw = getClientIp(req);
+    const ip = normalizeIp(raw);
 
-    // ✅ If IPv6, allow (Cloudflare/Fly compatibility)
+    // ✅ LOCAL DEV BYPASS: allow localhost (remove if you don’t want)
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    if (nodeEnv !== 'production' && (ip === '127.0.0.1' || ip === '::1')) {
+      return next();
+    }
+
+    // ✅ If IPv6 (real), block (your current rule)
     if (!isValidIpv4(ip)) {
       throw new ForbiddenException({
-        code: 'IPV6_NOT_ALLOWED',
-        message: 'IPv6 access is not allowed.',
+        code: 'IP_NOT_IPV4',
+        message: `Only IPv4 allowed. Detected: ${ip}`,
       });
     }
 
@@ -38,10 +57,10 @@ export class IpAllowlistMiddleware implements NestMiddleware {
       .filter(Boolean);
 
     if (!allow.includes(ip)) {
-      console.warn('[IP_ALLOWLIST_BLOCKED]', { ip });
+      console.warn('[IP_ALLOWLIST_BLOCKED]', { ip, allow, raw });
       throw new ForbiddenException({
         code: 'IP_NOT_ALLOWED',
-        message: 'Access restricted: your IPv4 address is not allowed.',
+        message: `Access restricted: ${ip} not in allowlist.`,
       });
     }
 
