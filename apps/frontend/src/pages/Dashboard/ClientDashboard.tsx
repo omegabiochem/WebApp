@@ -656,6 +656,19 @@ export default function ClientDashboard() {
     },
   });
 
+  function niceFormType(ft?: string) {
+    switch (ft) {
+      case "MICRO_MIX":
+        return "MICRO";
+      case "MICRO_MIX_WATER":
+        return "MICRO_WATER";
+      case "CHEMISTRY_MIX":
+        return "CHEMISTRY";
+      default:
+        return ft || "-";
+    }
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1019,7 +1032,7 @@ export default function ClientDashboard() {
                       </td>
                       <td className="px-4 py-3 font-medium">{r.formNumber}</td>
                       <td className="px-4 py-3">{r.client}</td>
-                      <td className="px-4 py-3">{r.formType}</td>
+                      <td className="px-4 py-3">{niceFormType(r.formType)}</td>
                       <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
                       <td className="px-4 py-3">
                         <span
