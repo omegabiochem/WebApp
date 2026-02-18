@@ -28,15 +28,9 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
-<<<<<<< HEAD
+
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
-=======
-<<<<<<< HEAD
 import { COLS, MAX_COLS, type ColKey } from "../../utils/clientDashboardutils";
-=======
-import SterilityReportFormView from "../Reports/SterilityReportFormView";
->>>>>>> unlocal
->>>>>>> local
 
 // -----------------------------
 // Types
