@@ -439,6 +439,9 @@ export default function ChemistryMixReportFormView(
 
   const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
 
+  const HIDE_SIGNATURES_FOR = new Set(["DRAFT", "SUBMITTED_BY_CLIENT"]);
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status);
+
   return (
     <div
       className={
@@ -926,59 +929,63 @@ export default function ChemistryMixReportFormView(
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-medium">VERIFIED BY :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    value={report?.testedBy || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">DATE :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    type="date"
-                    value={formatDateForInput(report?.testedDate) || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
-              </div>
+            {showSignatures && (
+              <>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-medium">VERIFIED BY :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        value={report?.testedBy || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">DATE :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        type="date"
+                        value={formatDateForInput(report?.testedDate) || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-medium">REVIEWED BY :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    value={report?.reviewedBy || ""}
-                    readOnly
-                    disabled
-                  />
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-medium">REVIEWED BY :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        value={report?.reviewedBy || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">DATE :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        type="date"
+                        value={formatDateForInput(report?.reviewedDate) || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">DATE :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    type="date"
-                    value={formatDateForInput(report?.reviewedDate) || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
 
           {/* Footer: Report ID + QR */}

@@ -1,6 +1,8 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import FormsDropdown from "../forms/FormsDropdown";
+import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -77,6 +79,25 @@ export default function Header() {
   };
 
   const menu = menuByRole[role] ?? menuByRole.DEFAULT;
+
+  const [unreadResults, setUnreadResults] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const load = async () => {
+      try {
+        const r = await api<{ count: number }>("/attachments/unread-count");
+        setUnreadResults(r.count ?? 0);
+      } catch {
+        // ignore
+      }
+    };
+
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [user]);
 
   return (
     <header className="border-b bg-white">
@@ -164,6 +185,38 @@ export default function Header() {
               {menu.map((item) =>
                 item.label === "Forms" ? (
                   <FormsDropdown key="forms" align="right" />
+                ) : item.label === "Results" ? (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className="relative inline-flex items-center hover:underline"
+                    onClick={async () => {
+                      setUnreadResults(0); // immediate UI clear
+
+                      try {
+                        await api("/attachments/mark-results-read", {
+                          method: "POST",
+                        });
+                      } catch {}
+
+                      try {
+                        const r = await api<{ count: number }>(
+                          "/attachments/unread-count",
+                        );
+                        setUnreadResults(r.count ?? 0);
+                      } catch {}
+                    }}
+                  >
+                    <span className="relative">
+                      {item.label}
+
+                      {unreadResults > 0 && (
+                        <sup className="absolute -top-2 -right-3 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white shadow">
+                          {unreadResults > 99 ? "99+" : unreadResults}
+                        </sup>
+                      )}
+                    </span>
+                  </Link>
                 ) : (
                   <Link
                     key={item.path}

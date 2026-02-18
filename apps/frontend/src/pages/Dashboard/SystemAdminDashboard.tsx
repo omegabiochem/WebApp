@@ -26,6 +26,7 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 // ---------------------------------
 // Types
@@ -46,6 +47,7 @@ type Report = {
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
 };
 
@@ -191,7 +193,7 @@ export default function SystemAdminDashboard() {
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY" | "STERILITY"
   >("ALL");
 
   // ✅ status filter now uses combined type
@@ -329,6 +331,8 @@ export default function SystemAdminDashboard() {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
+
+            if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
             return true;
@@ -615,7 +619,9 @@ export default function SystemAdminDashboard() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">System Admin Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            System Admin Dashboard
+          </h1>
           <p className="text-sm text-slate-500">
             Oversee all reports and manage status transitions.
           </p>
@@ -641,7 +647,9 @@ export default function SystemAdminDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
+          {(
+            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+          ).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -661,7 +669,9 @@ export default function SystemAdminDashboard() {
                     ? "Micro"
                     : ft === "MICROWATER"
                       ? "Micro Water"
-                      : "Chemistry"}
+                      : ft === "STERILITY"
+                        ? "Sterility"
+                        : "Chemistry"}
               </button>
             );
           })}
@@ -840,7 +850,8 @@ export default function SystemAdminDashboard() {
                 pageRows.map((r) => {
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX_WATER" ||
+                    r.formType === "STERILITY";
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   const rowBusy = updatingId === r.id;
 
@@ -910,7 +921,11 @@ export default function SystemAdminDashboard() {
                                   ) {
                                     const next =
                                       "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by system admin");
+                                    await setStatus(
+                                      r,
+                                      next,
+                                      "set by system admin",
+                                    );
                                     setReports((prev) =>
                                       prev.map((x) =>
                                         x.id === r.id
@@ -946,7 +961,11 @@ export default function SystemAdminDashboard() {
                                   if (r.status === "CLIENT_NEEDS_CORRECTION") {
                                     const next =
                                       "UNDER_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by system admin");
+                                    await setStatus(
+                                      r,
+                                      next,
+                                      "set by system admin",
+                                    );
                                     setReports((prev) =>
                                       prev.map((x) =>
                                         x.id === r.id
@@ -1158,6 +1177,14 @@ export default function SystemAdminDashboard() {
             <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "STERILITY" ? (
+                <SterilityReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

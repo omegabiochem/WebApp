@@ -16,14 +16,14 @@ const PATH_BY_ID: Record<FormId, string> = {
   MICRO_MIX: "/reports/micro-mix/new",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new",
-
+  STERILITY: "/reports/sterility/new",
 };
 
 type Category = "MICRO" | "CHEMISTRY";
 
 type FormId =
   // MICRO (matches your Prisma.FormType values)
-  "MICRO_MIX" | "MICRO_MIX_WATER" | "CHEMISTRY_MIX";
+  "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX";
 // CHEMISTRY (placeholder slugs for future chemistry forms)
 // | "HPLC_ASSAY"
 // | "GC_RESIDUALS"
@@ -47,13 +47,18 @@ const FORMS: FormDef[] = [
     emoji: "💧",
   },
   {
+    id: "STERILITY",
+    name: "Sterility",
+    category: "MICRO",
+    emoji: "🧪",
+  },
+  {
     id: "CHEMISTRY_MIX",
     name: "Chemistry Mix",
     category: "CHEMISTRY",
     emoji: "🧴",
   },
 ];
-
 
 // ---------------------------------
 // Component

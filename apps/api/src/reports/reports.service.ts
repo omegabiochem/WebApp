@@ -55,6 +55,13 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResults',
     'preliminaryResultsDate',
     'comments',
+
+    'ftm_turbidity',
+    'ftm_observation',
+    'ftm_result',
+    'scdb_turbidity',
+    'scdb_observation',
+    'scdb_result',
   ],
   CHEMISTRY: [
     'testSopNo',
@@ -83,6 +90,13 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResults',
     'preliminaryResultsDate',
     'comments',
+
+    'ftm_turbidity',
+    'ftm_observation',
+    'ftm_result',
+    'scdb_turbidity',
+    'scdb_observation',
+    'scdb_result',
   ],
   QA: [
     'testSopNo',
@@ -116,15 +130,14 @@ const EDIT_MAP: Record<UserRole, string[]> = {
   ],
 };
 
-const STATUS_TRANSITIONS: Record<
-  ReportStatus,
-  {
-    next: ReportStatus[];
-    canSet: UserRole[];
-    nextEditableBy: UserRole[];
-    canEdit: UserRole[];
-  }
-> = {
+type Transition = {
+  next: ReportStatus[];
+  canSet: UserRole[];
+  nextEditableBy: UserRole[];
+  canEdit: UserRole[];
+};
+
+const STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT'],
     next: ['SUBMITTED_BY_CLIENT'],
@@ -347,7 +360,151 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: [],
     canEdit: [],
   },
-};
+} as const satisfies Partial<Record<ReportStatus, Transition>>;
+
+// 🔁 Keep this in sync with backend
+const STERILITY_STATUS_TRANSITIONS = {
+  DRAFT: {
+    canSet: ['CLIENT'],
+    next: ['SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canEdit: ['CLIENT'],
+  },
+  SUBMITTED_BY_CLIENT: {
+    canSet: ['MICRO', 'MC'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC'],
+    canEdit: [],
+  },
+  UNDER_CLIENT_REVIEW: {
+    canSet: ['CLIENT'],
+    next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
+    nextEditableBy: ['ADMIN', 'QA'],
+    canEdit: [],
+  },
+  CLIENT_NEEDS_CORRECTION: {
+    canSet: ['MICRO', 'MC'],
+    next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canEdit: [],
+  },
+  UNDER_CLIENT_CORRECTION: {
+    canSet: ['CLIENT'],
+    next: ['RESUBMISSION_BY_CLIENT'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canEdit: ['CLIENT'],
+  },
+
+  RESUBMISSION_BY_CLIENT: {
+    canSet: ['MICRO', 'MC'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
+    canEdit: [],
+  },
+  RECEIVED_BY_FRONTDESK: {
+    canSet: ['FRONTDESK'],
+    next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
+    nextEditableBy: ['MICRO', 'MC'],
+    canEdit: [],
+  },
+  FRONTDESK_ON_HOLD: {
+    canSet: ['FRONTDESK'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['FRONTDESK'],
+    canEdit: [],
+  },
+  FRONTDESK_NEEDS_CORRECTION: {
+    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
+    next: ['SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: [],
+  },
+  UNDER_TESTING_REVIEW: {
+    canSet: ['MICRO', 'MC'],
+    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+  },
+  TESTING_ON_HOLD: {
+    canSet: ['MICRO', 'MC'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canEdit: [],
+  },
+  TESTING_NEEDS_CORRECTION: {
+    canSet: ['CLIENT'],
+    next: ['UNDER_CLIENT_CORRECTION'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: [],
+  },
+  UNDER_RESUBMISSION_TESTING_REVIEW: {
+    canSet: ['MICRO', 'MC'],
+    next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
+    nextEditableBy: ['MICRO', 'MC'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+  },
+  RESUBMISSION_BY_TESTING: {
+    canSet: ['QA'],
+    next: ['UNDER_CLIENT_REVIEW'],
+    nextEditableBy: ['QA'],
+    canEdit: [],
+  },
+  UNDER_QA_REVIEW: {
+    canSet: ['QA'],
+    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['QA'],
+    canEdit: ['QA'],
+  },
+  QA_NEEDS_CORRECTION: {
+    canSet: ['QA'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC'],
+    canEdit: [],
+  },
+
+  UNDER_ADMIN_REVIEW: {
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
+    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN'],
+  },
+  ADMIN_NEEDS_CORRECTION: {
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
+    next: ['UNDER_QA_REVIEW'],
+    nextEditableBy: ['QA'],
+    canEdit: ['ADMIN'],
+  },
+  ADMIN_REJECTED: {
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
+    next: ['UNDER_QA_REVIEW'],
+    nextEditableBy: ['QA'],
+    canEdit: [],
+  },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    canSet: ['QA'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['QA'],
+  },
+  UNDER_RESUBMISSION_ADMIN_REVIEW: {
+    canSet: ['ADMIN'],
+    next: ['RECEIVED_BY_FRONTDESK'],
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['ADMIN'],
+  },
+  APPROVED: {
+    canSet: [],
+    next: [],
+    nextEditableBy: [],
+    canEdit: [],
+  },
+  LOCKED: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+    next: [],
+    nextEditableBy: [],
+    canEdit: [],
+  },
+} as const satisfies Partial<Record<ReportStatus, Transition>>;
 
 type ChangeStatusInput =
   | ReportStatus
@@ -406,11 +563,18 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 }
 
 // Which details relation to use for a given formType
-type MicroFormType = Extract<FormType, 'MICRO_MIX' | 'MICRO_MIX_WATER'>;
+type MicroFormType = Extract<
+  FormType,
+  'MICRO_MIX' | 'MICRO_MIX_WATER' | 'STERILITY'
+>;
 
-const DETAILS_RELATION: Record<MicroFormType, 'microMix' | 'microMixWater'> = {
+const DETAILS_RELATION: Record<
+  MicroFormType,
+  'microMix' | 'microMixWater' | 'sterility'
+> = {
   MICRO_MIX: 'microMix',
   MICRO_MIX_WATER: 'microMixWater',
+  STERILITY: 'sterility',
 };
 
 // Prisma delegate per details model
@@ -420,6 +584,8 @@ function detailsDelegate(prisma: PrismaService, t: FormType) {
       return prisma.microMixDetails;
     case 'MICRO_MIX_WATER':
       return prisma.microMixWaterDetails;
+    case 'STERILITY':
+      return prisma.sterilityDetails;
 
     default:
       throw new BadRequestException(`Unsupported formType: ${t}`);
@@ -452,12 +618,12 @@ function splitPatch(patch: Record<string, any>) {
 
 // Pick the one details object off an included Report
 function pickDetails(r: any) {
-  return r.microMix ?? r.microMixWater ?? null;
+  return r.microMix ?? r.microMixWater ?? r.sterility ?? null;
 }
 
 // Flatten for backwards-compat responses (base + active details on top)
 function flattenReport(r: any) {
-  const { microMix, microMixWater, ...base } = r;
+  const { microMix, microMixWater, sterility, ...base } = r;
   const dRaw = pickDetails(r) || {};
 
   // Strip any keys that belong to the base report so they can't override it.
@@ -470,7 +636,20 @@ function flattenReport(r: any) {
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
-  return formType.startsWith('MICRO') ? 'OM' : 'BC';
+  return formType.startsWith('MICRO') || formType.startsWith('STERILITY')
+    ? 'OM'
+    : 'BC';
+}
+
+function shouldAssignReportNumber(
+  formType: FormType,
+  nextStatus: ReportStatus,
+) {
+  if (formType === 'STERILITY') {
+    return nextStatus === 'UNDER_TESTING_REVIEW';
+  }
+  // micro mix + micro water
+  return nextStatus === 'UNDER_PRELIMINARY_TESTING_REVIEW';
 }
 
 function updateDetailsByType(
@@ -486,9 +665,17 @@ function updateDetailsByType(
       return tx.microMixDetails.update({ where: { reportId }, data });
     case 'MICRO_MIX_WATER':
       return tx.microMixWaterDetails.update({ where: { reportId }, data });
+    case 'STERILITY':
+      return tx.sterilityDetails.update({ where: { reportId }, data });
     default:
       throw new Error(`Unsupported formType: ${formType}`);
   }
+}
+
+function transitionsFor(formType: FormType) {
+  return formType === 'STERILITY'
+    ? STERILITY_STATUS_TRANSITIONS
+    : STATUS_TRANSITIONS;
 }
 
 // ----------------------------
@@ -578,6 +765,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     const flat = flattenReport(created);
@@ -591,6 +779,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
         attachments: true,
         statusHistory: true,
       },
@@ -609,6 +798,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     if (!current) throw new NotFoundException('Report not found');
@@ -646,13 +836,29 @@ export class ReportsService {
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
     }
 
-    // status-based edit guard
+    // // status-based edit guard
+    // if (fieldKeys.length > 0) {
+    //   const transition = STATUS_TRANSITIONS[current.status];
+    //   if (!transition)
+    //     throw new BadRequestException(
+    //       `Invalid current status: ${current.status}`,
+    //     );
+    //   if (!transition.canEdit.includes(user.role)) {
+    //     throw new ForbiddenException(
+    //       `Role ${user.role} cannot edit report in status ${current.status}`,
+    //     );
+    //   }
+    // }
+
+    const transitions = transitionsFor(current.formType);
+
     if (fieldKeys.length > 0) {
-      const transition = STATUS_TRANSITIONS[current.status];
-      if (!transition)
+      const transition = transitions[current.status];
+      if (!transition) {
         throw new BadRequestException(
-          `Invalid current status: ${current.status}`,
+          `No transition config for status: ${current.status} (formType: ${current.formType})`,
         );
+      }
       if (!transition.canEdit.includes(user.role)) {
         throw new ForbiddenException(
           `Role ${user.role} cannot edit report in status ${current.status}`,
@@ -677,16 +883,21 @@ export class ReportsService {
 
     // handle status transitions (base.status)
     if (patchIn.status) {
-      const trans = STATUS_TRANSITIONS[current.status];
-      if (!trans)
+      const transitions = transitionsFor(current.formType);
+
+      const trans = transitions[current.status];
+      if (!trans) {
         throw new BadRequestException(
-          `Invalid current status: ${current.status}`,
+          `No transition config for status: ${current.status} (formType: ${current.formType})`,
         );
+      }
+
       if (!trans.canSet.includes(user.role)) {
         throw new ForbiddenException(
           `Role ${user.role} cannot change status from ${current.status}`,
         );
       }
+
       if (!trans.next.includes(patchIn.status)) {
         throw new BadRequestException(
           `Invalid transition: ${current.status} → ${patchIn.status}`,
@@ -706,17 +917,18 @@ export class ReportsService {
 
       // Assign report number when lab work starts
       if (
-        patchIn.status === 'UNDER_PRELIMINARY_TESTING_REVIEW' &&
-        !current.reportNumber
+        patchIn.status &&
+        !current.reportNumber &&
+        shouldAssignReportNumber(current.formType, patchIn.status)
       ) {
-        const deptLetter = getDeptLetterForForm(current.formType); // "M" or "C"
+        const deptLetter = getDeptLetterForForm(current.formType); // OM for MICRO + STERILITY, BC for chemistry
         const seq = await this.prisma.labReportSequence.upsert({
           where: { department: deptLetter },
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
         const n = seqPad(seq.lastNumber);
-        base.reportNumber = `${deptLetter}-${yyyy()}${n}`; // M-YYMMNNNNN
+        base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
       }
 
       // e-sign requirements
@@ -806,7 +1018,7 @@ export class ReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true },
+      include: { microMix: true, microMixWater: true, sterility: true },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
@@ -824,7 +1036,9 @@ export class ReportsService {
           ? 'micro-mix'
           : current.formType === 'MICRO_MIX_WATER'
             ? 'micro-mix-water'
-            : 'micro-mix';
+            : current.formType === 'STERILITY'
+              ? 'sterility'
+              : 'micro-mix';
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
@@ -912,11 +1126,12 @@ export class ReportsService {
       }
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
+    const transitions = transitionsFor((current as any).formType);
+    const trans = transitions[current.status as ReportStatus];
 
-    const trans = STATUS_TRANSITIONS[current.status as ReportStatus];
     if (!trans) {
       throw new BadRequestException(
-        `Invalid current status: ${current.status}`,
+        `No transition config for status: ${current.status} (formType: ${(current as any).formType})`,
       );
     }
 
@@ -932,10 +1147,10 @@ export class ReportsService {
       const width = Math.max(4, String(num).length);
       return String(num).padStart(width, '0');
     }
-
     if (
-      target === 'UNDER_PRELIMINARY_TESTING_REVIEW' &&
-      !current.reportNumber
+      target &&
+      !current.reportNumber &&
+      shouldAssignReportNumber((current as any).formType, target)
     ) {
       const deptLetter =
         getDeptLetterForForm((current as any).formType) ||
@@ -966,6 +1181,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     return rows.map(flattenReport);
@@ -1026,6 +1242,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -1088,6 +1305,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -1106,6 +1324,7 @@ export class ReportsService {
       include: {
         microMix: true,
         microMixWater: true,
+        sterility: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
