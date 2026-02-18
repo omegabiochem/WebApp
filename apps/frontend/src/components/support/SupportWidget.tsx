@@ -36,7 +36,7 @@ type Message = {
   attachments?: ChatAttachment[] | null;
 };
 
-type FormType = "MICRO_MIX" | "MICRO_MIX_WATER" | "CHEMISTRY_MIX";
+type FormType = "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX";
 
 type FormListItem = {
   formType: FormType;

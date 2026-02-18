@@ -28,6 +28,7 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 // -----------------------------
 // Types
@@ -82,6 +83,7 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
   // CHEMISTRY_* can be added when you wire those forms
 };
@@ -117,7 +119,9 @@ function formatDate(iso: string | null) {
 
 function canUpdateThisReport(r: Report, user?: any) {
   const isMicro =
-    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+    r.formType === "MICRO_MIX" ||
+    r.formType === "MICRO_MIX_WATER" ||
+    r.formType === "STERILITY";
   if (!isMicro) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
@@ -243,6 +247,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "STERILITY") {
+          return (
+            <div key={r.id} className="report-page">
+              <SterilityReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -314,7 +330,7 @@ export default function ClientDashboard() {
   );
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
   >("ALL");
 
   // status filter now uses combined type
@@ -387,6 +403,7 @@ export default function ClientDashboard() {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
             return true;
@@ -766,7 +783,9 @@ export default function ClientDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
+          {(
+            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+          ).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -786,7 +805,9 @@ export default function ClientDashboard() {
                     ? "Micro"
                     : ft === "MICROWATER"
                       ? "Micro Water"
-                      : "Chemistry"}
+                      : ft === "STERILITY"
+                        ? "Sterility"
+                        : "Chemistry"}
               </button>
             );
           })}
@@ -1005,7 +1026,8 @@ export default function ClientDashboard() {
                 pageRows.map((r) => {
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX_WATER" ||
+                    r.formType === "STERILITY";
 
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   return (
@@ -1345,6 +1367,13 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "STERILITY" ? (
+                <SterilityReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

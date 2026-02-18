@@ -552,6 +552,16 @@ export default function ReportAttachmentsPage() {
   }, [role]);
 
   useEffect(() => {
+    (async () => {
+      try {
+        await api("/attachments/mark-results-read", { method: "POST" });
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (role === "CHEMISTRY") setReportType("CHEMISTRY");
     if (role === "MICRO") setReportType("MICRO");
   }, [role]);

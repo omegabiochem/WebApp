@@ -20,6 +20,7 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 // -----------------------------
 // Types
@@ -52,6 +53,14 @@ const MICRO_STATUSES = [
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+
+  // ✅ sterility (chemistry-like)
+  "UNDER_TESTING_REVIEW",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "APPROVED",
 ] as const;
 
 // -----------------------------
@@ -60,6 +69,7 @@ const MICRO_STATUSES = [
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  STERILITY: "sterility",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -158,6 +168,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "STERILITY") {
+          return (
+            <div key={r.id} className="report-page">
+              <SterilityReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else if (r.formType === "MICRO_MIX_WATER") {
           return (
             <div key={r.id} className="report-page">
@@ -218,7 +240,7 @@ export default function MicroDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
-  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER";
+  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
   const [formFilter, setFormFilter] = useState<FormFilter>("ALL");
 
   const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
@@ -261,6 +283,7 @@ export default function MicroDashboard() {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICRO_WATER")
               return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "STERILITY") return r.formType === "STERILITY";
             return true;
           });
 
@@ -327,20 +350,32 @@ export default function MicroDashboard() {
   }, [formFilter, statusFilter, search, perPage]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
-    const fieldsUsedOnForm = [
-      "testSopNo",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      "tbc_gram",
-      "tbc_result",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
-      "comments",
-      "testedBy",
-      "testedDate",
-    ];
+    const isSterility = r.formType === "STERILITY";
+    const fieldsUsedOnForm = isSterility
+      ? [
+          "testSopNo",
+          "dateTested",
+          "ftm_turbidity",
+          "ftm_observation",
+          "ftm_result",
+          "scdb_turbidity",
+          "scdb_observation",
+          "scdb_result",
+        ]
+      : [
+          "testSopNo",
+          "dateTested",
+          "preliminaryResults",
+          "preliminaryResultsDate",
+          "tbc_gram",
+          "tbc_result",
+          "tmy_gram",
+          "tmy_result",
+          "pathogens",
+          "comments",
+          "testedBy",
+          "testedDate",
+        ];
 
     return canShowUpdateButton(
       user?.role as Role,
@@ -388,7 +423,7 @@ export default function MicroDashboard() {
       action: "UI_PRINT_SELECTED",
       entity: "Report",
       details: `Printed selected reports (${selectedIds.length})`,
-      entityId:selectedIds.join(","),
+      entityId: selectedIds.join(","),
       meta: {
         reportIds: selectedIds,
         count: selectedIds.length,
@@ -406,21 +441,42 @@ export default function MicroDashboard() {
   async function autoAdvanceAndOpen(r: Report, actor: string) {
     let nextStatus: string | null = null;
 
-    if (r.status === "SUBMITTED_BY_CLIENT") {
-      nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Move to prelim testing");
-    } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
-      nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Move to RESUBMISSION");
-    } else if (r.status === "PRELIMINARY_APPROVED") {
-      nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Move to final testing");
-    } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
-      nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Resubmitted by client");
-    } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-      nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-      await setStatus(r, nextStatus, `Set by ${actor}`);
+    const isSterility = r.formType === "STERILITY";
+
+    if (isSterility) {
+      // ✅ sterility uses chemistry-like status names
+      if (r.status === "SUBMITTED_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Move to sterility testing");
+      } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
+        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        await setStatus(
+          r,
+          nextStatus,
+          "Move to sterility resubmission testing",
+        );
+      } else if (r.status === "RESUBMISSION_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Resubmitted by client");
+      }
+    } else {
+      // ✅ micro mix / water uses prelim/final workflow
+      if (r.status === "SUBMITTED_BY_CLIENT") {
+        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Move to prelim testing");
+      } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
+        nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Move to RESUBMISSION");
+      } else if (r.status === "PRELIMINARY_APPROVED") {
+        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Move to final testing");
+      } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
+        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+        await setStatus(r, nextStatus, "Resubmitted by client");
+      } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
+        nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+        await setStatus(r, nextStatus, `Set by ${actor}`);
+      }
     }
 
     if (nextStatus) {
@@ -493,9 +549,9 @@ export default function MicroDashboard() {
   // ✅ put this inside MicroDashboard(), before return
   const modalShowStartFinal =
     !!selectedReport &&
+    selectedReport.formType !== "STERILITY" &&
     (selectedReport.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
       selectedReport.status === "PRELIMINARY_APPROVED");
-
   useEffect(() => {
     const now = new Date();
 
@@ -672,7 +728,8 @@ export default function MicroDashboard() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Micro Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Queue of Micro Mix / Water reports for micro team.
+            Queue of Micro Mix , Micro Water and Sterility reports for micro
+            team.
           </p>
         </div>
 
@@ -713,7 +770,7 @@ export default function MicroDashboard() {
       {/* Form Type filter */}
       <div className="mb-3 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICRO_WATER"] as const).map((ft) => {
+          {(["ALL", "MICRO", "MICRO_WATER", "STERILITY"] as const).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -731,7 +788,9 @@ export default function MicroDashboard() {
                   ? "All"
                   : ft === "MICRO"
                     ? "Micro"
-                    : "Micro Water"}
+                    : ft === "STERILITY"
+                      ? "Sterility"
+                      : "Micro Water"}
               </button>
             );
           })}
@@ -940,8 +999,9 @@ export default function MicroDashboard() {
                   const rowBusy = updatingId === r.id;
 
                   const showStartFinal =
-                    r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-                    r.status === "PRELIMINARY_APPROVED";
+                    r.formType !== "STERILITY" &&
+                    (r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
+                      r.status === "PRELIMINARY_APPROVED");
 
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
@@ -1209,6 +1269,13 @@ export default function MicroDashboard() {
             <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport.formType === "STERILITY" ? (
+                <SterilityReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

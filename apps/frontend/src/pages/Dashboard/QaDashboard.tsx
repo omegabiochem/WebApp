@@ -30,6 +30,12 @@ import {
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import {
+  canShowSterilityUpdateButton,
+  STERILITY_STATUS_COLORS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
 
 // ---------------------------------
 // Types
@@ -39,7 +45,7 @@ type Report = {
   client: string;
   formType: string;
   dateSent: string | null;
-  status: ReportStatus | ChemistryReportStatus | string;
+  status: ReportStatus | ChemistryReportStatus | SterilityReportStatus | string;
   reportNumber: number;
   formNumber: string | null;
 
@@ -55,6 +61,7 @@ type Report = {
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
 };
 
@@ -97,7 +104,11 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
 ];
 
 // A status filter can be micro OR chemistry OR "ALL"
-type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+type DashboardStatus =
+  | "ALL"
+  | ReportStatus
+  | ChemistryReportStatus
+  | SterilityReportStatus;
 
 const QA_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
@@ -127,6 +138,23 @@ const QA_CHEM_STATUSES: DashboardStatus[] = [
   "ADMIN_REJECTED",
   "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
+  "LOCKED",
+];
+
+const QA_STERILITY_STATUSES: DashboardStatus[] = [
+  "ALL",
+  // ✅ Put ONLY sterility-valid statuses here
+  // Example (replace with your real ones):
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "RECEIVED_BY_FRONTDESK",
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_QA_PRELIMINARY_REVIEW",
+  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "FINAL_APPROVED",
   "LOCKED",
 ];
 
@@ -167,6 +195,7 @@ const QA_FIELDS_ON_FORM = [
   "approvedBy",
   "approvedDate",
   "adminNotes",
+  "dateCompleted",
 ];
 
 // -----------------------------
@@ -230,6 +259,19 @@ function BulkPrintAreaQA({
             </div>
           );
         }
+        if (r.formType === "STERILITY") {
+          return (
+            <div key={r.id} className="report-page">
+              <SterilityReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
 
         if (r.formType === "CHEMISTRY_MIX") {
           return (
@@ -283,12 +325,16 @@ export default function QaDashboard() {
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
   >("ALL");
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
 
   const statusOptions =
-    formFilter === "CHEMISTRY" ? QA_CHEM_STATUSES : QA_MICRO_STATUSES;
+    formFilter === "CHEMISTRY"
+      ? QA_CHEM_STATUSES
+      : formFilter === "STERILITY"
+        ? QA_STERILITY_STATUSES
+        : QA_MICRO_STATUSES;
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -381,8 +427,7 @@ export default function QaDashboard() {
     if (statusFilter !== "ALL" && !opts.includes(String(statusFilter))) {
       setStatusFilter("ALL");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formFilter]);
+  }, [formFilter, statusOptions]); // ✅ include statusOptions
 
   // Derived rows (filter → search → sort)
   const processed = useMemo(() => {
@@ -393,6 +438,7 @@ export default function QaDashboard() {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
             return true;
@@ -516,6 +562,13 @@ export default function QaDashboard() {
       QA_FIELDS_ON_FORM,
     );
   }
+  function canUpdateThisSterility(r: Report, userObj?: any) {
+    return canShowSterilityUpdateButton(
+      userObj?.role as Role,
+      r.status as SterilityReportStatus,
+      QA_FIELDS_ON_FORM,
+    );
+  }
   function canUpdateThisChem(r: Report, userObj?: any) {
     return canShowChemistryUpdateButton(
       userObj?.role,
@@ -603,10 +656,13 @@ export default function QaDashboard() {
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX";
+    const isSterility = r.formType === "STERILITY";
     return (
       (isChem
         ? CHEMISTRY_STATUS_COLORS?.[r.status as ChemistryReportStatus]
-        : STATUS_COLORS?.[r.status as ReportStatus]) ||
+        : isSterility
+          ? STERILITY_STATUS_COLORS?.[r.status as SterilityReportStatus]
+          : STATUS_COLORS?.[r.status as ReportStatus]) ||
       "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
     );
   };
@@ -825,7 +881,9 @@ export default function QaDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
+          {(
+            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+          ).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -845,7 +903,9 @@ export default function QaDashboard() {
                     ? "Micro"
                     : ft === "MICROWATER"
                       ? "Micro Water"
-                      : "Chemistry"}
+                      : ft === "STERILITY"
+                        ? "Sterility"
+                        : "Chemistry"}
               </button>
             );
           })}
@@ -1036,7 +1096,8 @@ export default function QaDashboard() {
                 pageRows.map((r) => {
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX_WATER" ||
+                    r.formType === "STERILITY";
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   const rowBusy = updatingId === r.id;
 
@@ -1172,6 +1233,45 @@ export default function QaDashboard() {
                             </button>
                           )}
 
+                          {r.formType === "STERILITY" &&
+                            canUpdateThisSterility(r, user) && (
+                              <button
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                disabled={rowBusy}
+                                onClick={async () => {
+                                  if (rowBusy) return;
+                                  setUpdatingId(r.id);
+                                  try {
+                                    if (
+                                      r.status === "CLIENT_NEEDS_CORRECTION"
+                                    ) {
+                                      const next =
+                                        "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                      await setStatus(r, next, "set by qa");
+                                      setReports((prev) =>
+                                        prev.map((x) =>
+                                          x.id === r.id
+                                            ? { ...x, status: next }
+                                            : x,
+                                        ),
+                                      );
+                                      toast.success("Report Status Updated");
+                                    }
+                                    goToReportEditor(r);
+                                  } catch (e: any) {
+                                    toast.error(
+                                      e?.message || "Failed to update status",
+                                    );
+                                  } finally {
+                                    setUpdatingId(null);
+                                  }
+                                }}
+                              >
+                                {rowBusy ? <Spinner /> : null}
+                                {rowBusy ? "Updating..." : "Update"}
+                              </button>
+                            )}
+
                           {/* Change status dialog */}
                           <button
                             className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
@@ -1181,7 +1281,9 @@ export default function QaDashboard() {
                               const options =
                                 r.formType === "CHEMISTRY_MIX"
                                   ? QA_CHEM_STATUSES
-                                  : QA_MICRO_STATUSES;
+                                  : r.formType === "STERILITY"
+                                    ? QA_STERILITY_STATUSES
+                                    : QA_MICRO_STATUSES;
 
                               const current = String(r.status);
                               setNewStatus(
@@ -1348,7 +1450,9 @@ export default function QaDashboard() {
                 {/* ✅ show Update in modal for micro OR chem */}
                 {(selectedReport.formType === "CHEMISTRY_MIX"
                   ? canUpdateThisChem(selectedReport, user)
-                  : canUpdateThisMicro(selectedReport, user)) && (
+                  : selectedReport.formType === "STERILITY"
+                    ? canUpdateThisSterility(selectedReport, user)
+                    : canUpdateThisMicro(selectedReport, user)) && (
                   <button
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={async () => {
@@ -1357,7 +1461,8 @@ export default function QaDashboard() {
 
                         // keep your existing micro transition
                         if (
-                          r.formType !== "CHEMISTRY_MIX" &&
+                          (r.formType === "MICRO_MIX" ||
+                            r.formType === "MICRO_MIX_WATER") &&
                           r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
@@ -1396,6 +1501,14 @@ export default function QaDashboard() {
             <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "STERILITY" ? (
+                <SterilityReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -1465,7 +1578,9 @@ export default function QaDashboard() {
               >
                 {(changeStatusReport.formType === "CHEMISTRY_MIX"
                   ? QA_CHEM_STATUSES
-                  : QA_MICRO_STATUSES
+                  : changeStatusReport.formType === "STERILITY"
+                    ? QA_STERILITY_STATUSES
+                    : QA_MICRO_STATUSES
                 )
                   .filter((s) => s !== "ALL")
                   .map((s) => (

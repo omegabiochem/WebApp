@@ -6,7 +6,7 @@ import { ChemistryAttachmentsService } from './chemistryattachments.service';
 import { Readable } from 'stream';
 import { PDFDocument } from 'pdf-lib';
 
-type ReportType = 'MICRO' | 'MICRO_WATER' | 'CHEMISTRY';
+type ReportType = 'MICRO' | 'MICRO_WATER' | 'STERILITY' | 'CHEMISTRY';
 
 type ListArgs = {
   q?: string;
@@ -50,10 +50,10 @@ function allowedTypesForRole(role: string | null): ReportType[] {
   return role === 'CHEMISTRY'
     ? ['CHEMISTRY']
     : role === 'MICRO'
-      ? ['MICRO', 'MICRO_WATER']
+      ? ['MICRO', 'MICRO_WATER', 'STERILITY']
       : role === 'CLIENT'
-        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER']
-        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER'];
+        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY']
+        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY'];
 }
 
 @Injectable()
@@ -90,10 +90,10 @@ export class AttachmentsGlobalService {
       role === 'CHEMISTRY'
         ? ['CHEMISTRY']
         : role === 'MICRO'
-          ? ['MICRO', 'MICRO_WATER']
+          ? ['MICRO', 'MICRO_WATER', 'STERILITY']
           : role === 'CLIENT'
-            ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER'] // or based on client ownership
-            : ['CHEMISTRY', 'MICRO', 'MICRO_WATER']; // ADMIN/QA etc
+            ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY'] // or based on client ownership
+            : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY']; // ADMIN/QA etc
 
     const canSeeMicro = userRole !== 'CHEMISTRY';
     const canSeeChem = userRole !== 'MICRO';
@@ -102,7 +102,7 @@ export class AttachmentsGlobalService {
       ...(reportWhere as any),
       report: {
         ...(reportWhere as any)?.report,
-        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER'] }, // ✅ filter by report.formType
+        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'] }, // ✅ filter by report.formType
       },
     };
 
@@ -163,7 +163,9 @@ export class AttachmentsGlobalService {
         reportType:
           a.report?.formType === 'MICRO_MIX_WATER'
             ? ('MICRO_WATER' as const)
-            : ('MICRO' as const),
+            : a.report?.formType === 'STERILITY'
+              ? ('STERILITY' as const)
+              : ('MICRO' as const),
         reportId: a.reportId,
         filename: a.filename,
         kind: a.kind,
@@ -276,13 +278,16 @@ export class AttachmentsGlobalService {
 
       // ✅ role-based type check
       const rt: ReportType =
-        micro.report?.formType === 'MICRO_MIX_WATER' ? 'MICRO_WATER' : 'MICRO';
+        micro.report?.formType === 'MICRO_MIX_WATER'
+          ? 'MICRO_WATER'
+          : micro.report?.formType === 'STERILITY'
+            ? 'STERILITY'
+            : 'MICRO';
 
       if (!allowed.includes(rt)) return null;
 
       return this.micro.stream(id);
     }
-
     // ✅ CHEM
     const chem = await this.prisma.chemistryAttachment.findUnique({
       where: { id },
@@ -333,5 +338,72 @@ export class AttachmentsGlobalService {
     }
 
     return await outPdf.save();
+  }
+
+  async unreadResultsCount(user?: UserLike) {
+    const userRole = user?.role ?? null;
+    const userClientCode = (user?.clientCode || '').trim() || null;
+
+    // ✅ If CLIENT has no clientCode → safest: 0
+    if (userRole === 'CLIENT' && !userClientCode) return { count: 0 };
+
+    // get last seen timestamp from DB
+    // NOTE: userLike doesn't include id; controller will pass userId too
+    // so we will implement in controller/service with userId param
+  }
+
+  async unreadResultsCountByUserId(userId: string, user?: UserLike) {
+    const userRole = user?.role ?? null;
+    const userClientCode = (user?.clientCode || '').trim() || null;
+
+    if (userRole === 'CLIENT' && !userClientCode) return { count: 0 };
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { resultsLastSeenAt: true },
+    });
+
+    const since = dbUser?.resultsLastSeenAt ?? new Date(0);
+
+    const canSeeMicro = userRole !== 'CHEMISTRY';
+    const canSeeChem = userRole !== 'MICRO';
+
+    const microWhereFinal: any = {
+      ...(userRole === 'CLIENT'
+        ? { report: { clientCode: userClientCode } }
+        : {}),
+      report: {
+        ...(userRole === 'CLIENT' ? { clientCode: userClientCode } : {}),
+        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'] },
+      },
+      createdAt: { gt: since },
+    };
+
+    const chemWhereFinal: any = {
+      ...(userRole === 'CLIENT'
+        ? { report: { clientCode: userClientCode } }
+        : {}),
+      createdAt: { gt: since },
+    };
+
+    const [microCount, chemCount] = await Promise.all([
+      canSeeMicro
+        ? this.prisma.attachment.count({ where: microWhereFinal })
+        : 0,
+      canSeeChem
+        ? this.prisma.chemistryAttachment.count({ where: chemWhereFinal })
+        : 0,
+    ]);
+
+    return { count: microCount + chemCount };
+  }
+
+  async markResultsRead(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { resultsLastSeenAt: new Date() },
+    });
+
+    return { ok: true };
   }
 }

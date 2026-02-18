@@ -1,4 +1,15 @@
-import { Controller, Get, Param, Query, Res, NotFoundException, Req, Post, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Res,
+  NotFoundException,
+  Req,
+  Post,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import express from 'express';
 import { AttachmentsGlobalService } from './attachments.global.service';
 
@@ -10,7 +21,8 @@ function num(v: any, def: number) {
 function clean(v: any) {
   if (v === undefined || v === null) return undefined;
   const s = String(v).trim();
-  if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return undefined;
+  if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null')
+    return undefined;
   return s;
 }
 
@@ -20,26 +32,25 @@ export class AttachmentsGlobalController {
 
   // ✅ GET /attachments?q=...&kind=...&fileType=... etc
   @Get('attachments')
-listAll(@Query() q: any, @Req() req: any) {
-  return this.svc.listAll(
-    {
-      q: clean(q.q),
-      kind: clean(q.kind),
-      fileType: clean(q.fileType) as any,
-      reportId: clean(q.reportId),
-      reportType: clean(q.reportType) as any,
-      createdBy: clean(q.createdBy),
-      source: clean(q.source),
-      dateFrom: clean(q.dateFrom),
-      dateTo: clean(q.dateTo),
-      sort: clean(q.sort) as any,
-      take: num(q.take, 100),
-      skip: num(q.skip, 0),
-    },
-    req.user, // ✅ keep
-  );
-}
-
+  listAll(@Query() q: any, @Req() req: any) {
+    return this.svc.listAll(
+      {
+        q: clean(q.q),
+        kind: clean(q.kind),
+        fileType: clean(q.fileType) as any,
+        reportId: clean(q.reportId),
+        reportType: clean(q.reportType) as any,
+        createdBy: clean(q.createdBy),
+        source: clean(q.source),
+        dateFrom: clean(q.dateFrom),
+        dateTo: clean(q.dateTo),
+        sort: clean(q.sort) as any,
+        take: num(q.take, 100),
+        skip: num(q.skip, 0),
+      },
+      req.user, // ✅ keep
+    );
+  }
 
   // ✅ GET /attachments/:id/file
   @Get('attachments/:id/file')
@@ -59,8 +70,7 @@ listAll(@Query() q: any, @Req() req: any) {
     stream.pipe(res);
   }
 
-
-    // ✅ NEW: POST /attachments/merge-pdf
+  // ✅ NEW: POST /attachments/merge-pdf
   @Post('attachments/merge-pdf')
   async mergePdf(
     @Body() body: { ids: string[] },
@@ -75,5 +85,23 @@ listAll(@Query() q: any, @Req() req: any) {
     res.type('application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="merged.pdf"`);
     res.send(Buffer.from(mergedBytes));
+  }
+  // ✅ GET /attachments/unread-count
+  @Get('attachments/unread-count')
+  async unreadCount(@Req() req: any) {
+    const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
+    if (!userId) throw new BadRequestException('Missing user id');
+
+    // req.user already contains role + clientCode in your system
+    return this.svc.unreadResultsCountByUserId(userId, req.user);
+  }
+
+  // ✅ POST /attachments/mark-results-read
+  @Post('attachments/mark-results-read')
+  async markResultsRead(@Req() req: any) {
+    const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
+    if (!userId) throw new BadRequestException('Missing user id');
+
+    return this.svc.markResultsRead(userId);
   }
 }
