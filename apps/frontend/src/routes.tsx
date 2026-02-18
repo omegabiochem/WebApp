@@ -39,6 +39,7 @@ import TermsAndConditions from "./pages/Legal/TermsAndConditions";
 import SupportHelpPage from "./pages/Support/supportHelpPage";
 import PublicSupport from "./pages/Support/PublicSupport";
 import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
+import SterilityReportForm from "./pages/Reports/SterilityReportForm";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -234,6 +235,16 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: "reports/sterility/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+              <SterilityReportForm />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
 
       {
         path: "reports/micro-mix/:id", // ← no leading slash
@@ -259,6 +270,27 @@ export const router = createBrowserRouter([
 
       {
         path: "reports/micro-mix-water/:id", // ← no leading slash
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "MC",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
+              <MicroMixReportFormWrapper />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "reports/sterility/:id", // ← no leading slash
         element: (
           <RequireAuth>
             <RequireRole

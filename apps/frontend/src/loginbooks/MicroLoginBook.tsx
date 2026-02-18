@@ -220,7 +220,10 @@ export default function MicroLoginBook() {
         if (abort) return;
 
         const micro = all.filter(
-          (r) => r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER",
+          (r) =>
+            r.formType === "MICRO_MIX" ||
+            r.formType === "MICRO_MIX_WATER" ||
+            r.formType === "STERILITY",
         );
         setRows(micro);
       } catch (e: any) {
@@ -574,7 +577,9 @@ export default function MicroLoginBook() {
                             ? "Micro"
                             : r.formType === "MICRO_MIX_WATER"
                               ? "Micro Water"
-                              : r.formType}
+                              : r.formType === "STERILITY"
+                                ? "Sterility"
+                                : r.formType}
                         </div>
                       </td>
 

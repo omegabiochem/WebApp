@@ -1119,6 +1119,14 @@ export default function ChemistryMixReportForm({
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
+  const HIDE_SIGNATURES_FOR = new Set<ChemistryReportStatus>([
+    "DRAFT",
+    "SUBMITTED_BY_CLIENT",
+  ]);
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(
+    status as ChemistryReportStatus,
+  );
+
   // ---------------- RENDER ----------------
   return (
     <>
@@ -2216,144 +2224,156 @@ export default function ChemistryMixReportForm({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedBy",
-                  )}`}
-                  onClick={corrClick("testedBy")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  VERIFIED BY :
-                  <ResolveOverlay field="testedBy" />
-                </span>
+          {showSignatures && (
+            <>
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "testedBy",
+                      )}`}
+                      onClick={corrClick("testedBy")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      VERIFIED BY :
+                      <ResolveOverlay field="testedBy" />
+                    </span>
 
-                <FieldErrorBadge name="testedBy" errors={errors} />
-                <input
-                  className={inputClass(
-                    "testedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  value={testedBy}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setTestedBy(e.target.value.toUpperCase());
-                    clearError("testedBy");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.testedBy}
-                  readOnly={lock("testedBy")}
-                  placeholder="Name"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedDate",
-                  )}`}
-                  onClick={corrClick("testedDate")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  DATE :
-                  <ResolveOverlay field="testedDate" />
-                </span>
-                <FieldErrorBadge name="testedDate" errors={errors} />
-                <input
-                  className={inputClass(
-                    "testedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(testedDate)}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setTestedDate(e.target.value);
-                    clearError("testedDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.testedDate}
-                  readOnly={lock("testedDate")}
-                  placeholder="MM/DD/YYYY"
-                />
-              </div>
-            </div>
+                    <FieldErrorBadge name="testedBy" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "testedBy",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      value={testedBy}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setTestedBy(e.target.value.toUpperCase());
+                        clearError("testedBy");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.testedBy}
+                      readOnly={lock("testedBy")}
+                      placeholder="Name"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "testedDate",
+                      )}`}
+                      onClick={corrClick("testedDate")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      DATE :
+                      <ResolveOverlay field="testedDate" />
+                    </span>
+                    <FieldErrorBadge name="testedDate" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "testedDate",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      type="date"
+                      min={todayISO()}
+                      value={formatDateForInput(testedDate)}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setTestedDate(e.target.value);
+                        clearError("testedDate");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.testedDate}
+                      readOnly={lock("testedDate")}
+                      placeholder="MM/DD/YYYY"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedBy",
-                  )}`}
-                  onClick={corrClick("reviewedBy")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  REVIEWED BY :
-                  <ResolveOverlay field="reviewedBy" />
-                </span>
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "reviewedBy",
+                      )}`}
+                      onClick={corrClick("reviewedBy")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      REVIEWED BY :
+                      <ResolveOverlay field="reviewedBy" />
+                    </span>
 
-                <FieldErrorBadge name="reviewedBy" errors={errors} />
-                <input
-                  className={inputClass(
-                    "reviewedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  value={reviewedBy}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setReviewedBy(e.target.value.toUpperCase());
-                    clearError("reviewedBy");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.reviewedBy}
-                  readOnly={lock("reviewedBy")}
-                  placeholder="Name"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedDate",
-                  )}`}
-                  onClick={corrClick("reviewedDate")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  REVIEWED DATE :
-                  <ResolveOverlay field="reviewedDate" />
-                </span>
+                    <FieldErrorBadge name="reviewedBy" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "reviewedBy",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      value={reviewedBy}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setReviewedBy(e.target.value.toUpperCase());
+                        clearError("reviewedBy");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.reviewedBy}
+                      readOnly={lock("reviewedBy")}
+                      placeholder="Name"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "reviewedDate",
+                      )}`}
+                      onClick={corrClick("reviewedDate")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      REVIEWED DATE :
+                      <ResolveOverlay field="reviewedDate" />
+                    </span>
 
-                <FieldErrorBadge name="reviewedDate" errors={errors} />
-                <input
-                  className={inputClass(
-                    "reviewedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(reviewedDate)}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setReviewedDate(e.target.value);
-                    clearError("reviewedDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.reviewedDate}
-                  readOnly={lock("reviewedDate")}
-                  placeholder="MM/DD/YYYY"
-                />
+                    <FieldErrorBadge name="reviewedDate" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "reviewedDate",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      type="date"
+                      min={todayISO()}
+                      value={formatDateForInput(reviewedDate)}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setReviewedDate(e.target.value);
+                        clearError("reviewedDate");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.reviewedDate}
+                      readOnly={lock("reviewedDate")}
+                      placeholder="MM/DD/YYYY"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
 

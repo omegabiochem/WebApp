@@ -21,7 +21,7 @@ function nice(s: string) {
 }
 
 function deptForFormType(formType: FormType) {
-  if (formType === 'MICRO_MIX' || formType === 'MICRO_MIX_WATER')
+  if (formType === 'MICRO_MIX' || formType === 'MICRO_MIX_WATER' || formType === 'STERILITY')
     return 'MICRO';
   if (formType === 'CHEMISTRY_MIX') return 'CHEMISTRY';
   return 'LAB';

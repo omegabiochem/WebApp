@@ -32,6 +32,7 @@ import {
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 // ---------------------------------
 // Types
@@ -54,6 +55,7 @@ type Report = {
 const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
+  STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
 };
 
@@ -200,7 +202,9 @@ function BulkPrintArea({
   return (
     <div
       id="bulk-print-root"
-      className={isSingle ? "hidden print:block" : "hidden print:block multi-print"}
+      className={
+        isSingle ? "hidden print:block" : "hidden print:block multi-print"
+      }
     >
       {reports.map((r) => {
         if (r.formType === "MICRO_MIX") {
@@ -284,7 +288,7 @@ export default function AdminDashboard() {
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
   >("ALL");
 
   // ✅ status filter now uses combined type
@@ -328,7 +332,9 @@ export default function AdminDashboard() {
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    const body = isChem ? { status: nextStatus } : { reason: reasonText, status: nextStatus };
+    const body = isChem
+      ? { status: nextStatus }
+      : { reason: reasonText, status: nextStatus };
 
     await api(endpoint, {
       method: "PATCH",
@@ -378,8 +384,10 @@ export default function AdminDashboard() {
         ? reports
         : reports.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER") return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "CHEMISTRY") return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "MICROWATER")
+              return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "CHEMISTRY")
+              return r.formType === "CHEMISTRY_MIX";
             return true;
           });
 
@@ -396,7 +404,9 @@ export default function AdminDashboard() {
 
     const byReport = searchReport.trim()
       ? byClient.filter((r) =>
-          String(displayReportNo(r)).toLowerCase().includes(searchReport.toLowerCase()),
+          String(displayReportNo(r))
+            .toLowerCase()
+            .includes(searchReport.toLowerCase()),
         )
       : byClient;
 
@@ -409,7 +419,15 @@ export default function AdminDashboard() {
       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return bT - aT;
     });
-  }, [reports, formFilter, statusFilter, searchClient, searchReport, dateFrom, dateTo]);
+  }, [
+    reports,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+  ]);
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -420,7 +438,15 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage, formFilter]);
+  }, [
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    formFilter,
+  ]);
 
   // -----------------------------
   // Selection helpers
@@ -428,7 +454,9 @@ export default function AdminDashboard() {
   const isRowSelected = (id: string) => selectedIds.includes(id);
 
   const toggleRow = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   };
 
   const allOnPageSelected =
@@ -436,7 +464,9 @@ export default function AdminDashboard() {
 
   const toggleSelectPage = () => {
     if (allOnPageSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !pageRows.some((r) => r.id === id)));
+      setSelectedIds((prev) =>
+        prev.filter((id) => !pageRows.some((r) => r.id === id)),
+      );
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
@@ -470,7 +500,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     setSelectedIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formFilter, statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+  ]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -527,7 +565,11 @@ export default function AdminDashboard() {
         }),
       });
 
-      setReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, status: nextStatus } : r)));
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === report.id ? { ...r, status: nextStatus } : r,
+        ),
+      );
 
       setChangeStatusReport(null);
       setReason("");
@@ -645,7 +687,16 @@ export default function AdminDashboard() {
       dateTo !== "" ||
       perPage !== 10
     );
-  }, [formFilter, statusFilter, searchClient, searchReport, datePreset, dateFrom, dateTo, perPage]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+  ]);
 
   const clearFilters = () => {
     setSearchClient("");
@@ -661,7 +712,16 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchClient, searchReport, dateFrom, dateTo, perPage, formFilter, datePreset]);
+  }, [
+    statusFilter,
+    searchClient,
+    searchReport,
+    dateFrom,
+    dateTo,
+    perPage,
+    formFilter,
+    datePreset,
+  ]);
 
   useLiveReportStatus(setReports);
 
@@ -707,7 +767,9 @@ export default function AdminDashboard() {
             </style>
 
             <BulkPrintArea
-              reports={isBulkPrinting ? selectedReportObjects : [singlePrintReport!]}
+              reports={
+                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+              }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 if (singlePrintReport) setSinglePrintReport(null);
@@ -742,7 +804,9 @@ export default function AdminDashboard() {
             )}
           >
             {printingBulk ? <Spinner /> : "🖨️"}
-            {printingBulk ? "Preparing..." : `Print selected (${selectedIds.length})`}
+            {printingBulk
+              ? "Preparing..."
+              : `Print selected (${selectedIds.length})`}
           </button>
 
           {/* Refresh */}
@@ -766,7 +830,9 @@ export default function AdminDashboard() {
       {/* Form type tabs */}
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICROWATER", "CHEMISTRY"] as const).map((ft) => {
+          {(
+            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+          ).map((ft) => {
             const isActive = formFilter === ft;
             return (
               <button
@@ -786,7 +852,9 @@ export default function AdminDashboard() {
                     ? "Micro"
                     : ft === "MICROWATER"
                       ? "Micro Water"
-                      : "Chemistry"}
+                      : ft === "STERILITY"
+                        ? "Sterility"
+                        : "Chemistry"}
               </button>
             );
           })}
@@ -918,7 +986,9 @@ export default function AdminDashboard() {
       {/* Table */}
       <div className="rounded-2xl border bg-white shadow-sm">
         {error && (
-          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
+          <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
         <div className="overflow-x-auto">
@@ -972,7 +1042,8 @@ export default function AdminDashboard() {
               {!loading &&
                 pageRows.map((r) => {
                   const isMicro =
-                    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX" ||
+                    r.formType === "MICRO_MIX_WATER";
                   const isChemistry = r.formType === "CHEMISTRY_MIX";
                   const rowBusy = updatingId === r.id;
 
@@ -987,7 +1058,9 @@ export default function AdminDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3 font-medium">{displayReportNo(r)}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {displayReportNo(r)}
+                      </td>
                       <td className="px-4 py-3">{r.formNumber}</td>
                       <td className="px-4 py-3">{r.client}</td>
                       <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
@@ -1037,19 +1110,26 @@ export default function AdminDashboard() {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
                                 try {
-                                  if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-                                    const next = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                  if (
+                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
+                                  ) {
+                                    const next =
+                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id ? { ...x, status: next } : x,
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x,
                                       ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(e?.message || "Failed to update status");
+                                  toast.error(
+                                    e?.message || "Failed to update status",
+                                  );
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -1069,18 +1149,23 @@ export default function AdminDashboard() {
                                 setUpdatingId(r.id);
                                 try {
                                   if (r.status === "CLIENT_NEEDS_CORRECTION") {
-                                    const next = "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                    const next =
+                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
                                     setReports((prev) =>
                                       prev.map((x) =>
-                                        x.id === r.id ? { ...x, status: next } : x,
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x,
                                       ),
                                     );
                                     toast.success("Report Status Updated");
                                   }
                                   goToReportEditor(r);
                                 } catch (e: any) {
-                                  toast.error(e?.message || "Failed to update status");
+                                  toast.error(
+                                    e?.message || "Failed to update status",
+                                  );
                                 } finally {
                                   setUpdatingId(null);
                                 }
@@ -1121,7 +1206,10 @@ export default function AdminDashboard() {
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                  <td
+                    colSpan={7}
+                    className="px-4 py-12 text-center text-slate-500"
+                  >
                     No reports match filters.
                   </td>
                 </tr>
@@ -1270,9 +1358,15 @@ export default function AdminDashboard() {
                           r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(r, next, "Sent back to client for correction");
+                          await setStatus(
+                            r,
+                            next,
+                            "Sent back to client for correction",
+                          );
                           setReports((prev) =>
-                            prev.map((x) => (x.id === r.id ? { ...x, status: next } : x)),
+                            prev.map((x) =>
+                              x.id === r.id ? { ...x, status: next } : x,
+                            ),
                           );
                         }
 
@@ -1313,6 +1407,14 @@ export default function AdminDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
+              ) : selectedReport?.formType === "STERILITY" ? (
+                <SterilityReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport as any}
@@ -1323,7 +1425,8 @@ export default function AdminDashboard() {
                 />
               ) : (
                 <div className="text-sm text-slate-600">
-                  This form type ({selectedReport?.formType}) doesn’t have a viewer yet.
+                  This form type ({selectedReport?.formType}) doesn’t have a
+                  viewer yet.
                 </div>
               )}
             </div>
@@ -1344,7 +1447,8 @@ export default function AdminDashboard() {
               Change Status of {changeStatusReport.formType}
             </h2>
             <p className="mb-3 text-sm text-slate-600">
-              <strong>Current:</strong> {niceStatus(String(changeStatusReport.status))}
+              <strong>Current:</strong>{" "}
+              {niceStatus(String(changeStatusReport.status))}
             </p>
 
             <form
@@ -1396,14 +1500,24 @@ export default function AdminDashboard() {
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
                   />
                   <input
                     type="password"
                     tabIndex={-1}
                     autoComplete="off"
                     aria-hidden="true"
-                    style={{ position: "absolute", opacity: 0, height: 0, width: 0 }}
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                    }}
                   />
 
                   <div className="mb-2 flex items-stretch gap-2">
@@ -1430,7 +1544,9 @@ export default function AdminDashboard() {
                     />
                   </div>
 
-                  {eSignError && <p className="mb-2 text-xs text-rose-600">{eSignError}</p>}
+                  {eSignError && (
+                    <p className="mb-2 text-xs text-rose-600">{eSignError}</p>
+                  )}
                 </div>
               )}
 
@@ -1446,7 +1562,11 @@ export default function AdminDashboard() {
                 <button
                   type="submit"
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
-                  disabled={saving || !reason.trim() || (needsESign(newStatus) && !eSignPassword)}
+                  disabled={
+                    saving ||
+                    !reason.trim() ||
+                    (needsESign(newStatus) && !eSignPassword)
+                  }
                 >
                   {saving ? <Spinner /> : null}
                   {saving ? "Saving…" : "Save"}

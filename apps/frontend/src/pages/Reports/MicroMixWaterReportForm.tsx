@@ -1470,6 +1470,12 @@ export default function MicroMixReportForm({
   // ✅ JJL-only dropdown behavior
   const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
 
+  const HIDE_SIGNATURES_FOR = new Set<ReportStatus>([
+    "DRAFT",
+    "SUBMITTED_BY_CLIENT",
+  ]);
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(status as ReportStatus);
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2651,145 +2657,155 @@ export default function MicroMixReportForm({
             />
           </div>
 
-          {/* TESTED BY */}
-          <div
-            id="f-testedBy"
-            onClick={() => {
-              if (!selectingCorrections) return;
-              setAddForField("testedBy");
-              setAddMessage("");
-            }}
-            className={`p-2 relative ${dashClass("testedBy")}`}
-          >
-            <div className="font-medium mb-2 flex items-center gap-2">
-              TESTED BY:
-              {/* floating badge; doesn't affect layout */}
-              <FieldErrorBadge name="testedBy" errors={errors} />
-              <ResolveOverlay field="testedBy" />
-              <input
-                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
-                  errors.testedBy ? "border-b-red-500" : "border-b-black/70"
-                } ${
-                  hasCorrection("testedBy")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                value={testedBy.toUpperCase()}
-                onChange={(e) => {
-                  setTestedBy(e.target.value);
-                  clearError("testedBy");
-                  markDirty();
+          {showSignatures && (
+            <>
+              {/* TESTED BY */}
+              <div
+                id="f-testedBy"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("testedBy");
+                  setAddMessage("");
                 }}
-                readOnly={lock("testedBy")}
-                placeholder="Name"
-                aria-invalid={!!errors.testedBy}
-              />
-            </div>
+                className={`p-2 relative ${dashClass("testedBy")}`}
+              >
+                <div className="font-medium mb-2 flex items-center gap-2">
+                  TESTED BY:
+                  {/* floating badge; doesn't affect layout */}
+                  <FieldErrorBadge name="testedBy" errors={errors} />
+                  <ResolveOverlay field="testedBy" />
+                  <input
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                      errors.testedBy ? "border-b-red-500" : "border-b-black/70"
+                    } ${
+                      hasCorrection("testedBy")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={testedBy.toUpperCase()}
+                    onChange={(e) => {
+                      setTestedBy(e.target.value);
+                      clearError("testedBy");
+                      markDirty();
+                    }}
+                    readOnly={lock("testedBy")}
+                    placeholder="Name"
+                    aria-invalid={!!errors.testedBy}
+                  />
+                </div>
 
-            <div
-              id="f-testedDate"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("testedDate");
-                setAddMessage("");
-              }}
-              className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
-                "testedDate",
-              )}`}
-            >
-              DATE:
-              <FieldErrorBadge name="testedDate" errors={errors} />
-              <ResolveOverlay field="testedDate" />
-              <input
-                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
-                  errors.testedDate ? "border-b-red-500" : "border-b-black/70"
-                } ${
-                  hasCorrection("testedDate")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                type="date"
-                min={todayISO()}
-                value={formatDateForInput(testedDate)}
-                onChange={(e) => {
-                  setTestedDate(e.target.value);
-                  clearError("testedDate");
-                }}
-                readOnly={lock("testedDate")}
-                placeholder="MM/DD/YYYY"
-                aria-invalid={!!errors.testedDate}
-              />
-            </div>
-          </div>
+                <div
+                  id="f-testedDate"
+                  onClick={() => {
+                    if (!selectingCorrections) return;
+                    setAddForField("testedDate");
+                    setAddMessage("");
+                  }}
+                  className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
+                    "testedDate",
+                  )}`}
+                >
+                  DATE:
+                  <FieldErrorBadge name="testedDate" errors={errors} />
+                  <ResolveOverlay field="testedDate" />
+                  <input
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                      errors.testedDate
+                        ? "border-b-red-500"
+                        : "border-b-black/70"
+                    } ${
+                      hasCorrection("testedDate")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    type="date"
+                    min={todayISO()}
+                    value={formatDateForInput(testedDate)}
+                    onChange={(e) => {
+                      setTestedDate(e.target.value);
+                      clearError("testedDate");
+                    }}
+                    readOnly={lock("testedDate")}
+                    placeholder="MM/DD/YYYY"
+                    aria-invalid={!!errors.testedDate}
+                  />
+                </div>
+              </div>
 
-          {/* REVIEWED BY */}
-          <div
-            id="f-reviewedBy"
-            onClick={() => {
-              if (!selectingCorrections) return;
-              setAddForField("reviewedBy");
-              setAddMessage("");
-            }}
-            className={`p-2 relative ${dashClass("reviewedBy")}`}
-          >
-            <div className="font-medium mb-2 flex items-center gap-2">
-              REVIEWED BY:
-              <FieldErrorBadge name="reviewedBy" errors={errors} />
-              <ResolveOverlay field="reviewedBy" />
-              <input
-                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
-                  errors.reviewedBy ? "border-b-red-500" : "border-b-black/70"
-                } ${
-                  hasCorrection("reviewedBy")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                value={reviewedBy.toUpperCase()}
-                onChange={(e) => {
-                  setReviewedBy(e.target.value);
-                  clearError("reviewedBy");
+              {/* REVIEWED BY */}
+              <div
+                id="f-reviewedBy"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("reviewedBy");
+                  setAddMessage("");
                 }}
-                readOnly={lock("reviewedBy")}
-                placeholder="Name"
-                aria-invalid={!!errors.reviewedBy}
-              />
-            </div>
+                className={`p-2 relative ${dashClass("reviewedBy")}`}
+              >
+                <div className="font-medium mb-2 flex items-center gap-2">
+                  REVIEWED BY:
+                  <FieldErrorBadge name="reviewedBy" errors={errors} />
+                  <ResolveOverlay field="reviewedBy" />
+                  <input
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                      errors.reviewedBy
+                        ? "border-b-red-500"
+                        : "border-b-black/70"
+                    } ${
+                      hasCorrection("reviewedBy")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={reviewedBy.toUpperCase()}
+                    onChange={(e) => {
+                      setReviewedBy(e.target.value);
+                      clearError("reviewedBy");
+                    }}
+                    readOnly={lock("reviewedBy")}
+                    placeholder="Name"
+                    aria-invalid={!!errors.reviewedBy}
+                  />
+                </div>
 
-            <div
-              id="f-reviewedDate"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("reviewedDate");
-                setAddMessage("");
-              }}
-              className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
-                "reviewedDate",
-              )}`}
-            >
-              DATE:
-              <FieldErrorBadge name="reviewedDate" errors={errors} />
-              <ResolveOverlay field="reviewedDate" />
-              <input
-                className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
-                  errors.reviewedDate ? "border-b-red-500" : "border-b-black/70"
-                } ${
-                  hasCorrection("reviewedDate")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }`}
-                type="date"
-                min={todayISO()}
-                value={formatDateForInput(reviewedDate)}
-                onChange={(e) => {
-                  setReviewedDate(e.target.value);
-                  clearError("reviewedDate");
-                }}
-                readOnly={lock("reviewedDate")}
-                placeholder="MM/DD/YYYY"
-                aria-invalid={!!errors.reviewedDate}
-              />
-            </div>
-          </div>
+                <div
+                  id="f-reviewedDate"
+                  onClick={() => {
+                    if (!selectingCorrections) return;
+                    setAddForField("reviewedDate");
+                    setAddMessage("");
+                  }}
+                  className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass(
+                    "reviewedDate",
+                  )}`}
+                >
+                  DATE:
+                  <FieldErrorBadge name="reviewedDate" errors={errors} />
+                  <ResolveOverlay field="reviewedDate" />
+                  <input
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                      errors.reviewedDate
+                        ? "border-b-red-500"
+                        : "border-b-black/70"
+                    } ${
+                      hasCorrection("reviewedDate")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    type="date"
+                    min={todayISO()}
+                    value={formatDateForInput(reviewedDate)}
+                    onChange={(e) => {
+                      setReviewedDate(e.target.value);
+                      clearError("reviewedDate");
+                    }}
+                    readOnly={lock("reviewedDate")}
+                    placeholder="MM/DD/YYYY"
+                    aria-invalid={!!errors.reviewedDate}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

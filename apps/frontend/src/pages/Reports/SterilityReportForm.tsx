@@ -1,27 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useNavigate } from "react-router-dom";
 import {
-  useReportValidation,
-  FieldErrorBadge,
-  type MicroMixReportFormValues,
-  deriveMicroPhaseFromStatus,
-  type MicroPhase,
-  MICRO_PHASE_FIELDS,
+  STERILITY_STATUS_TRANSITIONS,
   type CorrectionItem,
+  type Role,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
+import { useAuth } from "../../context/AuthContext";
+import {
+  createCorrections,
+  FieldErrorBadge,
   getCorrections,
   resolveCorrection,
-  createCorrections,
-} from "../../utils/microMixReportValidation";
-import {
-  JJL_SAMPLE_TYPE_OPTIONS,
-  JJL_TYPE_OF_TEST_OPTIONS,
-  STATUS_TRANSITIONS,
-  todayISO,
+  useReportValidation,
   type ReportStatus,
-  type Role,
-} from "../../utils/microMixReportFormWorkflow";
+  type SterilityReportFormValues,
+} from "../../utils/sterilityReportValidation";
 import { api } from "../../lib/api";
+import { todayISO } from "../../utils/microMixReportFormWorkflow";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -42,118 +38,76 @@ function useConfirmOnLeave(isDirty: boolean) {
 
 const statusButtons: Record<string, { label: string; color: string }> = {
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-  UNDER_CLIENT_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_CLIENT_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_APPROVED: { label: "Approve", color: "bg-green-600" },
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
+  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
+
+  CLIENT_NEEDS_CORRECTION: {
     label: "Needs Correction",
     color: "bg-yellow-600",
   },
-  CLIENT_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
+
   RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
   FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
   FRONTDESK_NEEDS_CORRECTION: {
     label: "Needs Correction",
     color: "bg-red-600",
   },
-  UNDER_PRELIMINARY_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: {
+  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  TESTING_NEEDS_CORRECTION: {
     label: "Needs Correction",
     color: "bg-yellow-500",
   },
-  PRELIMINARY_RESUBMISSION_BY_TESTING: {
+  RESUBMISSION_BY_TESTING: {
     label: "Resubmit",
     color: "bg-blue-600",
   },
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: {
+  RESUBMISSION_BY_CLIENT: {
     label: "Resubmit",
     color: "bg-blue-600",
   },
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
+  UNDER_RESUBMISSION_TESTING_REVIEW: {
     label: "Approve",
     color: "bg-blue-600",
   },
-  UNDER_FINAL_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
+
+  UNDER_RESUBMISSION_QA_REVIEW: {
     label: "Approve",
     color: "bg-blue-600",
   },
-  FINAL_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FINAL_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
-    label: "Resubmit",
-    color: "bg-blue-700",
-  },
-  UNDER_QA_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  UNDER_QA_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
+
+  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-  FINAL_APPROVED: { label: "Approve", color: "bg-green-700" },
+  APPROVED: { label: "Approve", color: "bg-green-700" },
 };
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
-function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
+function canEdit(
+  role: Role | undefined,
+  field: string,
+  status?: SterilityReportStatus,
+) {
   if (!role || !status) return false;
-  const transition = STATUS_TRANSITIONS[status]; // ✅ safe now
+  const transition = STERILITY_STATUS_TRANSITIONS[status]; // ✅ safe now
   if (!transition || !transition.canEdit?.includes(role)) {
     return false;
   }
 
-  // --- PHASE GUARD ---
-  const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA" && field === "dateCompleted") {
-    return p === "FINAL";
-  }
-
-  // Block FINAL fields during PRELIM for MICRO & ADMIN
-  if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
-    p === "PRELIM"
-  ) {
-    if (MICRO_PHASE_FIELDS.FINAL.includes(field)) return false;
-  }
-
-  // (Optional) Once in FINAL, freeze PRELIM fields too:
-  if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
-    p === "FINAL"
-  ) {
-    if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
-  }
   const map: Record<Role, string[]> = {
     SYSTEMADMIN: [],
     ADMIN: [
       "testSopNo",
       "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      "tbc_gram",
-      "tbc_result",
-      "tbc_spec",
-      "tmy_gram",
-      "tmy_result",
-      "tmy_spec",
-      "pathogens",
+      "testSopNo",
+      "dateTested",
+      "ftm_turbidity",
+      "ftm_observation",
+      "ftm_result",
+      "scdb_turbidity",
+      "scdb_observation",
+      "scdb_result",
       "comments",
       "testedBy",
       "testedDate",
@@ -162,46 +116,36 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "reviewedDate",
     ],
     FRONTDESK: [
-      "client",
-      "dateSent",
-      "typeOfTest",
-      "sampleType",
-      "formulaNo",
-      "description",
-      "lotNo",
-      "manufactureDate",
+      // "client",
+      // "dateSent",
+      // "typeOfTest",
+      // "sampleType",
+      // "formulaNo",
+      // "description",
+      // "lotNo",
+      // "manufactureDate",
     ],
     MICRO: [
       "testSopNo",
       "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      // "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      // "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
+      "ftm_turbidity",
+      "ftm_observation",
+      "ftm_result",
+      "scdb_turbidity",
+      "scdb_observation",
+      "scdb_result",
       "comments",
-      // "testedBy",
-      // "testedDate",
     ],
     MC: [
       "testSopNo",
       "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      // "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      // "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
+      "ftm_turbidity",
+      "ftm_observation",
+      "ftm_result",
+      "scdb_turbidity",
+      "scdb_observation",
+      "scdb_result",
       "comments",
-      // "testedBy",
-      // "testedDate",
     ],
     QA: ["dateCompleted"],
     CLIENT: [
@@ -213,9 +157,6 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "description",
       "lotNo",
       "manufactureDate",
-      "tbc_spec",
-      "tmy_spec",
-      "pathogens",
       "comments",
     ], // read-only
   };
@@ -279,7 +220,7 @@ const DashStyles = () => (
   `}</style>
 );
 
-const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
+const HIDE_SAVE_FOR = new Set<SterilityReportStatus>(["APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -305,7 +246,7 @@ function SpinnerDark({ className = "" }: { className?: string }) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main component
 
-export default function MicroMixReportForm({
+export default function SterilityReportForm({
   report,
   onClose,
 }: {
@@ -356,160 +297,26 @@ export default function MicroMixReportForm({
   );
   const [testSopNo, setTestSopNo] = useState(report?.testSopNo || "");
   const [dateTested, setDateTested] = useState(report?.dateTested || "");
-  const [preliminaryResults, setPreliminaryResults] = useState(
-    report?.preliminaryResults || "",
-  );
-  const [preliminaryResultsDate, setPreliminaryResultsDate] = useState(
-    report?.preliminaryResultsDate || "",
-  );
   const [dateCompleted, setDateCompleted] = useState(
     report?.dateCompleted || "",
   );
 
-  const normalizeSpec = (v: any) => {
-    const s = String(v ?? "").trim();
-    if (!s) return "";
-
-    // remove any trailing unit text variations
-    return s
-      .replace(/\s*CFU\s*\/?\s*mL\s*\/?\s*g\s*$/i, "")
-      .replace(/\s*CFU\s*\/?\s*ml\s*\/?\s*g\s*$/i, "")
-      .replace(/\s*CFU.*$/i, "") // fallback: remove anything starting from CFU
-      .trim();
-  };
-
-  // TBC/TFC blocks
-  //   const [tbc_dilution, set_tbc_dilution] = useState("x 10^1");
-  const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
-  const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
-  const [tbc_spec, set_tbc_spec] = useState(() =>
-    normalizeSpec(report?.tbc_spec),
+  const [ftm_turbidity, setFtmTurbidity] = useState(
+    report?.ftm_turbidity || "",
+  );
+  const [scdb_turbidity, setScdbTurbidity] = useState(
+    report?.scdb_turbidity || "",
   );
 
-  //   const [tmy_dilution, set_tmy_dilution] = useState("x 10^1"); // Total Mold & Yeast
-  const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
-  const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
-  const [tmy_spec, set_tmy_spec] = useState(() =>
-    normalizeSpec(report?.tmy_spec),
+  const [ftm_observation, setFtmObservation] = useState(
+    report?.ftm_observation || "",
+  );
+  const [scdb_observation, setScdbObservation] = useState(
+    report?.scdb_observation || "",
   );
 
-  // Spec dropdown presets
-  const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
-
-  const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
-
-  useEffect(() => {
-    set_tbc_spec(normalizeSpec(report?.tbc_spec));
-    set_tmy_spec(normalizeSpec(report?.tmy_spec));
-  }, [report?.id]);
-
-  // Allow user-added custom spec values (shared by both TBC + TMY)
-  const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
-
-  // Small modal for adding custom spec
-  const [showAddSpec, setShowAddSpec] = useState(false);
-  const [specTarget, setSpecTarget] = useState<"tbc_spec" | "tmy_spec" | null>(
-    null,
-  );
-  const [newSpecValue, setNewSpecValue] = useState("");
-
-  type PathogenSpec = "Absent" | "Present" | "";
-
-  // Pathogens (Absent/Present + sample grams)
-  type PathRow = {
-    checked: boolean;
-    key: string;
-    label: string;
-    grams: string;
-    result: "Absent" | "Present" | "";
-    spec: PathogenSpec;
-  };
-  const pathogenDefaults: PathRow[] = useMemo(
-    () => [
-      {
-        checked: false,
-        key: "E_COLI",
-        label: "E.coli",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "P_AER",
-        label: "P.aeruginosa",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "S_AUR",
-        label: "S.aureus",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "SALM",
-        label: "Salmonella",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "CLOSTRIDIA",
-        label: "Clostridia species",
-        grams: "3g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "C_ALB",
-        label: "C.albicans",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "B_CEP",
-        label: "B.cepacia",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "OTHER",
-        label: "Other",
-        grams: "",
-        result: "",
-        spec: "",
-      },
-    ],
-    [],
-  );
-
-  const gramsFor = (p: PathRow) => p.grams ?? "11g";
-
-  // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
-  const [pathogens, setPathogens] = useState<PathRow[]>(
-    report?.pathogens || pathogenDefaults,
-  );
-
-  // --- Row-level errors for pathogens ---
-  type PathogenRowError = { result?: string; spec?: string };
-  const [pathogenRowErrors, setPathogenRowErrors] = useState<
-    PathogenRowError[]
-  >([]);
-
-  const [pathogensTableError, setPathogensTableError] = useState<string | null>(
-    null,
-  );
+  const [ftm_result, setFtmResult] = useState(report?.ftm_result || "");
+  const [scdb_result, setScdbResult] = useState(report?.scdb_result || "");
 
   // function organismDisabled() {
   //   // Only CLIENT decides which organisms to test
@@ -520,12 +327,12 @@ export default function MicroMixReportForm({
   //   // Only MICRO can set results, and only if the organism is checked
   //   return !p.checked || (role !== "MICRO" && role !== "ADMIN" && phase !== "FINAL");
   // }
-  const phase = deriveMicroPhaseFromStatus(status);
 
   // --- E-Sign modal state (Admin-only) ---
   // Admin E-sign modal state
   const [showESign, setShowESign] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
+  const [pendingStatus, setPendingStatus] =
+    useState<SterilityReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
@@ -558,15 +365,8 @@ export default function MicroMixReportForm({
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
 
-  function stringify(v: any) {
-    if (v === null || v === undefined) return "";
-    if (Array.isArray(v)) return v.join(", ");
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  }
-
   function getFieldDisplayValue(fieldKey: string) {
-    const [base, key, col] = fieldKey.split(":");
+    const [base] = fieldKey.split(":");
 
     // ---- top-level MicroMix fields ----
     switch (base) {
@@ -601,32 +401,8 @@ export default function MicroMixReportForm({
       case "dateTested":
         return formatDateForInput(dateTested);
 
-      case "preliminaryResults":
-        return preliminaryResults;
-
-      case "preliminaryResultsDate":
-        return formatDateForInput(preliminaryResultsDate);
-
       case "dateCompleted":
         return formatDateForInput(dateCompleted);
-
-      case "tbc_gram":
-        return tbc_gram;
-
-      case "tbc_result":
-        return tbc_result;
-
-      case "tbc_spec":
-        return tbc_spec;
-
-      case "tmy_gram":
-        return tmy_gram;
-
-      case "tmy_result":
-        return tmy_result;
-
-      case "tmy_spec":
-        return tmy_spec;
 
       case "comments":
         return comments;
@@ -643,35 +419,6 @@ export default function MicroMixReportForm({
       case "reviewedDate":
         return formatDateForInput(reviewedDate);
 
-      // ---- nested pathogens ----
-      // fieldKey format you use: "pathogens:KEY:checked|result|spec|label|grams"
-      case "pathogens": {
-        // if they just click "pathogens" (no key/col), store whole table snapshot
-        if (!key) return stringify(pathogens);
-
-        const row = pathogens.find((p) => p.key === key);
-        if (!row) return "";
-
-        // if they didn't specify col, store whole row snapshot
-        if (!col) return stringify(row);
-
-        switch (col) {
-          case "checked":
-            return row.checked ? "Checked" : "Unchecked";
-          case "result":
-            return row.result || "";
-          case "spec":
-            return row.spec || "";
-          case "label":
-            return row.label || "";
-          case "grams":
-            return row.grams || "";
-          default:
-            // fallback: allow anything else safely
-            return stringify((row as any)[col]);
-        }
-      }
-
       default:
         return "";
     }
@@ -685,7 +432,7 @@ export default function MicroMixReportForm({
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
 
-  function requestStatusChange(target: ReportStatus) {
+  function requestStatusChange(target: SterilityReportStatus) {
     if (!reportId) {
       alert("⚠️ Please SAVE the report first before changing status.");
       return;
@@ -700,13 +447,10 @@ export default function MicroMixReportForm({
     }
     const isNeeds =
       target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-      target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "QA_NEEDS_FINAL_CORRECTION" ||
+      target === "TESTING_NEEDS_CORRECTION" ||
+      target === "QA_NEEDS_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "CLIENT_NEEDS_FINAL_CORRECTION";
+      target === "CLIENT_NEEDS_CORRECTION";
 
     if (isNeeds) {
       setSelectingCorrections(true);
@@ -723,27 +467,10 @@ export default function MicroMixReportForm({
     }
   }
 
-  function resultDisabled(p: PathRow) {
-    if (!p.checked) return true;
-
-    if (role === "MICRO" || role === "MC") {
-      // MICRO can edit only in FINAL phase
-      return phase !== "FINAL";
-    }
-
-    if (role === "ADMIN") {
-      // ADMIN can always edit
-      return false;
-    }
-
-    // everyone else disabled
-    return true;
-  }
-
   const canResolveField = (field: string) => {
     if (!reportId || !role) return false;
     const base = field.split(":")[0]; // "pathogens" for "pathogens:E_COLI"
-    return canEdit(role, base, status as ReportStatus);
+    return canEdit(role, base, status as SterilityReportStatus);
   };
 
   // Resolve ALL corrections for a field
@@ -807,9 +534,6 @@ export default function MicroMixReportForm({
     );
   }
 
-  const normalizeGrams = (v: string) =>
-    v.trim() ? (/[gG]$/.test(v) ? v : v + "g") : v;
-
   const [showCorrTray, setShowCorrTray] = useState(false);
 
   // fields to briefly show as "resolved" (green halo)
@@ -834,128 +558,6 @@ export default function MicroMixReportForm({
   //     ? "dash dash-green"
   //     : "";
 
-  function validatePathogenRows(
-    rows: PathRow[],
-    who: Role | undefined = role,
-    phase: MicroPhase | undefined = deriveMicroPhaseFromStatus(status),
-  ) {
-    const rowErrs: PathogenRowError[] = rows.map(() => ({}));
-    let tableErr: string | null = null;
-
-    const anyChecked = rows.some((r) => r.checked);
-
-    // 👉 If nothing selected, it's not required: clear errors and pass.
-    if (!anyChecked) {
-      setPathogenRowErrors(rowErrs);
-      setPathogensTableError(null);
-      return true;
-    }
-
-    if (who === "CLIENT") {
-      rows.forEach((r, i) => {
-        if (r.checked && r.spec !== "Absent" && r.spec !== "Present") {
-          rowErrs[i].spec = "Choose Absent or Present";
-        }
-      });
-    }
-
-    if (
-      (who === "MICRO" || who === "MC" || who === "ADMIN") &&
-      phase === "FINAL"
-    ) {
-      rows.forEach((r, i) => {
-        if (r.checked && !r.result) {
-          rowErrs[i].result = "Select Absent or Present";
-        }
-      });
-    }
-
-    setPathogenRowErrors(rowErrs);
-    setPathogensTableError(tableErr);
-    return !tableErr && rowErrs.every((e) => !e.result && !e.spec);
-  }
-
-  function setPathogenChecked(idx: number, checked: boolean) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Clear the row error if we unchecked (no result required anymore)
-    setPathogenRowErrors((prev) => {
-      const c = [...prev];
-      c[idx] = {};
-      return c;
-    });
-    markDirty();
-  }
-
-  function setPathogenResult(idx: number, value: "Absent" | "Present") {
-    setPathogens((prev) => {
-      const row = prev[idx];
-      if (!row.checked) return prev; // ignore if organism not selected
-      const copy = [...prev];
-      copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Clear the row error once result is set
-    setPathogenRowErrors((prev) => {
-      const copy = [...prev];
-      copy[idx] = {};
-      return copy;
-    });
-    clearError("pathogens"); // optional if you still keep a table-level error elsewhere
-    markDirty();
-  }
-
-  function clearPathogenResult(idx: number) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Keep/restore the row error because a checked row without result is invalid
-    setPathogenRowErrors((prev) => {
-      const copy = [...prev];
-      // if the row is still checked, show the error again
-      copy[idx] = pathogens[idx]?.checked
-        ? { result: "Select Absent or Present" }
-        : {};
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenSpec(idx: number, value: PathogenSpec) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], spec: value };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenLabel(idx: number, label: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], label };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenGrams(idx: number, grams: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], grams };
-      return copy;
-    });
-    markDirty();
-  }
-
   const [comments, setComments] = useState(report?.comments || "");
   const [testedBy, setTestedBy] = useState(report?.testedBy || "");
   const [reviewedBy, setReviewedBy] = useState(report?.reviewedBy || "");
@@ -964,7 +566,8 @@ export default function MicroMixReportForm({
 
   // const lock = (f: string) => !canEdit(role, f);
   // use:
-  const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
+  const lock = (f: string) =>
+    !canEdit(role, f, status as SterilityReportStatus);
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
     role,
@@ -973,34 +576,44 @@ export default function MicroMixReportForm({
     },
   );
 
-  // Current values snapshot (use inside handlers)
-  const makeValues = (): MicroMixReportFormValues => ({
-    client,
-    dateSent,
-    typeOfTest,
-    sampleType,
-    formulaNo,
-    description,
-    lotNo,
-    manufactureDate,
-    testSopNo,
-    dateTested,
-    preliminaryResults,
-    preliminaryResultsDate,
-    tbc_gram,
-    tbc_result,
-    tbc_spec,
-    tmy_gram,
-    tmy_result,
-    tmy_spec,
-    comments,
-    testedBy,
-    testedDate,
-    dateCompleted,
-    reviewedBy,
-    reviewedDate,
-    pathogens,
-  });
+  type ObsValue = "Growth" | "No Growth" | "";
+
+  function toggleObservation(
+    current: ObsValue,
+    value: Exclude<ObsValue, "">,
+  ): ObsValue {
+    // checkbox behavior but mutually exclusive:
+    return current === value ? "" : value;
+  }
+
+  const makeValues = (): SterilityReportFormValues =>
+    ({
+      client,
+      dateSent,
+      typeOfTest,
+      sampleType,
+      formulaNo,
+      description,
+      lotNo,
+      manufactureDate,
+      testSopNo,
+      dateTested,
+
+      comments,
+      testedBy,
+      testedDate,
+      dateCompleted,
+      reviewedBy,
+      reviewedDate,
+
+      // ✅ add these for sterility table
+      ftm_turbidity,
+      ftm_observation,
+      ftm_result,
+      scdb_turbidity,
+      scdb_observation,
+      scdb_result,
+    }) as any;
 
   // ----------- Save handler -----------
 
@@ -1017,7 +630,6 @@ export default function MicroMixReportForm({
         const values = makeValues();
 
         validateAndSetErrors(values);
-        validatePathogenRows(values.pathogens, role, phase);
 
         // Build full payload
         const fullPayload: any = {
@@ -1031,16 +643,16 @@ export default function MicroMixReportForm({
           manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
           testSopNo,
           dateTested,
-          preliminaryResults,
-          preliminaryResultsDate,
+
+          ftm_turbidity,
+          ftm_observation,
+          ftm_result,
+          scdb_turbidity,
+          scdb_observation,
+          scdb_result,
+
           dateCompleted,
-          tbc_gram,
-          tbc_result,
-          tbc_spec,
-          tmy_gram,
-          tmy_result,
-          tmy_spec,
-          pathogens,
+
           comments,
           testedBy,
           reviewedBy,
@@ -1052,31 +664,6 @@ export default function MicroMixReportForm({
         // MicroPhase-based field guard
         // During PRELIM, MICRO & ADMIN cannot write FINAL-only fields
         // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
-
-        const PHASE_WRITE_GUARD = (fields: string[]) => {
-          if (role === "MICRO" || role === "MC" || role === "ADMIN") {
-            if (phase === "PRELIM") {
-              // drop FINAL-only fields during PRELIM
-              return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.FINAL.includes(f),
-              );
-            }
-            // (Optional) once in FINAL, drop PRELIM-only fields:
-            if (phase === "FINAL") {
-              return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f),
-              );
-            }
-          }
-
-          // ✅ QA: only allow dateCompleted in FINAL
-          if (role === "QA") {
-            if (phase === "PRELIM") {
-              return fields.filter((f) => f !== "dateCompleted");
-            }
-          }
-          return fields;
-        };
 
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
@@ -1093,34 +680,24 @@ export default function MicroMixReportForm({
           ],
           MICRO: [
             "testSopNo",
-            "tbc_dilution",
-            "tbc_gram",
-            "tbc_result",
-            "tmy_dilution",
-            "tmy_gram",
-            "tmy_result",
-            "pathogens",
             "dateTested",
-            "preliminaryResults",
-            "preliminaryResultsDate",
-            // "testedBy",
-            // "testedDate",
+            "ftm_turbidity",
+            "ftm_observation",
+            "ftm_result",
+            "scdb_turbidity",
+            "scdb_observation",
+            "scdb_result",
             "comments",
           ],
           MC: [
             "testSopNo",
-            "tbc_dilution",
-            "tbc_gram",
-            "tbc_result",
-            "tmy_dilution",
-            "tmy_gram",
-            "tmy_result",
-            "pathogens",
             "dateTested",
-            "preliminaryResults",
-            "preliminaryResultsDate",
-            // "testedBy",
-            // "testedDate",
+            "ftm_turbidity",
+            "ftm_observation",
+            "ftm_result",
+            "scdb_turbidity",
+            "scdb_observation",
+            "scdb_result",
             "comments",
           ],
           QA: ["dateCompleted"],
@@ -1133,16 +710,13 @@ export default function MicroMixReportForm({
             "description",
             "lotNo",
             "manufactureDate",
-            "tbc_spec",
-            "tmy_spec",
-            "pathogens",
           ],
         };
 
         const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
-          : PHASE_WRITE_GUARD(allowedBase);
+          : allowedBase;
 
         const payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
@@ -1168,12 +742,12 @@ export default function MicroMixReportForm({
           } else {
             saved = await api(`/reports`, {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+              body: JSON.stringify({ ...payload, formType: "STERILITY" }),
             });
           }
 
           setReportId(saved.id); // 👈 keep the new id
-          setStatus(saved.status); // in case backend changed itgit fkd
+          setStatus(saved.status); // in case backend changed it
           setReportNumber(String(saved.reportNumber ?? ""));
           setReportVersion(
             typeof saved.version === "number"
@@ -1202,12 +776,12 @@ export default function MicroMixReportForm({
   };
 
   type UpdatedReport = {
-    status?: ReportStatus;
+    status?: SterilityReportStatus;
     reportNumber?: string;
   };
 
   async function handleStatusChange(
-    newStatus: ReportStatus,
+    newStatus: SterilityReportStatus,
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
@@ -1216,47 +790,29 @@ export default function MicroMixReportForm({
 
       const values = makeValues();
       const okFields = validateAndSetErrors(values);
-      const okRows = validatePathogenRows(values.pathogens, role, phase);
 
       if (
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
-        newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
-        newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-        newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
-        newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
-        newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
-        newStatus === "UNDER_QA_FINAL_REVIEW" ||
+        newStatus === "UNDER_TESTING_REVIEW" ||
+        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        newStatus === "UNDER_CLIENT_REVIEW" ||
+        newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
-        newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
-        newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
-        newStatus === "PRELIMINARY_APPROVED" ||
-        newStatus === "FINAL_TESTING_ON_HOLD" ||
-        newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
+        newStatus === "UNDER_QA_REVIEW" ||
+        newStatus === "QA_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-        newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
-        newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
-        newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        newStatus === "TESTING_ON_HOLD" ||
+        newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
         newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
         newStatus === "LOCKED" ||
-        newStatus === "FINAL_APPROVED"
+        newStatus === "APPROVED"
       ) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
-        }
-        if (!okRows) {
-          alert("⚠️ Please fix the highlighted rows before changing status.");
           return;
         }
       }
@@ -1426,59 +982,12 @@ export default function MicroMixReportForm({
     refreshHasAttachment(reportId);
   }, [reportId]);
 
-  const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
-    "UNDER_CLIENT_FINAL_REVIEW",
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<SterilityReportStatus>([
+    "UNDER_CLIENT_REVIEW",
   ]);
 
-  function isApproveAction(targetStatus: ReportStatus) {
+  function isApproveAction(targetStatus: SterilityReportStatus) {
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
-  }
-
-  const specOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        [
-          ...DEFAULT_SPEC_OPTIONS,
-          ...customSpecOptions,
-          normalizeSpec(tbc_spec),
-          normalizeSpec(tmy_spec),
-        ].filter(Boolean),
-      ),
-    );
-  }, [customSpecOptions, tbc_spec, tmy_spec]);
-
-  function openAddSpec(target: "tbc_spec" | "tmy_spec") {
-    setSpecTarget(target);
-    setNewSpecValue("");
-    setShowAddSpec(true);
-  }
-
-  function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    if (target === "tbc_spec") {
-      set_tbc_spec(value);
-      clearError("tbc_spec");
-    } else {
-      set_tmy_spec(value);
-      clearError("tmy_spec");
-    }
-    markDirty();
-  }
-
-  function saveCustomSpec() {
-    const v = newSpecValue.trim();
-
-    // normalize input
-    const normalized = v.replace(/CFU.*$/i, "").trim();
-
-    if (!normalized || !specTarget) return;
-
-    setCustomSpecOptions((prev) =>
-      prev.includes(normalized) ? prev : [...prev, normalized],
-    );
-
-    applySpecValue(specTarget, normalized);
-
-    setShowAddSpec(false);
   }
 
   // ✅ JJL-only dropdown behavior
@@ -1509,7 +1018,7 @@ export default function MicroMixReportForm({
           </button>
           {/* <button
           </button> */}
-          {!HIDE_SAVE_FOR.has(status as ReportStatus) && (
+          {!HIDE_SAVE_FOR.has(status as SterilityReportStatus) && (
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
@@ -1559,8 +1068,8 @@ export default function MicroMixReportForm({
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
               {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
-                ? "MICRO SUBMISSION FORM"
-                : "MICRO REPORT"}
+                ? "STERILITY SUBMISSION FORM"
+                : "STERILITY REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {reportNumber ? <> {reportNumber}</> : null}
@@ -1676,36 +1185,13 @@ export default function MicroMixReportForm({
                     aria-invalid={!!errors.typeOfTest}
                   />
 
-                  <datalist id="typeOfTest-options">
+                  {/* <datalist id="typeOfTest-options">
                     {(isJJL ? JJL_TYPE_OF_TEST_OPTIONS : []).map((opt) => (
                       <option key={opt} value={opt} />
                     ))}
-                  </datalist>
+                  </datalist> */}
                 </div>
               )}
-
-              {/* {lock("typeOfTest") ? (
-                <div className="flex-1  min-h-[14px]">{typeOfTest}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.typeOfTest
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  }${
-                    hasCorrection("typeOfTest")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={typeOfTest}
-                  onChange={(e) => {
-                    setTypeOfTest(e.target.value);
-                    clearError("typeOfTest");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.typeOfTest}
-                />
-              )} */}
             </div>
             <div
               id="f-sampleType"
@@ -1747,36 +1233,13 @@ export default function MicroMixReportForm({
                     aria-invalid={!!errors.sampleType}
                   />
 
-                  <datalist id="sampleType-options">
+                  {/* <datalist id="sampleType-options">
                     {(isJJL ? JJL_SAMPLE_TYPE_OPTIONS : []).map((opt) => (
                       <option key={opt} value={opt} />
                     ))}
-                  </datalist>
+                  </datalist> */}
                 </div>
               )}
-
-              {/* {lock("sampleType") ? (
-                <div className="flex-1  min-h-[14px]">{sampleType}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.sampleType
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("sampleType")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={sampleType}
-                  onChange={(e) => {
-                    setSampleType(e.target.value);
-                    markDirty();
-                    clearError("sampleType");
-                  }}
-                  aria-invalid={!!errors.sampleType}
-                />
-              )} */}
             </div>
             <div
               id="f-formulaNo"
@@ -2023,88 +1486,6 @@ export default function MicroMixReportForm({
             </div>
           </div>
 
-          {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
-          <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
-            <div
-              id="f-preliminaryResults"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("preliminaryResults");
-                setAddMessage("");
-              }}
-              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "preliminaryResults",
-              )}`}
-            >
-              <div className="font-medium">PRELIMINARY RESULTS:</div>
-              <FieldErrorBadge name="preliminaryResults" errors={errors} />
-              <ResolveOverlay field="preliminaryResults" />
-              {lock("preliminaryResults") ? (
-                <div className="flex-1  min-h-[14px]">{preliminaryResults}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.preliminaryResults
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("preliminaryResults")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={preliminaryResults}
-                  onChange={(e) => {
-                    setPreliminaryResults(e.target.value);
-                    clearError("preliminaryResults");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.preliminaryResults}
-                />
-              )}
-            </div>
-            <div
-              id="f-preliminaryResultsDate"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("preliminaryResultsDate");
-                setAddMessage("");
-              }}
-              className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "preliminaryResultsDate",
-              )}`}
-            >
-              <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
-              <FieldErrorBadge name="preliminaryResultsDate" errors={errors} />
-              <ResolveOverlay field="preliminaryResultsDate" />
-              {lock("preliminaryResultsDate") ? (
-                <div className="flex-1  min-h-[14px]">
-                  {formatDateForInput(preliminaryResultsDate)}
-                </div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.preliminaryResultsDate
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  }  ${
-                    hasCorrection("preliminaryResultsDate")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(preliminaryResultsDate)}
-                  onChange={(e) => {
-                    setPreliminaryResultsDate(e.target.value);
-                    clearError("preliminaryResultsDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.preliminaryResultsDate}
-                />
-              )}
-            </div>
-          </div>
-
           {/* DATE COMPLETED (full row, label + input) */}
           <div
             id="f-dateCompleted"
@@ -2149,513 +1530,297 @@ export default function MicroMixReportForm({
           </div>
         </div>
 
-        <div className="p-2 font-bold">TBC / TFC RESULTS:</div>
+        {/* <div className="p-2 font-bold">TBC / TFC RESULTS:</div> */}
 
         {/* TBC/TFC table */}
-        <div className="mt-2 border border-black">
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] text-center items-center font-semibold border-b border-black">
-            <div className="p-2  border-r border-black">TYPE OF TEST</div>
-            <div className="p-2 border-r border-black">DILUTION</div>
-            <div className="p-2 border-r border-black">GRAM STAIN</div>
+        <div className="mt-12 border border-black">
+          <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px] text-center items-center font-semibold border-b border-black">
+            <div className="p-2  border-r border-black">MEDIA</div>
+            <div className="p-2 border-r border-black">TURBIDITY</div>
+            <div className="p-2 border-r border-black">OBSERVATION</div>
             <div className="p-2 border-r border-black">RESULT</div>
-            <div className="p-2">SPECIFICATION</div>
+            {/* <div className="p-2">SPECIFICATION</div> */}
           </div>
 
-          {/* Row 1: Total Bacterial Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
+          {/* Row 1: FTM */}
+          <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px] border-b border-black">
             <div className="py-1 px-2 font-bold border-r border-black">
-              Total Bacterial Count:
+              Fluid Thioglycollate Medium (FTM)
             </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
-
-            {/* GRAM STAIN */}
+            {/* TURBIDITY (input) */}
             <div
-              id="f-tbc_gram"
+              id="f-ftm_turbidity"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("tbc_gram");
+                setAddForField("ftm_turbidity");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tbc_gram",
-              )}`}
+              className={`py-1 px-2 border-r border-black flex relative ${dashClass("ftm_turbidity")}`}
             >
-              <FieldErrorBadge name="tbc_gram" errors={errors} />
-              <ResolveOverlay field="tbc_gram" />
+              <FieldErrorBadge name="ftm_turbidity" errors={errors} />
+              <ResolveOverlay field="ftm_turbidity" />
               <input
                 className={`w-full input-editable px-1 border ${
-                  !lock("tbc_gram") && errors.tbc_gram
+                  !lock("ftm_turbidity") && (errors as any).ftm_turbidity
                     ? "border-red-500 ring-1 ring-red-500"
                     : "border-black/70"
-                } ${
-                  hasCorrection("tbc_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                } focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_gram}
+                } ${hasCorrection("ftm_turbidity") ? "ring-2 ring-rose-500 animate-pulse" : ""}`}
+                value={ftm_turbidity}
                 onChange={(e) => {
-                  set_tbc_gram(e.target.value);
-                  clearError("tbc_gram");
+                  setFtmTurbidity(e.target.value);
+                  clearError("ftm_turbidity" as any);
+                  markDirty();
                 }}
-                readOnly={lock("tbc_gram")}
-                aria-invalid={!!errors.tbc_gram}
+                readOnly={lock("ftm_turbidity")}
               />
             </div>
-
-            {/* RESULT */}
+            {/* OBSERVATION (Growth / No Growth checkboxes) */}
             <div
-              id="f-tbc_result"
+              id="f-ftm_observation"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("tbc_result");
+                setAddForField("ftm_observation");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tbc_result",
-              )}`}
+              className={`py-1 px-2 border-r border-black flex items-center gap-3 relative ${dashClass("ftm_observation")}`}
             >
-              <FieldErrorBadge name="tbc_result" errors={errors} />
-              <ResolveOverlay field="tbc_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tbc_result") && errors.tbc_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_result}
-                onChange={(e) => {
-                  set_tbc_result(e.target.value);
-                  clearError("tbc_result");
-                }}
-                readOnly={lock("tbc_result")}
-                placeholder="CFU/ml/g"
-                aria-invalid={!!errors.tbc_result}
-              />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
-            </div>
+              <FieldErrorBadge name="ftm_observation" errors={errors} />
+              <ResolveOverlay field="ftm_observation" />
 
-            {/* SPECIFICATION */}
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={ftm_observation === "Growth"}
+                  disabled={lock("ftm_observation")}
+                  onChange={() => {
+                    setFtmObservation((prev: any) =>
+                      toggleObservation(prev, "Growth"),
+                    );
+                    clearError("ftm_observation" as any);
+                    markDirty();
+                  }}
+                />
+                <span>Growth</span>
+              </label>
+
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={ftm_observation === "No Growth"}
+                  disabled={lock("ftm_observation")}
+                  onChange={() => {
+                    setFtmObservation((prev: any) =>
+                      toggleObservation(prev, "No Growth"),
+                    );
+                    clearError("ftm_observation" as any);
+                    markDirty();
+                  }}
+                />
+                <span>No Growth</span>
+              </label>
+            </div>
+            {/* RESULT (input) */}
             <div
-              id="f-tbc_spec"
+              id="f-ftm_result"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("tbc_spec");
+                setAddForField("ftm_result");
                 setAddMessage("");
               }}
-              className="py-1 px-2 flex relative"
+              className={`py-1 px-2 border-r border-black flex relative ${dashClass("ftm_result")}`}
             >
-              <FieldErrorBadge name="tbc_spec" errors={errors} />
-              <ResolveOverlay field="tbc_spec" />
-
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tbc_spec") && errors.tbc_spec
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("tbc_spec")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }`}
-                  value={tbc_spec}
-                  onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
-                  disabled={lock("tbc_spec")}
-                  aria-invalid={!!errors.tbc_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
-                </select>
-
-                {/* + Add new */}
-                {!lock("tbc_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tbc_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Total Mold & Yeast Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-            <div className="py-1 px-2 font-bold border-r border-black">
-              Total Mold & Yeast Count:
-            </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
-
-            {/* GRAM STAIN */}
-            <div
-              id="f-tmy_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_gram" errors={errors} />
-              <ResolveOverlay field="tmy_gram" />
+              <FieldErrorBadge name="ftm_result" errors={errors} />
+              <ResolveOverlay field="ftm_result" />
               <input
                 className={`w-full input-editable px-1 border ${
-                  !lock("tmy_gram") && errors.tmy_gram
+                  !lock("ftm_result") && (errors as any).ftm_result
                     ? "border-red-500 ring-1 ring-red-500"
                     : "border-black/70"
-                } ${
-                  hasCorrection("tmy_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_gram}
+                } ${hasCorrection("ftm_result") ? "ring-2 ring-rose-500 animate-pulse" : ""}`}
+                value={ftm_result}
                 onChange={(e) => {
-                  set_tmy_gram(e.target.value);
-                  clearError("tmy_gram");
+                  setFtmResult(e.target.value);
+                  clearError("ftm_result" as any);
+                  markDirty();
                 }}
-                readOnly={lock("tmy_gram")}
-                aria-invalid={!!errors.tmy_gram}
+                readOnly={lock("ftm_result")}
               />
             </div>
+            <div className="py-1 px-2" />{" "}
+            {/* keep last col width (28%) if you want spacing */}
+          </div>
 
-            {/* RESULT */}
+          {/* Row 2: SCDB */}
+          <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px]">
+            <div className="py-1 px-2 font-bold border-r border-black">
+              Soybean Casein Digest Broth (SCDB)
+            </div>
+
+            {/* TURBIDITY (input) */}
             <div
-              id="f-tmy_result"
+              id="f-scdb_turbidity"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("tmy_result");
+                setAddForField("scdb_turbidity");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_result",
-              )}`}
+              className={`py-1 px-2 border-r border-black flex relative ${dashClass("scdb_turbidity")}`}
             >
-              <FieldErrorBadge name="tmy_result" errors={errors} />
-              <ResolveOverlay field="tmy_result" />
+              <FieldErrorBadge name="scdb_turbidity" errors={errors} />
+              <ResolveOverlay field="scdb_turbidity" />
               <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tmy_result") && errors.tmy_result
+                className={`w-full input-editable px-1 border ${
+                  !lock("scdb_turbidity") && (errors as any).scdb_turbidity
                     ? "border-red-500 ring-1 ring-red-500"
                     : "border-black/70"
-                } ${
-                  hasCorrection("tmy_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_result}
+                } ${hasCorrection("scdb_turbidity") ? "ring-2 ring-rose-500 animate-pulse" : ""}`}
+                value={scdb_turbidity}
                 onChange={(e) => {
-                  set_tmy_result(e.target.value);
-                  clearError("tmy_result");
+                  setScdbTurbidity(e.target.value);
+                  clearError("scdb_turbidity" as any);
+                  markDirty();
                 }}
-                readOnly={lock("tmy_result")}
-                placeholder="CFU/ml/g"
-                aria-invalid={!!errors.tmy_result}
+                readOnly={lock("scdb_turbidity")}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
             </div>
 
-            {/* SPECIFICATION */}
+            {/* OBSERVATION (Growth / No Growth checkboxes) */}
             <div
-              id="f-tmy_spec"
+              id="f-scdb_observation"
               onClick={() => {
                 if (!selectingCorrections) return;
-                setAddForField("tmy_spec");
+                setAddForField("scdb_observation");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
+              className={`py-1 px-2 border-r border-black flex items-center gap-3 relative ${dashClass("scdb_observation")}`}
             >
-              <FieldErrorBadge name="tmy_spec" errors={errors} />
-              <ResolveOverlay field="tmy_spec" />
+              <FieldErrorBadge name="scdb_observation" errors={errors} />
+              <ResolveOverlay field="scdb_observation" />
 
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tmy_spec") && errors.tmy_spec
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("tmy_spec")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }`}
-                  value={tmy_spec}
-                  onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
-                  disabled={lock("tmy_spec")}
-                  aria-invalid={!!errors.tmy_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
-                </select>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={scdb_observation === "Growth"}
+                  disabled={lock("scdb_observation")}
+                  onChange={() => {
+                    setScdbObservation((prev: any) =>
+                      toggleObservation(prev, "Growth"),
+                    );
+                    clearError("scdb_observation" as any);
+                    markDirty();
+                  }}
+                />
+                <span>Growth</span>
+              </label>
 
-                {!lock("tmy_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tmy_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={scdb_observation === "No Growth"}
+                  disabled={lock("scdb_observation")}
+                  onChange={() => {
+                    setScdbObservation((prev: any) =>
+                      toggleObservation(prev, "No Growth"),
+                    );
+                    clearError("scdb_observation" as any);
+                    markDirty();
+                  }}
+                />
+                <span>No Growth</span>
+              </label>
             </div>
+
+            {/* RESULT (input) */}
+            <div
+              id="f-scdb_result"
+              onClick={() => {
+                if (!selectingCorrections) return;
+                setAddForField("scdb_result");
+                setAddMessage("");
+              }}
+              className={`py-1 px-2 border-r border-black flex relative ${dashClass("scdb_result")}`}
+            >
+              <FieldErrorBadge name="scdb_result" errors={errors} />
+              <ResolveOverlay field="scdb_result" />
+              <input
+                className={`w-full input-editable px-1 border ${
+                  !lock("scdb_result") && (errors as any).scdb_result
+                    ? "border-red-500 ring-1 ring-red-500"
+                    : "border-black/70"
+                } ${hasCorrection("scdb_result") ? "ring-2 ring-rose-500 animate-pulse" : ""}`}
+                value={scdb_result}
+                onChange={(e) => {
+                  setScdbResult(e.target.value);
+                  clearError("scdb_result" as any);
+                  markDirty();
+                }}
+                readOnly={lock("scdb_result")}
+              />
+            </div>
+
+            <div className="py-1 px-2" />
           </div>
         </div>
-
-        <div className="p-2 font-bold">
-          PATHOGEN SCREENING (Please check the organism to be tested)
-        </div>
-
-        {/* Pathogen screening */}
-        {/* Pathogen screening */}
-        <div
-          id="f-pathogens"
-          // onClick ={() => {
-          //   if (!selectingCorrections) return;
-          //   setAddForField("pathogens");
-          //   setAddMessage("");
-          // }}
-          className={`mt-3 relative border ${
-            pathogensTableError
-              ? "border-red-500 ring-1 ring-red-500"
-              : "border-black"
-          } `}
-          aria-invalid={!!errors.pathogens}
-        >
-          {/* floating badge; doesn't affect layout */}
-          {/* <FieldErrorBadge name="pathogens" errors={errors} /> */}
-          <ResolveOverlay field="pathogens" />
-
-          {/* Header */}
-          <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
-            <div className="p-2 border-r border-black"></div>
-            <div className="p-2 border-r border-black">RESULT</div>
-            <div className="p-2">SPECIFICATION</div>
+        {/* ----- Volume of sample table + notes (from image) ----- */}
+        <div className="mt-10 text-[12px] leading-snug">
+          <div className="mb-2 font-semibold text-[13px]">
+            Volume of sample used during the test is defined in the table based
+            on the volume of final product.
           </div>
 
-          {pathogensTableError && (
-            <div className="px-2 py-1 text-[11px] text-red-600">
-              {pathogensTableError}
-            </div>
-          )}
-
-          {/* Rows */}
-
-          {pathogens.map((p, idx) => {
-            const rowErr = pathogenRowErrors[idx]?.result;
-            return (
-              <div
-                key={p.key}
-                className={`grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black ${
-                  rowErr ? "ring-1 ring-red-500" : ""
-                } `}
-              >
-                {/* <ResolveOverlay field={`pathogens.${p.key}`} /> */}
-                {/* First column: checkbox + label (unchanged except using setPathogenChecked) */}
-                <ResolveOverlay field={`pathogens.${p.key}:checked`} />
-                <div
-                  id="f-pathogens-checked"
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:checked`);
-                    setAddMessage("");
-                  }}
-                  className={`py-[2px] px-2 border-r border-black flex items-center gap-2 ${
-                    hasCorrection(`pathogens.${p.key}`)
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }${dashClass(`pathogens:${p.key}:checked`)}`}
-                >
-                  <ResolveOverlay field={`pathogens.${p.key}:checked`} />
-                  <input
-                    type="checkbox"
-                    className="thick-box"
-                    checked={!!p.checked}
-                    onChange={(e) => setPathogenChecked(idx, e.target.checked)}
-                    // disabled={organismDisabled()}
-                    disabled={lock("pathogens") || role !== "CLIENT"}
-                  />
-                  <span className="font-bold">{p.label}</span>
-                  {/* {p.key === "OTHER" && (
-                    <input
-                      className="input-editable leading-tight"
-                      placeholder="(specify)"
-                      readOnly
-                    />
-                  )} */}
-
-                  {p.key === "OTHER" && (
-                    <input
-                      className="input-editable leading-tight border px-1 text-[8px]"
-                      placeholder="(specify)"
-                      value={p.label === "Other" ? "" : p.label}
-                      onChange={(e) =>
-                        setPathogenLabel(idx, e.target.value || "Other")
-                      }
-                      disabled={lock("pathogens") || role !== "CLIENT"}
-                    />
-                  )}
-                </div>
-
-                {/* Second column: Result + per-row error */}
-                <div
-                  id="f-pathogens-result"
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:result`);
-                    setAddMessage("");
-                  }}
-                  className={`py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap ${dashClass(
-                    `pathogens:${p.key}:result`,
-                  )}`}
-                >
-                  <ResolveOverlay field={`pathogens.${p.key}.result`} />
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="thick-box"
-                      checked={p.result === "Absent"}
-                      onChange={() => setPathogenResult(idx, "Absent")}
-                      onDoubleClick={() => clearPathogenResult(idx)}
-                      title="Click to set Absent. Double-click to clear."
-                      disabled={resultDisabled(p)}
-                      // disabled={
-                      //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
-                      //   role === "QA" || role === "SYSTEMADMIN"
-                      // }
-                    />
-                    Absent
-                  </label>
-
-                  <span className="mx-1">/</span>
-
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="thick-box"
-                      checked={p.result === "Present"}
-                      onChange={() => setPathogenResult(idx, "Present")}
-                      onDoubleClick={() => clearPathogenResult(idx)}
-                      disabled={resultDisabled(p)}
-                      title={
-                        resultDisabled(p)
-                          ? "Check the organism first"
-                          : "Click to set Present. Double-click to clear."
-                      }
-                      // disabled={
-                      //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
-                      //   role === "QA" || role === "SYSTEMADMIN"
-                      // }
-                    />
-                    Present
-                  </label>
-
-                  {/* inline note, no huge gap */}
-                  {/* <span className="ml-2">in 11g of sample</span> */}
-                  {/* <span className="ml-2">in {gramsFor(p)} of sample</span> */}
-                  {p.key === "OTHER" ? (
-                    <span className="ml-2 flex items-center gap-1">
-                      in
-                      <input
-                        className="w-7 border px-1 text-[11px]"
-                        placeholder="__g"
-                        value={p.grams}
-                        onChange={(e) => setPathogenGrams(idx, e.target.value)}
-                        onBlur={(e) =>
-                          setPathogenGrams(idx, normalizeGrams(e.target.value))
-                        }
-                        disabled={lock("pathogens") || role !== "CLIENT"}
-                      />
-                      of sample
-                    </span>
-                  ) : (
-                    <span className="ml-2">in {gramsFor(p)} of sample</span>
-                  )}
-
-                  {/* optional row error */}
-                  {pathogenRowErrors[idx]?.result && (
-                    <span className="ml-2 text-[11px] text-red-600">
-                      {pathogenRowErrors[idx].result}
-                    </span>
-                  )}
-                </div>
-
-                {/* Third column (spec) */}
-                {/* Third column (spec) */}
-                {/* Third column (spec) */}
-                <div
-                  id="f-pathogens-spec"
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:spec`);
-                    setAddMessage("");
-                  }}
-                  className={`py-[2px] px-2 text-center ${dashClass(
-                    `pathogens:${p.key}:spec`,
-                  )} ${
-                    pathogenRowErrors[idx]?.spec ? "ring-1 ring-red-500" : ""
-                  }`}
-                >
-                  <ResolveOverlay field={`pathogens.${p.key}.spec`} />
-                  <select
-                    className={`input-editable border text-[11px] px-1 py-[1px] ${
-                      pathogenRowErrors[idx]?.spec
-                        ? "border-red-500"
-                        : "border-black/70"
-                    }`}
-                    value={p.spec}
-                    onChange={(e) =>
-                      setPathogenSpec(idx, e.target.value as PathogenSpec)
-                    }
-                    disabled={
-                      !p.checked || lock("pathogens") || role !== "CLIENT"
-                    }
-                    aria-invalid={!!pathogenRowErrors[idx]?.spec}
-                  >
-                    <option value="">{/* placeholder */}-- Select --</option>
-                    <option value="Absent">Absent</option>
-                    <option value="Present">Present</option>
-                  </select>
-                  {pathogenRowErrors[idx]?.spec && (
-                    <div className="mt-1 text-[11px] text-red-600">
-                      {pathogenRowErrors[idx]?.spec}
-                    </div>
-                  )}
-                </div>
+          <div className="border border-black">
+            <div className="grid grid-cols-2 border-b border-black font-semibold">
+              <div className="px-2 py-1 border-r border-black font-bold items-center text-center">
+                Volume of Final Product
               </div>
-            );
-          })}
+              <div className="px-2 py-1 font-bold items-center text-center">
+                Volume used for Each Sample
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 border-b border-black items-center text-center">
+              <div className="px-2 py-1 border-r border-black">&lt; 1 ml</div>
+              <div className="px-2 py-1">Entire Unit</div>
+            </div>
+
+            <div className="grid grid-cols-2 border-b border-black items-center text-center">
+              <div className="px-2 py-1 border-r border-black">1-40 ml</div>
+              <div className="px-2 py-1">50% of Volume but NLT 1 ml</div>
+            </div>
+
+            <div className="grid grid-cols-2 border-b border-black items-center text-center">
+              <div className="px-2 py-1 border-r border-black">41-100 ml</div>
+              <div className="px-2 py-1">20 ml</div>
+            </div>
+
+            <div className="grid grid-cols-2 items-center text-center">
+              <div className="px-2 py-1 border-r border-black">&gt; 100 ml</div>
+              <div className="px-2 py-1">10% of volume but at least 20 ml</div>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <div>
+              The Fluid Thioglycollate Medium (FTM) tests for Anaerobic
+              Bacteria, but will also grow Aerobic Bacteria is incubated for 14
+              days at 32.5 ± 2.5°C.
+            </div>
+
+            <div>
+              The Soybean Casein Digest Medium (SCDM) tests for Aerobic Bacteria
+              and Fungi is incubated for 14 days at 22.5
+            </div>
+
+            <div>
+              No Growth was observed in the Negative Control. Growth was
+              observed in the Positive Control.
+            </div>
+
+            <div className="font-semibold">
+              Abbreviations (+) <span className="underline">Growth</span> (-) No
+              Growth (P) Pass F (Fail) NI (Not Interpreted)
+            </div>
+          </div>
         </div>
 
         {/* Legends / Comments */}
@@ -2860,48 +2025,48 @@ export default function MicroMixReportForm({
       <div className="no-print mt-4 flex items-center justify-between">
         {/* Left: status action buttons */}
         <div className="flex flex-wrap gap-2">
-          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-            (targetStatus: ReportStatus) => {
-              if (
-                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                  role!,
-                ) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
+          {STERILITY_STATUS_TRANSITIONS[
+            status as SterilityReportStatus
+          ]?.next.map((targetStatus: SterilityReportStatus) => {
+            if (
+              STERILITY_STATUS_TRANSITIONS[
+                status as SterilityReportStatus
+              ].canSet.includes(role!) &&
+              statusButtons[targetStatus]
+            ) {
+              const { label, color } = statusButtons[targetStatus];
 
-                const approveNeedsAttachment = isApproveAction(targetStatus);
-                const disableApproveForNoAttachment =
-                  approveNeedsAttachment && !hasAttachment;
+              const approveNeedsAttachment = isApproveAction(targetStatus);
+              const disableApproveForNoAttachment =
+                approveNeedsAttachment && !hasAttachment;
 
-                const disabled =
-                  role === "SYSTEMADMIN" ||
-                  isBusy ||
-                  attachmentsLoading ||
-                  disableApproveForNoAttachment;
+              const disabled =
+                role === "SYSTEMADMIN" ||
+                isBusy ||
+                attachmentsLoading ||
+                disableApproveForNoAttachment;
 
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={disabled}
-                    title={
-                      disableApproveForNoAttachment
-                        ? "Upload at least 1 attachment to enable Approve"
-                        : undefined
-                    }
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {attachmentsLoading && label === "Approve"
-                      ? "Checking..."
-                      : label}
-                  </button>
-                );
-              }
-              return null;
-            },
-          )}
+              return (
+                <button
+                  key={targetStatus}
+                  className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                  onClick={() => requestStatusChange(targetStatus)}
+                  disabled={disabled}
+                  title={
+                    disableApproveForNoAttachment
+                      ? "Upload at least 1 attachment to enable Approve"
+                      : undefined
+                  }
+                >
+                  {busy === "STATUS" && <Spinner />}
+                  {attachmentsLoading && label === "Approve"
+                    ? "Checking..."
+                    : label}
+                </button>
+              );
+            }
+            return null;
+          })}
         </div>
       </div>
       {showESign && (
@@ -3182,45 +2347,6 @@ export default function MicroMixReportForm({
                 </div>
               ))
             )}
-          </div>
-        </div>
-      )}
-
-      {showAddSpec && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-base font-semibold mb-2">Add specification</h3>
-            <p className="text-xs mb-3 text-slate-600">
-              Add a new value to the dropdown.
-            </p>
-
-            <input
-              autoFocus
-              value={newSpecValue}
-              onChange={(e) => setNewSpecValue(e.target.value)}
-              placeholder='Example: "<500 "'
-              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded-lg border px-3 py-1.5 text-sm"
-                onClick={() => {
-                  setShowAddSpec(false);
-                  setSpecTarget(null);
-                  setNewSpecValue("");
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={!newSpecValue.trim()}
-                onClick={saveCustomSpec}
-              >
-                Add
-              </button>
-            </div>
           </div>
         </div>
       )}

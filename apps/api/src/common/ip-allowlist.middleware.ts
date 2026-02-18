@@ -13,10 +13,17 @@ function getClientIp(req: any) {
 function normalizeIp(ipRaw: string) {
   let ip = (ipRaw || '').trim();
 
+<<<<<<< HEAD
   // ::ffff:1.2.3.4 -> 1.2.3.4
   if (ip.startsWith('::ffff:')) ip = ip.slice(7);
 
   // remove zone index if present
+=======
+  // Express sometimes returns ::ffff:1.2.3.4
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+
+  // Sometimes you’ll see IPv6 zone index like fe80::1%lo0 (rare here)
+>>>>>>> unlocal
   if (ip.includes('%')) ip = ip.split('%')[0];
 
   return ip;
@@ -37,6 +44,7 @@ export class IpAllowlistMiddleware implements NestMiddleware {
     const raw = getClientIp(req);
     const ip = normalizeIp(raw);
 
+<<<<<<< HEAD
     // ✅ LOCAL DEV BYPASS: allow localhost (remove if you don’t want)
     // const nodeEnv = process.env.NODE_ENV || 'development';
     // if (nodeEnv !== 'production' && (ip === '127.0.0.1' || ip === '::1')) {
@@ -44,6 +52,19 @@ export class IpAllowlistMiddleware implements NestMiddleware {
     // }
 
     // ✅ If IPv6 (real), block (your current rule)
+=======
+    // ✅ Helpful debug (temporarily)
+    console.log('[IP_CHECK]', {
+      raw,
+      ip,
+      cf: req.headers['cf-connecting-ip'],
+      xff: req.headers['x-forwarded-for'],
+      reqIp: req.ip,
+    });
+
+    // If you truly want ONLY IPv4, block anything else,
+    // but don’t accidentally block ::ffff:IPv4
+>>>>>>> unlocal
     if (!isValidIpv4(ip)) {
       throw new ForbiddenException({
         code: 'IP_NOT_IPV4',
@@ -57,7 +78,11 @@ export class IpAllowlistMiddleware implements NestMiddleware {
       .filter(Boolean);
 
     if (!allow.includes(ip)) {
+<<<<<<< HEAD
       console.warn('[IP_ALLOWLIST_BLOCKED]', { ip, allow, raw });
+=======
+      console.warn('[IP_ALLOWLIST_BLOCKED]', { ip, allow });
+>>>>>>> unlocal
       throw new ForbiddenException({
         code: 'IP_NOT_ALLOWED',
         message: `Access restricted: ${ip} not in allowlist.`,
