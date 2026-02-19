@@ -1,3 +1,5 @@
+import React, { useLayoutEffect, useRef } from "react";
+
 // src/permissions/reportWorkflow.ts
 export type Role =
   | "SYSTEMADMIN"
@@ -344,4 +346,100 @@ export function splitDateInitial(value?: string) {
 export function joinDateInitial(date: string, initial: string) {
   if (!date && !initial) return "";
   return `${date || ""} / ${initial || ""}`.trim();
+}
+
+function cellFontClass(v: string | undefined | null) {
+  const n = (v ?? "").trim().length;
+  if (n > 45) return "text-[9px]";
+  if (n > 24) return "text-[10px]";
+  return "text-[11px]";
+}
+
+function clampTo3Lines(el: HTMLTextAreaElement) {
+  // reset then measure
+  el.style.height = "0px";
+
+  const cs = window.getComputedStyle(el);
+  const lineH = Number.parseFloat(cs.lineHeight || "12");
+  const padTop = Number.parseFloat(cs.paddingTop || "0");
+  const padBot = Number.parseFloat(cs.paddingBottom || "0");
+  const maxH = lineH * 3 + padTop + padBot; // ✅ 3 lines max
+
+  const next = Math.min(el.scrollHeight, maxH);
+  el.style.height = `${next}px`;
+  el.style.overflowY = "hidden";
+}
+
+// ...existing code...
+// export function CellTextarea(props: {
+//   value: string;
+//   onChange: (v: string) => void;
+//   readOnly?: boolean;
+//   className?: string;
+// }) {
+//   const { value, onChange, readOnly, className } = props;
+
+//   return (
+//     // Changed from <textarea> to React.createElement('textarea', ...)
+//     React.createElement("textarea", {
+//       rows: 1,
+//       value: value ?? "",
+//       readOnly: readOnly,
+//       onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+//         onChange(e.target.value),
+//       onInput: (e: React.FormEvent<HTMLTextAreaElement>) =>
+//         clampTo3Lines(e.currentTarget),
+//       ref: (el: HTMLTextAreaElement | null) => {
+//         if (el) clampTo3Lines(el);
+//       },
+//       className: [
+//         "w-full resize-none border-none outline-none bg-transparent",
+//         "text-center leading-tight whitespace-pre-wrap break-words",
+//         cellFontClass(value),
+//         className ?? "",
+//       ].join(" "),
+//     })
+//   );
+// }
+
+export function CellTextarea(props: {
+  value: string;
+  onChange?: (v: string) => void;
+  readOnly?: boolean;
+  className?: string;
+}) {
+  const { value, onChange, readOnly, className } = props;
+
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useLayoutEffect(() => {
+    resize();
+  }, [value]);
+
+  return React.createElement("textarea", {
+    ref: (el: HTMLTextAreaElement | null) => {
+      ref.current = el;
+      if (el) resize();
+    },
+    rows: 1,
+    value: value ?? "",
+    readOnly: !!readOnly,
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+      onChange?.(e.target.value),
+    onInput: () => resize(),
+    className: [
+      "w-full resize-none border-none outline-none bg-transparent",
+      "leading-tight whitespace-pre-wrap break-words",
+      "overflow-hidden",
+      "text-center",
+      className ?? "",
+    ].join(" "),
+  });
 }
