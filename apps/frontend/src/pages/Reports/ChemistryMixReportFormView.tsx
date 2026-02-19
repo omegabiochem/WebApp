@@ -264,25 +264,6 @@ type SampleTypeKey =
   | "DI_WATER_SAMPLE"
   | "STABILITY";
 
-// Above component body (or inside, before return)
-// const sampleTypeColumns: [SampleTypeKey, string][][] = [
-//   [
-//     ["BULK", "BULK"],
-//     ["FINISHED_GOOD", "FINISHED GOOD"],
-//   ],
-//   [
-//     ["RAW_MATERIAL", "RAW MATERIAL"],
-//     ["COMPOSITE", "COMPOSITE"],
-//   ],
-//   [
-//     ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
-//     ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-//   ],
-//   [
-//     ["STABILITY", "STABILITY"], // ✅ add this column/row wherever you want
-//   ],
-// ];
-
 const sampleTypeItems: [SampleTypeKey, string][] = [
   ["BULK", "BULK"],
   ["FINISHED_GOOD", "FINISHED GOOD"],
@@ -293,6 +274,47 @@ const sampleTypeItems: [SampleTypeKey, string][] = [
   ["STABILITY", "STABILITY"],
 ];
 
+// const PrintStyles = () => (
+//   <style>{`
+//     @media print {
+//       @page { size: A4 portrait; margin: 6mm 10mm 12mm 6mm; }
+
+//       html, body { margin: 0 !important; padding: 0 !important; }
+//       .no-print { display: none !important; }
+
+//       .sheet {
+//         width: 100% !important;
+//         box-shadow: none !important;
+//         border: none !important;
+//         padding: 0 !important;
+//         max-height: none !important;
+//         overflow: visible !important;
+//       }
+
+//       .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
+//       .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
+//         .actives-reserve {
+//         min-height: 130px;  /* tune this */
+//       }
+
+//       .tight-row { line-height: 1.1 !important; }
+
+//       .print-center {
+//     display: grid !important;
+//     align-items: center !important;
+//   }
+
+//       img, svg {
+//         -webkit-print-color-adjust: exact;
+//         print-color-adjust: exact;
+//       }
+
+//       /* If we ever render QR as <img>, keep it crisp */
+//       img { image-rendering: pixelated; image-rendering: crisp-edges; }
+//     }
+//   `}</style>
+// );
+
 const PrintStyles = () => (
   <style>{`
     @media print {
@@ -301,6 +323,7 @@ const PrintStyles = () => (
       html, body { margin: 0 !important; padding: 0 !important; }
       .no-print { display: none !important; }
 
+      /* ✅ Make the whole page a flex column with A4 content height */
       .sheet {
         width: 100% !important;
         box-shadow: none !important;
@@ -308,26 +331,64 @@ const PrintStyles = () => (
         padding: 0 !important;
         max-height: none !important;
         overflow: visible !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+
+        /* A4 height 297mm - (top 6mm + bottom 12mm) = 279mm */
+        min-height: 279mm !important;
       }
 
-      .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
-      .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
+      /* ✅ Reserve some space for the actives area (optional, keep) */
+      .actives-reserve {
+        min-height: 130px; /* tune if you want */
+      }
 
-      .tight-row { line-height: 1.1 !important; }
-
-      .print-center {
-    display: grid !important;
-    align-items: center !important;
-  }
+      /* ✅ Push footer to the bottom of the page */
+      .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
 
       img, svg {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
 
-      /* If we ever render QR as <img>, keep it crisp */
       img { image-rendering: pixelated; image-rendering: crisp-edges; }
     }
+  `}</style>
+);
+
+const ClampStyles = () => (
+  <style>{`
+    :root { --row-h: 17.45px; } /* adjust if needed */
+
+    .cell-wrap {
+      height: var(--row-h);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      overflow: hidden;
+    }
+
+    .clamp-3 {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+      line-height: 0.58;
+      text-align: center;
+      white-space: normal;
+      word-break: break-word;
+      width: 100%;
+    }
+
+   .fs-9 { font-size: 8px; }
+.fs-8 { font-size: 7.5px; }
+.fs-7 { font-size: 7px; }
   `}</style>
 );
 
@@ -439,6 +500,12 @@ export default function ChemistryMixReportFormView(
 
   const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
 
+  const HIDE_SIGNATURES_FOR = new Set(["DRAFT", "SUBMITTED_BY_CLIENT"]);
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status);
+
+  const allActives = (report?.actives || DEFAULT_CHEM_ACTIVES) as any[];
+  const checkedActives = allActives.filter((r) => r.checked);
+
   return (
     <div
       className={
@@ -450,6 +517,7 @@ export default function ChemistryMixReportFormView(
       {/* only inject styles when NOT bulk-printing from dashboard */}
       {!isBulk && <PrintStyles />}
       {!isBulk && <BlurStyles />}
+      {!isBulk && <ClampStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -778,8 +846,9 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-          <div className="mt-0.5 border border-black text-[11px]">
-            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-bold text-center border-b border-black">
+          {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
+          <div className="actives-reserve mt-7 border border-black text-[11px] ">
+            <div className="grid grid-cols-[25%_15%_13%_20%_12%_15%] font-bold text-center border-b border-black">
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
@@ -795,190 +864,171 @@ export default function ChemistryMixReportFormView(
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 RESULTS
               </div>
-              <div className="p-0.5 whitespace-nowrap h-full flex items-center justify-center">
+              <div className="p-0.5 h-full flex items-center justify-center">
                 DATE TESTED / INITIAL
               </div>
             </div>
 
-            {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
-              <div
-                key={row.key}
-                className="grid grid-cols-[25%_15%_11%_14%_15%_20%] border-b last:border-b-0 border-black"
-              >
-                {/* active name + checkbox */}
-                {/* <div className="flex items-center gap-2 border-r border-black px-1 ">
-                  <input
-                    type="checkbox"
-                    className="thick-box2"
-                    checked={row.checked}
-                    readOnly
-                    disabled
-                  />
-                  <span>{row.label}</span>
-                </div> */}
-
-                {/* active name + checkbox (VIEW MODE FIX) */}
-                <div className="flex items-center gap-2 border-r border-black px-1">
-                  <input
-                    type="checkbox"
-                    className="thick-box2"
-                    checked={row.checked}
-                    readOnly
-                    disabled
-                  />
-
-                  <div className="flex-1 leading-tight">
-                    {row.key === "OTHER" || row.key.startsWith("OTHER_") ? (
-                      row.checked ? (
-                        <span>
-                          {row.otherName?.trim() ||
-                            (row.key === "OTHER" ? "OTHER" : "OTHER 2")}
-                        </span>
-                      ) : (
-                        <span>{row.key === "OTHER" ? "OTHER" : "OTHER 2"}</span>
-                      )
-                    ) : (
-                      <span>{row.label}</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* BULK ACTIVE LOT # */}
-                <div className="border-r border-black px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    value={row.bulkActiveLot}
-                    readOnly
-                    disabled
-                  />
-                </div>
-
-                {/* SOP # */}
-                <div className="border-r border-black px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    value={row.sopNo}
-                    readOnly
-                    disabled
-                  />
-                </div>
-
-                {/* formula content % */}
-                <div className="border-r border-black px-1 flex items-center">
-                  <div className="flex w-full items-center gap-1 whitespace-nowrap">
-                    <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
-                      value={row.formulaContent}
-                      readOnly
-                      disabled
-                    />
-                    {row.showPercent !== false && (
-                      <span className="shrink-0">%</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* result % */}
-                <div className="border-r border-black px-1 flex items-center">
-                  <div className="flex w-full items-center gap-1 whitespace-nowrap">
-                    <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
-                      value={row.result}
-                      readOnly
-                      disabled
-                    />
-                    {row.showPercent !== false && (
-                      <span className="shrink-0">%</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* date tested / initials */}
-                <div className="px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    placeholder="MM/DD/YYYY / AB"
-                    value={row.dateTestedInitial}
-                    readOnly
-                    disabled
-                  />
-                </div>
+            {/* ✅ show only selected actives */}
+            {checkedActives.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-slate-600">
+                No actives were selected for testing.
               </div>
-            ))}
+            ) : (
+              checkedActives.map((row: any) => {
+                // ✅ In view mode, allow unlimited lines: no fixed height, no clamp
+                const cellText = (v: any) => String(v ?? "");
+
+                return (
+                  <div
+                    key={row.key}
+                    className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] border-b last:border-b-0 border-black"
+                  >
+                    {/* ACTIVE NAME + checkbox */}
+                    <div className="flex items-start gap-2 border-r border-black px-1 py-1">
+                      <input
+                        type="checkbox"
+                        className="thick-box2 mt-[2px]"
+                        checked={true}
+                        readOnly
+                        disabled
+                      />
+
+                      <div className="flex-1 leading-tight whitespace-pre-wrap break-words">
+                        {row.key === "OTHER" || row.key.startsWith("OTHER_")
+                          ? row.otherName?.trim() ||
+                            (row.key === "OTHER" ? "OTHER" : "OTHER 2")
+                          : row.label}
+                      </div>
+                    </div>
+
+                    {/* BULK ACTIVE LOT # */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.bulkActiveLot)}
+                      </div>
+                    </div>
+
+                    {/* SOP # */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.sopNo)}
+                      </div>
+                    </div>
+
+                    {/* FORMULA CONTENT */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.formulaContent)}
+                      </div>
+                    </div>
+
+                    {/* RESULTS */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.result)}
+                      </div>
+                    </div>
+
+                    {/* DATE TESTED / INITIAL */}
+                    <div className="px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.dateTestedInitial)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           {/* NOTE line (you can make this static text) */}
-          <div className="mt-1 text-[10px]">
+          <div className="mt-4 text-[10px]">
             NOTE : Turn Over time is at least 1 week. Biochem, Inc is not
             responsible for the release of any product not in the Biochem
             stability program.
           </div>
 
           {/* Comments + signatures */}
-          <div className="mt- text-[12px]">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-medium">Comments :</span>
-              <input
-                className="flex-1 border-0 border-b border-black/60 outline-none"
-                value={report?.comments || ""}
-                readOnly
-                disabled
-              />
-            </div>
+          <div className="mt-2 text-[12px]">
+            <div className="flex items-start gap-2">
+              <span className="font-medium mt-[2px] whitespace-nowrap">
+                Comments :
+              </span>
 
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-medium">VERIFIED BY :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    value={report?.testedBy || ""}
-                    readOnly
-                    disabled
-                  />
+              <div className="flex-1 relative">
+                {/* Always show 2 base lines */}
+                <div className="min-h-[36px] border-b border-black/60 relative">
+                  {/* Dynamic extra lines (auto-grow) */}
+                  {report?.comments && (
+                    <div className="whitespace-pre-wrap break-words leading-[16px] pb-1">
+                      {report.comments}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">DATE :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    type="date"
-                    value={formatDateForInput(report?.testedDate) || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
-              </div>
 
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-medium">REVIEWED BY :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    value={report?.reviewedBy || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">DATE :</span>
-                  <input
-                    className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                      shouldBlurSignatures ? "blur-field" : ""
-                    }`}
-                    type="date"
-                    value={formatDateForInput(report?.reviewedDate) || ""}
-                    readOnly
-                    disabled
-                  />
-                </div>
+                {/* Second fixed underline */}
+                {/* <div className="border-b border-black/60 mt-1" /> */}
               </div>
             </div>
+
+            {showSignatures && (
+              <>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-medium">VERIFIED BY :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        value={report?.testedBy || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">DATE :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        type="date"
+                        value={formatDateForInput(report?.testedDate) || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-medium">REVIEWED BY :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        value={report?.reviewedBy || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">DATE :</span>
+                      <input
+                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          shouldBlurSignatures ? "blur-field" : ""
+                        }`}
+                        type="date"
+                        value={formatDateForInput(report?.reviewedDate) || ""}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Footer: Report ID + QR */}

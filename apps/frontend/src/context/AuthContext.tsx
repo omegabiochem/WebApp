@@ -12,9 +12,20 @@ import { setToken as storeToken, clearToken, getToken, api } from "../lib/api";
 import type { Role } from "../utils/roles";
 import { socket } from "../lib/socket";
 
+// type User = {
+//   id: string;
+//   email: string;
+//   role: Role;
+//   name?: string;
+//   mustChangePassword?: boolean;
+//   clientCode?: string;
+// } | null;
+
 type User = {
-  id: string;
-  email: string;
+  userId?: string;
+  sub?: string;
+  uid?: string;
+  email?: string;
   role: Role;
   name?: string;
   mustChangePassword?: boolean;
@@ -115,9 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
-      events.forEach((e) =>
-        window.removeEventListener(e, onActivity as any),
-      );
+      events.forEach((e) => window.removeEventListener(e, onActivity as any));
     };
   }, [token, scheduleIdleLogout]);
 
@@ -209,7 +218,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(Ctx);
-
 
 // import {
 //   createContext,

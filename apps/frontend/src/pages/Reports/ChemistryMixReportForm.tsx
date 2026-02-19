@@ -14,6 +14,7 @@ import {
   type ChemistryMixReportFormValues,
 } from "../../utils/chemistryReportValidation";
 import {
+  CellTextarea,
   FIELD_EDIT_MAP,
   joinDateInitial,
   splitDateInitial,
@@ -211,6 +212,11 @@ export default function ChemistryMixReportForm({
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
 
+  const isSubmissionForm =
+    status === "DRAFT" || status === "SUBMITTED_BY_CLIENT";
+
+  const isReportView = !isSubmissionForm;
+
   const markDirty = () => !isDirty && setIsDirty(true);
   useConfirmOnLeave(isDirty);
 
@@ -266,6 +272,7 @@ export default function ChemistryMixReportForm({
   const [numberOfActives, setNumberOfActives] = useState(
     report?.numberOfActives || "",
   );
+
   const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
 
   // sample type checkboxes
@@ -308,6 +315,11 @@ export default function ChemistryMixReportForm({
   const [actives, setActives] = useState<ChemActiveRow[]>(
     report?.actives || DEFAULT_CHEM_ACTIVES,
   );
+
+  const activesToRender = useMemo(() => {
+    if (isSubmissionForm) return actives; // show all rows
+    return actives.filter((r) => r.checked); // report → only selected
+  }, [actives, isSubmissionForm]);
 
   // const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
   //   setActives((prev) => {
@@ -1119,6 +1131,14 @@ export default function ChemistryMixReportForm({
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
+  const HIDE_SIGNATURES_FOR = new Set<ChemistryReportStatus>([
+    "DRAFT",
+    "SUBMITTED_BY_CLIENT",
+  ]);
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(
+    status as ChemistryReportStatus,
+  );
+
   // ---------------- RENDER ----------------
   return (
     <>
@@ -1773,7 +1793,7 @@ export default function ChemistryMixReportForm({
             </div>
           )}
 
-          <div className="grid grid-cols-[23%_15%_12%_14%_16%_20%] font-semibold text-center border-b border-black min-h-[24px]">
+          <div className="grid grid-cols-[25%_15%_13%_19%_12%_16%] font-semibold text-center border-b border-black min-h-[24px]">
             <div className="p-1 border-r border-black h-full flex items-center justify-center">
               ACTIVE TO BE TESTED
             </div>
@@ -1794,55 +1814,62 @@ export default function ChemistryMixReportForm({
             </div>
           </div>
 
-          {actives.map((row, idx) => {
-            const rowErr = activeRowErrors[idx] || {};
-            const showRowRing = !!(
-              rowErr.formulaContent ||
-              rowErr.bulkActiveLot ||
-              rowErr.sopNo ||
-              rowErr.result ||
-              rowErr.dateTestedInitial
-            );
+          {isReportView && activesToRender.length === 0 ? (
+            <div className="px-2 py-2 text-[11px] text-slate-600">
+              No actives were selected for testing.
+            </div>
+          ) : (
+            activesToRender.map((row) => {
+              const idx = actives.findIndex((r) => r.key === row.key);
+              const rowErr = activeRowErrors[idx] || {};
+              const showRowRing = !!(
+                rowErr.formulaContent ||
+                rowErr.bulkActiveLot ||
+                rowErr.sopNo ||
+                rowErr.result ||
+                rowErr.dateTestedInitial
+              );
 
-            const inputErrClass = (hasErr?: boolean) =>
-              hasErr ? "ring-1 ring-red-500" : "";
+              const inputErrClass = (hasErr?: boolean) =>
+                hasErr ? "ring-1 ring-red-500" : "";
 
-            // keys
-            const rk = activeRowKey(row.key);
-            const kChecked = activeCellKey(row.key, "checked");
-            const kBulkActiveLot = activeCellKey(row.key, "bulkActiveLot");
-            const kSop = activeCellKey(row.key, "sopNo");
-            const kFormula = activeCellKey(row.key, "formulaContent");
-            const kResult = activeCellKey(row.key, "result");
-            // const kDateInit = activeCellKey(row.key, "dateTestedInitial");
-            const { date, initial } = splitDateInitial(row.dateTestedInitial);
+              // keys
+              const rk = activeRowKey(row.key);
+              const kChecked = activeCellKey(row.key, "checked");
+              const kBulkActiveLot = activeCellKey(row.key, "bulkActiveLot");
+              const kSop = activeCellKey(row.key, "sopNo");
+              const kFormula = activeCellKey(row.key, "formulaContent");
+              const kResult = activeCellKey(row.key, "result");
+              // const kDateInit = activeCellKey(row.key, "dateTestedInitial");
+              const { date, initial } = splitDateInitial(row.dateTestedInitial);
 
-            const isOther = row.key === "OTHER" || row.key.startsWith("OTHER_");
-            const showPct = row.showPercent !== false;
+              const isOther =
+                row.key === "OTHER" || row.key.startsWith("OTHER_");
+              // const showPct = row.showPercent !== false;
 
-            return (
-              <div
-                key={row.key}
-                className={`grid grid-cols-[23%_15%_12%_14%_16%_20%] border-b last:border-b-0 border-black relative ${
-                  showRowRing ? "ring-1 ring-red-500" : ""
-                } `}
-                // ✅ click anywhere on row (optional) adds correction to whole row
-                onClick={(e) => {
-                  if (!selectingCorrections) return;
-                  e.stopPropagation();
-                  pickCorrection(rk);
-                }}
-                title={
-                  selectingCorrections
-                    ? "Click to add correction for this row"
-                    : undefined
-                }
-              >
-                {/* ✅ Resolve all corrections in the whole row */}
-                {/* <ResolveOverlay field={rk} /> */}
+              return (
+                <div
+                  key={row.key}
+                  className={`grid grid-cols-[25%_15%_13%_19%_12%_16%] border-b last:border-b-0 border-black relative ${
+                    showRowRing ? "ring-1 ring-red-500" : ""
+                  } `}
+                  // ✅ click anywhere on row (optional) adds correction to whole row
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(rk);
+                  }}
+                  title={
+                    selectingCorrections
+                      ? "Click to add correction for this row"
+                      : undefined
+                  }
+                >
+                  {/* ✅ Resolve all corrections in the whole row */}
+                  {/* <ResolveOverlay field={rk} /> */}
 
-                {/* ACTIVE + checkbox */}
-                {/* <div
+                  {/* ACTIVE + checkbox */}
+                  {/* <div
                   className={`flex items-center gap-2 border-r border-black px-1 relative ${dashClass(
                     kChecked,
                   )}`}
@@ -1875,258 +1902,257 @@ export default function ChemistryMixReportForm({
                   <span>{row.label}</span>
                 </div> */}
 
-                {/* ACTIVE + checkbox */}
-                {/* ACTIVE + checkbox (COMPLETE FIXED) */}
-                <div
-                  className={`flex items-start gap-2 border-r border-black px-1 relative ${dashClass(
-                    kChecked,
-                  )}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kChecked);
-                  }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  <ResolveOverlay field={kChecked} />
-
-                  {/* checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={row.checked}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-
-                      // your existing helper
-                      setActiveChecked(idx, checked);
-
-                      // ✅ If OTHER unchecked -> clear input
-                      const isOther =
-                        row.key === "OTHER" || row.key.startsWith("OTHER_");
-
-                      if (isOther && !checked) {
-                        setActiveField(idx, { otherName: "" });
-                      }
+                  {/* ACTIVE + checkbox */}
+                  {/* ACTIVE + checkbox (COMPLETE FIXED) */}
+                  <div
+                    className={`flex items-start gap-2 border-r border-black px-1 relative ${dashClass(
+                      kChecked,
+                    )}`}
+                    onClick={(e) => {
+                      if (!selectingCorrections) return;
+                      e.stopPropagation();
+                      pickCorrection(kChecked);
                     }}
-                    disabled={
-                      lock("actives") ||
-                      role !== "CLIENT" ||
+                    title={
                       selectingCorrections
+                        ? "Click to add correction"
+                        : undefined
                     }
-                    className={
-                      lock("actives") || role !== "CLIENT"
-                        ? "accent-black"
-                        : "accent-blue-600"
-                    }
-                  />
+                  >
+                    <ResolveOverlay field={kChecked} />
 
-                  {/* label + other input */}
-                  <div className="flex-1">
-                    {isOther ? (
-                      <>
-                        {/* Optional: show OTHER / OTHER 2 label when unchecked */}
-                        {!row.checked && (
-                          <div className="leading-tight">
-                            {row.key === "OTHER" ? "OTHER" : "OTHER 2"}
-                          </div>
-                        )}
+                    {/* checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={row.checked}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
 
-                        {row.checked && (
-                          <input
-                            className="mt-1 w-full border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
-                            placeholder="Enter active name"
-                            value={row.otherName ?? ""}
-                            readOnly={
-                              lock("actives") ||
-                              role !== "CLIENT" ||
-                              selectingCorrections
-                            }
-                            onChange={(e) => {
-                              if (
+                        // your existing helper
+                        setActiveChecked(idx, checked);
+
+                        // ✅ If OTHER unchecked -> clear input
+                        const isOther =
+                          row.key === "OTHER" || row.key.startsWith("OTHER_");
+
+                        if (isOther && !checked) {
+                          setActiveField(idx, { otherName: "" });
+                        }
+                      }}
+                      disabled={
+                        lock("actives") ||
+                        role !== "CLIENT" ||
+                        selectingCorrections
+                      }
+                      className={
+                        lock("actives") || role !== "CLIENT"
+                          ? "accent-black"
+                          : "accent-blue-600"
+                      }
+                    />
+
+                    {/* label + other input */}
+                    <div className="flex-1">
+                      {isOther ? (
+                        <>
+                          {/* Optional: show OTHER / OTHER 2 label when unchecked */}
+                          {!row.checked && (
+                            <div className="leading-tight">
+                              {row.key === "OTHER" ? "OTHER" : "OTHER 2"}
+                            </div>
+                          )}
+
+                          {row.checked && (
+                            <input
+                              className="mt-1 w-full border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
+                              placeholder="Enter active name"
+                              value={row.otherName ?? ""}
+                              readOnly={
                                 lock("actives") ||
                                 role !== "CLIENT" ||
                                 selectingCorrections
-                              )
-                                return;
-                              setActiveField(idx, {
-                                otherName: e.target.value,
-                              });
-                            }}
-                          />
-                        )}
-                      </>
-                    ) : (
-                      <div className="leading-tight">{row.label}</div>
-                    )}
+                              }
+                              onChange={(e) => {
+                                if (
+                                  lock("actives") ||
+                                  role !== "CLIENT" ||
+                                  selectingCorrections
+                                )
+                                  return;
+                                setActiveField(idx, {
+                                  otherName: e.target.value,
+                                });
+                              }}
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <div className="leading-tight">{row.label}</div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* BULK ACTIVE LOT # */}
+                  {/* BULK ACTIVE LOT # */}
 
-                <div
-                  className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.bulkActiveLot,
-                  )} ${dashClass(kBulkActiveLot)} ${corrCursor}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kBulkActiveLot);
-                  }}
-                >
-                  <ResolveOverlay field={kBulkActiveLot} />
+                  <div
+                    className={`border-r border-black px-1 relative ${inputErrClass(
+                      !!rowErr.bulkActiveLot,
+                    )} ${dashClass(kBulkActiveLot)} ${corrCursor}`}
+                    onClick={(e) => {
+                      if (!selectingCorrections) return;
+                      e.stopPropagation();
+                      pickCorrection(kBulkActiveLot);
+                    }}
+                  >
+                    <ResolveOverlay field={kBulkActiveLot} />
 
-                  <input
-                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
-                    value={row.bulkActiveLot}
-                    readOnly={
-                      lock("actives") ||
-                      role !== "CLIENT" ||
-                      selectingCorrections
-                    }
-                    onChange={(e) => {
-                      if (
+                    <CellTextarea
+                      value={row.bulkActiveLot ?? ""}
+                      readOnly={
                         lock("actives") ||
                         role !== "CLIENT" ||
                         selectingCorrections
-                      )
-                        return;
-                      setActiveField(idx, { bulkActiveLot: e.target.value });
-                    }}
-                  />
+                      }
+                      onChange={(v) => {
+                        if (
+                          lock("actives") ||
+                          role !== "CLIENT" ||
+                          selectingCorrections
+                        )
+                          return;
+                        setActiveField(idx, { bulkActiveLot: v });
+                      }}
+                    />
 
-                  {/* <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
+                    {/* <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
                     %
                   </span> */}
-                </div>
+                  </div>
 
-                {/* SOP # */}
-                <div
-                  className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.sopNo,
-                  )} ${dashClass(kSop)} ${corrCursor}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kSop);
-                  }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  <ResolveOverlay field={kSop} />
-
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    value={row.sopNo}
-                    readOnly={
-                      lock("actives") ||
-                      role === "CLIENT" ||
+                  {/* SOP # */}
+                  <div
+                    className={`border-r border-black px-1 relative ${inputErrClass(
+                      !!rowErr.sopNo,
+                    )} ${dashClass(kSop)} ${corrCursor}`}
+                    onClick={(e) => {
+                      if (!selectingCorrections) return;
+                      e.stopPropagation();
+                      pickCorrection(kSop);
+                    }}
+                    title={
                       selectingCorrections
+                        ? "Click to add correction"
+                        : undefined
                     }
-                    onChange={(e) => {
-                      if (
+                  >
+                    <ResolveOverlay field={kSop} />
+                    <CellTextarea
+                      value={row.sopNo ?? ""}
+                      readOnly={
                         lock("actives") ||
                         role === "CLIENT" ||
                         selectingCorrections
-                      )
-                        return;
-                      setActiveField(idx, { sopNo: e.target.value });
+                      }
+                      onChange={(v) => {
+                        if (
+                          lock("actives") ||
+                          role === "CLIENT" ||
+                          selectingCorrections
+                        )
+                          return;
+                        setActiveField(idx, { sopNo: v });
+                      }}
+                    />
+                  </div>
+
+                  {/* FORMULA CONTENT */}
+                  <div
+                    className={`border-r border-black px-1 relative ${inputErrClass(
+                      !!rowErr.formulaContent,
+                    )} ${dashClass(kFormula)} ${corrCursor}`}
+                    onClick={(e) => {
+                      if (!selectingCorrections) return;
+                      e.stopPropagation();
+                      pickCorrection(kFormula);
                     }}
-                  />
-                </div>
+                  >
+                    <ResolveOverlay field={kFormula} />
 
-                {/* FORMULA CONTENT */}
-                <div
-                  className={`border-r border-black px-1 relative ${inputErrClass(
-                    !!rowErr.formulaContent,
-                  )} ${dashClass(kFormula)} ${corrCursor}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kFormula);
-                  }}
-                >
-                  <ResolveOverlay field={kFormula} />
-
-                  <input
-                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
-                    value={row.formulaContent}
-                    readOnly={
-                      lock("actives") ||
-                      role !== "CLIENT" ||
-                      selectingCorrections
-                    }
-                    placeholder={showPct ? "%" : ""}
-                    onChange={(e) => {
-                      if (
+                    <CellTextarea
+                      value={row.formulaContent ?? ""}
+                      readOnly={
                         lock("actives") ||
                         role !== "CLIENT" ||
                         selectingCorrections
-                      )
-                        return;
-                      setActiveField(idx, { formulaContent: e.target.value });
-                    }}
-                  />
+                      }
+                      onChange={(v) => {
+                        if (
+                          lock("actives") ||
+                          role !== "CLIENT" ||
+                          selectingCorrections
+                        )
+                          return;
+                        setActiveField(idx, { formulaContent: v });
+                      }}
+                    />
 
-                  {showPct && (
+                    {/* {showPct && (
                     <span className="absolute right-2 top-1/2 -translate-y-1/2">
                       %
                     </span>
-                  )}
-                </div>
+                  )} */}
+                  </div>
 
-                {/* RESULTS */}
-                <div
-                  className={`border-r border-black px-1  relative ${inputErrClass(
-                    !!rowErr.result,
-                  )} ${dashClass(kResult)}  ${corrCursor}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kResult);
-                  }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  <ResolveOverlay field={kResult} />
-
-                  <input
-                    className="w-full pr-4 border-none outline-none text-[11px] text-center"
-                    value={row.result}
-                    readOnly={
-                      lock("actives") ||
-                      role === "CLIENT" ||
+                  {/* RESULTS */}
+                  <div
+                    className={`border-r border-black px-1  relative ${inputErrClass(
+                      !!rowErr.result,
+                    )} ${dashClass(kResult)}  ${corrCursor}`}
+                    onClick={(e) => {
+                      if (!selectingCorrections) return;
+                      e.stopPropagation();
+                      pickCorrection(kResult);
+                    }}
+                    title={
                       selectingCorrections
+                        ? "Click to add correction"
+                        : undefined
                     }
-                    placeholder={showPct ? "%" : ""}
-                    onChange={(e) => {
-                      if (
+                  >
+                    <ResolveOverlay field={kResult} />
+
+                    <CellTextarea
+                      value={row.result ?? ""}
+                      readOnly={
                         lock("actives") ||
                         role === "CLIENT" ||
                         selectingCorrections
-                      )
-                        return;
-                      setActiveField(idx, { result: e.target.value });
-                    }}
-                  />
+                      }
+                      onChange={(v) => {
+                        if (
+                          lock("actives") ||
+                          role === "CLIENT" ||
+                          selectingCorrections
+                        )
+                          return;
+                        setActiveField(idx, { result: v });
+                      }}
+                    />
 
-                  {showPct && (
+                    {/* {showPct && (
                     <span className="absolute right-2 top-1/2 -translate-y-1/2">
                       %
                     </span>
-                  )}
-                </div>
+                  )} */}
+                  </div>
 
-                {/* DATE TESTED / INITIAL */}
-                <div className="flex items-center  w-full">
-                  {/* 📅 Date picker */}
-                  <div className="relative flex items-center">
+                  {/* DATE TESTED / INITIAL */}
+                  {/* DATE TESTED / INITIAL */}
+                  <div className="px-1 flex items-center gap-1 min-w-0 overflow-hidden">
+                    {/* date takes remaining space */}
                     <input
                       type="date"
-                      className="border-none outline-none text-[11px] pr-1"
+                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
                       value={date}
                       readOnly={
                         lock("actives") ||
@@ -2142,36 +2168,35 @@ export default function ChemistryMixReportForm({
                         })
                       }
                     />
+
+                    <span className="text-[11px] shrink-0">/</span>
+
+                    {/* initials fixed width */}
+                    <input
+                      type="text"
+                      maxLength={3}
+                      placeholder="AB"
+                      className="w-[22px] shrink-0 border-0 border-b border-black/60 bg-transparent text-[11px] text-center outline-none"
+                      value={initial}
+                      readOnly={
+                        lock("actives") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      }
+                      onChange={(e) =>
+                        setActiveField(idx, {
+                          dateTestedInitial: joinDateInitial(
+                            date,
+                            e.target.value.toUpperCase(),
+                          ),
+                        })
+                      }
+                    />
                   </div>
-
-                  {/* slash */}
-                  <span className="text-[11px] px-[2px]">/</span>
-
-                  {/* initials */}
-                  <input
-                    type="text"
-                    maxLength={3}
-                    placeholder="AB"
-                    className="w-[28px] border-0 border-b border-black/60 bg-transparent text-[11px] text-center outline-none"
-                    value={initial}
-                    readOnly={
-                      lock("actives") ||
-                      role === "CLIENT" ||
-                      selectingCorrections
-                    }
-                    onChange={(e) =>
-                      setActiveField(idx, {
-                        dateTestedInitial: joinDateInitial(
-                          date,
-                          e.target.value.toUpperCase(),
-                        ),
-                      })
-                    }
-                  />
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* NOTE line (you can make this static text) */}
@@ -2216,144 +2241,156 @@ export default function ChemistryMixReportForm({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedBy",
-                  )}`}
-                  onClick={corrClick("testedBy")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  VERIFIED BY :
-                  <ResolveOverlay field="testedBy" />
-                </span>
+          {showSignatures && (
+            <>
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "testedBy",
+                      )}`}
+                      onClick={corrClick("testedBy")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      VERIFIED BY :
+                      <ResolveOverlay field="testedBy" />
+                    </span>
 
-                <FieldErrorBadge name="testedBy" errors={errors} />
-                <input
-                  className={inputClass(
-                    "testedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  value={testedBy}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setTestedBy(e.target.value.toUpperCase());
-                    clearError("testedBy");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.testedBy}
-                  readOnly={lock("testedBy")}
-                  placeholder="Name"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "testedDate",
-                  )}`}
-                  onClick={corrClick("testedDate")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  DATE :
-                  <ResolveOverlay field="testedDate" />
-                </span>
-                <FieldErrorBadge name="testedDate" errors={errors} />
-                <input
-                  className={inputClass(
-                    "testedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(testedDate)}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setTestedDate(e.target.value);
-                    clearError("testedDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.testedDate}
-                  readOnly={lock("testedDate")}
-                  placeholder="MM/DD/YYYY"
-                />
-              </div>
-            </div>
+                    <FieldErrorBadge name="testedBy" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "testedBy",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      value={testedBy}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setTestedBy(e.target.value.toUpperCase());
+                        clearError("testedBy");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.testedBy}
+                      readOnly={lock("testedBy")}
+                      placeholder="Name"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "testedDate",
+                      )}`}
+                      onClick={corrClick("testedDate")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      DATE :
+                      <ResolveOverlay field="testedDate" />
+                    </span>
+                    <FieldErrorBadge name="testedDate" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "testedDate",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      type="date"
+                      min={todayISO()}
+                      value={formatDateForInput(testedDate)}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setTestedDate(e.target.value);
+                        clearError("testedDate");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.testedDate}
+                      readOnly={lock("testedDate")}
+                      placeholder="MM/DD/YYYY"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedBy",
-                  )}`}
-                  onClick={corrClick("reviewedBy")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  REVIEWED BY :
-                  <ResolveOverlay field="reviewedBy" />
-                </span>
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "reviewedBy",
+                      )}`}
+                      onClick={corrClick("reviewedBy")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      REVIEWED BY :
+                      <ResolveOverlay field="reviewedBy" />
+                    </span>
 
-                <FieldErrorBadge name="reviewedBy" errors={errors} />
-                <input
-                  className={inputClass(
-                    "reviewedBy",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  value={reviewedBy}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setReviewedBy(e.target.value.toUpperCase());
-                    clearError("reviewedBy");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.reviewedBy}
-                  readOnly={lock("reviewedBy")}
-                  placeholder="Name"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`font-medium ${corrCursor} relative ${dashClass(
-                    "reviewedDate",
-                  )}`}
-                  onClick={corrClick("reviewedDate")}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  REVIEWED DATE :
-                  <ResolveOverlay field="reviewedDate" />
-                </span>
+                    <FieldErrorBadge name="reviewedBy" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "reviewedBy",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      value={reviewedBy}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setReviewedBy(e.target.value.toUpperCase());
+                        clearError("reviewedBy");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.reviewedBy}
+                      readOnly={lock("reviewedBy")}
+                      placeholder="Name"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-medium ${corrCursor} relative ${dashClass(
+                        "reviewedDate",
+                      )}`}
+                      onClick={corrClick("reviewedDate")}
+                      title={
+                        selectingCorrections
+                          ? "Click to add correction"
+                          : undefined
+                      }
+                    >
+                      REVIEWED DATE :
+                      <ResolveOverlay field="reviewedDate" />
+                    </span>
 
-                <FieldErrorBadge name="reviewedDate" errors={errors} />
-                <input
-                  className={inputClass(
-                    "reviewedDate",
-                    "flex-1 border-0 border-b border-black/60 outline-none",
-                  )}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(reviewedDate)}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setReviewedDate(e.target.value);
-                    clearError("reviewedDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.reviewedDate}
-                  readOnly={lock("reviewedDate")}
-                  placeholder="MM/DD/YYYY"
-                />
+                    <FieldErrorBadge name="reviewedDate" errors={errors} />
+                    <input
+                      className={inputClass(
+                        "reviewedDate",
+                        "flex-1 border-0 border-b border-black/60 outline-none",
+                      )}
+                      type="date"
+                      min={todayISO()}
+                      value={formatDateForInput(reviewedDate)}
+                      onChange={(e) => {
+                        if (selectingCorrections) return;
+                        setReviewedDate(e.target.value);
+                        clearError("reviewedDate");
+                        markDirty();
+                      }}
+                      aria-invalid={!!errors.reviewedDate}
+                      readOnly={lock("reviewedDate")}
+                      placeholder="MM/DD/YYYY"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
 

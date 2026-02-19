@@ -11,11 +11,11 @@ import MicroMixWaterReportForm from "./MicroMixWaterReportForm"; // MICRO_MIX_WA
 // Import your specific DTOs
 import type { MicroMixReportDTO } from "../../../../SharedTypes/Reports/MicroMixReportDto";
 import type { MicroMixWaterReportDTO } from "../../../../SharedTypes/Reports/MicroMixWaterReportDto";
+import type { SterilityReportDTO } from "../../../../SharedTypes/Reports/SterilityReportDto";
+import SterilityReportForm from "./SterilityReportForm";
 
 // base discriminator that MUST be present in API response
-type FormType =
-  | "MICRO_MIX"
-  | "MICRO_MIX_WATER";
+type FormType = "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY";
 
 type BaseReport = { id: string; formType: FormType };
 
@@ -30,6 +30,9 @@ function isMix(r: AnyReportDTO): r is BaseReport & MicroMixReportDTO {
 }
 function isMixWater(r: AnyReportDTO): r is BaseReport & MicroMixWaterReportDTO {
   return r.formType === "MICRO_MIX_WATER";
+}
+function isSterility(r: AnyReportDTO): r is BaseReport & SterilityReportDTO {
+  return r.formType === "STERILITY";
 }
 
 export default function MicroMixReportFormWrapper() {
@@ -64,7 +67,7 @@ export default function MicroMixReportFormWrapper() {
   // Render the correct editor based on formType
   if (isMix(report)) return <MicroMixReportForm report={report} />;
   if (isMixWater(report)) return <MicroMixWaterReportForm report={report} />;
-
+  if (isSterility(report)) return <SterilityReportForm report={report} />;
 
   return (
     <div className="p-4 text-sm text-slate-600">

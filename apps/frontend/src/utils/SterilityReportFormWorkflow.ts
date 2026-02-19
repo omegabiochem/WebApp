@@ -1,11 +1,9 @@
-import React, { useLayoutEffect, useRef } from "react";
-
 // src/permissions/reportWorkflow.ts
 export type Role =
   | "SYSTEMADMIN"
   | "ADMIN"
   | "FRONTDESK"
-  | "CHEMISTRY"
+  | "MICRO"
   | "MC"
   | "QA"
   | "CLIENT";
@@ -24,7 +22,7 @@ export type CorrectionItem = {
   resolutionNote?: string | null;
 };
 
-export type ChemistryReportStatus =
+export type SterilityReportStatus =
   | "DRAFT"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_CORRECTION"
@@ -50,11 +48,11 @@ export type ChemistryReportStatus =
   | "LOCKED";
 
 // 🔁 Keep this in sync with backend
-export const STATUS_TRANSITIONS: Record<
-  ChemistryReportStatus,
+export const STERILITY_STATUS_TRANSITIONS: Record<
+  SterilityReportStatus,
   {
     canSet: Role[];
-    next: ChemistryReportStatus[];
+    next: SterilityReportStatus[];
     nextEditableBy: Role[];
     canEdit: Role[];
   }
@@ -66,9 +64,9 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "MC"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
@@ -78,28 +76,28 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "CHEMISTRY", "MC"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_CLIENT_REVIEW", "FRONTDESK_ON_HOLD"],
-    nextEditableBy: ["CHEMISTRY", "MC"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
@@ -115,15 +113,15 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "MC"],
-    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
   },
   TESTING_ON_HOLD: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
@@ -133,10 +131,10 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["CHEMISTRY", "MC"],
+    canSet: ["MICRO", "MC"],
     next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
-    nextEditableBy: ["CHEMISTRY", "MC"],
-    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["MICRO", "MC"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ["QA"],
@@ -153,7 +151,7 @@ export const STATUS_TRANSITIONS: Record<
   QA_NEEDS_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["CHEMISTRY", "MC"],
+    nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
   },
 
@@ -202,7 +200,7 @@ export const STATUS_TRANSITIONS: Record<
 };
 
 //  these are designed for readable badges on white UI
-export const CHEMISTRY_STATUS_COLORS: Record<ChemistryReportStatus, string> = {
+export const STERILITY_STATUS_COLORS: Record<SterilityReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
@@ -248,27 +246,27 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   SYSTEMADMIN: [],
   ADMIN: ["*"],
   FRONTDESK: [],
-  CHEMISTRY: [
-    "dateReceived",
-    "sop",
-    "results",
+  MICRO: [
+    "testSopNo",
     "dateTested",
-    "initial",
+    "ftm_turbidity",
+    "ftm_observation",
+    "ftm_result",
+    "scdb_turbidity",
+    "scdb_observation",
+    "scdb_result",
     "comments",
-    "testedBy",
-    "testedDate",
-    "actives",
   ],
   MC: [
-    "dateReceived",
-    "sop",
-    "results",
+    "testSopNo",
     "dateTested",
-    "initial",
+    "ftm_turbidity",
+    "ftm_observation",
+    "ftm_result",
+    "scdb_turbidity",
+    "scdb_observation",
+    "scdb_result",
     "comments",
-    "testedBy",
-    "testedDate",
-    "actives",
   ],
   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
   CLIENT: [
@@ -288,24 +286,23 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "formulaContent",
   ],
 };
-
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,
-  status?: ChemistryReportStatus,
+  status?: SterilityReportStatus,
 ): boolean {
   if (!role || !status) return false;
-  const t = STATUS_TRANSITIONS[status];
+  const t = STERILITY_STATUS_TRANSITIONS[status];
   return !!t?.canSet?.includes(role);
 }
 
 export function canRoleEditField(
   role: Role | undefined,
-  status: ChemistryReportStatus | undefined,
+  status: SterilityReportStatus | undefined,
   field: string,
 ): boolean {
   if (!role || !status) return false;
-  const t = STATUS_TRANSITIONS[status];
+  const t = STERILITY_STATUS_TRANSITIONS[status];
   if (!t || !t.canEdit.includes(role)) return false;
 
   const fields = FIELD_EDIT_MAP[role] || [];
@@ -319,9 +316,9 @@ export function canRoleEditField(
  *  - there is at least one field they’re allowed to edit (field-level).
  * You can pass a list of fields relevant to that screen; default checks any field in the map.
  */
-export function canShowChemistryUpdateButton(
+export function canShowSterilityUpdateButton(
   role: Role | undefined,
-  status: ChemistryReportStatus | undefined,
+  status: SterilityReportStatus | undefined,
   fieldsToConsider?: string[],
 ): boolean {
   if (!role || !status) return false;
@@ -346,100 +343,4 @@ export function splitDateInitial(value?: string) {
 export function joinDateInitial(date: string, initial: string) {
   if (!date && !initial) return "";
   return `${date || ""} / ${initial || ""}`.trim();
-}
-
-// function cellFontClass(v: string | undefined | null) {
-//   const n = (v ?? "").trim().length;
-//   if (n > 45) return "text-[9px]";
-//   if (n > 24) return "text-[10px]";
-//   return "text-[11px]";
-// }
-
-// function clampTo3Lines(el: HTMLTextAreaElement) {
-//   // reset then measure
-//   el.style.height = "0px";
-
-//   const cs = window.getComputedStyle(el);
-//   const lineH = Number.parseFloat(cs.lineHeight || "12");
-//   const padTop = Number.parseFloat(cs.paddingTop || "0");
-//   const padBot = Number.parseFloat(cs.paddingBottom || "0");
-//   const maxH = lineH * 3 + padTop + padBot; // ✅ 3 lines max
-
-//   const next = Math.min(el.scrollHeight, maxH);
-//   el.style.height = `${next}px`;
-//   el.style.overflowY = "hidden";
-// }
-
-// ...existing code...
-// export function CellTextarea(props: {
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-// }) {
-//   const { value, onChange, readOnly, className } = props;
-
-//   return (
-//     // Changed from <textarea> to React.createElement('textarea', ...)
-//     React.createElement("textarea", {
-//       rows: 1,
-//       value: value ?? "",
-//       readOnly: readOnly,
-//       onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
-//         onChange(e.target.value),
-//       onInput: (e: React.FormEvent<HTMLTextAreaElement>) =>
-//         clampTo3Lines(e.currentTarget),
-//       ref: (el: HTMLTextAreaElement | null) => {
-//         if (el) clampTo3Lines(el);
-//       },
-//       className: [
-//         "w-full resize-none border-none outline-none bg-transparent",
-//         "text-center leading-tight whitespace-pre-wrap break-words",
-//         cellFontClass(value),
-//         className ?? "",
-//       ].join(" "),
-//     })
-//   );
-// }
-
-export function CellTextarea(props: {
-  value: string;
-  onChange?: (v: string) => void;
-  readOnly?: boolean;
-  className?: string;
-}) {
-  const { value, onChange, readOnly, className } = props;
-
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-
-  const resize = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
-  };
-
-  useLayoutEffect(() => {
-    resize();
-  }, [value]);
-
-  return React.createElement("textarea", {
-    ref: (el: HTMLTextAreaElement | null) => {
-      ref.current = el;
-      if (el) resize();
-    },
-    rows: 1,
-    value: value ?? "",
-    readOnly: !!readOnly,
-    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
-      onChange?.(e.target.value),
-    onInput: () => resize(),
-    className: [
-      "w-full resize-none border-none outline-none bg-transparent",
-      "leading-tight whitespace-pre-wrap break-words",
-      "overflow-hidden",
-      "text-center",
-      className ?? "",
-    ].join(" "),
-  });
 }

@@ -22,7 +22,7 @@ import RequireAuth from "./Routes/RequireAuth";
 import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
-import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
+import ChemistryMixSubmissionForm from "./pages/Reports/ChemistryMixSubmissionForm";
 import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
 
 import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
@@ -39,6 +39,7 @@ import TermsAndConditions from "./pages/Legal/TermsAndConditions";
 import SupportHelpPage from "./pages/Support/supportHelpPage";
 import PublicSupport from "./pages/Support/PublicSupport";
 import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
+import SterilityReportForm from "./pages/Reports/SterilityReportForm";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -234,6 +235,16 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: "reports/sterility/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+              <SterilityReportForm />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
 
       {
         path: "reports/micro-mix/:id", // ← no leading slash
@@ -278,13 +289,34 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: "reports/sterility/:id", // ← no leading slash
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "MICRO",
+                "CHEMISTRY",
+                "MC",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
+              <MicroMixReportFormWrapper />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
 
       {
         path: "reports/chemistry-mix/new",
         element: (
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <ChemistryMixReportForm />
+              <ChemistryMixSubmissionForm />
             </RequireRole>
           </RequireAuth>
         ),
