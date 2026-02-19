@@ -348,27 +348,27 @@ export function joinDateInitial(date: string, initial: string) {
   return `${date || ""} / ${initial || ""}`.trim();
 }
 
-function cellFontClass(v: string | undefined | null) {
-  const n = (v ?? "").trim().length;
-  if (n > 45) return "text-[9px]";
-  if (n > 24) return "text-[10px]";
-  return "text-[11px]";
-}
+// function cellFontClass(v: string | undefined | null) {
+//   const n = (v ?? "").trim().length;
+//   if (n > 45) return "text-[9px]";
+//   if (n > 24) return "text-[10px]";
+//   return "text-[11px]";
+// }
 
-function clampTo3Lines(el: HTMLTextAreaElement) {
-  // reset then measure
-  el.style.height = "0px";
+// function clampTo3Lines(el: HTMLTextAreaElement) {
+//   // reset then measure
+//   el.style.height = "0px";
 
-  const cs = window.getComputedStyle(el);
-  const lineH = Number.parseFloat(cs.lineHeight || "12");
-  const padTop = Number.parseFloat(cs.paddingTop || "0");
-  const padBot = Number.parseFloat(cs.paddingBottom || "0");
-  const maxH = lineH * 3 + padTop + padBot; // ✅ 3 lines max
+//   const cs = window.getComputedStyle(el);
+//   const lineH = Number.parseFloat(cs.lineHeight || "12");
+//   const padTop = Number.parseFloat(cs.paddingTop || "0");
+//   const padBot = Number.parseFloat(cs.paddingBottom || "0");
+//   const maxH = lineH * 3 + padTop + padBot; // ✅ 3 lines max
 
-  const next = Math.min(el.scrollHeight, maxH);
-  el.style.height = `${next}px`;
-  el.style.overflowY = "hidden";
-}
+//   const next = Math.min(el.scrollHeight, maxH);
+//   el.style.height = `${next}px`;
+//   el.style.overflowY = "hidden";
+// }
 
 // ...existing code...
 // export function CellTextarea(props: {
