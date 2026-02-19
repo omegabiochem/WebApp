@@ -22,7 +22,7 @@ import RequireAuth from "./Routes/RequireAuth";
 import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
-import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
+import ChemistryMixSubmissionForm from "./pages/Reports/ChemistryMixSubmissionForm";
 import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
 
 import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
@@ -316,7 +316,7 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <ChemistryMixReportForm />
+              <ChemistryMixSubmissionForm />
             </RequireRole>
           </RequireAuth>
         ),

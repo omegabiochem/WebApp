@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 
 import type { ChemistryMixReportDTO } from "../../../../SharedTypes/Reports/ChemistryMixReportDto";
 import { api } from "../../lib/api";
-import ChemistryMixReportForm from "./ChemistryMixReportForm";
+import ChemistryMixSubmissionForm from "./ChemistryMixSubmissionForm";
 
 type FormType = "CHEMISTRY_MIX";
 
@@ -52,7 +52,7 @@ export default function ChemistryMixReportFormWrapper() {
   if (!report) return <div className="p-4 text-red-500">Report not found</div>;
 
   // Render the correct editor based on formType
-  if (isChemistry(report)) return <ChemistryMixReportForm report={report} />;
+  if (isChemistry(report)) return <ChemistryMixSubmissionForm report={report} />;
 
   return (
     <div className="p-4 text-sm text-slate-600">
