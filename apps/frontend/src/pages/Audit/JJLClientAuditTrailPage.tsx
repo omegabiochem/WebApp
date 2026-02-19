@@ -386,7 +386,7 @@ export default function JJLClientAuditTrailPage() {
     const params = new URLSearchParams();
     params.append("role", "CLIENT");
     // params.append("clientCode", "JJL");
-    if (user?.id) params.append("userId", user.id);
+    if (user?.userId) params.append("userId", user.userId);
     if (filterEntity) params.append("entity", filterEntity);
     if (filterUserId) params.append("userId", filterUserId);
     if (filterEntityId) params.append("entityId", filterEntityId);
@@ -403,7 +403,7 @@ export default function JJLClientAuditTrailPage() {
     const qs = params.toString();
     return qs ? `?${qs}` : "";
   }, [
-    user?.id,
+    user?.userId,
     filterEntity,
     filterUserId,
     filterEntityId,
