@@ -311,22 +311,55 @@ function formatAuditTime(iso: string) {
   return `${date}\n${time}`;
 }
 
-function formatEntityIds(v: string | null | undefined) {
-  if (!v) return "-";
+// function formatEntityIds(v: string | null | undefined) {
+//   if (!v) return "-";
 
-  const t = v.trim();
+//   const t = v.trim();
 
-  // Only format if it's a comma-separated ID list (no spaces)
-  const looksLikeIdList =
-    t.includes(",") && !/\s/.test(t) && /^[a-z0-9,_-]+$/i.test(t);
+//   // Only format if it's a comma-separated ID list (no spaces)
+//   const looksLikeIdList =
+//     t.includes(",") && !/\s/.test(t) && /^[a-z0-9,_-]+$/i.test(t);
 
-  if (!looksLikeIdList) return t;
+//   if (!looksLikeIdList) return t;
 
-  return t
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .join(",\n"); // newline after each comma
+//   return t
+//     .split(",")
+//     .map((id) => id.trim())
+//     .filter(Boolean)
+//     .join(",\n"); // newline after each comma
+// }
+
+type UserMini = { id: string; name: string | null; email: string };
+
+function useUserNameMap(records: AuditRecord[]) {
+  const [map, setMap] = useState<Record<string, UserMini>>({});
+
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(records.map((r) => r.userId).filter((x): x is string => !!x)),
+    );
+
+    const missing = ids.filter((id) => !map[id]);
+    if (!missing.length) return;
+
+    (async () => {
+      try {
+        const qs = new URLSearchParams({ ids: missing.join(",") });
+        const users = await api<UserMini[]>(`/users/lookup?${qs.toString()}`);
+
+        setMap((prev) => {
+          const next = { ...prev };
+          for (const u of users) next[u.id] = u;
+          return next;
+        });
+      } catch (e) {
+        // if lookup fails, keep showing ids (no crash)
+        console.error("users lookup failed", e);
+      }
+    })();
+  }, [records]); // map intentionally not included to avoid refetch loops
+
+  return map;
 }
 
 export default function AuditTrailPage() {
@@ -350,6 +383,14 @@ export default function AuditTrailPage() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const userMap = useUserNameMap(records);
+
+  const userNameFor = (id: string | null) => {
+    if (!id) return "-";
+    const u = userMap[id];
+    return u?.name || u?.email || id;
+  };
 
   // Reset page when filters change
   useEffect(() => {
@@ -755,9 +796,15 @@ export default function AuditTrailPage() {
                   {formatAuditTime(r.createdAt)}
                 </td>
                 <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
-                <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
-                  {formatEntityIds(r.entityId)}
+                <td className="p-3 whitespace-nowrap text-xs">
+                  <div className="font-medium">{userNameFor(r.entityId)}</div>
+                  <div className="font-mono text-[10px] text-gray-500">
+                    {safeText(r.entityId)}
+                  </div>
                 </td>
+                {/* <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
+                  {formatEntityIds(r.entityId)}
+                </td> */}
                 <td className="p-3 whitespace-nowrap">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
@@ -767,8 +814,15 @@ export default function AuditTrailPage() {
                     {r.action}
                   </span>
                 </td>
-                <td className="p-3 whitespace-nowrap font-mono text-xs">
+                {/* <td className="p-3 whitespace-nowrap font-mono text-xs">
                   {safeText(r.userId)}
+                </td> */}
+
+                <td className="p-3 whitespace-nowrap text-xs">
+                  <div className="font-medium">{userNameFor(r.userId)}</div>
+                  <div className="font-mono text-[10px] text-gray-500">
+                    {safeText(r.userId)}
+                  </div>
                 </td>
                 <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
                 <td className="p-3 whitespace-nowrap font-mono text-xs">

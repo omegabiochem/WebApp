@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker } from "react-router-dom";
 import { api } from "../../lib/api";
@@ -341,6 +341,91 @@ export default function ChemistryMixSubmissionForm({
     useChemistryReportValidation(role, {
       status: status as ChemistryReportStatus,
     });
+  const { search } = useLocation();
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+ const mode = params.get("mode");
+  const urlTemplateId = params.get("templateId");
+  const isTemplateMode = mode === "template";
+
+  const isTemplateViewMode = mode === "templateView"; // new
+  const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
+
+  const forceReadOnly = isTemplateViewMode;
+
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [templateVersion, setTemplateVersion] = useState<number>(0);
+  const [templateName, setTemplateName] = useState<string>("");
+
+useEffect(() => {
+  if (!isAnyTemplateMode) {
+    setTemplateId(null);
+    setTemplateVersion(0);
+    setTemplateName("");
+    return;
+  }
+  setTemplateId(urlTemplateId); // works for view + edit
+}, [isAnyTemplateMode, urlTemplateId]);
+
+  function hydrateForm(r?: any) {
+    // header fields
+    setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
+    setDateSent(r?.dateSent ?? "");
+    setSampleDescription(r?.sampleDescription ?? "");
+    setTestTypes(r?.testTypes ?? []);
+    setSampleCollected(r?.sampleCollected ?? []);
+    setLotBatchNo(r?.lotBatchNo ?? "");
+    setManufactureDate(r?.manufactureDate ?? "");
+    setFormulaId(r?.formulaId ?? "");
+    setSampleSize(r?.sampleSize ?? "");
+    setNumberOfActives(r?.numberOfActives ?? "");
+    setSampleTypes(r?.sampleTypes ?? []);
+    setStabilityNote(r?.stabilityNote ?? "");
+    setDateReceived(r?.dateReceived ?? "");
+
+    // actives table
+    setActives(r?.actives ?? DEFAULT_CHEM_ACTIVES);
+
+    // comments / signatures
+    setComments(r?.comments ?? "");
+    setTestedBy(r?.testedBy ?? "");
+    setTestedDate(r?.testedDate ?? "");
+    setReviewedBy(r?.reviewedBy ?? "");
+    setReviewedDate(r?.reviewedDate ?? "");
+
+    // template load should NOT open corrections picker etc.
+    setSelectingCorrections(false);
+    setPendingCorrections([]);
+    setAddForField(null);
+    setAddMessage("");
+  }
+
+  useEffect(() => {
+    if (!isAnyTemplateMode || !templateId) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const t = await api<any>(`/templates/${templateId}`, { method: "GET" });
+        if (!alive) return;
+
+        setTemplateName(t?.name ?? "");
+        setTemplateVersion(typeof t?.version === "number" ? t.version : 0);
+
+        hydrateForm(t?.data ?? {});
+        setIsDirty(false);
+      } catch (e) {
+        console.error(e);
+        alert("❌ Failed to load template.");
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // include deps because hydrateForm uses role/user.clientCode
+  }, [isAnyTemplateMode, templateId, role, user?.clientCode]);
 
   const makeValues = (): ChemistryMixReportFormValues => ({
     client,
@@ -371,7 +456,7 @@ export default function ChemistryMixSubmissionForm({
     version?: number;
   };
 
-  const lock = (f: string) =>
+  const lock = (f: string) =>forceReadOnly || 
     !canEdit(role, f, status as ChemistryReportStatus);
 
   type ActiveRowError = {
@@ -559,6 +644,8 @@ export default function ChemistryMixSubmissionForm({
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  // if opening an existing template later, you will prefill these
 
   function stringify(v: any) {
     if (v === null || v === undefined) return "";
@@ -860,7 +947,53 @@ export default function ChemistryMixSubmissionForm({
         }
 
         try {
-          let saved: SavedReport;
+          let saved: any;
+
+          if (isTemplateMode) {
+            const name = templateName.trim();
+
+            // ✅ Block saving if template name is missing
+            if (!name) {
+              alert("⚠️ Please enter a Template name before saving.");
+              return false;
+            }
+            // ✅ template payload: store data + formType + name
+            const templatePayload = {
+              name,
+              formType: "CHEMISTRY_MIX",
+              data: { ...payload }, // store only allowed fields
+            };
+
+            if (templateId) {
+              saved = await api(`/templates/${templateId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  ...templatePayload,
+                  expectedVersion: templateVersion, // ✅ required
+                }),
+              });
+
+              // bump local version from server
+              setTemplateVersion(
+                typeof saved.version === "number"
+                  ? saved.version
+                  : templateVersion + 1,
+              );
+            } else {
+              saved = await api(`/templates`, {
+                method: "POST",
+                body: JSON.stringify(templatePayload),
+              });
+              setTemplateId(saved.id);
+              setTemplateVersion(
+                typeof saved.version === "number" ? saved.version : 1,
+              );
+            }
+
+            setIsDirty(false);
+            alert("✅ Template saved");
+            return true;
+          }
 
           if (reportId) {
             saved = await api<SavedReport>(`/chemistry-reports/${reportId}`, {
@@ -1148,6 +1281,21 @@ export default function ChemistryMixSubmissionForm({
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
         {/* Top buttons */}
         <div className="no-print mb-4 flex justify-end gap-2">
+          {isTemplateMode &&  !isTemplateViewMode && (
+            <input
+              className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
+                !templateName.trim()
+                  ? "border-red-500 ring-1 ring-red-500"
+                  : "border-black/30"
+              }`}
+              placeholder="Template name"
+              value={templateName}
+              onChange={(e) => {
+                setTemplateName(e.target.value);
+                markDirty();
+              }}
+            />
+          )}
           <button
             type="button"
             className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
@@ -1157,7 +1305,7 @@ export default function ChemistryMixSubmissionForm({
             {isBusy ? "Working..." : "Close"}
           </button>
 
-          {!HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
+          { !isTemplateViewMode && !HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
@@ -1166,11 +1314,18 @@ export default function ChemistryMixSubmissionForm({
                 role === "FRONTDESK" ||
                 isBusy ||
                 status === "UNDER_CLIENT_REVIEW" ||
-                status === "LOCKED"
+                status === "LOCKED" ||
+                (isTemplateMode && !templateName.trim())
               }
             >
               {busy === "SAVE" && <Spinner />}
-              {reportId ? "Update Report" : "Save Report"}
+              {isTemplateMode
+                ? templateId
+                  ? "Update Template"
+                  : "Save Template"
+                : reportId
+                  ? "Update Report"
+                  : "Save Report"}
             </button>
           )}
         </div>
@@ -1200,8 +1355,8 @@ export default function ChemistryMixSubmissionForm({
                 ? "CHEMISTRY SUBMISSION FORM"
                 : "CHEMISTRY REPORT"}
             </div>
-            <div className="text-right text-[12px] font-bold">
-              {reportNumber}
+            <div className="text-right text-[12px] font-bold font-medium">
+              {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
             </div>
           </div>
         </div>
@@ -2404,78 +2559,55 @@ export default function ChemistryMixSubmissionForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      <div className="no-print mt-4 flex items-center justify-between">
-        {/* Left: status action buttons */}
-        <div className="flex flex-wrap gap-2">
-          {/* {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
-            (targetStatus: ChemistryReportStatus) => {
-              if (
-                STATUS_TRANSITIONS[
-                  status as ChemistryReportStatus
-                ].canSet.includes(role!) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={role === "SYSTEMADMIN" || isBusy}
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {label}
-                  </button>
-                );
-              }
-              return null;
-            }
-          )} */}
+      {!isAnyTemplateMode && (
+        <div className="no-print mt-4 flex items-center justify-between">
+          {/* Left: status action buttons */}
+          <div className="flex flex-wrap gap-2">
+            {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
+              (targetStatus: ChemistryReportStatus) => {
+                if (
+                  STATUS_TRANSITIONS[
+                    status as ChemistryReportStatus
+                  ].canSet.includes(role!) &&
+                  statusButtons[targetStatus]
+                ) {
+                  const { label, color } = statusButtons[targetStatus];
 
-          {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
-            (targetStatus: ChemistryReportStatus) => {
-              if (
-                STATUS_TRANSITIONS[
-                  status as ChemistryReportStatus
-                ].canSet.includes(role!) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
+                  const approveNeedsAttachment = isApproveAction(targetStatus);
+                  const disableApproveForNoAttachment =
+                    approveNeedsAttachment && !hasAttachment;
 
-                const approveNeedsAttachment = isApproveAction(targetStatus);
-                const disableApproveForNoAttachment =
-                  approveNeedsAttachment && !hasAttachment;
+                  const disabled =
+                    role === "SYSTEMADMIN" ||
+                    isBusy ||
+                    attachmentsLoading ||
+                    disableApproveForNoAttachment;
 
-                const disabled =
-                  role === "SYSTEMADMIN" ||
-                  isBusy ||
-                  attachmentsLoading ||
-                  disableApproveForNoAttachment;
-
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={disabled}
-                    title={
-                      disableApproveForNoAttachment
-                        ? "Upload at least 1 attachment to enable Approve"
-                        : undefined
-                    }
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {attachmentsLoading && label === "Approve"
-                      ? "Checking..."
-                      : label}
-                  </button>
-                );
-              }
-              return null;
-            },
-          )}
+                  return (
+                    <button
+                      key={targetStatus}
+                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                      onClick={() => requestStatusChange(targetStatus)}
+                      disabled={disabled}
+                      title={
+                        disableApproveForNoAttachment
+                          ? "Upload at least 1 attachment to enable Approve"
+                          : undefined
+                      }
+                    >
+                      {busy === "STATUS" && <Spinner />}
+                      {attachmentsLoading && label === "Approve"
+                        ? "Checking..."
+                        : label}
+                    </button>
+                  );
+                }
+                return null;
+              },
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {showESign && (
         <div
@@ -2547,7 +2679,7 @@ export default function ChemistryMixSubmissionForm({
         </div>
       )}
 
-      {selectingCorrections && (
+      {!isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
           <div className="text-xs text-slate-600">
@@ -2635,7 +2767,7 @@ export default function ChemistryMixSubmissionForm({
         </div>
       )}
 
-      {addForField && (
+      { !isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -2688,6 +2820,7 @@ export default function ChemistryMixSubmissionForm({
       )}
 
       {/* Floating Corrections button */}
+      {!isTemplateViewMode && (
       <div className="no-print fixed bottom-20 right-6 z-40">
         <button
           onClick={() => setShowCorrTray((s) => !s)}
@@ -2701,8 +2834,9 @@ export default function ChemistryMixSubmissionForm({
           )}
         </button>
       </div>
+      )}
 
-      {showCorrTray && (
+      {!isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>

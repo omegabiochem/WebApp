@@ -3,6 +3,15 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
+const auditUserSelect = {
+  select: {
+    id: true,
+    name: true,
+    email: true,
+    role: true,
+  },
+};
+
 type ListFilters = {
   entity?: string;
   entityId?: string;
@@ -13,7 +22,6 @@ type ListFilters = {
   order?: 'asc' | 'desc';
 };
 
-// ✅ new type for pagination
 type ListPagedFilters = ListFilters & {
   page: number;
   pageSize: number;
@@ -23,11 +31,12 @@ type ListPagedFilters = ListFilters & {
 export class AuditService {
   constructor(private prisma: PrismaService) {}
 
-  // existing
+  // ✅ include user
   listForEntity(entity: string, entityId: string) {
     return this.prisma.auditTrail.findMany({
       where: { entity, entityId },
       orderBy: { createdAt: 'asc' },
+      include: { user: auditUserSelect },
     });
   }
 
@@ -36,7 +45,7 @@ export class AuditService {
     return this.rowsToCsv(rows);
   }
 
-  // ✅ NEW: paginated list for /audit
+  // ✅ paginated list with user included
   async listAllPaged(filters: ListPagedFilters) {
     const {
       entity,
@@ -50,26 +59,21 @@ export class AuditService {
       pageSize,
     } = filters;
 
-    // safety
     const safePage = Math.max(1, page || 1);
     const safePageSize = Math.min(Math.max(pageSize || 20, 1), 100);
     const skip = (safePage - 1) * safePageSize;
 
-    // where
     const where: Prisma.AuditTrailWhereInput = {};
 
     if (entity) where.entity = entity;
-
-    // ✅ better search: partial + case-insensitive
     if (entityId) where.entityId = { contains: entityId, mode: 'insensitive' };
     if (userId) where.userId = { contains: userId, mode: 'insensitive' };
-
     if (action) where.action = action;
 
     if (from || to) {
       where.createdAt = {};
       if (from) where.createdAt.gte = new Date(from);
-      if (to) where.createdAt.lte = new Date(to + 'T23:59:59.999Z'); // end-of-day
+      if (to) where.createdAt.lte = new Date(to + 'T23:59:59.999Z');
     }
 
     const [items, total] = await Promise.all([
@@ -78,6 +82,7 @@ export class AuditService {
         orderBy: { createdAt: order },
         skip,
         take: safePageSize,
+        include: { user: auditUserSelect }, // ✅ add this
       }),
       this.prisma.auditTrail.count({ where }),
     ]);
@@ -85,7 +90,7 @@ export class AuditService {
     return { items, total };
   }
 
-  // existing export-all (no pagination)
+  // ✅ export-all with user included
   async exportAllCSV(filters: ListFilters = {}) {
     const where: Prisma.AuditTrailWhereInput = {};
 
@@ -106,16 +111,19 @@ export class AuditService {
     const rows = await this.prisma.auditTrail.findMany({
       where,
       orderBy: { createdAt: filters.order ?? 'desc' },
+      include: { user: auditUserSelect }, // ✅ add this
     });
 
     return this.rowsToCsv(rows);
   }
 
-  // existing helper
+  // ✅ update CSV columns to include name/email
   private rowsToCsv(rows: any[]) {
     const headers = [
       'createdAt',
       'userId',
+      'userName',
+      'userEmail',
       'role',
       'ipAddress',
       'action',
@@ -132,12 +140,11 @@ export class AuditService {
 
     const body = rows.map((r) =>
       [
-        (r.createdAt instanceof Date
-          ? r.createdAt
-          : new Date(r.createdAt)
-        ).toISOString(),
+        (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
         r.userId ?? '',
-        r.role ?? '',
+        r.user?.name ?? '',
+        r.user?.email ?? '',
+        r.role ?? r.user?.role ?? '',
         r.ipAddress ?? '',
         r.action ?? '',
         r.entity ?? '',

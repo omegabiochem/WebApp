@@ -16,6 +16,14 @@ type AuditRecord = {
   ipAddress: string | null;
   createdAt: string;
   userId: string | null;
+
+  // ✅ ADD THIS
+  user?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  } | null;
 };
 
 type PagedResponse = { items: AuditRecord[]; total: number } | AuditRecord[];
@@ -330,7 +338,7 @@ function formatEntityIds(v: string | null | undefined) {
     .join(",\n"); // newline after each comma
 }
 
-export default function JJLClientAuditTrailPage() {
+export default function ClientAuditTrailPage() {
   const { user } = useAuth();
 
   const [records, setRecords] = useState<AuditRecord[]>([]);
@@ -775,8 +783,15 @@ export default function JJLClientAuditTrailPage() {
                     {r.action}
                   </span>
                 </td>
-                <td className="p-3 whitespace-nowrap font-mono text-xs">
-                  {safeText(r.userId)}
+                <td className="p-3 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">
+                    {safeText(r.user?.name) !== "-"
+                      ? safeText(r.user?.name)
+                      : safeText(r.userId)}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {safeText(r.user?.id)}
+                  </div>
                 </td>
                 <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
                 <td className="p-3 whitespace-nowrap font-mono text-xs">
