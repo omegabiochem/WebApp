@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import FormsDropdown from "../forms/FormsDropdown";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import TemplatesDropdown from "../../pages/Templates/TemplatesDropdown";
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -34,6 +35,7 @@ export default function Header() {
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
       { label: "Audit and Trail", path: "/clientAudit" },
+      { label: "Templates", path: "/templatesDropdown" },
       { label: "Forms", path: "/formmenu" },
       { label: "Results", path: "/results" },
       { label: "Support", path: "/support" },
@@ -185,6 +187,8 @@ export default function Header() {
               {menu.map((item) =>
                 item.label === "Forms" ? (
                   <FormsDropdown key="forms" align="right" />
+                ) : item.label === "Templates" ? (
+                  <TemplatesDropdown key="templates" align="right" />
                 ) : item.label === "Results" ? (
                   <Link
                     key={item.path}

@@ -25,7 +25,7 @@ import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
 import ChemistryMixSubmissionForm from "./pages/Reports/ChemistryMixSubmissionForm";
 import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
 
-import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
+import ClientAuditTrailPage from "./pages/Audit/ClientAuditTrailPage";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
 import ClientNotificationSettings from "./pages/Admin/ClientNotificationSettings";
@@ -40,6 +40,8 @@ import SupportHelpPage from "./pages/Support/supportHelpPage";
 import PublicSupport from "./pages/Support/PublicSupport";
 import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
 import SterilityReportForm from "./pages/Reports/SterilityReportForm";
+import TemplatePage from "./pages/Templates/TemplatesPage";
+import TemplatesDropdown from "./pages/Templates/TemplatesDropdown";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -374,8 +376,8 @@ export const router = createBrowserRouter([
         path: "clientAudit",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT"]}>
-              <JJLClientAuditTrailPage />
+            <RequireRole roles={["CLIENT","ADMIN"]}>
+              <ClientAuditTrailPage />
             </RequireRole>
           </RequireAuth>
         ),
@@ -495,6 +497,28 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
               <SupportTicketsPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "templatesPage",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN", "CLIENT"]}>
+              <TemplatePage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "templatesDropdown",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN", "CLIENT"]}>
+              <TemplatesDropdown />
             </RequireRole>
           </RequireAuth>
         ),

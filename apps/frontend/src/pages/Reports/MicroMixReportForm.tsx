@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { useBlocker, useNavigate } from "react-router-dom";
+import { useBlocker, useLocation, useNavigate } from "react-router-dom";
 import {
   useReportValidation,
   FieldErrorBadge,
@@ -558,6 +558,33 @@ export default function MicroMixReportForm({
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
 
+  const { search } = useLocation();
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+ const mode = params.get("mode");
+  const urlTemplateId = params.get("templateId");
+  const isTemplateMode = mode === "template";
+
+  const isTemplateViewMode = mode === "templateView"; // new
+  const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
+
+  const forceReadOnly = isTemplateViewMode;
+
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [templateVersion, setTemplateVersion] = useState<number>(0);
+  const [templateName, setTemplateName] = useState<string>("");
+
+useEffect(() => {
+  if (!isAnyTemplateMode) {
+    setTemplateId(null);
+    setTemplateVersion(0);
+    setTemplateName("");
+    return;
+  }
+  setTemplateId(urlTemplateId); // works for view + edit
+}, [isAnyTemplateMode, urlTemplateId]);
+
+  // if opening an existing template later, you will prefill these
   function stringify(v: any) {
     if (v === null || v === undefined) return "";
     if (Array.isArray(v)) return v.join(", ");
@@ -964,7 +991,7 @@ export default function MicroMixReportForm({
 
   // const lock = (f: string) => !canEdit(role, f);
   // use:
-  const lock = (f: string) => !canEdit(role, f, status as ReportStatus);
+  const lock = (f: string) =>forceReadOnly ||  !canEdit(role, f, status as ReportStatus);
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
     role,
@@ -972,6 +999,60 @@ export default function MicroMixReportForm({
       status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
     },
   );
+
+  function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
+    // data is what you stored in template.data (your payload)
+    setClient(data?.client ?? "");
+    setDateSent(data?.dateSent ?? "");
+    setTypeOfTest(data?.typeOfTest ?? "");
+    setSampleType(data?.sampleType ?? "");
+    setFormulaNo(data?.formulaNo ?? "");
+    setDescription(data?.description ?? "");
+    setLotNo(data?.lotNo ?? "");
+    setManufactureDate(data?.manufactureDate ?? "");
+    setTestSopNo(data?.testSopNo ?? "");
+    setDateTested(data?.dateTested ?? "");
+    setPreliminaryResults(data?.preliminaryResults ?? "");
+    setPreliminaryResultsDate(data?.preliminaryResultsDate ?? "");
+    setDateCompleted(data?.dateCompleted ?? "");
+
+    set_tbc_gram(data?.tbc_gram ?? "");
+    set_tbc_result(data?.tbc_result ?? "");
+    set_tbc_spec(normalizeSpec(data?.tbc_spec ?? ""));
+
+    set_tmy_gram(data?.tmy_gram ?? "");
+    set_tmy_result(data?.tmy_result ?? "");
+    set_tmy_spec(normalizeSpec(data?.tmy_spec ?? ""));
+
+    setPathogens(data?.pathogens ?? pathogenDefaults);
+
+    setComments(data?.comments ?? "");
+    setTestedBy(data?.testedBy ?? "");
+    setTestedDate(data?.testedDate ?? "");
+    setReviewedBy(data?.reviewedBy ?? "");
+    setReviewedDate(data?.reviewedDate ?? "");
+  }
+
+  useEffect(() => {
+    if (!isAnyTemplateMode || !templateId) return;
+
+    (async () => {
+      try {
+        const t = await api<any>(`/templates/${templateId}`, { method: "GET" });
+
+        // expected structure: { id, name, version, data, formType }
+        setTemplateName(t?.name ?? "");
+        setTemplateVersion(typeof t?.version === "number" ? t.version : 0);
+
+        hydrateForm(t?.data ?? {});
+        setIsDirty(false);
+      } catch (e) {
+        console.error(e);
+        alert("❌ Failed to load template.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAnyTemplateMode, templateId]);
 
   // Current values snapshot (use inside handlers)
   const makeValues = (): MicroMixReportFormValues => ({
@@ -1154,8 +1235,52 @@ export default function MicroMixReportForm({
         }
 
         try {
-          let saved: SavedReport;
+          let saved: any;
 
+          if (isTemplateMode) {
+            const name = templateName.trim();
+
+            if (!name) {
+              alert("⚠️ Please enter a Template name before saving.");
+              return false;
+            }
+            // ✅ template payload: store data + formType + name
+            const templatePayload = {
+              name,
+              formType: "MICRO_MIX",
+              data: { ...payload }, // store only allowed fields
+            };
+
+            if (templateId) {
+              saved = await api(`/templates/${templateId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  ...templatePayload,
+                  expectedVersion: templateVersion, // ✅ required
+                }),
+              });
+
+              // bump local version from server
+              setTemplateVersion(
+                typeof saved.version === "number"
+                  ? saved.version
+                  : templateVersion + 1,
+              );
+            } else {
+              saved = await api(`/templates`, {
+                method: "POST",
+                body: JSON.stringify(templatePayload),
+              });
+              setTemplateId(saved.id);
+              setTemplateVersion(
+                typeof saved.version === "number" ? saved.version : 1,
+              );
+            }
+
+            setIsDirty(false);
+            alert("✅ Template saved");
+            return true;
+          }
           if (reportId) {
             saved = await api<SavedReport>(`/reports/${reportId}`, {
               method: "PATCH",
@@ -1500,6 +1625,21 @@ export default function MicroMixReportForm({
 
         {/* Header + print controls */}
         <div className="no-print mb-4 flex justify-end gap-2">
+          {isTemplateMode && !isTemplateViewMode &&  (
+            <input
+              className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
+                !templateName.trim()
+                  ? "border-red-500 ring-1 ring-red-500"
+                  : "border-black/30"
+              }`}
+              placeholder="Template name"
+              value={templateName}
+              onChange={(e) => {
+                setTemplateName(e.target.value);
+                markDirty();
+              }}
+            />
+          )}
           <button
             className="px-3 py-1 rounded-md border bg-gray-600 text-white"
             onClick={handleClose}
@@ -1509,7 +1649,7 @@ export default function MicroMixReportForm({
           </button>
           {/* <button
           </button> */}
-          {!HIDE_SAVE_FOR.has(status as ReportStatus) && (
+          { !isTemplateViewMode && !HIDE_SAVE_FOR.has(status as ReportStatus) && (
             <button
               className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={handleSave}
@@ -1518,11 +1658,18 @@ export default function MicroMixReportForm({
                 role === "FRONTDESK" ||
                 isBusy ||
                 status === "UNDER_CLIENT_FINAL_REVIEW" ||
-                status === "LOCKED"
+                status === "LOCKED" ||
+                (isTemplateMode && !templateName.trim())
               }
             >
               {busy === "SAVE" && <Spinner />}
-              {reportId ? "Update Report" : "Save Report"}
+              {isTemplateMode
+                ? templateId
+                  ? "Update Template"
+                  : "Save Template"
+                : reportId
+                  ? "Update Report"
+                  : "Save Report"}
             </button>
           )}
         </div>
@@ -1563,7 +1710,7 @@ export default function MicroMixReportForm({
                 : "MICRO REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+              {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
             </div>
           </div>
         </div>
@@ -2857,53 +3004,55 @@ export default function MicroMixReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      <div className="no-print mt-4 flex items-center justify-between">
-        {/* Left: status action buttons */}
-        <div className="flex flex-wrap gap-2">
-          {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-            (targetStatus: ReportStatus) => {
-              if (
-                STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                  role!,
-                ) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
+      {!isAnyTemplateMode && (
+        <div className="no-print mt-4 flex items-center justify-between">
+          {/* Left: status action buttons */}
+          <div className="flex flex-wrap gap-2">
+            {STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+              (targetStatus: ReportStatus) => {
+                if (
+                  STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
+                    role!,
+                  ) &&
+                  statusButtons[targetStatus]
+                ) {
+                  const { label, color } = statusButtons[targetStatus];
 
-                const approveNeedsAttachment = isApproveAction(targetStatus);
-                const disableApproveForNoAttachment =
-                  approveNeedsAttachment && !hasAttachment;
+                  const approveNeedsAttachment = isApproveAction(targetStatus);
+                  const disableApproveForNoAttachment =
+                    approveNeedsAttachment && !hasAttachment;
 
-                const disabled =
-                  role === "SYSTEMADMIN" ||
-                  isBusy ||
-                  attachmentsLoading ||
-                  disableApproveForNoAttachment;
+                  const disabled =
+                    role === "SYSTEMADMIN" ||
+                    isBusy ||
+                    attachmentsLoading ||
+                    disableApproveForNoAttachment;
 
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={disabled}
-                    title={
-                      disableApproveForNoAttachment
-                        ? "Upload at least 1 attachment to enable Approve"
-                        : undefined
-                    }
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {attachmentsLoading && label === "Approve"
-                      ? "Checking..."
-                      : label}
-                  </button>
-                );
-              }
-              return null;
-            },
-          )}
+                  return (
+                    <button
+                      key={targetStatus}
+                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                      onClick={() => requestStatusChange(targetStatus)}
+                      disabled={disabled}
+                      title={
+                        disableApproveForNoAttachment
+                          ? "Upload at least 1 attachment to enable Approve"
+                          : undefined
+                      }
+                    >
+                      {busy === "STATUS" && <Spinner />}
+                      {attachmentsLoading && label === "Approve"
+                        ? "Checking..."
+                        : label}
+                    </button>
+                  );
+                }
+                return null;
+              },
+            )}
+          </div>
         </div>
-      </div>
+      )}
       {showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -2974,7 +3123,7 @@ export default function MicroMixReportForm({
         </div>
       )}
 
-      {selectingCorrections && (
+      {!isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
           <div className="text-xs text-slate-600">
@@ -3062,7 +3211,7 @@ export default function MicroMixReportForm({
         </div>
       )}
 
-      {addForField && (
+      {!isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -3115,6 +3264,7 @@ export default function MicroMixReportForm({
       )}
 
       {/* Floating Corrections button */}
+      {!isTemplateViewMode && (
       <div className="no-print fixed bottom-20 right-6 z-40">
         <button
           onClick={() => setShowCorrTray((s) => !s)}
@@ -3128,8 +3278,9 @@ export default function MicroMixReportForm({
           )}
         </button>
       </div>
+      )}
 
-      {showCorrTray && (
+      {!isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>

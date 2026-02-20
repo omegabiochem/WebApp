@@ -638,3 +638,21 @@ model ChatUpload {
   uploadedBy  String   // userId
   createdAt   DateTime @default(now())
 }
+
+model FormTemplate {
+  id         String   @id @default(cuid())
+  name       String
+  formType   FormType
+  clientCode String?      // usually required for CLIENT templates
+  data       Json
+
+  version    Int      @default(1)
+
+  createdBy  String?
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([clientCode, formType])
+  @@index([createdBy])
+}

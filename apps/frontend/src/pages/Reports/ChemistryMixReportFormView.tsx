@@ -323,7 +323,6 @@ const PrintStyles = () => (
       html, body { margin: 0 !important; padding: 0 !important; }
       .no-print { display: none !important; }
 
-      /* ✅ Make the whole page a flex column with A4 content height */
       .sheet {
         width: 100% !important;
         box-shadow: none !important;
@@ -334,21 +333,27 @@ const PrintStyles = () => (
 
         display: flex !important;
         flex-direction: column !important;
-
-        /* A4 height 297mm - (top 6mm + bottom 12mm) = 279mm */
         min-height: 279mm !important;
       }
 
-      /* ✅ Reserve some space for the actives area (optional, keep) */
-      .actives-reserve {
-        min-height: 130px; /* tune if you want */
-      }
-
-      /* ✅ Push footer to the bottom of the page */
       .print-footer {
         margin-top: auto !important;
         break-inside: avoid;
         page-break-inside: avoid;
+      }
+
+      /* ✅ IMPORTANT: keep actives rows as GRID (do NOT convert to table) */
+      .actives-row {
+        display: grid !important;
+        grid-template-columns: 25% 15% 13% 20% 12% 15% !important;
+        align-items: stretch !important;
+
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      .actives-row > div {
+        height: 100% !important;   /* ensures borders stretch full row height */
       }
 
       img, svg {
@@ -848,7 +853,7 @@ export default function ChemistryMixReportFormView(
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
           <div className="actives-reserve mt-7 border border-black text-[11px] ">
-            <div className="grid grid-cols-[25%_15%_13%_20%_12%_15%] font-bold text-center border-b border-black">
+            <div className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] font-bold text-center border-b border-black">
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
@@ -886,13 +891,13 @@ export default function ChemistryMixReportFormView(
                   >
                     {/* ACTIVE NAME + checkbox */}
                     <div className="flex items-start gap-2 border-r border-black px-1 py-1">
-                      <input
+                      {/* <input
                         type="checkbox"
                         className="thick-box2 mt-[2px]"
                         checked={true}
                         readOnly
                         disabled
-                      />
+                      /> */}
 
                       <div className="flex-1 leading-tight whitespace-pre-wrap break-words">
                         {row.key === "OTHER" || row.key.startsWith("OTHER_")
