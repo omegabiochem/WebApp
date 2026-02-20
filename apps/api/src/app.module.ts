@@ -24,6 +24,7 @@ import { AttachmentsGlobalModule } from './attachments/attachments.global.module
 import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
 import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
+import { TemplatesModule } from './templates/templates.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { SupportModule } from './support/support.module';
     AttachmentsGlobalModule,
     AdminModule,
     SupportModule,
+    TemplatesModule
   ],
   controllers: [HealthController, FaviconController],
   providers: [
