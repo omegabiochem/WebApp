@@ -28,6 +28,8 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import COAReportForm from "../Reports/COAReportForm";
+import COAReportFormView from "../Reports/COAReportFormView";
 
 // -----------------------------
 // Types
@@ -55,6 +57,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -69,7 +72,7 @@ function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
 
-  const isChem = r.formType === "CHEMISTRY_MIX";
+  const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   return isChem
     ? canShowChemistryUpdateButton(user.role, r.status as ChemistryReportStatus)
@@ -178,6 +181,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -219,7 +234,7 @@ export default function FrontDeskDashboard() {
   );
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
   >("ALL");
 
   // ✅ guards
@@ -277,6 +292,7 @@ export default function FrontDeskDashboard() {
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -363,7 +379,7 @@ export default function FrontDeskDashboard() {
     newStatus: string,
     reason = "Status Change",
   ) {
-    const isChemistry = r.formType === "CHEMISTRY_MIX";
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
@@ -381,7 +397,7 @@ export default function FrontDeskDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX") {
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -555,9 +571,6 @@ export default function FrontDeskDashboard() {
 
   useLiveReportStatus(setReports);
 
-
-  
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -666,7 +679,14 @@ export default function FrontDeskDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -689,7 +709,9 @@ export default function FrontDeskDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -898,7 +920,8 @@ export default function FrontDeskDashboard() {
 
               {!loading &&
                 pageRows.map((r) => {
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
                   return (
@@ -952,9 +975,11 @@ export default function FrontDeskDashboard() {
                                 entity:
                                   r.formType === "CHEMISTRY_MIX"
                                     ? "ChemistryReport"
-                                    : r.formType === "STERILITY "
-                                      ? "SterilityReport"
-                                      : "Micro Report",
+                                    : r.formType === "COA"
+                                      ? "CoaReport"
+                                      : r.formType === "STERILITY "
+                                        ? "SterilityReport"
+                                        : "Micro Report",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1173,7 +1198,9 @@ export default function FrontDeskDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport"
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
                     });
@@ -1221,6 +1248,14 @@ export default function FrontDeskDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

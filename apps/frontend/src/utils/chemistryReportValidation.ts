@@ -366,7 +366,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   // CLIENT fills header info + chooses actives + fills formula content
   CLIENT: [
     "client",
-    "dateSent",
+    // "dateSent",
     "sampleDescription",
     "testTypes",
     "sampleCollected",

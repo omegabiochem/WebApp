@@ -36,6 +36,7 @@ import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import COAReportFormView from "../Reports/COAReportFormView";
 
 // ---------------------------------
 // Types
@@ -63,6 +64,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
@@ -287,6 +289,20 @@ function BulkPrintAreaQA({
           );
         }
 
+        if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
         return (
           <div key={r.id} className="report-page">
             <h1>{r.formNumber}</h1>
@@ -325,7 +341,7 @@ export default function QaDashboard() {
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
   >("ALL");
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
 
@@ -381,7 +397,7 @@ export default function QaDashboard() {
     nextStatus: string,
     reasonText = "Common Status Change",
   ) {
-    const isChem = r.formType === "CHEMISTRY_MIX";
+    const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
     const endpoint = isChem
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
@@ -441,6 +457,7 @@ export default function QaDashboard() {
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -602,7 +619,7 @@ export default function QaDashboard() {
       }
 
       const endpoint =
-        report.formType === "CHEMISTRY_MIX"
+        report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
           ? `/chemistry-reports/${report.id}/change-status`
           : `/reports/${report.id}/change-status`;
 
@@ -647,7 +664,7 @@ export default function QaDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX") {
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -655,7 +672,7 @@ export default function QaDashboard() {
   }
 
   const badgeClasses = (r: Report) => {
-    const isChem = r.formType === "CHEMISTRY_MIX";
+    const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
     const isSterility = r.formType === "STERILITY";
     return (
       (isChem
@@ -882,7 +899,14 @@ export default function QaDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -905,7 +929,9 @@ export default function QaDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -1098,7 +1124,8 @@ export default function QaDashboard() {
                     r.formType === "MICRO_MIX" ||
                     r.formType === "MICRO_MIX_WATER" ||
                     r.formType === "STERILITY";
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
                   return (
@@ -1141,7 +1168,9 @@ export default function QaDashboard() {
                                 entity:
                                   r.formType === "CHEMISTRY_MIX"
                                     ? "ChemistryReport"
-                                    : "Micro Report",
+                                    : r.formType === "COA"
+                                      ? "CoaReport"
+                                      : "Micro Report",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1279,7 +1308,8 @@ export default function QaDashboard() {
                               setChangeStatusReport(r);
 
                               const options =
-                                r.formType === "CHEMISTRY_MIX"
+                                r.formType === "CHEMISTRY_MIX" ||
+                                r.formType === "COA"
                                   ? QA_CHEM_STATUSES
                                   : r.formType === "STERILITY"
                                     ? QA_STERILITY_STATUSES
@@ -1427,7 +1457,8 @@ export default function QaDashboard() {
                     logUiEvent({
                       action: "UI_PRINT_SINGLE",
                       entity:
-                        selectedReport.formType === "CHEMISTRY_MIX"
+                        selectedReport.formType === "CHEMISTRY_MIX" ||
+                        selectedReport.formType === "COA"
                           ? "ChemistryReport"
                           : "MicroReport",
                       entityId: selectedReport.id,
@@ -1448,7 +1479,8 @@ export default function QaDashboard() {
                 </button>
 
                 {/* ✅ show Update in modal for micro OR chem */}
-                {(selectedReport.formType === "CHEMISTRY_MIX"
+                {(selectedReport.formType === "CHEMISTRY_MIX" ||
+                selectedReport.formType === "COA"
                   ? canUpdateThisChem(selectedReport, user)
                   : selectedReport.formType === "STERILITY"
                     ? canUpdateThisSterility(selectedReport, user)
@@ -1531,6 +1563,14 @@ export default function QaDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
@@ -1576,7 +1616,8 @@ export default function QaDashboard() {
                 }}
                 className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
               >
-                {(changeStatusReport.formType === "CHEMISTRY_MIX"
+                {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
+                changeStatusReport.formType === "COA"
                   ? QA_CHEM_STATUSES
                   : changeStatusReport.formType === "STERILITY"
                     ? QA_STERILITY_STATUSES

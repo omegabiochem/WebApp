@@ -38,6 +38,8 @@ import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import COAReportFormView from "../Reports/COAReportFormView";
+import { canShowCOAUpdateButton } from "../../utils/COAReportFormWorkflow";
 
 // ----------------------------------
 // Types
@@ -57,7 +59,7 @@ type MicroReport = {
 type ChemReport = {
   id: string;
   client: string;
-  formType: "CHEMISTRY_MIX" | string;
+  formType: "CHEMISTRY_MIX" | "COA" | string;
   dateSent: string | null;
   status: string;
   reportNumber: string | null;
@@ -67,8 +69,6 @@ type ChemReport = {
   selectedActives?: string[];
   selectedActivesText?: string;
 };
-
-
 
 type UnifiedRow =
   | ({ kind: "MICRO" } & MicroReport)
@@ -122,6 +122,7 @@ const microFormTypeToSlug: Record<string, string> = {
 
 const chemFormTypeToSlug: Record<string, string> = {
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -297,6 +298,21 @@ function BulkPrintArea({
           return (
             <div key={`${r.kind}-${r.id}`} className="report-page">
               <ChemistryMixReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        // COA
+        if (r.formType === "COA") {
+          return (
+            <div key={`${r.kind}-${r.id}`} className="report-page">
+              <COAReportFormView
                 report={r}
                 onClose={() => {}}
                 showSwitcher={false}
@@ -514,7 +530,6 @@ export default function MCDashboard() {
   // Live status updates (if your hook works generically)
   useLiveReportStatus(setMicroReports as any);
   useLiveReportStatus(setChemReports as any);
-  
 
   // -----------------------------
   // Date preset → from/to
@@ -799,6 +814,22 @@ export default function MCDashboard() {
       user?.role,
       r.status as ChemistryReportStatus,
       chemistryFieldsUsedOnForm,
+    );
+  }
+
+  function canUpdateCoaLocal(r: ChemReport, user?: any) {
+    const coaFieldsUsedOnForm = [
+      "dateReceived",
+      "comments",
+      "testedBy",
+      "testedDate",
+      "coaRows",
+    ];
+
+    return canShowCOAUpdateButton(
+      user?.role,
+      r.status as ChemistryReportStatus,
+      coaFieldsUsedOnForm,
     );
   }
 
@@ -1528,7 +1559,9 @@ export default function MCDashboard() {
                                 entity:
                                   r.formType === "CHEMISTRY_MIX"
                                     ? "ChemistryReport"
-                                    : "Micro Report",
+                                    : r.formType === "COA"
+                                      ? "CoaReport"
+                                      : "Micro Report",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1698,7 +1731,9 @@ export default function MCDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport"
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
                     });
@@ -1807,6 +1842,13 @@ export default function MCDashboard() {
                 )
               ) : selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

@@ -37,6 +37,7 @@ function useConfirmOnLeave(isDirty: boolean) {
 // ---- Map each transition to buttons ----
 
 const statusButtons: Record<string, { label: string; color: string }> = {
+  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
   UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
 
@@ -150,7 +151,7 @@ function canEdit(
     QA: ["dateCompleted"],
     CLIENT: [
       "client",
-      "dateSent",
+      // "dateSent",
       "typeOfTest",
       "sampleType",
       "formulaNo",
@@ -286,7 +287,9 @@ export default function SterilityReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || "");
+const [dateSent, setDateSent] = useState(
+  report?.dateSent || todayISO()
+);
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -790,7 +793,7 @@ export default function SterilityReportForm({
           QA: ["dateCompleted"],
           CLIENT: [
             "client",
-            "dateSent",
+            // "dateSent",
             "typeOfTest",
             "sampleType",
             "formulaNo",
@@ -925,6 +928,7 @@ export default function SterilityReportForm({
       const okFields = validateAndSetErrors(values);
 
       if (
+        newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
@@ -949,6 +953,10 @@ export default function SterilityReportForm({
           return;
         }
       }
+
+      if (newStatus === "SUBMITTED_BY_CLIENT") {
+  setDateSent(todayISO());
+}
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
@@ -1128,6 +1136,7 @@ export default function SterilityReportForm({
 
   const HIDE_SIGNATURES_FOR = new Set<ReportStatus>([
     "DRAFT",
+    "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(status as ReportStatus);
@@ -1229,7 +1238,9 @@ export default function SterilityReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+              {status === "DRAFT" ||
+              status === "UNDER_DRAFT_REVIEW" ||
+              status === "SUBMITTED_BY_CLIENT"
                 ? "STERILITY SUBMISSION FORM"
                 : "STERILITY REPORT"}
             </div>

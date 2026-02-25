@@ -20,6 +20,8 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+import COAReportFormView from "../Reports/COAReportFormView";
+import COAReportForm from "../Reports/COAReportForm";
 
 // -----------------------------
 // Types
@@ -58,6 +60,7 @@ const CHEMISTRY_STATUSES = [
 // -----------------------------
 const formTypeToSlug: Record<string, string> = {
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -159,6 +162,19 @@ function BulkPrintArea({
             </div>
           );
         }
+        if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
         return (
           <div key={r.id} className="report-page">
             <h1>{r.formNumber}</h1>
@@ -181,7 +197,9 @@ export default function ChemistryDashboard() {
   const [statusFilter, setStatusFilter] =
     useState<(typeof CHEMISTRY_STATUSES)[number]>("ALL");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">("createdAt");
+  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">(
+    "createdAt",
+  );
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -328,6 +346,7 @@ export default function ChemistryDashboard() {
       "comments",
       "testedBy",
       "testedDate",
+      "coaRows",
     ];
 
     return canShowChemistryUpdateButton(
@@ -375,7 +394,7 @@ export default function ChemistryDashboard() {
       action: "UI_PRINT_SELECTED",
       entity: "Report",
       details: `Printed selected reports (${selectedIds.length})`,
-      entityId:selectedIds.join(","),
+      entityId: selectedIds.join(","),
       meta: {
         reportIds: selectedIds,
         count: selectedIds.length,
@@ -1047,7 +1066,10 @@ export default function ChemistryDashboard() {
                             onClick={() => {
                               logUiEvent({
                                 action: "UI_VIEW",
-                                entity: "ChemistryReport",
+                                entity:
+                                  r.formType === "CHEMISTRY_MIX"
+                                    ? "ChemistryReport"
+                                    : "CoaReport",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1174,7 +1196,9 @@ export default function ChemistryDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport "
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
                     });
@@ -1224,6 +1248,13 @@ export default function ChemistryDashboard() {
             <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

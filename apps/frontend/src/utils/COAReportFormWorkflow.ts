@@ -1,9 +1,11 @@
+import React, { useLayoutEffect, useRef } from "react";
+
 // src/permissions/reportWorkflow.ts
 export type Role =
   | "SYSTEMADMIN"
   | "ADMIN"
   | "FRONTDESK"
-  | "MICRO"
+  | "CHEMISTRY"
   | "MC"
   | "QA"
   | "CLIENT";
@@ -22,7 +24,7 @@ export type CorrectionItem = {
   resolutionNote?: string | null;
 };
 
-export type SterilityReportStatus =
+export type COAReportStatus =
   | "DRAFT"
   | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
@@ -49,11 +51,11 @@ export type SterilityReportStatus =
   | "LOCKED";
 
 // 🔁 Keep this in sync with backend
-export const STERILITY_STATUS_TRANSITIONS: Record<
-  SterilityReportStatus,
+export const STATUS_TRANSITIONS: Record<
+  COAReportStatus,
   {
     canSet: Role[];
-    next: SterilityReportStatus[];
+    next: COAReportStatus[];
     nextEditableBy: Role[];
     canEdit: Role[];
   }
@@ -71,9 +73,9 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
@@ -83,28 +85,28 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_RESUBMISSION_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ["CLIENT"],
     next: ["RESUBMISSION_BY_CLIENT"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: ["CLIENT"],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC"],
+    nextEditableBy: ["ADMIN", "QA", "CHEMISTRY", "MC"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
     canSet: ["FRONTDESK"],
     next: ["UNDER_CLIENT_REVIEW", "FRONTDESK_ON_HOLD"],
-    nextEditableBy: ["MICRO", "MC"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
@@ -120,15 +122,15 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
-    nextEditableBy: ["MICRO", "MC"],
-    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
+    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
   },
   TESTING_ON_HOLD: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA"],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
@@ -138,10 +140,10 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC"],
+    canSet: ["CHEMISTRY", "MC"],
     next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
-    nextEditableBy: ["MICRO", "MC"],
-    canEdit: ["MICRO", "MC", "ADMIN", "QA"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
+    canEdit: ["CHEMISTRY", "MC", "ADMIN", "QA"],
   },
   RESUBMISSION_BY_TESTING: {
     canSet: ["QA"],
@@ -158,7 +160,7 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
   QA_NEEDS_CORRECTION: {
     canSet: ["QA"],
     next: ["UNDER_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC"],
+    nextEditableBy: ["CHEMISTRY", "MC"],
     canEdit: [],
   },
 
@@ -207,7 +209,7 @@ export const STERILITY_STATUS_TRANSITIONS: Record<
 };
 
 //  these are designed for readable badges on white UI
-export const STERILITY_STATUS_COLORS: Record<SterilityReportStatus, string> = {
+export const COA_STATUS_COLORS: Record<COAReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
   UNDER_DRAFT_REVIEW: "bg-gray-100 text-gray-700 ring-1 ring-gray-500",
 
@@ -253,64 +255,53 @@ export const STERILITY_STATUS_COLORS: Record<SterilityReportStatus, string> = {
 export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   SYSTEMADMIN: [],
   ADMIN: ["*"],
+
   FRONTDESK: [],
-  MICRO: [
-    "testSopNo",
-    "dateTested",
-    "ftm_turbidity",
-    "ftm_observation",
-    "ftm_result",
-    "scdb_turbidity",
-    "scdb_observation",
-    "scdb_result",
+
+  CHEMISTRY: [
+    "dateReceived",
+    "coaRows", // lab fills RESULT column
     "comments",
+    "testedBy",
+    "testedDate",
   ],
-  MC: [
-    "testSopNo",
-    "dateTested",
-    "ftm_turbidity",
-    "ftm_observation",
-    "ftm_result",
-    "scdb_turbidity",
-    "scdb_observation",
-    "scdb_result",
-    "comments",
-  ],
-  QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+
+  MC: ["dateReceived", "coaRows", "comments", "testedBy", "testedDate"],
+
+  QA: ["dateCompleted"],
+
   CLIENT: [
     "client",
     // "dateSent",
     "sampleDescription",
-    "testTypes",
-    "sampleCollected",
+    // "testTypes", // only COA_VERIFICATION
     "lotBatchNo",
     "manufactureDate",
     "formulaId",
     "sampleSize",
-    "numberOfActives",
     "sampleTypes",
     "comments",
-    "actives",
-    "formulaContent",
+    "coaRows", // client fills STANDARD column
   ],
 };
+
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,
-  status?: SterilityReportStatus,
+  status?: COAReportStatus,
 ): boolean {
   if (!role || !status) return false;
-  const t = STERILITY_STATUS_TRANSITIONS[status];
+  const t = STATUS_TRANSITIONS[status];
   return !!t?.canSet?.includes(role);
 }
 
 export function canRoleEditField(
   role: Role | undefined,
-  status: SterilityReportStatus | undefined,
+  status: COAReportStatus | undefined,
   field: string,
 ): boolean {
   if (!role || !status) return false;
-  const t = STERILITY_STATUS_TRANSITIONS[status];
+  const t = STATUS_TRANSITIONS[status];
   if (!t || !t.canEdit.includes(role)) return false;
 
   const fields = FIELD_EDIT_MAP[role] || [];
@@ -324,9 +315,9 @@ export function canRoleEditField(
  *  - there is at least one field they’re allowed to edit (field-level).
  * You can pass a list of fields relevant to that screen; default checks any field in the map.
  */
-export function canShowSterilityUpdateButton(
+export function canShowCOAUpdateButton(
   role: Role | undefined,
-  status: SterilityReportStatus | undefined,
+  status: COAReportStatus | undefined,
   fieldsToConsider?: string[],
 ): boolean {
   if (!role || !status) return false;
@@ -351,4 +342,46 @@ export function splitDateInitial(value?: string) {
 export function joinDateInitial(date: string, initial: string) {
   if (!date && !initial) return "";
   return `${date || ""} / ${initial || ""}`.trim();
+}
+
+export function CellTextarea(props: {
+  value: string;
+  onChange?: (v: string) => void;
+  readOnly?: boolean;
+  className?: string;
+}) {
+  const { value, onChange, readOnly, className } = props;
+
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useLayoutEffect(() => {
+    resize();
+  }, [value]);
+
+  return React.createElement("textarea", {
+    ref: (el: HTMLTextAreaElement | null) => {
+      ref.current = el;
+      if (el) resize();
+    },
+    rows: 1,
+    value: value ?? "",
+    readOnly: !!readOnly,
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+      onChange?.(e.target.value),
+    onInput: () => resize(),
+    className: [
+      "w-full resize-none border-none outline-none bg-transparent",
+      "leading-tight whitespace-pre-wrap break-words",
+      "overflow-hidden",
+      "text-center",
+      className ?? "",
+    ].join(" "),
+  });
 }

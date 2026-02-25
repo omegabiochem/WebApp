@@ -30,6 +30,7 @@ import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import { COLS, MAX_COLS, type ColKey } from "../../utils/clientDashboardutils";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import COAReportFormView from "../Reports/COAReportFormView";
 
 // -----------------------------
 // Types
@@ -63,6 +64,7 @@ const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
   "FINAL_APPROVED",
   "DRAFT",
+  "UNDER_DRAFT_REVIEW",
   "SUBMITTED_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
@@ -80,6 +82,7 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "ALL",
   "APPROVED",
   "DRAFT",
+  "UNDER_DRAFT_REVIEW",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -96,6 +99,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -159,7 +163,8 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
-  const isChemistry = r.formType === "CHEMISTRY_MIX";
+  const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+
   if (!isChemistry) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
@@ -179,6 +184,7 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
     "comments",
     "activeToBeTested",
     "formulaContent",
+    "coaRows",
   ];
 
   return canShowChemistryUpdateButton(
@@ -282,6 +288,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -324,7 +342,7 @@ export default function ClientDashboard() {
 
   // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
+  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("formNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -341,14 +359,16 @@ export default function ClientDashboard() {
   );
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
   >("ALL");
 
   // status filter now uses combined type
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
 
   const statusOptions =
-    formFilter === "CHEMISTRY" ? CLIENT_CHEM_STATUSES : CLIENT_MICRO_STATUSES;
+    formFilter === "CHEMISTRY" || formFilter === "COA"
+      ? CLIENT_CHEM_STATUSES
+      : CLIENT_MICRO_STATUSES;
 
   // // status filter now uses combined type
   // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
@@ -466,6 +486,7 @@ export default function ClientDashboard() {
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -547,7 +568,7 @@ export default function ClientDashboard() {
     newStatus: string,
     reason = "Client correction update",
   ) {
-    const isChemistry = r.formType === "CHEMISTRY_MIX";
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
@@ -571,8 +592,8 @@ export default function ClientDashboard() {
   }
 
   function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
-    if (r.formType === "CHEMISTRY_MIX") {
+    const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -922,7 +943,14 @@ export default function ClientDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -945,7 +973,9 @@ export default function ClientDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -1253,7 +1283,8 @@ export default function ClientDashboard() {
                     r.formType === "MICRO_MIX_WATER" ||
                     r.formType === "STERILITY";
 
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
                       <td className="px-4 py-3">
@@ -1612,6 +1643,13 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

@@ -5,7 +5,12 @@ import { api } from "../../lib/api";
 type TemplateRow = {
   id: string;
   name: string;
-  formType: "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX";
+  formType:
+    | "MICRO_MIX"
+    | "MICRO_MIX_WATER"
+    | "STERILITY"
+    | "CHEMISTRY_MIX"
+    | "COA";
   version?: number;
   updatedAt?: string;
   createdAt?: string;
@@ -40,6 +45,8 @@ function labelFor(formType: TemplateRow["formType"]) {
       return "Sterility";
     case "CHEMISTRY_MIX":
       return "Chemistry";
+    case "COA":
+      return "Coa";
   }
 }
 
@@ -49,6 +56,7 @@ const TEMPLATE_NEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
   MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=template",
   STERILITY: "/reports/sterility/new?mode=template",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=template",
+  COA: "/reports/coa/new?mode=template",
 };
 
 const TEMPLATE_VIEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
@@ -56,6 +64,7 @@ const TEMPLATE_VIEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
   MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=templateView",
   STERILITY: "/reports/sterility/new?mode=templateView",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=templateView",
+  COA: "/reports/coa/new?mode=template",
 };
 
 function templateViewPath(t: TemplateRow) {
@@ -69,7 +78,13 @@ function templateEditPath(t: TemplateRow) {
   return `${base}${glue}templateId=${encodeURIComponent(t.id)}`;
 }
 
-type FormFilter = "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY";
+type FormFilter =
+  | "ALL"
+  | "MICRO"
+  | "MICROWATER"
+  | "STERILITY"
+  | "CHEMISTRY"
+  | "COA";
 type SortBy = "updatedAt" | "name";
 type SortDir = "asc" | "desc";
 
@@ -142,6 +157,8 @@ export default function TemplatesPage() {
 
       if (t.formType === "CHEMISTRY_MIX")
         return navigate(`/chemistry-reports/chemistry-mix/${id}`);
+
+      if (t.formType === "COA") return navigate(`/chemistry-reports/coa/${id}`);
       if (t.formType === "MICRO_MIX")
         return navigate(`/reports/micro-mix/${id}`);
       if (t.formType === "MICRO_MIX_WATER")
@@ -192,6 +209,7 @@ export default function TemplatesPage() {
             if (formFilter === "STERILITY") return t.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return t.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return t.formType === "COA";
             return true;
           });
 
@@ -338,7 +356,14 @@ export default function TemplatesPage() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -361,7 +386,9 @@ export default function TemplatesPage() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
