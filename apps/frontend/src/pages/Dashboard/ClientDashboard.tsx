@@ -30,7 +30,6 @@ import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import {
   COLS,
-  MAX_COLS,
   parseIntSafe,
   type ColKey,
 } from "../../utils/clientDashboardutils";
@@ -409,6 +408,11 @@ export default function ClientDashboard() {
   const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
   const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
   const navigate = useNavigate();
   const { user, token } = useAuth();
 
@@ -445,7 +449,7 @@ export default function ClientDashboard() {
       if (raw) {
         const parsed = JSON.parse(raw) as ColKey[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setSelectedCols(parsed.slice(0, MAX_COLS));
+          setSelectedCols(parsed);
         }
       }
     } catch {
@@ -776,7 +780,7 @@ export default function ClientDashboard() {
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
       search.trim() !== "" ||
-      sortBy !== "dateSent" ||
+      sortBy !== "formNumber" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
@@ -799,7 +803,7 @@ export default function ClientDashboard() {
     setFormFilter("ALL");
     setStatusFilter("ALL");
     setSearch("");
-    setSortBy("dateSent");
+    setSortBy("formNumber");
     setSortDir("desc");
     setPerPage(10);
     setDatePreset("ALL");
@@ -869,17 +873,9 @@ export default function ClientDashboard() {
   const toggleCol = (key: ColKey) => {
     setSelectedCols((prev) => {
       const exists = prev.includes(key);
-
-      // remove
       if (exists) return prev.filter((k) => k !== key);
 
-      // add (respect max 6)
-      if (prev.length >= MAX_COLS) {
-        toast.error(`You can select max ${MAX_COLS} columns`);
-        return prev;
-      }
-
-      return [...prev, key];
+      return [...prev, key]; // ✅ no limit
     });
   };
 
@@ -1208,11 +1204,11 @@ export default function ClientDashboard() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10">
+                <th className="px-4 py-3 font-medium w-10 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -1220,7 +1216,10 @@ export default function ClientDashboard() {
                   />
                 </th>
                 {selectedCols.map((k) => (
-                  <th key={k} className="px-4 py-3 font-medium">
+                  <th
+                    key={k}
+                    className="px-4 py-3 font-medium whitespace-nowrap"
+                  >
                     {COLS.find((c) => c.key === k)?.label ?? k}
                   </th>
                 ))}
@@ -1230,7 +1229,7 @@ export default function ClientDashboard() {
                     <span>Actions</span>
 
                     <div className="relative" data-col-dropdown>
-                      <button
+                      {/* <button
                         type="button"
                         onClick={() => setColOpen((v) => !v)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
@@ -1238,76 +1237,101 @@ export default function ClientDashboard() {
                         aria-label="Choose columns"
                       >
                         ▾
+                      </button> */}
+
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              }); // 288 = w-72
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
                       </button>
 
-                      {colOpen && (
-                        <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border bg-white p-3 shadow-lg">
-                          <div className="mb-2 flex items-center justify-between">
-                            <div className="text-xs font-semibold text-slate-600">
-                              Columns ({selectedCols.length}/{MAX_COLS})
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              className="text-xs text-slate-500 hover:text-slate-800"
-                              onClick={() => setColOpen(false)}
-                              aria-label="Close"
-                              title="Close"
-                            >
-                              ✕
-                            </button>
-                          </div>
 
-                          <div className="mb-2 text-xs text-slate-500">
-                            Select up to {MAX_COLS}
-                          </div>
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+                                const disabled = false; // or remove variable
 
-                          <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                            {COLS.map((c) => {
-                              const checked = selectedCols.includes(c.key);
-                              const disabled =
-                                !checked && selectedCols.length >= MAX_COLS;
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className={classNames(
+                                      "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
+                                      disabled
+                                        ? "cursor-not-allowed opacity-50"
+                                        : "cursor-pointer hover:bg-slate-50",
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
 
-                              return (
-                                <label
-                                  key={c.key}
-                                  className={classNames(
-                                    "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
-                                    disabled
-                                      ? "cursor-not-allowed opacity-50"
-                                      : "cursor-pointer hover:bg-slate-50",
-                                  )}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={disabled}
-                                    onChange={() => toggleCol(c.key)}
-                                  />
-                                  <span>{c.label}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
 
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-slate-600 hover:underline"
-                              onClick={() => setSelectedCols(DEFAULT_COLS)}
-                            >
-                              Reset defaults
-                            </button>
-
-                            <button
-                              type="button"
-                              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                              onClick={() => setColOpen(false)}
-                            >
-                              Done
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
                     </div>
                   </div>
                 </th>
@@ -1354,7 +1378,7 @@ export default function ClientDashboard() {
                         />
                       </td>
                       {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3">
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
                           {k === "formNumber" ? (
                             <span className="font-medium">
                               {getCellValue(r, k)}
