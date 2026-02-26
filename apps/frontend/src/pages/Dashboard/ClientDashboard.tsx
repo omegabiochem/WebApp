@@ -403,7 +403,7 @@ export default function ClientDashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
+    (searchParams.get("dp") as any) || "TODAY",
   );
 
   const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
