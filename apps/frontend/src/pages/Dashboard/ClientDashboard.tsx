@@ -402,12 +402,36 @@ export default function ClientDashboard() {
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "TODAY",
+  const ALL_PRESETS: DatePreset[] = [
+    "ALL",
+    "TODAY",
+    "YESTERDAY",
+    "LAST_7_DAYS",
+    "LAST_30_DAYS",
+    "THIS_MONTH",
+    "LAST_MONTH",
+    "THIS_YEAR",
+    "LAST_YEAR",
+    "CUSTOM",
+  ];
+
+  const dpParam = searchParams.get("dp");
+  const initialDp: DatePreset =
+    dpParam &&
+    (ALL_PRESETS as readonly string[]).includes(dpParam) &&
+    dpParam !== "ALL"
+      ? (dpParam as DatePreset)
+      : "TODAY";
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(initialDp);
+
+  const [fromDate, setFromDate] = useState(
+    initialDp === "CUSTOM" ? searchParams.get("from") || "" : "",
   );
 
-  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
-  const [toDate, setToDate] = useState(searchParams.get("to") || "");
+  const [toDate, setToDate] = useState(
+    initialDp === "CUSTOM" ? searchParams.get("to") || "" : "",
+  );
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
@@ -602,8 +626,10 @@ export default function ClientDashboard() {
     sp.set("p", String(pageClamped));
 
     sp.set("dp", datePreset);
-    if (fromDate) sp.set("from", fromDate);
-    if (toDate) sp.set("to", toDate);
+    if (datePreset === "CUSTOM") {
+      if (fromDate) sp.set("from", fromDate);
+      if (toDate) sp.set("to", toDate);
+    }
 
     setSearchParams(sp, { replace: true });
   }, [
@@ -777,6 +803,14 @@ export default function ClientDashboard() {
   }, [datePreset]);
 
   const hasActiveFilters = useMemo(() => {
+    let dateActive = false;
+
+    if (datePreset === "CUSTOM") {
+      dateActive = fromDate !== "" || toDate !== "";
+    } else {
+      dateActive = datePreset !== "TODAY";
+    }
+
     return (
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
@@ -784,9 +818,7 @@ export default function ClientDashboard() {
       sortBy !== "formNumber" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
-      datePreset !== "TODAY" ||
-      fromDate !== "" ||
-      toDate !== ""
+      dateActive
     );
   }, [
     formFilter,
