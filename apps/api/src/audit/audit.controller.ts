@@ -4,6 +4,7 @@ import { AuditService } from './audit.service';
 import type { Response } from 'express';
 import { PrismaService } from 'prisma/prisma.service';
 import { getRequestContext } from 'src/common/request-context';
+import { UserRole } from '@prisma/client';
 
 @Controller('audit')
 export class AuditController {
@@ -21,6 +22,10 @@ export class AuditController {
     @Query('from') from?: string,
     @Query('to') to?: string,
 
+    @Query('role') role?: UserRole,
+    @Query('formNumber') formNumber?: string,
+    @Query('reportNumber') reportNumber?: string,
+
     // ✅ pagination
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
@@ -28,6 +33,10 @@ export class AuditController {
     // ✅ sorting
     @Query('order') order: 'asc' | 'desc' = 'desc',
   ) {
+    const ctx = getRequestContext() || {};
+    const requesterRole = (ctx as any).role as UserRole | undefined;
+
+    const effectiveRole = requesterRole === 'CLIENT' ? 'CLIENT' : role;
     return this.audit.listAllPaged({
       entity,
       entityId,
@@ -35,9 +44,12 @@ export class AuditController {
       action,
       from,
       to,
+      role: effectiveRole,
       page: Number(page),
       pageSize: Number(pageSize),
       order,
+      formNumber,
+      reportNumber,
     });
   }
 
@@ -58,7 +70,15 @@ export class AuditController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('order') order: 'asc' | 'desc' = 'desc',
+
+    @Query('role') role?: UserRole,
+    @Query('formNumber') formNumber?: string,
+    @Query('reportNumber') reportNumber?: string,
   ) {
+    const ctx = getRequestContext() || {};
+    const requesterRole = (ctx as any).role as UserRole | undefined;
+    const effectiveRole = requesterRole === 'CLIENT' ? 'CLIENT' : role;
+
     const csv = await this.audit.exportAllCSV({
       entity,
       entityId,
@@ -67,6 +87,9 @@ export class AuditController {
       from,
       to,
       order,
+      role: effectiveRole,
+      formNumber,
+      reportNumber,
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
