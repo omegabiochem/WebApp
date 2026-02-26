@@ -498,4 +498,5 @@ export const JJL_SAMPLE_TYPE_OPTIONS = [
   "Bulk Cleaning Validation",
   "Finished Goods Cleaning Validation",
   "Bulk Process Validation",
+  "Raw Materials"
 ] as const;

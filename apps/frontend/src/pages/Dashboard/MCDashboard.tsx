@@ -882,25 +882,26 @@ export default function MCDashboard() {
   ]);
 
   // Keep statusFilter valid when switching category
+  const didMount = React.useRef(false);
+
   useEffect(() => {
-    setStatusFilter("ALL");
+    if (!didMount.current) {
+      didMount.current = true;
+      return; // ✅ skip initial run
+    }
+
+    // runs only for real category changes after mount
     setSelectedIds([]);
+    setStatusFilter("ALL");
 
     if (category === "ALL") {
-      setAllTypeFilter("ALL"); // ✅ keep
       setMicroFormFilter("ALL");
       setChemFormFilter("ALL");
       setActiveFilter("ALL");
-    }
-
-    if (category === "MICRO") {
-      setAllTypeFilter("ALL"); // ✅ keep
+    } else if (category === "MICRO") {
       setChemFormFilter("ALL");
       setActiveFilter("ALL");
-    }
-
-    if (category === "CHEMISTRY") {
-      setAllTypeFilter("ALL"); // ✅ keep
+    } else if (category === "CHEMISTRY") {
       setMicroFormFilter("ALL");
     }
   }, [category]);

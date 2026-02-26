@@ -1995,7 +1995,7 @@ export default function ChemistryMixSubmissionForm({
               RAW / BULK ACTIVE LOT #
             </div>
             <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              SOP # / VALIDATED
+              SOP # / VALIDATED TM
             </div>
             <div className="p-1 border-r border-black h-full flex items-center justify-center">
               FORMULA CONTENT
