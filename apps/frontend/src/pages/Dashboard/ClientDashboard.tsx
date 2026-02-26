@@ -784,7 +784,7 @@ export default function ClientDashboard() {
       sortBy !== "formNumber" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
-      datePreset !== "ALL" ||
+      datePreset !== "TODAY" ||
       fromDate !== "" ||
       toDate !== ""
     );
@@ -807,7 +807,7 @@ export default function ClientDashboard() {
     setSortBy("formNumber");
     setSortDir("desc");
     setPerPage(10);
-    setDatePreset("ALL");
+    setDatePreset("TODAY");
     setFromDate("");
     setToDate("");
     setPage(1);
