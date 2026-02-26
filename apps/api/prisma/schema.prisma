@@ -311,6 +311,7 @@ model ChemistryReport {
   version       Int                            @default(1)
   attachments   ChemistryAttachment[]
   chemistryMix  ChemistryMixDetails?
+  coa          COADetails?
   statusHistory ChemistryReportStatusHistory[]
 }
 
@@ -343,6 +344,49 @@ model ChemistryMixDetails {
   dateReceived      DateTime?
   stabilityNote     String?
   chemistryReport   ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+}
+
+model COADetails {
+  chemistryId        String       @id
+
+  // header
+  client             String?
+  dateSent           DateTime?
+  sampleDescription  String?
+  coaVerification    Boolean      @default(false)
+
+  lotBatchNo         String?
+  manufactureDate    DateTime?
+  formulaId          String?
+  sampleSize         String?
+  dateReceived       DateTime?
+
+  sampleTypes        SampleType[]  // uses your existing enum
+
+  // ✅ COA SPEC TABLE (store rows)
+  // each row: { key, item, standard, result }
+  coaRows            Json?
+
+  // comments/signatures
+  comments           String?
+  testedBy           String?
+  testedDate         DateTime?
+  reviewedBy         String?
+  reviewedDate       DateTime?
+
+  // workflow (keep consistent with your other detail models)
+  status             ChemistryReportStatus  @default(DRAFT)
+  lockedAt           DateTime?
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  corrections        Json?         // optional if you store corrections in a table elsewhere
+
+  chemistryReport   ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@index([status])
 }
 
 model ChemistryReportStatusHistory {
@@ -452,10 +496,12 @@ enum FormType {
   MICRO_MIX_WATER
   STERILITY
   CHEMISTRY_MIX
+  COA
 }
 
 enum ReportStatus {
   DRAFT
+  UNDER_DRAFT_REVIEW
   SUBMITTED_BY_CLIENT
   CLIENT_NEEDS_PRELIMINARY_CORRECTION
   CLIENT_NEEDS_FINAL_CORRECTION
@@ -528,6 +574,7 @@ enum AttachmentKind {
 
 enum ChemistryReportStatus {
   DRAFT
+  UNDER_DRAFT_REVIEW
   SUBMITTED_BY_CLIENT
   CLIENT_NEEDS_CORRECTION
   UNDER_CLIENT_CORRECTION

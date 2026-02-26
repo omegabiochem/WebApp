@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import type {
@@ -30,7 +30,12 @@ import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
-import { COLS, MAX_COLS, type ColKey } from "../../utils/clientDashboardutils";
+import {
+  COLS,
+  parseIntSafe,
+  type ColKey,
+} from "../../utils/clientDashboardutils";
+import COAReportFormView from "../Reports/COAReportFormView";
 
 // -----------------------------
 // Types
@@ -64,6 +69,7 @@ const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
   "FINAL_APPROVED",
   "DRAFT",
+  "UNDER_DRAFT_REVIEW",
   "SUBMITTED_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
@@ -81,6 +87,7 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "ALL",
   "APPROVED",
   "DRAFT",
+  "UNDER_DRAFT_REVIEW",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -97,6 +104,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
   // CHEMISTRY_* can be added when you wire those forms
 };
 
@@ -160,7 +168,8 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
-  const isChemistry = r.formType === "CHEMISTRY_MIX";
+  const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+
   if (!isChemistry) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
@@ -180,6 +189,7 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
     "comments",
     "activeToBeTested",
     "formulaContent",
+    "coaRows",
   ];
 
   return canShowChemistryUpdateButton(
@@ -283,6 +293,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -322,13 +344,23 @@ export default function ClientDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">(
+    (searchParams.get("sortBy") as any) || "formNumber",
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -342,14 +374,17 @@ export default function ClientDashboard() {
   );
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
-  >("ALL");
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >((searchParams.get("form") as any) || "ALL");
 
-  // status filter now uses combined type
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
 
   const statusOptions =
-    formFilter === "CHEMISTRY" ? CLIENT_CHEM_STATUSES : CLIENT_MICRO_STATUSES;
+    formFilter === "CHEMISTRY" || formFilter === "COA"
+      ? CLIENT_CHEM_STATUSES
+      : CLIENT_MICRO_STATUSES;
 
   // // status filter now uses combined type
   // const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
@@ -367,9 +402,17 @@ export default function ClientDashboard() {
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
+
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
 
   const navigate = useNavigate();
   const { user, token } = useAuth();
@@ -407,7 +450,7 @@ export default function ClientDashboard() {
       if (raw) {
         const parsed = JSON.parse(raw) as ColKey[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setSelectedCols(parsed.slice(0, MAX_COLS));
+          setSelectedCols(parsed);
         }
       }
     } catch {
@@ -467,6 +510,7 @@ export default function ClientDashboard() {
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -543,12 +587,45 @@ export default function ClientDashboard() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [colOpen]);
 
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
+
+    if (search.trim()) sp.set("q", search.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    datePreset,
+    fromDate,
+    toDate,
+    setSearchParams,
+  ]);
+
   async function setStatus(
     r: Report,
     newStatus: string,
     reason = "Client correction update",
   ) {
-    const isChemistry = r.formType === "CHEMISTRY_MIX";
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
@@ -572,8 +649,8 @@ export default function ClientDashboard() {
   }
 
   function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix"; // default for legacy
-    if (r.formType === "CHEMISTRY_MIX") {
+    const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -704,7 +781,7 @@ export default function ClientDashboard() {
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
       search.trim() !== "" ||
-      sortBy !== "dateSent" ||
+      sortBy !== "formNumber" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
@@ -727,7 +804,7 @@ export default function ClientDashboard() {
     setFormFilter("ALL");
     setStatusFilter("ALL");
     setSearch("");
-    setSortBy("dateSent");
+    setSortBy("formNumber");
     setSortDir("desc");
     setPerPage(10);
     setDatePreset("ALL");
@@ -737,8 +814,15 @@ export default function ClientDashboard() {
   };
 
   useEffect(() => {
-    setStatusFilter("ALL");
-  }, [formFilter]);
+    const allowed =
+      formFilter === "CHEMISTRY" || formFilter === "COA"
+        ? CLIENT_CHEM_STATUSES.map(String)
+        : CLIENT_MICRO_STATUSES.map(String);
+
+    if (statusFilter !== "ALL" && !allowed.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+  }, [formFilter]); // (statusFilter optional, but this is ok)
 
   useLiveReportStatus(setReports, {
     acceptCreated: (r: Report) => {
@@ -790,17 +874,9 @@ export default function ClientDashboard() {
   const toggleCol = (key: ColKey) => {
     setSelectedCols((prev) => {
       const exists = prev.includes(key);
-
-      // remove
       if (exists) return prev.filter((k) => k !== key);
 
-      // add (respect max 6)
-      if (prev.length >= MAX_COLS) {
-        toast.error(`You can select max ${MAX_COLS} columns`);
-        return prev;
-      }
-
-      return [...prev, key];
+      return [...prev, key]; // ✅ no limit
     });
   };
 
@@ -923,7 +999,14 @@ export default function ClientDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -946,7 +1029,9 @@ export default function ClientDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -1120,11 +1205,11 @@ export default function ClientDashboard() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10">
+                <th className="px-4 py-3 font-medium w-10 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -1132,7 +1217,10 @@ export default function ClientDashboard() {
                   />
                 </th>
                 {selectedCols.map((k) => (
-                  <th key={k} className="px-4 py-3 font-medium">
+                  <th
+                    key={k}
+                    className="px-4 py-3 font-medium whitespace-nowrap"
+                  >
                     {COLS.find((c) => c.key === k)?.label ?? k}
                   </th>
                 ))}
@@ -1142,7 +1230,7 @@ export default function ClientDashboard() {
                     <span>Actions</span>
 
                     <div className="relative" data-col-dropdown>
-                      <button
+                      {/* <button
                         type="button"
                         onClick={() => setColOpen((v) => !v)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
@@ -1150,76 +1238,101 @@ export default function ClientDashboard() {
                         aria-label="Choose columns"
                       >
                         ▾
+                      </button> */}
+
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              }); // 288 = w-72
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
                       </button>
 
-                      {colOpen && (
-                        <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border bg-white p-3 shadow-lg">
-                          <div className="mb-2 flex items-center justify-between">
-                            <div className="text-xs font-semibold text-slate-600">
-                              Columns ({selectedCols.length}/{MAX_COLS})
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              className="text-xs text-slate-500 hover:text-slate-800"
-                              onClick={() => setColOpen(false)}
-                              aria-label="Close"
-                              title="Close"
-                            >
-                              ✕
-                            </button>
-                          </div>
 
-                          <div className="mb-2 text-xs text-slate-500">
-                            Select up to {MAX_COLS}
-                          </div>
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+                                const disabled = false; // or remove variable
 
-                          <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                            {COLS.map((c) => {
-                              const checked = selectedCols.includes(c.key);
-                              const disabled =
-                                !checked && selectedCols.length >= MAX_COLS;
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className={classNames(
+                                      "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
+                                      disabled
+                                        ? "cursor-not-allowed opacity-50"
+                                        : "cursor-pointer hover:bg-slate-50",
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
 
-                              return (
-                                <label
-                                  key={c.key}
-                                  className={classNames(
-                                    "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
-                                    disabled
-                                      ? "cursor-not-allowed opacity-50"
-                                      : "cursor-pointer hover:bg-slate-50",
-                                  )}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={disabled}
-                                    onChange={() => toggleCol(c.key)}
-                                  />
-                                  <span>{c.label}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
 
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-slate-600 hover:underline"
-                              onClick={() => setSelectedCols(DEFAULT_COLS)}
-                            >
-                              Reset defaults
-                            </button>
-
-                            <button
-                              type="button"
-                              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                              onClick={() => setColOpen(false)}
-                            >
-                              Done
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
                     </div>
                   </div>
                 </th>
@@ -1254,7 +1367,8 @@ export default function ClientDashboard() {
                     r.formType === "MICRO_MIX_WATER" ||
                     r.formType === "STERILITY";
 
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
                       <td className="px-4 py-3">
@@ -1265,7 +1379,7 @@ export default function ClientDashboard() {
                         />
                       </td>
                       {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3">
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
                           {k === "formNumber" ? (
                             <span className="font-medium">
                               {getCellValue(r, k)}
@@ -1613,6 +1727,13 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={paneFor(String(selectedReport.status))}
+                />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

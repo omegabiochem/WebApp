@@ -24,6 +24,7 @@ export type CorrectionItem = {
 
 export type ReportStatus =
   | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
   | "CLIENT_NEEDS_FINAL_CORRECTION"
@@ -72,7 +73,13 @@ export const STATUS_TRANSITIONS: Record<
 > = {
   DRAFT: {
     canSet: ["CLIENT"],
-    next: ["SUBMITTED_BY_CLIENT"],
+    next: ["UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"],
+    nextEditableBy: ["CLIENT", "FRONTDESK"],
+    canEdit: ["CLIENT"],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ["CLIENT"],
+    next: ["DRAFT", "SUBMITTED_BY_CLIENT"], // ✅
     nextEditableBy: ["CLIENT", "FRONTDESK"],
     canEdit: ["CLIENT"],
   },
@@ -297,6 +304,7 @@ export const STATUS_TRANSITIONS: Record<
 //  these are designed for readable badges on white UI
 export const STATUS_COLORS: Record<ReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+  UNDER_DRAFT_REVIEW: "bg-gray-100 text-gray-700 ring-1 ring-gray-500",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
 
@@ -404,7 +412,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   QA: ["*"],
   CLIENT: [
     "client",
-    "dateSent",
+    // "dateSent",
     "typeOfTest",
     "sampleType",
     "formulaNo",

@@ -41,6 +41,7 @@ function useConfirmOnLeave(isDirty: boolean) {
 // ---- Map each transition to buttons ----
 
 const statusButtons: Record<string, { label: string; color: string }> = {
+  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
   UNDER_CLIENT_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
   UNDER_CLIENT_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
@@ -202,7 +203,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
     QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
-      "dateSent",
+      // "dateSent",
       "typeOfTest",
       "sampleType",
       "idNo",
@@ -336,7 +337,7 @@ export default function MicroMixReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || "");
+  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [idNo, setidNo] = useState(report?.idNo || "");
@@ -557,7 +558,7 @@ export default function MicroMixReportForm({
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
- const mode = params.get("mode");
+  const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
   const isTemplateMode = mode === "template";
 
@@ -570,15 +571,15 @@ export default function MicroMixReportForm({
   const [templateVersion, setTemplateVersion] = useState<number>(0);
   const [templateName, setTemplateName] = useState<string>("");
 
-useEffect(() => {
-  if (!isAnyTemplateMode) {
-    setTemplateId(null);
-    setTemplateVersion(0);
-    setTemplateName("");
-    return;
-  }
-  setTemplateId(urlTemplateId); // works for view + edit
-}, [isAnyTemplateMode, urlTemplateId]);
+  useEffect(() => {
+    if (!isAnyTemplateMode) {
+      setTemplateId(null);
+      setTemplateVersion(0);
+      setTemplateName("");
+      return;
+    }
+    setTemplateId(urlTemplateId); // works for view + edit
+  }, [isAnyTemplateMode, urlTemplateId]);
 
   // function stringify(v: any) {
   //   if (v === null || v === undefined) return "";
@@ -967,7 +968,8 @@ useEffect(() => {
 
   // const lock = (f: string) => !canEdit(role, f);
   // use:
-  const lock = (f: string) =>forceReadOnly || !canEdit(role, f, status as ReportStatus);
+  const lock = (f: string) =>
+    forceReadOnly || !canEdit(role, f, status as ReportStatus);
 
   const { errors, clearError, validateAndSetErrors } =
     useMicroMixWaterReportValidation(role, {
@@ -1190,7 +1192,7 @@ useEffect(() => {
           QA: ["dateCompleted"],
           CLIENT: [
             "client",
-            "dateSent",
+            // "dateSent",
             "typeOfTest",
             "sampleType",
             "idNo",
@@ -1339,6 +1341,7 @@ useEffect(() => {
       const okRows = validatePathogenRows(values.pathogens, role, phase);
 
       if (
+        newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
@@ -1379,6 +1382,9 @@ useEffect(() => {
           alert("⚠️ Please fix the highlighted rows before changing status.");
           return;
         }
+      }
+      if (newStatus === "SUBMITTED_BY_CLIENT") {
+        setDateSent(todayISO());
       }
 
       // ensure latest edits are saved
@@ -1607,6 +1613,7 @@ useEffect(() => {
 
   const HIDE_SIGNATURES_FOR = new Set<ReportStatus>([
     "DRAFT",
+    "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(status as ReportStatus);
@@ -1622,7 +1629,7 @@ useEffect(() => {
 
         {/* Header + print controls */}
         <div className="no-print mb-4 flex justify-end gap-2">
-          {isTemplateMode &&  !isTemplateViewMode && (
+          {isTemplateMode && !isTemplateViewMode && (
             <input
               className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
                 !templateName.trim()
@@ -1659,29 +1666,30 @@ useEffect(() => {
           >
             Print
           </button> */}
-          {!isTemplateViewMode && !HIDE_SAVE_FOR.has(status as ReportStatus) && (
-            <button
-              className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-              onClick={handleSave}
-              disabled={
-                role === "SYSTEMADMIN" ||
-                role === "FRONTDESK" ||
-                isBusy ||
-                status === "UNDER_CLIENT_FINAL_REVIEW" ||
-                status === "LOCKED" ||
-                (isTemplateMode && !templateName.trim())
-              }
-            >
-              {busy === "SAVE" && <Spinner />}
-              {isTemplateMode
-                ? templateId
-                  ? "Update Template"
-                  : "Save Template"
-                : reportId
-                  ? "Update Report"
-                  : "Save Report"}
-            </button>
-          )}
+          {!isTemplateViewMode &&
+            !HIDE_SAVE_FOR.has(status as ReportStatus) && (
+              <button
+                className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                onClick={handleSave}
+                disabled={
+                  role === "SYSTEMADMIN" ||
+                  role === "FRONTDESK" ||
+                  isBusy ||
+                  status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                  status === "LOCKED" ||
+                  (isTemplateMode && !templateName.trim())
+                }
+              >
+                {busy === "SAVE" && <Spinner />}
+                {isTemplateMode
+                  ? templateId
+                    ? "Update Template"
+                    : "Save Template"
+                  : reportId
+                    ? "Update Report"
+                    : "Save Report"}
+              </button>
+            )}
         </div>
 
         {/* Letterhead */}
@@ -1715,7 +1723,9 @@ useEffect(() => {
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+              {status === "DRAFT" ||
+              status === "UNDER_DRAFT_REVIEW" ||
+              status === "SUBMITTED_BY_CLIENT"
                 ? "MICRO WATER SUBMISSION FORM"
                 : "MICRO WATER REPORT"}
             </div>
@@ -3175,7 +3185,7 @@ useEffect(() => {
         </div>
       )}
 
-      {!isTemplateViewMode &&addForField && (
+      {!isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -3229,22 +3239,22 @@ useEffect(() => {
 
       {/* Floating Corrections button */}
       {!isTemplateViewMode && (
-      <div className="no-print fixed bottom-20 right-6 z-40">
-        <button
-          onClick={() => setShowCorrTray((s) => !s)}
-          className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
-        >
-          📝 Corrections
-          {openCorrections.length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
-              {openCorrections.length}
-            </span>
-          )}
-        </button>
-      </div>
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+          >
+            📝 Corrections
+            {openCorrections.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+                {openCorrections.length}
+              </span>
+            )}
+          </button>
+        </div>
       )}
 
-      { !isTemplateViewMode &&showCorrTray && (
+      {!isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>

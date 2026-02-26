@@ -5,7 +5,12 @@ import { api } from "../../lib/api";
 type TemplateRow = {
   id: string;
   name: string;
-  formType: "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX";
+  formType:
+    | "MICRO_MIX"
+    | "MICRO_MIX_WATER"
+    | "STERILITY"
+    | "CHEMISTRY_MIX"
+    | "COA";
   version?: number;
   updatedAt?: string;
   createdAt?: string;
@@ -32,6 +37,8 @@ function emojiFor(formType: TemplateRow["formType"]) {
       return "🧪";
     case "CHEMISTRY_MIX":
       return "🧴";
+    case "COA":
+      return "📜";
     default:
       return "📄";
   }
@@ -47,6 +54,8 @@ function labelFor(formType: TemplateRow["formType"]) {
       return "Sterility";
     case "CHEMISTRY_MIX":
       return "Chemistry";
+    case "COA":
+      return "Coa";
     default:
       return formType;
   }
@@ -149,13 +158,14 @@ export default function TemplatesDropdown({
   const navigate = useNavigate();
 
   const TEMPLATE_NEW_PATH_BY_FORM: Record<
-    "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX",
+    "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX" | "COA",
     string
   > = {
     MICRO_MIX: "/reports/micro-mix/new?mode=template",
     MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=template",
     STERILITY: "/reports/sterility/new?mode=template",
     CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=template",
+    COA: "/reports/coa/new?mode=template",
   };
 
   // Close on outside click
@@ -232,7 +242,9 @@ export default function TemplatesDropdown({
     const micro = rows.filter((r) =>
       ["MICRO_MIX", "MICRO_MIX_WATER", "STERILITY"].includes(r.formType),
     );
-    const chem = rows.filter((r) => r.formType === "CHEMISTRY_MIX");
+    const chem = rows.filter((r) =>
+      ["CHEMISTRY_MIX", "COA"].includes(r.formType),
+    );
     return { micro, chem };
   }, [rows]);
 
@@ -261,6 +273,11 @@ export default function TemplatesDropdown({
 
       if (t.formType === "CHEMISTRY_MIX") {
         navigate(`/chemistry-reports/chemistry-mix/${id}`);
+        return;
+      }
+
+      if (t.formType === "COA") {
+        navigate(`/chemistry-reports/coa/${id}`);
         return;
       }
 
@@ -436,6 +453,7 @@ export default function TemplatesDropdown({
                   { id: "MICRO_MIX_WATER", name: "Micro Water", emoji: "💧" },
                   { id: "STERILITY", name: "Sterility", emoji: "🧪" },
                   { id: "CHEMISTRY_MIX", name: "Chemistry", emoji: "🧴" },
+                  { id: "COA", name: "Coa", emoji: "📜" },
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -449,6 +467,7 @@ export default function TemplatesDropdown({
                             | "MICRO_MIX_WATER"
                             | "STERILITY"
                             | "CHEMISTRY_MIX"
+                            | "COA"
                         ],
                       );
                     }}

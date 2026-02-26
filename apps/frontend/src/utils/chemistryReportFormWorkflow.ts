@@ -26,6 +26,7 @@ export type CorrectionItem = {
 
 export type ChemistryReportStatus =
   | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_CORRECTION"
   | "UNDER_CLIENT_CORRECTION"
@@ -61,8 +62,14 @@ export const STATUS_TRANSITIONS: Record<
 > = {
   DRAFT: {
     canSet: ["CLIENT"],
-    next: ["SUBMITTED_BY_CLIENT"],
+    next: ["UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"],
     nextEditableBy: ["CLIENT", "FRONTDESK"],
+    canEdit: ["CLIENT"],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ["CLIENT"],
+    next: ["DRAFT", "SUBMITTED_BY_CLIENT"], // ✅
+    nextEditableBy: ["CLIENT"],
     canEdit: ["CLIENT"],
   },
   SUBMITTED_BY_CLIENT: {
@@ -204,6 +211,7 @@ export const STATUS_TRANSITIONS: Record<
 //  these are designed for readable badges on white UI
 export const CHEMISTRY_STATUS_COLORS: Record<ChemistryReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+  UNDER_DRAFT_REVIEW: "bg-gray-100 text-gray-700 ring-1 ring-gray-400",
 
   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
 
@@ -273,7 +281,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
   CLIENT: [
     "client",
-    "dateSent",
+    // "dateSent",
     "sampleDescription",
     "testTypes",
     "sampleCollected",
@@ -347,60 +355,6 @@ export function joinDateInitial(date: string, initial: string) {
   if (!date && !initial) return "";
   return `${date || ""} / ${initial || ""}`.trim();
 }
-
-// function cellFontClass(v: string | undefined | null) {
-//   const n = (v ?? "").trim().length;
-//   if (n > 45) return "text-[9px]";
-//   if (n > 24) return "text-[10px]";
-//   return "text-[11px]";
-// }
-
-// function clampTo3Lines(el: HTMLTextAreaElement) {
-//   // reset then measure
-//   el.style.height = "0px";
-
-//   const cs = window.getComputedStyle(el);
-//   const lineH = Number.parseFloat(cs.lineHeight || "12");
-//   const padTop = Number.parseFloat(cs.paddingTop || "0");
-//   const padBot = Number.parseFloat(cs.paddingBottom || "0");
-//   const maxH = lineH * 3 + padTop + padBot; // ✅ 3 lines max
-
-//   const next = Math.min(el.scrollHeight, maxH);
-//   el.style.height = `${next}px`;
-//   el.style.overflowY = "hidden";
-// }
-
-// ...existing code...
-// export function CellTextarea(props: {
-//   value: string;
-//   onChange: (v: string) => void;
-//   readOnly?: boolean;
-//   className?: string;
-// }) {
-//   const { value, onChange, readOnly, className } = props;
-
-//   return (
-//     // Changed from <textarea> to React.createElement('textarea', ...)
-//     React.createElement("textarea", {
-//       rows: 1,
-//       value: value ?? "",
-//       readOnly: readOnly,
-//       onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
-//         onChange(e.target.value),
-//       onInput: (e: React.FormEvent<HTMLTextAreaElement>) =>
-//         clampTo3Lines(e.currentTarget),
-//       ref: (el: HTMLTextAreaElement | null) => {
-//         if (el) clampTo3Lines(el);
-//       },
-//       className: [
-//         "w-full resize-none border-none outline-none bg-transparent",
-//         "text-center leading-tight whitespace-pre-wrap break-words",
-//         cellFontClass(value),
-//         className ?? "",
-//       ].join(" "),
-//     })
-//   );
-// }
 
 export function CellTextarea(props: {
   value: string;

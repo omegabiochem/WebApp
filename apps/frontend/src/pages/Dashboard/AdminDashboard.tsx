@@ -1,6 +1,6 @@
 // AdminDashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 
@@ -33,6 +33,7 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // ---------------------------------
 // Types
@@ -267,12 +268,32 @@ export default function AdminDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Filters
-  const [searchClient, setSearchClient] = useState("");
-  const [searchReport, setSearchReport] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // Filters (init from URL)
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
+  >((searchParams.get("form") as any) || "ALL");
+
+  const [searchClient, setSearchClient] = useState(
+    searchParams.get("client") || "",
+  );
+  const [searchReport, setSearchReport] = useState(
+    searchParams.get("report") || "",
+  );
+
+  // Date
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
+
+  // Pagination
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -287,24 +308,17 @@ export default function AdminDashboard() {
 
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
-  >("ALL");
-
   // ✅ status filter now uses combined type
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
+
   const statusOptions =
     formFilter === "CHEMISTRY" ? ADMIN_CHEM_STATUSES : ADMIN_MICRO_STATUSES;
-
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
 
   // ✅ UX guards
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
 
   // -----------------------------
   // Selection + Printing (Admin)
@@ -439,13 +453,48 @@ export default function AdminDashboard() {
   useEffect(() => {
     setPage(1);
   }, [
+    formFilter,
     statusFilter,
     searchClient,
     searchReport,
+    datePreset,
     dateFrom,
     dateTo,
     perPage,
+  ]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    // form/status
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter)); // keep "ALL" explicitly
+
+    // search
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+
+    // dates
+    sp.set("dp", datePreset);
+    if (dateFrom) sp.set("from", dateFrom);
+    if (dateTo) sp.set("to", dateTo);
+
+    // paging
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
     formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+    pageClamped,
+    setSearchParams,
   ]);
 
   // -----------------------------
@@ -708,20 +757,11 @@ export default function AdminDashboard() {
     setFormFilter("ALL");
     setPerPage(10);
     setPage(1);
+
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-    formFilter,
-    datePreset,
-  ]);
+
 
   useLiveReportStatus(setReports);
 

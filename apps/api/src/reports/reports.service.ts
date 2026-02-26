@@ -140,10 +140,17 @@ type Transition = {
 const STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT', 'FRONTDESK'],
     canEdit: ['CLIENT'],
   },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT'],
+    canEdit: ['CLIENT'],
+  },
+
   SUBMITTED_BY_CLIENT: {
     canSet: ['MICRO', 'MC'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
@@ -366,8 +373,14 @@ const STATUS_TRANSITIONS = {
 const STERILITY_STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canEdit: ['CLIENT'],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT'],
     canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
@@ -830,7 +843,11 @@ export class ReportsService {
     const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
 
     // Clients can edit any field while in DRAFT
-    if (!(user.role === 'CLIENT' && current.status === 'DRAFT')) {
+    const clientMayEditDraft =
+      user.role === 'CLIENT' &&
+      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
+
+    if (!clientMayEditDraft) {
       const bad = allowedForRole(user.role, fieldKeys);
       if (bad.length)
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
