@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
@@ -20,6 +20,8 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+import COAReportFormView from "../Reports/COAReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // -----------------------------
 // Types
@@ -58,6 +60,7 @@ const CHEMISTRY_STATUSES = [
 // -----------------------------
 const formTypeToSlug: Record<string, string> = {
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -159,6 +162,19 @@ function BulkPrintArea({
             </div>
           );
         }
+        if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
         return (
           <div key={r.id} className="report-page">
             <h1>{r.formNumber}</h1>
@@ -178,14 +194,30 @@ export default function ChemistryDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] =
-    useState<(typeof CHEMISTRY_STATUSES)[number]>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">("createdAt");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-  const [activeFilter, setActiveFilter] = useState<string>("ALL");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [statusFilter, setStatusFilter] = useState<
+    (typeof CHEMISTRY_STATUSES)[number]
+  >((searchParams.get("status") as any) || "ALL");
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">(
+    (searchParams.get("sortBy") as any) || "createdAt",
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  const [activeFilter, setActiveFilter] = useState(
+    searchParams.get("active") || "ALL",
+  );
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -207,9 +239,12 @@ export default function ChemistryDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -319,6 +354,39 @@ export default function ChemistryDashboard() {
     setPage(1);
   }, [statusFilter, search, perPage, activeFilter]);
 
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("status", String(statusFilter));
+    if (search.trim()) sp.set("q", search.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    if (activeFilter && activeFilter !== "ALL") sp.set("active", activeFilter);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    datePreset,
+    fromDate,
+    toDate,
+    activeFilter,
+    setSearchParams,
+  ]);
+
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [
       "sop",
@@ -328,6 +396,7 @@ export default function ChemistryDashboard() {
       "comments",
       "testedBy",
       "testedDate",
+      "coaRows",
     ];
 
     return canShowChemistryUpdateButton(
@@ -375,7 +444,7 @@ export default function ChemistryDashboard() {
       action: "UI_PRINT_SELECTED",
       entity: "Report",
       details: `Printed selected reports (${selectedIds.length})`,
-      entityId:selectedIds.join(","),
+      entityId: selectedIds.join(","),
       meta: {
         reportIds: selectedIds,
         count: selectedIds.length,
@@ -1047,7 +1116,10 @@ export default function ChemistryDashboard() {
                             onClick={() => {
                               logUiEvent({
                                 action: "UI_VIEW",
-                                entity: "ChemistryReport",
+                                entity:
+                                  r.formType === "CHEMISTRY_MIX"
+                                    ? "ChemistryReport"
+                                    : "CoaReport",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1174,7 +1246,9 @@ export default function ChemistryDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport "
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
                     });
@@ -1224,6 +1298,13 @@ export default function ChemistryDashboard() {
             <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane="FORM"
+                />
+              ) : selectedReport.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

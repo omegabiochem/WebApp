@@ -12,6 +12,7 @@ export type Role =
 
 export type ReportStatus =
   | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
   | "CLIENT_NEEDS_FINAL_CORRECTION"
@@ -193,7 +194,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   ],
   QA: ["dateCompleted"],
   CLIENT: [
-    "dateSent",
+    // "dateSent",
     "typeOfTest",
     "sampleType",
     // "formulaNo",

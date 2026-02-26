@@ -29,12 +29,23 @@ import { ReportsGateway } from './reports.gateway';
 function getDeptLetterForForm(formType: FormType) {
   return formType.startsWith('MICRO') ? 'OM' : 'BC';
 }
+type ChemistryFormType = Extract<FormType, 'CHEMISTRY_MIX' | 'COA'>;
 
-type ChemistryFormType = Extract<FormType, 'CHEMISTRY_MIX'>;
-
-const DETAILS_RELATIONS: Record<ChemistryFormType, 'chemistryMix'> = {
+const DETAILS_RELATIONS: Record<ChemistryFormType, 'chemistryMix' | 'coa'> = {
   CHEMISTRY_MIX: 'chemistryMix',
+  COA: 'coa',
 };
+
+function detailsDelegate(prisma: PrismaService, t: FormType) {
+  switch (t) {
+    case 'CHEMISTRY_MIX':
+      return prisma.chemistryMixDetails;
+    case 'COA':
+      return prisma.cOADetails;
+    default:
+      throw new BadRequestException(`Unsupported formType: ${t}`);
+  }
+}
 
 const BASE_FIELDS = new Set([
   'formNumber',
@@ -51,17 +62,17 @@ const BASE_FIELDS = new Set([
 
 // to pick existed related report
 function pickDetails(r: any) {
+  if (r.formType === 'COA') return r.coa ?? null;
   return r.chemistryMix ?? null;
 }
-
 function flattenReport(r: any) {
-  const { chemistryMix, ...base } = r;
+  const { chemistryMix, coa, ...base } = r;
 
   const dRaw = pickDetails(r) || {};
-
   const d = Object.fromEntries(
     Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)),
   );
+
   return { ...base, ...d };
 }
 
@@ -77,8 +88,14 @@ const STATUS_TRANSITIONS: Record<
 > = {
   DRAFT: {
     canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canEdit: ['CLIENT'],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT'],
     canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
@@ -231,6 +248,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedBy',
     'testedDate',
     'actives',
+    'coaRows',
   ],
   QA: [
     'dateReceived',
@@ -270,6 +288,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedBy',
     'testedDate',
     'actives',
+    'coaRows',
   ],
 };
 
@@ -296,10 +315,10 @@ function updateDetailsByType(
 
   switch (formType) {
     case 'CHEMISTRY_MIX':
-      return tx.chemistryMixDetails.update({
-        where: { chemistryId },
-        data,
-      });
+      return tx.chemistryMixDetails.update({ where: { chemistryId }, data });
+
+    case 'COA':
+      return tx.cOADetails.update({ where: { chemistryId }, data }); // ✅ Prisma client name is cOADetails
     default:
       throw new BadRequestException(`Unsupported formType: ${formType}`);
   }
@@ -441,11 +460,24 @@ export class ChemistryReportsService {
       },
       include: {
         chemistryMix: true, // ✅ REQUIRED
+        coa: true,
       },
     });
     const flat = flattenReport(created);
     this.reportsGateway.notifyReportCreated(flat);
     return flat;
+  }
+
+  async get(id: string) {
+    const r = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+        coa: true,
+      },
+    });
+    if (!r) throw new NotFoundException('Report not found');
+    return flattenReport(r);
   }
 
   private _coerce(obj: any) {
@@ -496,6 +528,7 @@ export class ChemistryReportsService {
       orderBy: { createdAt: 'desc' },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
 
@@ -518,7 +551,7 @@ export class ChemistryReportsService {
   ) {
     const current = await this.prisma.chemistryReport.findUnique({
       where: { id },
-      include: { chemistryMix: true },
+      include: { chemistryMix: true, coa: true },
     });
     if (!current) throw new BadRequestException('Report not found');
 
@@ -708,7 +741,7 @@ export class ChemistryReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.chemistryReport.findUnique({
       where: { id },
-      include: { chemistryMix: true },
+      include: { chemistryMix: true, coa: true },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
@@ -721,8 +754,18 @@ export class ChemistryReportsService {
     }
 
     if (patchIn.status && String(current.status) !== String(patchIn.status)) {
-      const slug = 'chemistry-mix';
-      current.formType === 'CHEMISTRY_MIX';
+      const slug =
+        current.formType === 'CHEMISTRY_MIX'
+          ? 'chemistry-mix'
+          : current.formType === 'COA'
+            ? 'coa'
+            : 'chemistry-mix';
+
+      current.formType === 'CHEMISTRY_MIX'
+        ? 'chemistry-mix'
+        : current.formType === 'COA'
+          ? 'coa'
+          : 'chemistry-mix';
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
@@ -777,16 +820,17 @@ export class ChemistryReportsService {
     return this.update(user, id, body);
   }
 
-  async get(id: string) {
-    const r = await this.prisma.chemistryReport.findUnique({
-      where: { id },
-      include: {
-        chemistryMix: true,
-      },
-    });
-    if (!r) throw new NotFoundException('Report not found');
-    return flattenReport(r);
-  }
+  // async get(id: string) {
+  //   const r = await this.prisma.chemistryReport.findUnique({
+  //     where: { id },
+  //     include: {
+  //       chemistryMix: true,
+  //       coa:true
+  //     },
+  //   });
+  //   if (!r) throw new NotFoundException('Report not found');
+  //   return flattenReport(r);
+  // }
 
   // TO CHANGE STATUS
 
@@ -931,6 +975,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -989,6 +1034,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -1006,6 +1052,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');

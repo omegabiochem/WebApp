@@ -1,5 +1,3 @@
-
-
 export type ColKey =
   | "formNumber"
   | "client"
@@ -32,6 +30,8 @@ export const COLS: Array<{ key: ColKey; label: string }> = [
 
 export const MAX_COLS = 4;
 
-
-
+export function parseIntSafe(v: string | null, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 

@@ -42,6 +42,7 @@ import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
 import SterilityReportForm from "./pages/Reports/SterilityReportForm";
 import TemplatePage from "./pages/Templates/TemplatesPage";
 import TemplatesDropdown from "./pages/Templates/TemplatesDropdown";
+import COAReportForm from "./pages/Reports/COAReportForm";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -323,9 +324,39 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: "reports/coa/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+              <COAReportForm/>
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
 
       {
         path: "chemistry-reports/chemistry-mix/:id", // ← no leading slash
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "CHEMISTRY",
+                "MC",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
+              <ChemistryMixReportFormWrapper />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "chemistry-reports/coa/:id", // ← no leading slash
         element: (
           <RequireAuth>
             <RequireRole
@@ -376,7 +407,7 @@ export const router = createBrowserRouter([
         path: "clientAudit",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT","ADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN"]}>
               <ClientAuditTrailPage />
             </RequireRole>
           </RequireAuth>

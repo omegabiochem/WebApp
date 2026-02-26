@@ -5,24 +5,22 @@ import { useBlocker } from "react-router-dom";
 import { api } from "../../lib/api";
 import {
   createCorrections,
-  DEFAULT_CHEM_ACTIVES,
+  DEFAULT_COA_ROWS,
   FieldErrorBadge,
   getCorrections,
   resolveCorrection,
-  useChemistryReportValidation,
-  type ChemActiveRow,
-  type ChemistryMixReportFormValues,
-} from "../../utils/chemistryReportValidation";
+  useCOAReportValidation,
+  type CoaReportFormValues,
+  type CoaVerificationRow,
+} from "../../utils/COAReportValidation";
 import {
   CellTextarea,
   FIELD_EDIT_MAP,
-  joinDateInitial,
-  splitDateInitial,
   STATUS_TRANSITIONS,
-  type ChemistryReportStatus,
+  type COAReportStatus,
   type CorrectionItem,
   type Role,
-} from "../../utils/chemistryReportFormWorkflow";
+} from "../../utils/COAReportFormWorkflow";
 import { todayISO } from "../../utils/microMixReportFormWorkflow";
 
 // ---------- tiny hook to warn on unsaved ----------
@@ -108,16 +106,14 @@ const DashStyles = () => (
   `}</style>
 );
 
-type ChemistryReportFormProps = {
+type COAReportFormProps = {
   report?: any; // same pattern as Micro
   onClose?: () => void;
 };
 
 const statusButtons: Record<string, { label: string; color: string }> = {
-  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-
   UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
-
+  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
   UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
 
   CLIENT_NEEDS_CORRECTION: {
@@ -167,7 +163,7 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 function canEdit(
   role: Role | undefined,
   field: string,
-  status?: ChemistryReportStatus,
+  status?: COAReportStatus,
 ) {
   if (!role || !status) return false;
   const transition = STATUS_TRANSITIONS[status];
@@ -181,7 +177,7 @@ function canEdit(
   return FIELD_EDIT_MAP[role]?.includes(field) ?? false;
 }
 
-const HIDE_SAVE_FOR = new Set<ChemistryReportStatus>(["APPROVED", "LOCKED"]);
+const HIDE_SAVE_FOR = new Set<COAReportStatus>(["APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -202,10 +198,7 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-export default function ChemistryMixSubmissionForm({
-  report,
-  onClose,
-}: ChemistryReportFormProps) {
+export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   const { user } = useAuth();
 
   const role = user?.role as Role | undefined;
@@ -215,12 +208,21 @@ export default function ChemistryMixSubmissionForm({
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
 
-  const isSubmissionForm =
-    status === "DRAFT" ||
-    status === "UNDER_DRAFT_REVIEW" || // ✅
-    status === "SUBMITTED_BY_CLIENT";
+  // const isSubmissionForm =
+  //   status === "DRAFT" ||
+  //   status === "UNDER_DRAFT_REVIEW" || // ✅
+  //   status === "SUBMITTED_BY_CLIENT";
 
-  const isReportView = !isSubmissionForm;
+  // const isReportView = !isSubmissionForm;
+
+  type TestType = "COA_VERIFICATION";
+  const [_testTypes, setTestTypes] = useState<TestType[]>(
+    report?.testTypes?.length ? report.testTypes : ["COA_VERIFICATION"],
+  );
+
+  const [coaRows, setCoaRows] = useState<CoaVerificationRow[]>(
+    report?.coaRows ?? DEFAULT_COA_ROWS,
+  );
 
   const markDirty = () => !isDirty && setIsDirty(true);
   useConfirmOnLeave(isDirty);
@@ -251,16 +253,8 @@ export default function ChemistryMixSubmissionForm({
   );
 
   // type of test: ID / Percent Assay / Content Uniformity
-  type TestType = "ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY";
-  const [testTypes, setTestTypes] = useState<TestType[]>(
-    report?.testTypes || [],
-  );
-
-  // sample collected position: top / mid / bottom
-  type SampleCollected = "TOP_BEG" | "MID" | "BOTTOM_END";
-
-  const [sampleCollected, setSampleCollected] = useState<SampleCollected[]>(
-    report?.sampleCollected || [],
+  const [coaVerification, setCoaVerification] = useState<boolean>(
+    !!report?.coaVerification,
   );
 
   const [lotBatchNo, setLotBatchNo] = useState(report?.lotBatchNo || "");
@@ -270,68 +264,13 @@ export default function ChemistryMixSubmissionForm({
 
   const [formulaId, setFormulaId] = useState(report?.formulaId || "");
   const [sampleSize, setSampleSize] = useState(report?.sampleSize || "");
-  const [stabilityNote, setStabilityNote] = useState(
-    report?.stabilityNote || "",
-  );
-
-  const [numberOfActives, setNumberOfActives] = useState(
-    report?.numberOfActives || "",
-  );
 
   const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
 
-  // sample type checkboxes
-  type SampleTypeKey =
-    | "BULK"
-    | "FINISHED_GOOD"
-    | "RAW_MATERIAL"
-    | "PROCESS_VALIDATION"
-    | "CLEANING_VALIDATION"
-    | "COMPOSITE"
-    | "DI_WATER_SAMPLE"
-    | "STABILITY";
-
-  const [sampleTypes, setSampleTypes] = useState<SampleTypeKey[]>(
-    report?.sampleTypes || [],
-  );
-
-  const toggleSampleType = (key: SampleTypeKey) => {
-    setSampleTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
-    markDirty();
-  };
-
-  const toggleTestType = (key: TestType) => {
-    setTestTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
-    markDirty();
-  };
-
-  const toggleSampleCollected = (key: SampleCollected) => {
-    setSampleCollected((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
-    markDirty();
-  };
-
-  // ---- ACTIVES TABLE ----
-  const [actives, setActives] = useState<ChemActiveRow[]>(
-    report?.actives || DEFAULT_CHEM_ACTIVES,
-  );
-
-  const activesToRender = useMemo(() => {
-    if (isSubmissionForm) return actives; // show all rows
-    return actives.filter((r) => r.checked); // report → only selected
-  }, [actives, isSubmissionForm]);
-
-  // const updateActive = (index: number, patch: Partial<ChemActiveRow>) => {
-  //   setActives((prev) => {
-  //     const copy = [...prev];
-  //     copy[index] = { ...copy[index], ...patch };
-  //     return copy;
-  //   });
+  // const toggleTestType = (key: TestType) => {
+  //   setTestTypes((prev) =>
+  //     prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+  //   );
   //   markDirty();
   // };
 
@@ -342,10 +281,12 @@ export default function ChemistryMixSubmissionForm({
   const [reviewedBy, setReviewedBy] = useState(report?.reviewedBy || "");
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
 
-  const { errors, clearError, validateAndSetErrors } =
-    useChemistryReportValidation(role, {
-      status: status as ChemistryReportStatus,
-    });
+  const { errors, clearError, validateAndSetErrors } = useCOAReportValidation(
+    role,
+    {
+      status: status as COAReportStatus,
+    },
+  );
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
@@ -377,19 +318,16 @@ export default function ChemistryMixSubmissionForm({
     setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
     setDateSent(r?.dateSent ?? "");
     setSampleDescription(r?.sampleDescription ?? "");
-    setTestTypes(r?.testTypes ?? []);
-    setSampleCollected(r?.sampleCollected ?? []);
+    setCoaVerification(!!r?.coaVerification);
+
     setLotBatchNo(r?.lotBatchNo ?? "");
     setManufactureDate(r?.manufactureDate ?? "");
     setFormulaId(r?.formulaId ?? "");
     setSampleSize(r?.sampleSize ?? "");
-    setNumberOfActives(r?.numberOfActives ?? "");
-    setSampleTypes(r?.sampleTypes ?? []);
-    setStabilityNote(r?.stabilityNote ?? "");
-    setDateReceived(r?.dateReceived ?? "");
 
-    // actives table
-    setActives(r?.actives ?? DEFAULT_CHEM_ACTIVES);
+    setDateReceived(r?.dateReceived ?? "");
+    setTestTypes(r?.testTypes?.length ? r.testTypes : ["COA_VERIFICATION"]);
+    setCoaRows(r?.coaRows ?? DEFAULT_COA_ROWS);
 
     // comments / signatures
     setComments(r?.comments ?? "");
@@ -403,6 +341,23 @@ export default function ChemistryMixSubmissionForm({
     setPendingCorrections([]);
     setAddForField(null);
     setAddMessage("");
+  }
+
+  function FieldErrorText({
+    name,
+    errors,
+    className = "",
+  }: {
+    name: string;
+    errors: Record<string, string>;
+    className?: string;
+  }) {
+    const msg = errors[name];
+    if (!msg) return null;
+
+    return (
+      <div className={`mt-1 text-[11px] text-red-600 ${className}`}>{msg}</div>
+    );
   }
 
   useEffect(() => {
@@ -432,183 +387,33 @@ export default function ChemistryMixSubmissionForm({
     // include deps because hydrateForm uses role/user.clientCode
   }, [isAnyTemplateMode, templateId, role, user?.clientCode]);
 
-  const makeValues = (): ChemistryMixReportFormValues => ({
+  const makeValues = (): CoaReportFormValues => ({
     client,
     dateSent,
     sampleDescription,
-    testTypes,
-    sampleCollected,
     lotBatchNo,
     manufactureDate,
     formulaId,
     sampleSize,
-    numberOfActives,
-    sampleTypes,
-    stabilityNote,
     dateReceived,
-    actives,
     comments,
     testedBy,
     testedDate,
     reviewedBy,
     reviewedDate,
+    // coaVerification,
+    coaRows, // ✅ add
   });
 
   type SavedReport = {
     id: string;
-    status: ChemistryReportStatus;
+    status: COAReportStatus;
     reportNumber?: number | string;
     version?: number;
   };
 
   const lock = (f: string) =>
-    forceReadOnly || !canEdit(role, f, status as ChemistryReportStatus);
-
-  type ActiveRowError = {
-    bulkActiveLot?: string;
-    formulaContent?: string;
-    sopNo?: string;
-    result?: string;
-    dateTestedInitial?: string;
-    otherName?: string;
-  };
-
-  const [activeRowErrors, setActiveRowErrors] = useState<ActiveRowError[]>([]);
-  const [activesTableError, setActivesTableError] = useState<string | null>(
-    null,
-  );
-
-  useEffect(() => {
-    setActiveRowErrors((prev) =>
-      Array.from({ length: actives.length }, (_, i) => prev[i] ?? {}),
-    );
-  }, [actives.length]);
-
-  useEffect(() => {
-    validateActiveRows(actives, role);
-  }, [actives, role, status]);
-
-  function validateActiveRows(
-    rows: ChemActiveRow[],
-    who: Role | undefined = role,
-  ) {
-    const rowErrs: ActiveRowError[] = rows.map(() => ({}));
-    let tableErr: string | null = null;
-
-    const checkedRows = rows.filter((r) => r.checked);
-    const anyChecked = checkedRows.length > 0;
-
-    // If nothing selected, only CLIENT should be blocked (per your example)
-    if (!anyChecked) {
-      if (who === "CLIENT") {
-        tableErr = "Select at least 1 active to be tested";
-      }
-      setActiveRowErrors(rowErrs);
-      setActivesTableError(tableErr);
-      return !tableErr;
-    }
-
-    // if (who === "CLIENT") {
-    //   rows.forEach((r, i) => {
-    //     if (r.checked && !r.formulaContent?.trim()) {
-    //       rowErrs[i].formulaContent = "Required";
-    //     }
-    //   });
-    // }
-    // if (who === "CLIENT") {
-    //   rows.forEach((r, i) => {
-    //     if (r.checked && !r.bulkActiveLot?.trim()) {
-    //       rowErrs[i].bulkActiveLot = "Required";
-    //     }
-    //   });
-    // }
-
-    if (who === "CLIENT") {
-      rows.forEach((r, i) => {
-        if (r.checked && !r.formulaContent?.trim())
-          rowErrs[i].formulaContent = "Required";
-        if (r.checked && !r.bulkActiveLot?.trim())
-          rowErrs[i].bulkActiveLot = "Required";
-
-        const isOther = (key: string) =>
-          key === "OTHER" || key.startsWith("OTHER_");
-        if (isOther(r.key) && r.checked && !(r.otherName ?? "").trim()) {
-          rowErrs[i].otherName = "Required"; // ✅ highlight input
-          tableErr = "Please enter a name for OTHER active"; // optional message
-        }
-      });
-    }
-
-    if (
-      who === "CHEMISTRY" ||
-      who === "MC" ||
-      who === "ADMIN" ||
-      who === "QA"
-    ) {
-      rows.forEach((r, i) => {
-        if (!r.checked) return;
-
-        if (!r.sopNo?.trim()) rowErrs[i].sopNo = "Required";
-        if (!r.result?.trim()) rowErrs[i].result = "Required";
-        if (!r.dateTestedInitial?.trim())
-          rowErrs[i].dateTestedInitial = "Required";
-      });
-    }
-
-    setActiveRowErrors(rowErrs);
-    setActivesTableError(tableErr);
-
-    return (
-      !tableErr &&
-      rowErrs.every(
-        (e) =>
-          !e.bulkActiveLot &&
-          !e.formulaContent &&
-          !e.sopNo &&
-          !e.result &&
-          !e.dateTestedInitial,
-      )
-    );
-  }
-
-  function setActiveChecked(idx: number, checked: boolean) {
-    setActives((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], checked };
-      validateActiveRows(copy, role);
-      return copy;
-    });
-
-    // clear row errors if unchecked
-    setActiveRowErrors((prev) => {
-      const c = [...prev];
-      c[idx] = checked ? c[idx] : {};
-      return c;
-    });
-
-    markDirty();
-  }
-
-  function setActiveField(idx: number, patch: Partial<ChemActiveRow>) {
-    setActives((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], ...patch };
-      validateActiveRows(copy, role);
-      return copy;
-    });
-
-    // clear the specific row error when user types
-    setActiveRowErrors((prev) => {
-      const c = [...prev];
-      c[idx] = {
-        ...c[idx],
-        ...Object.fromEntries(Object.keys(patch).map((k) => [k, undefined])),
-      };
-      return c;
-    });
-
-    markDirty();
-  }
+    forceReadOnly || !canEdit(role, f, status as COAReportStatus);
 
   // --- E-Sign modal state (Admin-only) ---
   // Admin E-sign modal state
@@ -657,6 +462,10 @@ export default function ChemistryMixSubmissionForm({
     return String(v);
   }
 
+  const coaRowKey = (rowKey: string) => `coaRows:${rowKey}`;
+  const coaCellKey = (rowKey: string, col: "standard" | "result") =>
+    `coaRows:${rowKey}:${col}`;
+
   function getFieldDisplayValue(fieldKey: string) {
     const base = fieldKey.split(":")[0];
 
@@ -668,9 +477,8 @@ export default function ChemistryMixSubmissionForm({
       case "sampleDescription":
         return sampleDescription;
       case "testTypes":
-        return stringify(testTypes);
-      case "sampleCollected":
-        return stringify(sampleCollected);
+        return stringify(coaVerification);
+
       case "lotBatchNo":
         return lotBatchNo;
       case "manufactureDate":
@@ -679,10 +487,14 @@ export default function ChemistryMixSubmissionForm({
         return formulaId;
       case "sampleSize":
         return sampleSize;
-      case "numberOfActives":
-        return numberOfActives;
-      case "sampleTypes":
-        return stringify(sampleTypes);
+      case "coaRows": {
+        // coaRows:ROWKEY:col
+        const [, rowKey, col] = fieldKey.split(":");
+        const row = (coaRows ?? []).find((r) => r.key === rowKey);
+        if (!row) return "";
+        if (!col) return stringify(row);
+        return stringify((row as any)[col]);
+      }
       case "dateReceived":
         return formatDateForInput(dateReceived);
       case "comments":
@@ -695,15 +507,6 @@ export default function ChemistryMixSubmissionForm({
         return reviewedBy;
       case "reviewedDate":
         return formatDateForInput(reviewedDate);
-
-      case "actives": {
-        // actives:ROWKEY:col
-        const [, rowKey, col] = fieldKey.split(":");
-        const row = actives.find((r) => r.key === rowKey);
-        if (!row) return "";
-        if (!col) return stringify(row);
-        return stringify((row as any)[col]);
-      }
 
       default:
         return "";
@@ -720,7 +523,7 @@ export default function ChemistryMixSubmissionForm({
       role === "QA") &&
     (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
 
-  function requestStatusChange(target: ChemistryReportStatus) {
+  function requestStatusChange(target: COAReportStatus) {
     if (!reportId) {
       alert("⚠️ Please SAVE the report first before changing status.");
       return;
@@ -756,8 +559,10 @@ export default function ChemistryMixSubmissionForm({
     }
   }
 
-  const [pendingStatus, setPendingStatus] =
-    useState<ChemistryReportStatus | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<COAReportStatus | null>(
+    null,
+  );
+  const otherLabel = (key: string) => key.replace("_", " "); // "OTHER_1" -> "OTHER 1"
 
   const [showCorrTray, setShowCorrTray] = useState(false);
 
@@ -775,12 +580,14 @@ export default function ChemistryMixSubmissionForm({
       ? "dash dash-red"
       : flash[keyOrPrefix]
         ? "dash dash-green"
-        : "";
+        : pickedField === keyOrPrefix
+          ? "ring-2 ring-blue-500 bg-blue-50" // ✅ selected cell highlight
+          : "";
 
   const canResolveField = (field: string) => {
     if (!reportId || !role) return false;
     const base = field.split(":")[0]; // "pathogens" for "pathogens:E_COLI"
-    return canEdit(role, base, status as ChemistryReportStatus);
+    return canEdit(role, base, status as COAReportStatus);
   };
 
   // Resolve ALL corrections for a field
@@ -812,20 +619,6 @@ export default function ChemistryMixSubmissionForm({
     });
   }
 
-  // Tiny inline pill next to a field label/badge
-  // --- actives field keys ---
-  const activeRowKey = (rowKey: string) => `actives:${rowKey}`; // whole row
-  const activeCellKey = (
-    rowKey: string,
-    col:
-      | "checked"
-      | "bulkActiveLot"
-      | "sopNo"
-      | "formulaContent"
-      | "result"
-      | "dateTestedInitial",
-  ) => `actives:${rowKey}:${col}`;
-
   // Update ResolveOverlay to support prefixes too (so row overlay works)
   function ResolveOverlay({ field }: { field: string }) {
     if (!hasOpenCorrection(field) || !canResolveField(field)) return null;
@@ -853,85 +646,55 @@ export default function ChemistryMixSubmissionForm({
       (await runBusy("SAVE", async () => {
         const values = makeValues();
         validateAndSetErrors(values);
-        validateActiveRows(values.actives || [], role);
-
-        // if (!okFields) {
-        //   alert("⚠️ Please fix the highlighted fields before saving.");
-        //   return null;
-        // }
-        // if (!okRows) {
-        //   alert("⚠️ Please fix the highlighted actives before saving.");
-        //   return null;
-        // }
 
         const fullPayload = {
           client,
           dateSent,
-          formType: "CHEMISTRY_MIX" as const, // important for backend
+          formType: "COA" as const,
           sampleDescription,
-          testTypes,
-          sampleCollected,
+          coaVerification,
+
           lotBatchNo,
           manufactureDate: manufactureDate?.trim() ? manufactureDate : null,
           formulaId,
           sampleSize,
-          numberOfActives,
-          sampleTypes,
-          stabilityNote: sampleTypes.includes("STABILITY")
-            ? stabilityNote
-            : null,
+
           dateReceived,
-          actives,
+
+          // ✅ REQUIRED so table data persists
+          coaRows,
+
           comments,
           testedBy,
           testedDate,
           reviewedBy,
           reviewedDate,
         };
-
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
           SYSTEMADMIN: [],
           FRONTDESK: [],
           CHEMISTRY: [
             "dateReceived",
-            "sop",
-            "results",
-            "dateTested",
-            "initial",
             "comments",
             "testedBy",
             "testedDate",
-            "actives",
+            "coaRows",
           ],
-          MC: [
-            "dateReceived",
-            "sop",
-            "results",
-            "dateTested",
-            "initial",
-            "comments",
-            "testedBy",
-            "testedDate",
-            "actives",
-          ],
-          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          MC: ["dateReceived", "comments", "testedBy", "testedDate", "coaRows"],
+          QA: ["dateCompleted"],
           CLIENT: [
             "client",
             "dateSent",
             "sampleDescription",
-            "testTypes",
-            "sampleCollected",
+            // "testTypes",
             "lotBatchNo",
             "manufactureDate",
             "formulaId",
             "sampleSize",
-            "numberOfActives",
             "sampleTypes",
-            "stabilityNote",
             "comments",
-            "actives",
-            "formulaContent",
+            "coaRows",
           ],
         };
 
@@ -963,7 +726,7 @@ export default function ChemistryMixSubmissionForm({
             // ✅ template payload: store data + formType + name
             const templatePayload = {
               name,
-              formType: "CHEMISTRY_MIX",
+              formType: "COA",
               data: { ...payload }, // store only allowed fields
             };
 
@@ -1008,9 +771,9 @@ export default function ChemistryMixSubmissionForm({
               }),
             });
           } else {
-            saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
+            saved = await api<SavedReport>("/chemistry-reports/coa", {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "CHEMISTRY_MIX" }),
+              body: JSON.stringify({ ...payload, formType: "COA" }),
             });
           }
           setReportId(saved.id); // 👈 keep the new id
@@ -1034,8 +797,7 @@ export default function ChemistryMixSubmissionForm({
             return false;
           }
           alert(
-            "❌ Error saving chemistry report: " +
-              (err.message || "Unknown error"),
+            "❌ Error saving coa report: " + (err.message || "Unknown error"),
           );
           return false;
 
@@ -1046,19 +808,19 @@ export default function ChemistryMixSubmissionForm({
   };
 
   type UpdatedReport = {
-    status?: ChemistryReportStatus;
+    status?: COAReportStatus;
     reportNumber?: number | string;
   };
 
   async function handleStatusChange(
-    newStatus: ChemistryReportStatus,
+    newStatus: COAReportStatus,
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
       const values = makeValues();
 
       const okFields = validateAndSetErrors(values);
-      const okRows = validateActiveRows(values.actives || [], role);
+      // const okRows = validateActiveRows(values.actives || [], role);
 
       if (
         newStatus === "UNDER_DRAFT_REVIEW" ||
@@ -1085,19 +847,18 @@ export default function ChemistryMixSubmissionForm({
           alert("⚠️ Please fix the highlighted fields before changing status.");
           return;
         }
-        if (!okRows) {
-          alert("⚠️ Please fix the highlighted rows before changing status.");
-          return;
-        }
+        // if (!okRows) {
+        //   alert("⚠️ Please fix the highlighted rows before changing status.");
+        //   return;
+        // }
       }
-
       if (newStatus === "SUBMITTED_BY_CLIENT") {
         setDateSent(todayISO());
       }
 
       // 3) Ensure latest edits are saved
       if (!reportId || isDirty) {
-        const saved = await handleSave(); // <-- your chemistry save (POST/PATCH /reports)
+        const saved = await handleSave(); // <-- your COA save (POST/PATCH /reports)
         if (!saved) return;
       }
       // 4) PATCH status (THIS is where your 400 reason/header issue matters)
@@ -1160,17 +921,6 @@ export default function ChemistryMixSubmissionForm({
   //   else navigate(-1);
   // };
 
-  // Above component body (or inside, before return)
-  const sampleTypeItems: [SampleTypeKey, string][] = [
-    ["BULK", "BULK"],
-    ["FINISHED_GOOD", "FINISHED GOOD"],
-    ["RAW_MATERIAL", "RAW MATERIAL"],
-    ["COMPOSITE", "COMPOSITE"],
-    ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
-    ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-    ["STABILITY", "STABILITY"],
-  ];
-
   const inputClass = (name: keyof typeof errors, extra = "") =>
     `input-editable px-1 py-[2px] text-[12px] leading-snug border ${
       errors[name] ? "border-red-500 ring-1 ring-red-500" : "border-black/70"
@@ -1190,8 +940,24 @@ export default function ChemistryMixSubmissionForm({
   const hasOpenCorrection = (keyOrPrefix: string) =>
     hasOpenCorrectionKey(keyOrPrefix);
 
+  // --- correction helpers (tooltip text) ---
+  function correctionTextFor(keyOrPrefix: string) {
+    const msgs = openCorrections
+      .filter(
+        (c) =>
+          c.fieldKey === keyOrPrefix ||
+          c.fieldKey.startsWith(`${keyOrPrefix}:`),
+      )
+      .map((c) => `• ${c.message}`);
+    return msgs.length ? msgs.join("\n") : "";
+  }
+
+  // --- when selecting corrections, highlight the clicked cell/field too ---
+  const [pickedField, setPickedField] = useState<string | null>(null);
+
   function pickCorrection(fieldKey: string) {
     if (!selectingCorrections) return;
+    setPickedField(fieldKey); // ✅ highlight selected cell
     setAddForField(fieldKey);
     setAddMessage("");
   }
@@ -1264,22 +1030,25 @@ export default function ChemistryMixSubmissionForm({
     refreshHasAttachment(reportId);
   }, [reportId]);
 
-  const APPROVE_REQUIRES_ATTACHMENT = new Set<ChemistryReportStatus>([
+  const APPROVE_REQUIRES_ATTACHMENT = new Set<COAReportStatus>([
     "UNDER_CLIENT_REVIEW",
   ]);
 
-  function isApproveAction(targetStatus: ChemistryReportStatus) {
+  function isApproveAction(targetStatus: COAReportStatus) {
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
-  const HIDE_SIGNATURES_FOR = new Set<ChemistryReportStatus>([
+  const HIDE_SIGNATURES_FOR = new Set<COAReportStatus>([
     "DRAFT",
     "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
-  const showSignatures = !HIDE_SIGNATURES_FOR.has(
-    status as ChemistryReportStatus,
-  );
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(status as COAReportStatus);
+
+  {
+    /* ITEM (fixed) */
+  }
+  const isOtherRow = (k: string) => k.startsWith("OTHER_");
 
   // ---------------- RENDER ----------------
   return (
@@ -1315,7 +1084,7 @@ export default function ChemistryMixSubmissionForm({
           </button>
 
           {!isTemplateViewMode &&
-            !HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
+            !HIDE_SAVE_FOR.has(status as COAReportStatus) && (
               <button
                 className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 onClick={handleSave}
@@ -1364,8 +1133,8 @@ export default function ChemistryMixSubmissionForm({
               {status === "DRAFT" ||
               status === "UNDER_DRAFT_REVIEW" ||
               status === "SUBMITTED_BY_CLIENT"
-                ? "CHEMISTRY SUBMISSION FORM"
-                : "CHEMISTRY REPORT"}
+                ? "COA SUBMISSION FORM"
+                : "COA REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
@@ -1470,179 +1239,43 @@ export default function ChemistryMixSubmissionForm({
           </div>
 
           {/* TYPE OF TEST / SAMPLE COLLECTED */}
-          <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
-            <div className="px-2 border-r border-black flex items-center gap-2 text-[12px]">
-              <span
-                className={`font-medium whitespace-nowrap ${
-                  selectingCorrections ? "cursor-pointer" : ""
-                } relative ${dashClass("testTypes")}`}
-                title={
-                  selectingCorrections ? "Click to add correction" : undefined
-                }
-                onClick={(e) => {
-                  if (!selectingCorrections) return;
-                  e.stopPropagation();
-                  pickCorrection("testTypes");
-                }}
-              >
-                TYPE OF TEST :
-                <ResolveOverlay field="testTypes" />
-              </span>
+          {/* TYPE OF TEST (COA VERIFICATION only) */}
+          <div className="grid grid-cols-[100%] border-b border-black text-[12px]">
+            <div className="grid grid-cols-1 border-b border-black text-[12px]">
+              <div className="px-2 flex items-center gap-2 text-[12px]">
+                <span
+                  className={`font-medium whitespace-nowrap ${selectingCorrections ? "cursor-pointer" : ""} relative ${dashClass("testTypes")}`}
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection("testTypes");
+                  }}
+                >
+                  TYPE OF TEST :
+                  <ResolveOverlay field="testTypes" />
+                </span>
 
-              <div
-                id="f-testTypes"
-                className={`
-                    inline-flex items-center gap-2 whitespace-nowrap px-1
-                    ${
-                      errors.testTypes
-                        ? "border border-red-500 ring-1 ring-red-500"
-                        : "border border-transparent"
-                    }
-                              `}
-              >
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={testTypes.includes("ID")}
-                    onChange={() => {
-                      if (selectingCorrections) return;
-                      if (lock("testTypes")) return;
-                      toggleTestType("ID");
-                      clearError("testTypes");
-                    }}
-                    className={
-                      lock("testTypes") ? "accent-black" : "accent-blue-600"
-                    }
-                  />
-                  ID
-                </label>
+                <div
+                  id="f-testTypes"
+                  className={`inline-flex items-center gap-2 whitespace-nowrap px-1 ${
+                    errors.testTypes
+                      ? "border border-red-500 ring-1 ring-red-500"
+                      : "border border-transparent"
+                  }`}
+                >
+                  <label className="flex items-center gap-1 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      disabled
+                      className="accent-black"
+                    />
+                    COA Verification
+                  </label>
+                </div>
 
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={testTypes.includes("PERCENT_ASSAY")}
-                    onChange={() => {
-                      if (selectingCorrections) return;
-                      if (lock("testTypes")) return;
-                      toggleTestType("PERCENT_ASSAY");
-                      clearError("testTypes");
-                    }}
-                    className={
-                      lock("testTypes") ? "accent-black" : "accent-blue-600"
-                    }
-                  />
-                  Percent Assay
-                </label>
-
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={testTypes.includes("CONTENT_UNIFORMITY")}
-                    onChange={() => {
-                      if (selectingCorrections) return;
-                      if (lock("testTypes")) return;
-                      toggleTestType("CONTENT_UNIFORMITY");
-                      clearError("testTypes");
-                    }}
-                    className={
-                      lock("testTypes") ? "accent-black" : "accent-blue-600"
-                    }
-                  />
-                  Content Uniformity
-                </label>
+                <FieldErrorBadge name="testTypes" errors={errors} />
               </div>
-
-              <FieldErrorBadge name="testTypes" errors={errors} />
-            </div>
-
-            <div className="px-2 flex items-center gap-3 text-[12px]">
-              <span
-                className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "sampleCollected",
-                )}`}
-                onClick={corrClick("sampleCollected")}
-                title={
-                  selectingCorrections ? "Click to add correction" : undefined
-                }
-              >
-                SAMPLE COLLECTED :
-                <ResolveOverlay field="sampleCollected" />
-              </span>
-
-              {/* 🔴 this wrapper gets the red border (doesn't change layout) */}
-              <div
-                id="f-sampleCollected"
-                className={`
-                        inline-flex items-center gap-2 whitespace-nowrap px-1
-                          ${
-                            errors.sampleCollected
-                              ? "border border-red-500 ring-1 ring-red-500"
-                              : "border border-transparent"
-                          }
-                        `}
-              >
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    name="sampleCollected"
-                    checked={sampleCollected.includes("TOP_BEG")}
-                    onChange={() => {
-                      if (lock("sampleCollected")) return;
-                      toggleSampleCollected("TOP_BEG");
-                      clearError("sampleCollected");
-                      markDirty();
-                    }}
-                    className={
-                      lock("sampleCollected")
-                        ? "accent-black"
-                        : "accent-blue-600"
-                    }
-                  />
-                  Top / Beg
-                </label>
-
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    name="sampleCollected"
-                    checked={sampleCollected.includes("MID")}
-                    onChange={() => {
-                      if (lock("sampleCollected")) return;
-                      toggleSampleCollected("MID");
-                      clearError("sampleCollected");
-                      markDirty();
-                    }}
-                    className={
-                      lock("sampleCollected")
-                        ? "accent-black"
-                        : "accent-blue-600"
-                    }
-                  />
-                  Mid
-                </label>
-
-                <label className="flex items-center gap-1 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    name="sampleCollected"
-                    checked={sampleCollected.includes("BOTTOM_END")}
-                    onChange={() => {
-                      if (lock("sampleCollected")) return;
-                      toggleSampleCollected("BOTTOM_END");
-                      clearError("sampleCollected");
-                      markDirty();
-                    }}
-                    className={
-                      lock("sampleCollected")
-                        ? "accent-black"
-                        : "accent-blue-600"
-                    }
-                  />
-                  Bottom / End
-                </label>
-              </div>
-
-              <FieldErrorBadge name="sampleCollected" errors={errors} />
             </div>
           </div>
 
@@ -1781,147 +1414,11 @@ export default function ChemistryMixSubmissionForm({
                 />
               )}
             </div>
-
-            <div className="px-2 flex items-center gap-1">
-              <span
-                className={`whitespace-nowrap font-medium ${corrCursor} relative ${dashClass(
-                  "numberOfActives",
-                )}`}
-                onClick={corrClick("numberOfActives")}
-                title={
-                  selectingCorrections ? "Click to add correction" : undefined
-                }
-              >
-                NUMBER OF ACTIVES :
-                <ResolveOverlay field="numberOfActives" />
-              </span>
-
-              <FieldErrorBadge name="numberOfActives" errors={errors} />
-              {lock("numberOfActives") ? (
-                <div className="flex-1 min-h-[14px]">{numberOfActives}</div>
-              ) : (
-                <input
-                  className={inputClass("numberOfActives", "w-[125px]")}
-                  value={numberOfActives}
-                  onChange={(e) => {
-                    if (selectingCorrections) return;
-                    setNumberOfActives(e.target.value);
-                    clearError("numberOfActives");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.numberOfActives}
-                />
-              )}
-            </div>
           </div>
 
           {/* SAMPLE TYPE checkboxes */}
           {/* SAMPLE TYPE checkboxes */}
           <div className="px-2 text-[12px] grid grid-cols-[auto_1fr] items-stretch">
-            {/* LEFT: Sample type */}
-            <div className="flex max-w-[600px] pr-1 py-1 self-stretch border-r border-black">
-              <span
-                className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
-                  "sampleTypes",
-                )}`}
-                onClick={corrClick("sampleTypes")}
-                title={
-                  selectingCorrections ? "Click to add correction" : undefined
-                }
-              >
-                SAMPLE TYPE :
-                <ResolveOverlay field="sampleTypes" />
-              </span>
-
-              {/* 🔴 group error wrapper (no layout change) */}
-              <div
-                id="f-sampleTypes"
-                className={`
-                      inline-flex
-                      ${
-                        errors.sampleTypes
-                          ? "border border-red-500 ring-1 ring-red-500 rounded-[2px] px-1"
-                          : "border border-transparent"
-                      }
-                    `}
-              >
-                <div className="flex flex-wrap gap-x-5 gap-y-1">
-                  {sampleTypeItems.map(([key, label]) => (
-                    <label
-                      key={key}
-                      className="flex items-center gap-1 whitespace-nowrap"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={sampleTypes.includes(key)}
-                        onChange={() => {
-                          if (selectingCorrections) return;
-                          if (lock("sampleTypes")) return;
-                          toggleSampleType(key);
-                          clearError("sampleTypes");
-                          markDirty();
-                        }}
-                        className={
-                          lock("sampleTypes")
-                            ? "accent-black"
-                            : "accent-blue-600"
-                        }
-                      />
-                      <span className="text-[11px]">{label}</span>
-
-                      {/* ✅ only STABILITY gets a small writing line */}
-                      {/* {key === "STABILITY" && (
-                        <input
-                          type="text"
-                          value={stabilityNote}
-                          onChange={(e) => {
-                            if (selectingCorrections) return;
-                            if (lock("sampleTypes")) return;
-                            setStabilityNote(e.target.value);
-                            markDirty();
-                          }}
-                          className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] outline-none"
-                          disabled={
-                            !sampleTypes.includes("STABILITY") ||
-                            lock("sampleTypes")
-                          }
-                        />
-                      )} */}
-
-                      {key === "STABILITY" && (
-                        <input
-                          id="f-stabilityNote"
-                          type="text"
-                          value={stabilityNote}
-                          onChange={(e) => {
-                            if (selectingCorrections) return;
-                            if (lock("sampleTypes")) return;
-                            setStabilityNote(e.target.value);
-                            clearError("stabilityNote");
-                            markDirty();
-                          }}
-                          className={[
-                            "ml-1 w-[110px] border-0 border-b bg-transparent text-[11px] outline-none",
-                            !sampleTypes.includes("STABILITY")
-                              ? "border-black/60 opacity-60"
-                              : errors.stabilityNote
-                                ? "border-red-500 ring-1 ring-red-500"
-                                : "border-black/60",
-                          ].join(" ")}
-                          disabled={
-                            !sampleTypes.includes("STABILITY") ||
-                            lock("sampleTypes")
-                          }
-                        />
-                      )}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <FieldErrorBadge name="sampleTypes" errors={errors} />
-            </div>
-
             {/* RIGHT: Date received */}
             <div className="flex items-center gap-2 whitespace-nowrap pl-2 py-1">
               <span
@@ -1970,434 +1467,177 @@ export default function ChemistryMixSubmissionForm({
           </div>
         </div>
 
-        {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-
+        {/* COA SPEC TABLE (from COA) */}
         <div
-          className={`mt-3 border text-[11px] ${
-            activesTableError
+          className={`mt-3 border text-[11px] relative ${
+            errors.coaRows
               ? "border-red-500 ring-1 ring-red-500"
               : "border-black"
           }`}
         >
-          <FieldErrorBadge name="actives" errors={errors} />
+          <FieldErrorBadge name="coaRows" errors={errors} />
 
-          {activesTableError && (
-            <div className="px-2 py-1 text-[11px] text-red-600">
-              {activesTableError}
-            </div>
-          )}
+          {/* ✅ show message text */}
+          <FieldErrorText name="coaRows" errors={errors} className="px-2" />
 
-          <div className="grid grid-cols-[25%_15%_13%_19%_12%_16%] font-semibold text-center border-b border-black min-h-[24px]">
-            <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              ACTIVE TO BE TESTED
+          <div className="grid grid-cols-[42%_29%_29%] font-semibold text-center border-b border-black min-h-[24px]">
+            <div className="p-1 border-r border-black flex items-center justify-center">
+              Item
             </div>
-            <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              RAW / BULK ACTIVE LOT #
+            <div className="p-1 border-r border-black flex items-center justify-center">
+              Standard
             </div>
-            <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              SOP # / VALIDATED
-            </div>
-            <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              FORMULA CONTENT
-            </div>
-            <div className="p-1 border-r border-black h-full flex items-center justify-center">
-              RESULTS
-            </div>
-            <div className="p-1  h-full flex items-center justify-center">
-              DATE TESTED / INITIAL
-            </div>
+            <div className="p-1 flex items-center justify-center">Result</div>
           </div>
 
-          {isReportView && activesToRender.length === 0 ? (
-            <div className="px-2 py-2 text-[11px] text-slate-600">
-              No actives were selected for testing.
-            </div>
-          ) : (
-            activesToRender.map((row) => {
-              const idx = actives.findIndex((r) => r.key === row.key);
-              const rowErr = activeRowErrors[idx] || {};
+          {(coaRows ?? []).map((row) => {
+            const rk = coaRowKey(row.key);
+            const kStd = coaCellKey(row.key, "standard");
+            const kRes = coaCellKey(row.key, "result");
 
-              const inputErrClass = (hasErr?: boolean) =>
-                hasErr ? "ring-1 ring-red-500" : "";
+            return (
+              <div
+                key={row.key}
+                className="grid grid-cols-[42%_29%_29%] border-b last:border-b-0 border-black relative"
+                onClick={(e) => {
+                  if (!selectingCorrections) return;
+                  e.stopPropagation();
+                  pickCorrection(rk);
+                }}
+                title={
+                  selectingCorrections
+                    ? "Click to add correction for this row"
+                    : undefined
+                }
+              >
+                {/* ITEM (fixed OR editable for OTHER rows) */}
+                <div className="p-1 border-r border-black font-medium">
+                  {isOtherRow(row.key) &&
+                  role === "CLIENT" &&
+                  !lock("coaRows") &&
+                  !selectingCorrections ? (
+                    <input
+                      className="w-full border-0 bg-transparent outline-none text-[11px]"
+                      value={row.item ?? ""}
+                      placeholder={otherLabel(row.key)} // still fine
+                      onFocus={() => {
+                        const cur = (row.item ?? "").trim().toUpperCase();
+                        if (cur === otherLabel(row.key).toUpperCase()) {
+                          setCoaRows((prev) =>
+                            prev.map((r) =>
+                              r.key === row.key ? { ...r, item: "" } : r,
+                            ),
+                          );
+                          markDirty();
+                        }
+                      }}
+                      onBlur={() => {
+                        // ✅ if user leaves blank, restore OTHER again
+                        const cur = (row.item ?? "").trim();
+                        if (!cur) {
+                          setCoaRows((prev) =>
+                            prev.map((r) =>
+                              r.key === row.key
+                                ? { ...r, item: otherLabel(row.key) }
+                                : r,
+                            ),
+                          );
+                          markDirty();
+                        }
+                      }}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCoaRows((prev) =>
+                          prev.map((r) =>
+                            r.key === row.key ? { ...r, item: v } : r,
+                          ),
+                        );
+                        markDirty();
+                      }}
+                    />
+                  ) : (
+                    <div className="min-h-[14px]">
+                      {(row.item ?? "").trim() ? row.item : "-"}
+                    </div>
+                  )}
+                </div>
 
-              // keys
-              const rk = activeRowKey(row.key);
-              const kChecked = activeCellKey(row.key, "checked");
-              const kBulkActiveLot = activeCellKey(row.key, "bulkActiveLot");
-              const kSop = activeCellKey(row.key, "sopNo");
-              const kFormula = activeCellKey(row.key, "formulaContent");
-              const kResult = activeCellKey(row.key, "result");
-              // const kDateInit = activeCellKey(row.key, "dateTestedInitial");
-              const { date, initial } = splitDateInitial(row.dateTestedInitial);
-
-              const isOther =
-                row.key === "OTHER" || row.key.startsWith("OTHER_");
-              // const showPct = row.showPercent !== false;
-
-              return (
+                {/* STANDARD (client only) */}
                 <div
-                  key={row.key}
-                  // className={`grid grid-cols-[25%_15%_13%_19%_12%_16%] border-b last:border-b-0 border-black relative ${
-                  //   showRowRing ? "ring-1 ring-red-500" : ""
-                  // } `}
-
-                  className={`grid grid-cols-[25%_15%_13%_19%_12%_16%] border-b last:border-b-0 border-black relative`}
-                  // ✅ click anywhere on row (optional) adds correction to whole row
+                  className={`border-r border-black px-1 relative ${dashClass(kStd)} ${corrCursor}`}
+                  title={
+                    !selectingCorrections ? correctionTextFor(kStd) : undefined
+                  } // ✅ show reason
                   onClick={(e) => {
                     if (!selectingCorrections) return;
                     e.stopPropagation();
-                    pickCorrection(rk);
+                    pickCorrection(kStd);
                   }}
-                  title={
-                    selectingCorrections
-                      ? "Click to add correction for this row"
-                      : undefined
-                  }
                 >
-                  {/* ✅ Resolve all corrections in the whole row */}
-                  {/* <ResolveOverlay field={rk} /> */}
-
-                  {/* ACTIVE + checkbox */}
-                  {/* <div
-                  className={`flex items-center gap-2 border-r border-black px-1 relative ${dashClass(
-                    kChecked,
-                  )}`}
-                  onClick={(e) => {
-                    if (!selectingCorrections) return;
-                    e.stopPropagation();
-                    pickCorrection(kChecked);
-                  }}
-                  title={
-                    selectingCorrections ? "Click to add correction" : undefined
-                  }
-                >
-                  <ResolveOverlay field={kChecked} />
-
-                  <input
-                    type="checkbox"
-                    checked={row.checked}
-                    onChange={(e) => setActiveChecked(idx, e.target.checked)}
-                    disabled={
-                      lock("actives") ||
+                  <ResolveOverlay field={kStd} />
+                  <CellTextarea
+                    value={row.standard ?? ""}
+                    readOnly={
+                      lock("coaRows") ||
                       role !== "CLIENT" ||
                       selectingCorrections
                     }
-                    className={
-                      lock("actives") || role !== "CLIENT"
-                        ? "accent-black"
-                        : "accent-blue-600"
-                    }
+                    onChange={(v) => {
+                      if (
+                        lock("coaRows") ||
+                        role !== "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setCoaRows((prev) =>
+                        prev.map((r) =>
+                          r.key === row.key ? { ...r, standard: v } : r,
+                        ),
+                      );
+                      markDirty();
+                    }}
                   />
-                  <span>{row.label}</span>
-                </div> */}
-
-                  {/* ACTIVE + checkbox */}
-                  {/* ACTIVE + checkbox (COMPLETE FIXED) */}
-                  <div
-                    className={`flex items-start gap-2 border-r border-black px-1 relative ${dashClass(
-                      kChecked,
-                    )}`}
-                    onClick={(e) => {
-                      if (!selectingCorrections) return;
-                      e.stopPropagation();
-                      pickCorrection(kChecked);
-                    }}
-                    title={
-                      selectingCorrections
-                        ? "Click to add correction"
-                        : undefined
-                    }
-                  >
-                    <ResolveOverlay field={kChecked} />
-
-                    {/* checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={row.checked}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-
-                        // your existing helper
-                        setActiveChecked(idx, checked);
-
-                        // ✅ If OTHER unchecked -> clear input
-                        const isOther =
-                          row.key === "OTHER" || row.key.startsWith("OTHER_");
-
-                        if (isOther && !checked) {
-                          setActiveField(idx, { otherName: "" });
-                        }
-                      }}
-                      disabled={
-                        lock("actives") ||
-                        role !== "CLIENT" ||
-                        selectingCorrections
-                      }
-                      className={
-                        lock("actives") || role !== "CLIENT"
-                          ? "accent-black"
-                          : "accent-blue-600"
-                      }
-                    />
-
-                    {/* label + other input */}
-                    <div className="flex-1">
-                      {isOther ? (
-                        <>
-                          {/* Optional: show OTHER / OTHER 2 label when unchecked */}
-                          {!row.checked && (
-                            <div className="leading-tight">
-                              {row.key === "OTHER" ? "OTHER" : "OTHER 2"}
-                            </div>
-                          )}
-
-                          {row.checked && (
-                            <input
-                              className={[
-                                "mt-1 w-full border-0 border-b bg-transparent text-[11px] outline-none",
-                                rowErr.otherName
-                                  ? "border-red-500 ring-1 ring-red-500"
-                                  : "border-black/60",
-                              ].join(" ")}
-                              placeholder="Enter active name"
-                              value={row.otherName ?? ""}
-                              readOnly={
-                                lock("actives") ||
-                                role !== "CLIENT" ||
-                                selectingCorrections
-                              }
-                              onChange={(e) => {
-                                if (
-                                  lock("actives") ||
-                                  role !== "CLIENT" ||
-                                  selectingCorrections
-                                )
-                                  return;
-                                setActiveField(idx, {
-                                  otherName: e.target.value,
-                                });
-                              }}
-                            />
-                          )}
-                        </>
-                      ) : (
-                        <div className="leading-tight">{row.label}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* BULK ACTIVE LOT # */}
-
-                  <div
-                    className={`border-r border-black px-1 relative ${inputErrClass(
-                      !!rowErr.bulkActiveLot,
-                    )} ${dashClass(kBulkActiveLot)} ${corrCursor}`}
-                    onClick={(e) => {
-                      if (!selectingCorrections) return;
-                      e.stopPropagation();
-                      pickCorrection(kBulkActiveLot);
-                    }}
-                  >
-                    <ResolveOverlay field={kBulkActiveLot} />
-
-                    <CellTextarea
-                      value={row.bulkActiveLot ?? ""}
-                      readOnly={
-                        lock("actives") ||
-                        role !== "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(v) => {
-                        if (
-                          lock("actives") ||
-                          role !== "CLIENT" ||
-                          selectingCorrections
-                        )
-                          return;
-                        setActiveField(idx, { bulkActiveLot: v });
-                      }}
-                    />
-
-                    {/* <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px]">
-                    %
-                  </span> */}
-                  </div>
-
-                  {/* SOP # */}
-                  <div
-                    className={`border-r border-black px-1 relative ${inputErrClass(
-                      !!rowErr.sopNo,
-                    )} ${dashClass(kSop)} ${corrCursor}`}
-                    onClick={(e) => {
-                      if (!selectingCorrections) return;
-                      e.stopPropagation();
-                      pickCorrection(kSop);
-                    }}
-                    title={
-                      selectingCorrections
-                        ? "Click to add correction"
-                        : undefined
-                    }
-                  >
-                    <ResolveOverlay field={kSop} />
-                    <CellTextarea
-                      value={row.sopNo ?? ""}
-                      readOnly={
-                        lock("actives") ||
-                        role === "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(v) => {
-                        if (
-                          lock("actives") ||
-                          role === "CLIENT" ||
-                          selectingCorrections
-                        )
-                          return;
-                        setActiveField(idx, { sopNo: v });
-                      }}
-                    />
-                  </div>
-
-                  {/* FORMULA CONTENT */}
-                  <div
-                    className={`border-r border-black px-1 relative ${inputErrClass(
-                      !!rowErr.formulaContent,
-                    )} ${dashClass(kFormula)} ${corrCursor}`}
-                    onClick={(e) => {
-                      if (!selectingCorrections) return;
-                      e.stopPropagation();
-                      pickCorrection(kFormula);
-                    }}
-                  >
-                    <ResolveOverlay field={kFormula} />
-
-                    <CellTextarea
-                      value={row.formulaContent ?? ""}
-                      readOnly={
-                        lock("actives") ||
-                        role !== "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(v) => {
-                        if (
-                          lock("actives") ||
-                          role !== "CLIENT" ||
-                          selectingCorrections
-                        )
-                          return;
-                        setActiveField(idx, { formulaContent: v });
-                      }}
-                    />
-
-                    {/* {showPct && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                      %
-                    </span>
-                  )} */}
-                  </div>
-
-                  {/* RESULTS */}
-                  <div
-                    className={`border-r border-black px-1  relative ${inputErrClass(
-                      !!rowErr.result,
-                    )} ${dashClass(kResult)}  ${corrCursor}`}
-                    onClick={(e) => {
-                      if (!selectingCorrections) return;
-                      e.stopPropagation();
-                      pickCorrection(kResult);
-                    }}
-                    title={
-                      selectingCorrections
-                        ? "Click to add correction"
-                        : undefined
-                    }
-                  >
-                    <ResolveOverlay field={kResult} />
-
-                    <CellTextarea
-                      value={row.result ?? ""}
-                      readOnly={
-                        lock("actives") ||
-                        role === "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(v) => {
-                        if (
-                          lock("actives") ||
-                          role === "CLIENT" ||
-                          selectingCorrections
-                        )
-                          return;
-                        setActiveField(idx, { result: v });
-                      }}
-                    />
-
-                    {/* {showPct && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                      %
-                    </span>
-                  )} */}
-                  </div>
-
-                  {/* DATE TESTED / INITIAL */}
-                  {/* DATE TESTED / INITIAL */}
-                  <div className="px-1 flex items-center gap-1 min-w-0 overflow-hidden">
-                    {/* date takes remaining space */}
-                    <input
-                      type="date"
-                      className="min-w-0 flex-1 border-none outline-none text-[11px]"
-                      value={date}
-                      readOnly={
-                        lock("actives") ||
-                        role === "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(e) =>
-                        setActiveField(idx, {
-                          dateTestedInitial: joinDateInitial(
-                            e.target.value,
-                            initial,
-                          ),
-                        })
-                      }
-                    />
-
-                    <span className="text-[11px] shrink-0">/</span>
-
-                    {/* initials fixed width */}
-                    <input
-                      type="text"
-                      maxLength={3}
-                      placeholder="AB"
-                      className="w-[22px] shrink-0 border-0 border-b border-black/60 bg-transparent text-[11px] text-center outline-none"
-                      value={initial}
-                      readOnly={
-                        lock("actives") ||
-                        role === "CLIENT" ||
-                        selectingCorrections
-                      }
-                      onChange={(e) =>
-                        setActiveField(idx, {
-                          dateTestedInitial: joinDateInitial(
-                            date,
-                            e.target.value.toUpperCase(),
-                          ),
-                        })
-                      }
-                    />
-                  </div>
                 </div>
-              );
-            })
-          )}
-        </div>
 
-        {/* NOTE line (you can make this static text) */}
-        <div className="mt-2 text-[10px]">
-          NOTE : Turn Over time is at least 1 week. Biochem, Inc is not
-          responsible for the release of any product not in the Biochem
-          stability program.
+                {/* RESULT (lab only) */}
+                <div
+                  className={`px-1 relative ${dashClass(kRes)} ${corrCursor}`}
+                  title={
+                    !selectingCorrections ? correctionTextFor(kRes) : undefined
+                  } // ✅
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kRes);
+                  }}
+                >
+                  <ResolveOverlay field={kRes} />
+                  <CellTextarea
+                    value={row.result ?? ""}
+                    readOnly={
+                      lock("coaRows") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
+                    }
+                    onChange={(v) => {
+                      if (
+                        lock("coaRows") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+                      setCoaRows((prev) =>
+                        prev.map((r) =>
+                          r.key === row.key ? { ...r, result: v } : r,
+                        ),
+                      );
+                      markDirty();
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Comments + signatures */}
@@ -2602,12 +1842,12 @@ export default function ChemistryMixSubmissionForm({
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
-            {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
-              (targetStatus: ChemistryReportStatus) => {
+            {STATUS_TRANSITIONS[status as COAReportStatus]?.next.map(
+              (targetStatus: COAReportStatus) => {
                 if (
-                  STATUS_TRANSITIONS[
-                    status as ChemistryReportStatus
-                  ].canSet.includes(role!) &&
+                  STATUS_TRANSITIONS[status as COAReportStatus].canSet.includes(
+                    role!,
+                  ) &&
                   statusButtons[targetStatus]
                 ) {
                   const { label, color } = statusButtons[targetStatus];
@@ -2827,6 +2067,7 @@ export default function ChemistryMixSubmissionForm({
                 onClick={() => {
                   setAddForField(null);
                   setAddMessage("");
+                  setPickedField(null);
                 }}
               >
                 Cancel
@@ -2847,6 +2088,7 @@ export default function ChemistryMixSubmissionForm({
 
                     setAddForField(null);
                     setAddMessage("");
+                    setPickedField(null);
                   })
                 }
               >

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -21,6 +21,7 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // -----------------------------
 // Types
@@ -212,14 +213,6 @@ export default function MicroDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] =
-    useState<(typeof MICRO_STATUSES)[number]>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   // selection & printing
@@ -239,13 +232,39 @@ export default function MicroDashboard() {
 
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
-  const [formFilter, setFormFilter] = useState<FormFilter>("ALL");
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [formFilter, setFormFilter] = useState<FormFilter>(
+    (searchParams.get("form") as FormFilter) || "ALL",
+  );
+
+  const [statusFilter, setStatusFilter] = useState<
+    (typeof MICRO_STATUSES)[number]
+  >((searchParams.get("status") as any) || "ALL");
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    (searchParams.get("sortBy") as any) || "dateSent",
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -383,6 +402,39 @@ export default function MicroDashboard() {
       fieldsUsedOnForm,
     );
   }
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
+
+    if (search.trim()) sp.set("q", search.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    datePreset,
+    fromDate,
+    toDate,
+    setSearchParams,
+  ]);
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
@@ -660,9 +712,9 @@ export default function MicroDashboard() {
     setPage(1);
   };
 
-  useEffect(() => {
-    setStatusFilter("ALL");
-  }, [formFilter]);
+  // useEffect(() => {
+  //   setStatusFilter("ALL");
+  // }, [formFilter]);
 
   useLiveReportStatus(setReports);
 

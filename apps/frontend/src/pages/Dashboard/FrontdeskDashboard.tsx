@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import type {
@@ -28,6 +28,8 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import COAReportFormView from "../Reports/COAReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // -----------------------------
 // Types
@@ -55,6 +57,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -69,7 +72,7 @@ function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
 
-  const isChem = r.formType === "CHEMISTRY_MIX";
+  const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   return isChem
     ? canShowChemistryUpdateButton(user.role, r.status as ChemistryReportStatus)
@@ -178,6 +181,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -198,16 +213,44 @@ export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >((searchParams.get("form") as any) || "ALL");
+
+  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    ((searchParams.get("sb") as any) || "dateSent") as any,
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    ((searchParams.get("sd") as any) || "desc") as any,
+  );
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState<string>(
+    searchParams.get("from") || "",
+  );
+  const [toDate, setToDate] = useState<string>(searchParams.get("to") || "");
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
+    (searchParams.get("pane") as any) || "FORM",
+  );
 
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -218,20 +261,12 @@ export default function FrontDeskDashboard() {
     null,
   );
 
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
-  >("ALL");
-
   // ✅ guards
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [modalUpdating, setModalUpdating] = useState(false);
-
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -277,6 +312,7 @@ export default function FrontDeskDashboard() {
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -322,6 +358,7 @@ export default function FrontDeskDashboard() {
     sortDir,
     fromDate,
     toDate,
+    datePreset,
   ]);
 
   // Pagination
@@ -335,35 +372,65 @@ export default function FrontDeskDashboard() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage, formFilter]);
+  }, [
+    statusFilter,
+    search,
+    perPage,
+    formFilter,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+    datePreset,
+  ]);
 
-  // async function setStatus(
-  //   r: Report,
-  //   newStatus: string,
-  //   reason = "Common Status Change",
-  // ) {
-  //   const isChemistry = r.formType === "CHEMISTRY_MIX";
+  useEffect(() => {
+    const sp = new URLSearchParams();
 
-  //   const url = isChemistry
-  //     ? `/chemistry-reports/${r.id}/status`
-  //     : `/reports/${r.id}/status`;
+    // filters
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
 
-  //   const body = isChemistry
-  //     ? { status: newStatus } // keep your API behavior
-  //     : { reason, status: newStatus };
+    if (search.trim()) sp.set("q", search.trim());
 
-  //   await api(url, {
-  //     method: "PATCH",
-  //     body: JSON.stringify(body),
-  //   });
-  // }
+    // sort
+    if (sortBy !== "dateSent") sp.set("sb", sortBy);
+    if (sortDir !== "desc") sp.set("sd", sortDir);
+
+    // date
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    // modal pane
+    if (modalPane !== "FORM") sp.set("pane", modalPane);
+
+    // paging
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    datePreset,
+    fromDate,
+    toDate,
+    modalPane,
+    perPage,
+    pageClamped,
+    setSearchParams,
+  ]);
 
   async function setStatus(
     r: Report,
     newStatus: string,
     reason = "Status Change",
   ) {
-    const isChemistry = r.formType === "CHEMISTRY_MIX";
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
@@ -381,7 +448,7 @@ export default function FrontDeskDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX") {
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -555,9 +622,6 @@ export default function FrontDeskDashboard() {
 
   useLiveReportStatus(setReports);
 
-
-  
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -666,7 +730,14 @@ export default function FrontDeskDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -689,7 +760,9 @@ export default function FrontDeskDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -898,7 +971,8 @@ export default function FrontDeskDashboard() {
 
               {!loading &&
                 pageRows.map((r) => {
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
                   return (
@@ -952,9 +1026,11 @@ export default function FrontDeskDashboard() {
                                 entity:
                                   r.formType === "CHEMISTRY_MIX"
                                     ? "ChemistryReport"
-                                    : r.formType === "STERILITY "
-                                      ? "SterilityReport"
-                                      : "Micro Report",
+                                    : r.formType === "COA"
+                                      ? "CoaReport"
+                                      : r.formType === "STERILITY "
+                                        ? "SterilityReport"
+                                        : "Micro Report",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -1173,7 +1249,9 @@ export default function FrontDeskDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport"
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
                     });
@@ -1187,7 +1265,18 @@ export default function FrontDeskDashboard() {
 
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
+                  onClick={() => {
+                    setSelectedReport(null);
+                    setModalPane("FORM"); // ✅ reset state so URL won't re-add it
+                    setSearchParams(
+                      (prev) => {
+                        const sp = new URLSearchParams(prev);
+                        sp.delete("pane");
+                        return sp;
+                      },
+                      { replace: true },
+                    );
+                  }}
                 >
                   Close
                 </button>
@@ -1221,6 +1310,14 @@ export default function FrontDeskDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

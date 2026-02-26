@@ -229,51 +229,57 @@ export class TemplatesService {
     return this.prisma.formTemplate.findUnique({ where: { id } });
   }
 
- async remove(user: AuthedUser, id: string, dto?: { expectedVersion?: number }) {
-  const current = await this.prisma.formTemplate.findUnique({ where: { id } });
-  if (!current) throw new NotFoundException('Template not found');
-
-  // scope rules (same as your code)
-  if (user.role === 'CLIENT') {
-    if (!user.clientCode) throw new ForbiddenException('Missing clientCode');
-    if (current.clientCode !== user.clientCode) {
-      throw new ForbiddenException('Not allowed');
-    }
-  } else {
-    if (current.clientCode === null && !isAdmin(user.role)) {
-      throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN can delete global templates',
-      );
-    }
-  }
-
-  const expectedVersion = dto?.expectedVersion;
-
-  if (!isAdmin(user.role) && typeof expectedVersion !== 'number') {
-    throw new BadRequestException('expectedVersion is required');
-  }
-
-  const res = await this.prisma.formTemplate.deleteMany({
-    where: {
-      id,
-      ...(typeof expectedVersion === 'number'
-        ? { version: expectedVersion }
-        : {}),
-    },
-  });
-
-  if (typeof expectedVersion === 'number' && res.count === 0) {
-    throw new ConflictException({
-      code: 'CONFLICT',
-      message:
-        'This template was updated by someone else. Please reload and try again.',
-      expectedVersion,
-      currentVersion: current.version,
+  async remove(
+    user: AuthedUser,
+    id: string,
+    dto?: { expectedVersion?: number },
+  ) {
+    const current = await this.prisma.formTemplate.findUnique({
+      where: { id },
     });
-  }
+    if (!current) throw new NotFoundException('Template not found');
 
-  return { ok: true };
-}
+    // scope rules (same as your code)
+    if (user.role === 'CLIENT') {
+      if (!user.clientCode) throw new ForbiddenException('Missing clientCode');
+      if (current.clientCode !== user.clientCode) {
+        throw new ForbiddenException('Not allowed');
+      }
+    } else {
+      if (current.clientCode === null && !isAdmin(user.role)) {
+        throw new ForbiddenException(
+          'Only ADMIN/SYSTEMADMIN can delete global templates',
+        );
+      }
+    }
+
+    const expectedVersion = dto?.expectedVersion;
+
+    if (!isAdmin(user.role) && typeof expectedVersion !== 'number') {
+      throw new BadRequestException('expectedVersion is required');
+    }
+
+    const res = await this.prisma.formTemplate.deleteMany({
+      where: {
+        id,
+        ...(typeof expectedVersion === 'number'
+          ? { version: expectedVersion }
+          : {}),
+      },
+    });
+
+    if (typeof expectedVersion === 'number' && res.count === 0) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message:
+          'This template was updated by someone else. Please reload and try again.',
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    return { ok: true };
+  }
 
   // templates.service.ts
   async createReportFromTemplate(
@@ -313,6 +319,39 @@ export class TemplatesService {
     // -------------------------
     // ✅ CHEMISTRY: create ChemistryReport
     // -------------------------
+    // if (template.formType === 'CHEMISTRY_MIX') {
+    //   const created = await this.prisma.chemistryReport.create({
+    //     data: {
+    //       clientCode,
+    //       formType: 'CHEMISTRY_MIX',
+    //       formNumber,
+    //       prefix: 'BC',
+    //       status: 'DRAFT',
+    //       createdBy: user.userId,
+    //       updatedBy: user.userId,
+    //       chemistryMix: {
+    //         create: clean,
+    //       },
+    //     },
+    //     select: { id: true },
+    //   });
+
+    //   // return route that EXISTS in your frontend
+    //   return { route: `/chemistry-reports/chemistry-mix/${created.id}` };
+    //   // if your real route is `/chemistry-reports/chemistry-mix/${id}`, change it here
+    // }
+
+    // const chemData: any = {
+    //   clientCode,
+    //   formType: template.formType,
+    //   formNumber,
+    //   prefix: 'BC',
+    //   status: 'DRAFT',
+    //   createdBy: user.userId,
+    //   updatedBy: user.userId,
+    // };
+
+    // ✅ CHEMISTRY: create ChemistryReport
     if (template.formType === 'CHEMISTRY_MIX') {
       const created = await this.prisma.chemistryReport.create({
         data: {
@@ -323,16 +362,33 @@ export class TemplatesService {
           status: 'DRAFT',
           createdBy: user.userId,
           updatedBy: user.userId,
-          chemistryMix: {
-            create: clean,
-          },
+          chemistryMix: { create: clean },
         },
         select: { id: true },
       });
 
-      // return route that EXISTS in your frontend
       return { route: `/chemistry-reports/chemistry-mix/${created.id}` };
-      // if your real route is `/chemistry-reports/chemistry-mix/${id}`, change it here
+    }
+
+    if (template.formType === 'COA') {
+      const created = await this.prisma.chemistryReport.create({
+        data: {
+          clientCode,
+          formType: 'COA',
+          formNumber,
+          prefix: 'BC',
+          status: 'DRAFT',
+          createdBy: user.userId,
+          updatedBy: user.userId,
+
+          // ✅ COA details relation in schema:
+          // ChemistryReport.coa -> COADetails
+          coa: { create: clean },
+        },
+        select: { id: true },
+      });
+
+      return { route: `/chemistry-reports/coa/${created.id}` };
     }
 
     // -------------------------
@@ -450,6 +506,38 @@ export class TemplatesService {
         } catch {
           // leave as-is; Prisma Json can accept string but your UI expects array/object
         }
+      }
+    }
+
+    if (formType === 'COA') {
+      // coaRows: Json? (allow stringified JSON)
+      if (
+        'coaRows' in obj &&
+        obj.coaRows != null &&
+        typeof obj.coaRows === 'string'
+      ) {
+        try {
+          obj.coaRows = JSON.parse(obj.coaRows);
+        } catch {
+          // if parsing fails, keep it as-is; Prisma Json can still store string,
+          // but your UI likely expects array/object
+        }
+      }
+
+      // coaVerification: Boolean (normalize string → boolean)
+      if ('coaVerification' in obj) {
+        const v = obj.coaVerification;
+        if (v === 'true') obj.coaVerification = true;
+        else if (v === 'false') obj.coaVerification = false;
+        else if (v == null || v === '') obj.coaVerification = false;
+      }
+
+      // sampleTypes: SampleType[] (normalize CSV string → array)
+      if ('sampleTypes' in obj && typeof obj.sampleTypes === 'string') {
+        obj.sampleTypes = obj.sampleTypes
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
       }
     }
 
