@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
@@ -21,7 +21,7 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import COAReportFormView from "../Reports/COAReportFormView";
-import COAReportForm from "../Reports/COAReportForm";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // -----------------------------
 // Types
@@ -194,16 +194,30 @@ export default function ChemistryDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] =
-    useState<(typeof CHEMISTRY_STATUSES)[number]>("ALL");
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [statusFilter, setStatusFilter] = useState<
+    (typeof CHEMISTRY_STATUSES)[number]
+  >((searchParams.get("status") as any) || "ALL");
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
   const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">(
-    "createdAt",
+    (searchParams.get("sortBy") as any) || "createdAt",
   );
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-  const [activeFilter, setActiveFilter] = useState<string>("ALL");
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  const [activeFilter, setActiveFilter] = useState(
+    searchParams.get("active") || "ALL",
+  );
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -225,9 +239,12 @@ export default function ChemistryDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -336,6 +353,39 @@ export default function ChemistryDashboard() {
   useEffect(() => {
     setPage(1);
   }, [statusFilter, search, perPage, activeFilter]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("status", String(statusFilter));
+    if (search.trim()) sp.set("q", search.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    if (activeFilter && activeFilter !== "ALL") sp.set("active", activeFilter);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    datePreset,
+    fromDate,
+    toDate,
+    activeFilter,
+    setSearchParams,
+  ]);
 
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [

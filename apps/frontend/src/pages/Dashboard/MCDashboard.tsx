@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
@@ -39,7 +39,10 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { canShowCOAUpdateButton } from "../../utils/COAReportFormWorkflow";
+import {
+  canShowCOAUpdateButton,
+  COA_STATUS_COLORS,
+} from "../../utils/COAReportFormWorkflow";
 
 // ----------------------------------
 // Types
@@ -439,6 +442,25 @@ function ActivesCell({
   );
 }
 
+function typeLabel(r: UnifiedRow) {
+  if (r.kind === "MICRO") {
+    if (r.formType === "MICRO_MIX") return "MICRO";
+    if (r.formType === "MICRO_MIX_WATER") return "MICRO WATER";
+    if (r.formType === "STERILITY") return "STERILITY";
+    return "MICRO";
+  }
+
+  // CHEMISTRY
+  if (r.formType === "COA") return "COA";
+  if (r.formType === "CHEMISTRY_MIX") return "CHEMISTRY MIX";
+  return "CHEM";
+}
+
+function parseIntSafe(v: string | null, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 // ----------------------------------
 // Component: Combined dashboard
 // ----------------------------------
@@ -455,25 +477,89 @@ export default function MCDashboard() {
 
   // Filters
   type Category = "ALL" | "MICRO" | "CHEMISTRY";
-  const [category, setCategory] = useState<Category>("ALL");
+  // const [category, setCategory] = useState<Category>("ALL");
+
+  type AllTypeFilter =
+    | "ALL"
+    | "MICRO_MIX"
+    | "MICRO_MIX_WATER"
+    | "STERILITY"
+    | "CHEMISTRY_MIX"
+    | "COA";
 
   type MicroFormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
-  const [microFormFilter, setMicroFormFilter] =
-    useState<MicroFormFilter>("ALL");
 
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  type ChemFormFilter = "ALL" | "CHEMISTRY_MIX" | "COA";
 
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  const [category, setCategory] = useState<Category>(
+    (searchParams.get("cat") as Category) || "ALL",
+  );
 
-  const [activeFilter, setActiveFilter] = useState<string>("ALL"); // chemistry actives
+  const [statusFilter, setStatusFilter] = useState(
+    searchParams.get("status") || "ALL",
+  );
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [allTypeFilter, setAllTypeFilter] = useState<AllTypeFilter>(
+    (searchParams.get("type") as AllTypeFilter) || "ALL",
+  );
+
+  const [microFormFilter, setMicroFormFilter] = useState<MicroFormFilter>(
+    (searchParams.get("mtype") as MicroFormFilter) || "ALL",
+  );
+
+  const [chemFormFilter, setChemFormFilter] = useState<ChemFormFilter>(
+    (searchParams.get("ctype") as ChemFormFilter) || "ALL",
+  );
+
+  const [activeFilter, setActiveFilter] = useState(
+    searchParams.get("active") || "ALL",
+  );
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as DatePreset) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    (searchParams.get("sortBy") as any) || "dateSent",
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  // type MicroFormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
+  // const [microFormFilter, setMicroFormFilter] =
+  //   useState<MicroFormFilter>("ALL");
+
+  // type ChemFormFilter = "ALL" | "CHEMISTRY_MIX" | "COA";
+
+  // const [chemFormFilter, setChemFormFilter] = useState<ChemFormFilter>("ALL");
+
+  // const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  // const [search, setSearch] = useState("");
+  // const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
+  // const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // const [page, setPage] = useState(1);
+  // const [perPage, setPerPage] = useState(10);
+
+  // const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+  // const [fromDate, setFromDate] = useState<string>("");
+  // const [toDate, setToDate] = useState<string>("");
+
+  // const [activeFilter, setActiveFilter] = useState<string>("ALL"); // chemistry actives
 
   // Selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -510,10 +596,13 @@ export default function MCDashboard() {
         if (abort) return;
 
         const keepMicro = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
-        const keepChem = new Set(CHEMISTRY_STATUSES.filter((s) => s !== "ALL"));
+        const keepChem = new Set<string>([
+          ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
+          ...Object.keys(COA_STATUS_COLORS), // ✅ include all COA statuses
+        ]);
 
         setMicroReports(allMicro.filter((r) => keepMicro.has(r.status as any)));
-        setChemReports(allChem.filter((r) => keepChem.has(r.status as any)));
+        setChemReports(allChem.filter((r) => keepChem.has(String(r.status))));
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -604,14 +693,32 @@ export default function MCDashboard() {
   }, [microReports, chemReports]);
 
   // Which status chips to show?
+  // const statusOptions = useMemo(() => {
+  //   if (category === "MICRO") return MICRO_STATUSES as unknown as string[];
+  //   if (category === "CHEMISTRY")
+  //     return CHEMISTRY_STATUSES as unknown as string[];
+  //   // ALL: union, but keep it tidy:
+  //   const set = new Set<string>(["ALL"]);
+  //   MICRO_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
+  //   CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
+  //   return Array.from(set);
+  // }, [category]);
+
   const statusOptions = useMemo(() => {
     if (category === "MICRO") return MICRO_STATUSES as unknown as string[];
-    if (category === "CHEMISTRY")
-      return CHEMISTRY_STATUSES as unknown as string[];
-    // ALL: union, but keep it tidy:
+
+    if (category === "CHEMISTRY") {
+      const set = new Set<string>(["ALL"]);
+      CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
+      Object.keys(COA_STATUS_COLORS).forEach((s) => set.add(String(s)));
+      return Array.from(set);
+    }
+
+    // ALL: union
     const set = new Set<string>(["ALL"]);
     MICRO_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
     CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
+    Object.keys(COA_STATUS_COLORS).forEach((s) => set.add(String(s)));
     return Array.from(set);
   }, [category]);
 
@@ -639,16 +746,38 @@ export default function MCDashboard() {
   const processed = useMemo(() => {
     // 0) category filter
     let rows = unified;
-    if (category !== "ALL") rows = rows.filter((r) => r.kind === category);
 
-    // 0.5) micro subtype filter
-    if (category !== "CHEMISTRY" && microFormFilter !== "ALL") {
+    if (category === "MICRO") {
+      rows = rows.filter((r) => r.kind === "MICRO");
+    } else if (category === "CHEMISTRY") {
+      // ✅ show CHEMISTRY_MIX + COA together
+      rows = rows.filter((r) => r.kind === "CHEMISTRY");
+    }
+
+    // ✅ ADD THIS BLOCK (ONLY when category === ALL)
+    if (category === "ALL" && allTypeFilter !== "ALL") {
+      rows = rows.filter((r) => r.formType === allTypeFilter);
+    }
+
+    // 0.5) micro subtype filter (ONLY when category === "MICRO")
+    if (category === "MICRO" && microFormFilter !== "ALL") {
       rows = rows.filter((r) => {
-        if (r.kind !== "MICRO") return true;
+        if (r.kind !== "MICRO") return false; // only show micro rows in micro tab
         if (microFormFilter === "MICRO") return r.formType === "MICRO_MIX";
         if (microFormFilter === "MICRO_WATER")
           return r.formType === "MICRO_MIX_WATER";
         if (microFormFilter === "STERILITY") return r.formType === "STERILITY";
+        return true;
+      });
+    }
+    // 0.6) chemistry subtype filter
+    // 0.6) chemistry subtype filter (ONLY when category === "CHEMISTRY")
+    if (category === "CHEMISTRY" && chemFormFilter !== "ALL") {
+      rows = rows.filter((r) => {
+        if (r.kind !== "CHEMISTRY") return false; // only show chemistry rows in chemistry tab
+        if (chemFormFilter === "CHEMISTRY_MIX")
+          return r.formType === "CHEMISTRY_MIX";
+        if (chemFormFilter === "COA") return r.formType === "COA";
         return true;
       });
     }
@@ -684,8 +813,8 @@ export default function MCDashboard() {
       });
     }
 
-    // 2.5) chemistry actives filter (only meaningful if CHEMISTRY or ALL)
-    if (activeFilter !== "ALL") {
+    // 2.5) chemistry actives filter (ONLY when category === "CHEMISTRY")
+    if (category === "CHEMISTRY" && activeFilter !== "ALL") {
       rows = rows.filter((r) => {
         if (r.kind !== "CHEMISTRY") return false;
         const list = r.selectedActivesText?.trim()
@@ -716,7 +845,9 @@ export default function MCDashboard() {
   }, [
     unified,
     category,
+    allTypeFilter,
     microFormFilter,
+    chemFormFilter,
     statusFilter,
     search,
     activeFilter,
@@ -738,7 +869,9 @@ export default function MCDashboard() {
     setPage(1);
   }, [
     category,
+    allTypeFilter,
     microFormFilter,
+    chemFormFilter,
     statusFilter,
     search,
     perPage,
@@ -752,7 +885,62 @@ export default function MCDashboard() {
   useEffect(() => {
     setStatusFilter("ALL");
     setSelectedIds([]);
+
+    if (category === "ALL") {
+      setAllTypeFilter("ALL"); // ✅ keep
+      setMicroFormFilter("ALL");
+      setChemFormFilter("ALL");
+      setActiveFilter("ALL");
+    }
+
+    if (category === "MICRO") {
+      setAllTypeFilter("ALL"); // ✅ keep
+      setChemFormFilter("ALL");
+      setActiveFilter("ALL");
+    }
+
+    if (category === "CHEMISTRY") {
+      setAllTypeFilter("ALL"); // ✅ keep
+      setMicroFormFilter("ALL");
+    }
   }, [category]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("cat", category);
+    sp.set("status", statusFilter);
+    if (search.trim()) sp.set("q", search.trim());
+    sp.set("type", allTypeFilter);
+    sp.set("mtype", microFormFilter);
+    sp.set("ctype", chemFormFilter);
+    sp.set("active", activeFilter);
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped)); // keep valid
+
+    setSearchParams(sp, { replace: true }); // no history spam
+  }, [
+    category,
+    statusFilter,
+    search,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    setSearchParams,
+  ]);
 
   // -----------------------------
   // Helpers: permissions + nav
@@ -949,53 +1137,38 @@ export default function MCDashboard() {
       goToEditor(r);
       return;
     }
-    // if (r.kind === "MICRO") {
-    //   let nextStatus: string | null = null;
-
-    //   if (r.status === "SUBMITTED_BY_CLIENT") {
-    //     nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-    //     await setMicroStatus(r, nextStatus, "Move to prelim testing");
-    //   } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
-    //     nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
-    //     await setMicroStatus(r, nextStatus, "Move to RESUBMISSION");
-    //   } else if (r.status === "PRELIMINARY_APPROVED") {
-    //     nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-    //     await setMicroStatus(r, nextStatus, "Move to final testing");
-    //   } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
-    //     nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-    //     await setMicroStatus(r, nextStatus, "Resubmitted by client");
-    //   } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-    //     nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-    //     await setMicroStatus(r, nextStatus, `Set by ${actor}`);
-    //   }
-
-    //   if (nextStatus) {
-    //     setMicroReports((prev) =>
-    //       prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
-    //     );
-    //   }
-
-    //   goToEditor(r);
-    //   return;
-    // }
 
     // CHEMISTRY
     let nextStatus: string | null = null;
 
-    if (r.status === "SUBMITTED_BY_CLIENT") {
-      nextStatus = "UNDER_TESTING_REVIEW";
-      await setChemStatus(r, nextStatus, "Move to testing");
-    } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-      nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
-      await setChemStatus(r, nextStatus, `Set by ${actor}`);
-    } else if (r.status === "RESUBMISSION_BY_CLIENT") {
-      nextStatus = "UNDER_TESTING_REVIEW";
-      await setChemStatus(r, nextStatus, "Resubmitted by client");
+    if (r.formType === "COA") {
+      if (r.status === "SUBMITTED_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, "Move COA to testing");
+      } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
+        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        await setChemStatus(
+          r,
+          nextStatus,
+          `COA correction requested by ${actor}`,
+        );
+      } else if (r.status === "RESUBMISSION_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, "COA resubmitted by client");
+      }
+    } else {
+      // CHEMISTRY_MIX
+      if (r.status === "SUBMITTED_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, "Move to testing");
+      } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
+        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, `Set by ${actor}`);
+      } else if (r.status === "RESUBMISSION_BY_CLIENT") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, "Resubmitted by client");
+      }
     }
-    // else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-    //   nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
-    //   await setChemStatus(r, nextStatus, `Set by ${actor}`);
-    // }
 
     if (nextStatus) {
       setChemReports((prev) =>
@@ -1024,7 +1197,9 @@ export default function MCDashboard() {
   const hasActiveFilters = useMemo(() => {
     return (
       category !== "ALL" ||
-      (String(category) !== "CHEMISTRY" && microFormFilter !== "ALL") ||
+      allTypeFilter !== "ALL" ||
+      microFormFilter !== "ALL" ||
+      chemFormFilter !== "ALL" ||
       statusFilter !== "ALL" ||
       search.trim() !== "" ||
       sortBy !== "dateSent" ||
@@ -1037,7 +1212,9 @@ export default function MCDashboard() {
     );
   }, [
     category,
+    allTypeFilter,
     microFormFilter,
+    chemFormFilter,
     statusFilter,
     search,
     sortBy,
@@ -1051,7 +1228,9 @@ export default function MCDashboard() {
 
   const clearAllFilters = () => {
     setCategory("ALL");
+    setAllTypeFilter("ALL");
     setMicroFormFilter("ALL");
+    setChemFormFilter("ALL");
     setStatusFilter("ALL");
     setSearch("");
     setSortBy("dateSent");
@@ -1070,7 +1249,11 @@ export default function MCDashboard() {
         ? canUpdateSterilityLocal(r as MicroReport, user)
         : canUpdateMicroLocal(r as MicroReport, user);
     }
-    return canUpdateChemLocal(r as ChemReport, user);
+
+    // CHEMISTRY
+    return r.formType === "COA"
+      ? canUpdateCoaLocal(r as ChemReport, user)
+      : canUpdateChemLocal(r as ChemReport, user);
   }
 
   // ----------------------------------
@@ -1177,6 +1360,7 @@ export default function MCDashboard() {
         <nav className="-mb-px flex gap-6 text-sm">
           {(["ALL", "MICRO", "CHEMISTRY"] as const).map((c) => {
             const isActive = category === c;
+
             return (
               <button
                 key={c}
@@ -1189,7 +1373,13 @@ export default function MCDashboard() {
                     : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
                 )}
               >
-                {c === "ALL" ? "All" : c === "MICRO" ? "Micro" : "Chemistry"}
+                {c === "ALL"
+                  ? "All"
+                  : c === "MICRO"
+                    ? "Micro"
+                    : c === "CHEMISTRY"
+                      ? "Chemistry"
+                      : "COA"}
               </button>
             );
           })}
@@ -1197,7 +1387,7 @@ export default function MCDashboard() {
       </div>
 
       {/* Micro subtype tabs (only when ALL or MICRO) */}
-      {category !== "CHEMISTRY" && (
+      {category === "MICRO" && (
         <div className="mb-3 border-b border-slate-100">
           <nav className="-mb-px flex gap-6 text-sm">
             {(["ALL", "MICRO", "MICRO_WATER", "STERILITY"] as const).map(
@@ -1226,6 +1416,70 @@ export default function MCDashboard() {
                 );
               },
             )}
+          </nav>
+        </div>
+      )}
+
+      {/* Chemistry subtype tabs (only when ALL or CHEMISTRY) */}
+      {category === "CHEMISTRY" && (
+        <div className="mb-3 border-b border-slate-100">
+          <nav className="-mb-px flex gap-6 text-sm">
+            {(["ALL", "CHEMISTRY_MIX", "COA"] as const).map((ft) => {
+              const isActive = chemFormFilter === ft;
+              return (
+                <button
+                  key={ft}
+                  type="button"
+                  onClick={() => setChemFormFilter(ft)}
+                  className={classNames(
+                    "pb-2 border-b-2 text-sm font-medium",
+                    isActive
+                      ? "border-slate-800 text-slate-800"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-200",
+                  )}
+                >
+                  {ft === "ALL"
+                    ? "All Chemistry"
+                    : ft === "CHEMISTRY_MIX"
+                      ? "Chemistry Mix"
+                      : "COA"}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
+      {category === "ALL" && (
+        <div className="mb-3 border-b border-slate-100">
+          <nav className="-mb-px flex gap-6 text-sm">
+            {(
+              [
+                ["ALL", "All Types"],
+                ["MICRO_MIX", "Micro Mix"],
+                ["MICRO_MIX_WATER", "Micro Water"],
+                ["STERILITY", "Sterility"],
+                ["CHEMISTRY_MIX", "Chemistry Mix"],
+                ["COA", "COA"],
+              ] as const
+            ).map(([key, label]) => {
+              const isActive = allTypeFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setAllTypeFilter(key)}
+                  className={classNames(
+                    "pb-2 border-b-2 text-sm font-medium",
+                    isActive
+                      ? "border-slate-800 text-slate-800"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-200",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </nav>
         </div>
       )}
@@ -1481,9 +1735,11 @@ export default function MCDashboard() {
                             r.status as SterilityReportStatus
                           ]
                         : STATUS_COLORS[r.status as MicroReportStatus]
-                      : CHEMISTRY_STATUS_COLORS[
-                          r.status as ChemistryReportStatus
-                        ];
+                      : r.formType === "COA"
+                        ? COA_STATUS_COLORS[r.status as ChemistryReportStatus]
+                        : CHEMISTRY_STATUS_COLORS[
+                            r.status as ChemistryReportStatus
+                          ];
 
                   const canUpdateRow = canUpdateUnified(r, user);
 
@@ -1507,7 +1763,7 @@ export default function MCDashboard() {
                               : "bg-violet-50 text-violet-800 ring-violet-200",
                           )}
                         >
-                          {r.kind === "MICRO" ? "MICRO" : "CHEM"}
+                          {typeLabel(r)}
                         </span>
                       </td>
 

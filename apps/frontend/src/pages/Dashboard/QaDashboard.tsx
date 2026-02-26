@@ -1,6 +1,6 @@
 // QaDashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 
@@ -37,6 +37,7 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import COAReportFormView from "../Reports/COAReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // ---------------------------------
 // Types
@@ -321,12 +322,18 @@ export default function QaDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Filters
-  const [searchClient, setSearchClient] = useState("");
-  const [searchReport, setSearchReport] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [searchClient, setSearchClient] = useState(
+    searchParams.get("client") || "",
+  );
+  const [searchReport, setSearchReport] = useState(
+    searchParams.get("report") || "",
+  );
+
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -342,8 +349,11 @@ export default function QaDashboard() {
 
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >("ALL");
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+  >((searchParams.get("form") as any) || "ALL");
+
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
 
   const statusOptions =
     formFilter === "CHEMISTRY"
@@ -353,14 +363,18 @@ export default function QaDashboard() {
         : QA_MICRO_STATUSES;
 
   // Pagination
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   // UX guards
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -517,6 +531,40 @@ export default function QaDashboard() {
     dateTo,
     perPage,
     formFilter,
+  ]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    // form + status
+    if (formFilter && formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
+
+    // search
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+
+    // date
+    sp.set("dp", datePreset);
+    if (dateFrom) sp.set("from", dateFrom);
+    if (dateTo) sp.set("to", dateTo);
+
+    // paging
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+    pageClamped,
+    setSearchParams,
   ]);
 
   const allOnPageSelectedNow =

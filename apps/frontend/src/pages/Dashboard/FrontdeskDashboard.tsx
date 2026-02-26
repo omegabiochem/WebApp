@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import type {
@@ -28,8 +28,8 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
-import COAReportForm from "../Reports/COAReportForm";
 import COAReportFormView from "../Reports/COAReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // -----------------------------
 // Types
@@ -213,16 +213,44 @@ export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >((searchParams.get("form") as any) || "ALL");
+
+  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
+
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    ((searchParams.get("sb") as any) || "dateSent") as any,
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    ((searchParams.get("sd") as any) || "desc") as any,
+  );
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState<string>(
+    searchParams.get("from") || "",
+  );
+  const [toDate, setToDate] = useState<string>(searchParams.get("to") || "");
+
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
+    (searchParams.get("pane") as any) || "FORM",
+  );
 
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -233,20 +261,12 @@ export default function FrontDeskDashboard() {
     null,
   );
 
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >("ALL");
-
   // ✅ guards
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [modalUpdating, setModalUpdating] = useState(false);
-
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -338,6 +358,7 @@ export default function FrontDeskDashboard() {
     sortDir,
     fromDate,
     toDate,
+    datePreset,
   ]);
 
   // Pagination
@@ -351,28 +372,58 @@ export default function FrontDeskDashboard() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage, formFilter]);
+  }, [
+    statusFilter,
+    search,
+    perPage,
+    formFilter,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+    datePreset,
+  ]);
 
-  // async function setStatus(
-  //   r: Report,
-  //   newStatus: string,
-  //   reason = "Common Status Change",
-  // ) {
-  //   const isChemistry = r.formType === "CHEMISTRY_MIX";
+  useEffect(() => {
+    const sp = new URLSearchParams();
 
-  //   const url = isChemistry
-  //     ? `/chemistry-reports/${r.id}/status`
-  //     : `/reports/${r.id}/status`;
+    // filters
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
 
-  //   const body = isChemistry
-  //     ? { status: newStatus } // keep your API behavior
-  //     : { reason, status: newStatus };
+    if (search.trim()) sp.set("q", search.trim());
 
-  //   await api(url, {
-  //     method: "PATCH",
-  //     body: JSON.stringify(body),
-  //   });
-  // }
+    // sort
+    if (sortBy !== "dateSent") sp.set("sb", sortBy);
+    if (sortDir !== "desc") sp.set("sd", sortDir);
+
+    // date
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    // modal pane
+    if (modalPane !== "FORM") sp.set("pane", modalPane);
+
+    // paging
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    datePreset,
+    fromDate,
+    toDate,
+    modalPane,
+    perPage,
+    pageClamped,
+    setSearchParams,
+  ]);
 
   async function setStatus(
     r: Report,
@@ -1214,7 +1265,18 @@ export default function FrontDeskDashboard() {
 
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
+                  onClick={() => {
+                    setSelectedReport(null);
+                    setModalPane("FORM"); // ✅ reset state so URL won't re-add it
+                    setSearchParams(
+                      (prev) => {
+                        const sp = new URLSearchParams(prev);
+                        sp.delete("pane");
+                        return sp;
+                      },
+                      { replace: true },
+                    );
+                  }}
                 >
                   Close
                 </button>

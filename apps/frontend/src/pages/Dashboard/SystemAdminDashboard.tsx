@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 // import io from "socket.io-client";
@@ -27,6 +27,7 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
 
 // ---------------------------------
 // Types
@@ -172,12 +173,18 @@ export default function SystemAdminDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Filters
-  const [searchClient, setSearchClient] = useState("");
-  const [searchReport, setSearchReport] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [searchClient, setSearchClient] = useState(
+    searchParams.get("client") || "",
+  );
+  const [searchReport, setSearchReport] = useState(
+    searchParams.get("report") || "",
+  );
+
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -192,80 +199,34 @@ export default function SystemAdminDashboard() {
 
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
+  // Filters (init from URL)
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "CHEMISTRY" | "STERILITY"
-  >("ALL");
+  >((searchParams.get("form") as any) || "ALL");
 
-  // ✅ status filter now uses combined type
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
   const statusOptions =
     formFilter === "CHEMISTRY" ? ADMIN_CHEM_STATUSES : ADMIN_MICRO_STATUSES;
 
   // Pagination
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   // ✅ UX guards
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
+  // Dates
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
 
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  // Socket (live updates)
-  // const socketRef = useRef<ReturnType<typeof io> | null>(null);
-
-  // useEffect(() => {
-  //   const t = getToken();
-  //   const url =
-  //     window.location.protocol === "https:"
-  //       ? API_URL.replace(/^http:/, "https:")
-  //       : API_URL;
-
-  //   socketRef.current = io(url, {
-  //     transports: ["websocket"],
-  //     auth: t ? { token: t } : undefined,
-  //     path: "/socket.io",
-  //   });
-
-  //   // ✅ update BOTH micro & chem status if your backend emits them
-  //   socketRef.current.on(
-  //     "microMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-
-  //   socketRef.current.on("microMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   // OPTIONAL: if you emit chemistry events too
-  //   socketRef.current.on(
-  //     "chemistryMix:statusChanged",
-  //     (payload: { id: string; status: any }) => {
-  //       setReports((prev) =>
-  //         prev.map((r) =>
-  //           r.id === payload.id ? { ...r, status: payload.status } : r,
-  //         ),
-  //       );
-  //     },
-  //   );
-
-  //   socketRef.current.on("chemistryMix:created", (payload: Report) => {
-  //     setReports((prev) => [payload, ...prev]);
-  //   });
-
-  //   return () => {
-  //     socketRef.current?.disconnect();
-  //   };
-  // }, []);
 
   async function setStatus(
     r: Report,
@@ -386,13 +347,48 @@ export default function SystemAdminDashboard() {
   useEffect(() => {
     setPage(1);
   }, [
+    formFilter,
     statusFilter,
     searchClient,
     searchReport,
+    datePreset,
     dateFrom,
     dateTo,
     perPage,
+  ]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    // form + status
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter)); // keep ALL explicitly
+
+    // searches
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+
+    // date preset + range
+    sp.set("dp", datePreset);
+    if (dateFrom) sp.set("from", dateFrom);
+    if (dateTo) sp.set("to", dateTo);
+
+    // paging
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
     formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+    pageClamped,
+    setSearchParams,
   ]);
 
   // Permissions
@@ -584,29 +580,18 @@ export default function SystemAdminDashboard() {
   ]);
 
   const clearFilters = () => {
-    setSearchClient("");
-    setSearchReport("");
-    setDatePreset("ALL");
-    setDateFrom("");
-    setDateTo("");
-    setStatusFilter("ALL");
-    setFormFilter("ALL");
-    setPerPage(10);
-    setPage(1);
-  };
+  setSearchClient("");
+  setSearchReport("");
+  setDatePreset("ALL");
+  setDateFrom("");
+  setDateTo("");
+  setStatusFilter("ALL");
+  setFormFilter("ALL");
+  setPerPage(10);
+  setPage(1);
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-    formFilter,
-    datePreset,
-  ]);
+  setSearchParams(new URLSearchParams(), { replace: true });
+};
 
   useLiveReportStatus(setReports);
 

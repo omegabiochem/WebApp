@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import type {
@@ -28,7 +28,12 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
-import { COLS, MAX_COLS, type ColKey } from "../../utils/clientDashboardutils";
+import {
+  COLS,
+  MAX_COLS,
+  parseIntSafe,
+  type ColKey,
+} from "../../utils/clientDashboardutils";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
 
@@ -339,13 +344,23 @@ export default function ClientDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">("formNumber");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">(
+    (searchParams.get("sortBy") as any) || "formNumber",
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("sortDir") as any) || "desc",
+  );
+
+  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+  const [perPage, setPerPage] = useState(
+    parseIntSafe(searchParams.get("pp"), 10),
+  );
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -360,10 +375,11 @@ export default function ClientDashboard() {
 
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >("ALL");
+  >((searchParams.get("form") as any) || "ALL");
 
-  // status filter now uses combined type
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    (searchParams.get("status") as any) || "ALL",
+  );
 
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
@@ -386,9 +402,12 @@ export default function ClientDashboard() {
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (searchParams.get("dp") as any) || "ALL",
+  );
+
+  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
   const navigate = useNavigate();
   const { user, token } = useAuth();
@@ -562,6 +581,39 @@ export default function ClientDashboard() {
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, [colOpen]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
+
+    if (search.trim()) sp.set("q", search.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    datePreset,
+    fromDate,
+    toDate,
+    setSearchParams,
+  ]);
 
   async function setStatus(
     r: Report,
@@ -757,8 +809,15 @@ export default function ClientDashboard() {
   };
 
   useEffect(() => {
-    setStatusFilter("ALL");
-  }, [formFilter]);
+    const allowed =
+      formFilter === "CHEMISTRY" || formFilter === "COA"
+        ? CLIENT_CHEM_STATUSES.map(String)
+        : CLIENT_MICRO_STATUSES.map(String);
+
+    if (statusFilter !== "ALL" && !allowed.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+  }, [formFilter]); // (statusFilter optional, but this is ok)
 
   useLiveReportStatus(setReports, {
     acceptCreated: (r: Report) => {
