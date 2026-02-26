@@ -28,12 +28,13 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
+
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import {
   COLS,
   parseIntSafe,
   type ColKey,
 } from "../../utils/clientDashboardutils";
-import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
 
 // -----------------------------
