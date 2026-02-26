@@ -246,6 +246,10 @@ model AuditTrail {
   role      UserRole?
   user      User?     @relation(fields: [userId], references: [id])
 
+  clientCode String?
+
+  @@index([clientCode, createdAt])
+
   @@index([entity, entityId, createdAt])
   @@index([userId, createdAt])
 }

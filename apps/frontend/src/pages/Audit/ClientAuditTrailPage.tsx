@@ -362,6 +362,9 @@ export default function ClientAuditTrailPage() {
 
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const [filterFormNumber, setFilterFormNumber] = useState("");
+  const [filterReportNumber, setFilterReportNumber] = useState("");
+
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
@@ -374,6 +377,8 @@ export default function ClientAuditTrailPage() {
     dateTo,
     sortOrder,
     pageSize,
+    filterFormNumber,
+    filterReportNumber,
   ]);
 
   const didLog = useRef(false);
@@ -396,11 +401,13 @@ export default function ClientAuditTrailPage() {
     // params.append("clientCode", "JJL");
     if (user?.userId) params.append("userId", user.userId);
     if (filterEntity) params.append("entity", filterEntity);
-    if (filterUserId) params.append("userId", filterUserId);
+    // if (filterUserId) params.append("userId", filterUserId);
     if (filterEntityId) params.append("entityId", filterEntityId);
     if (filterAction) params.append("action", filterAction);
     if (dateFrom) params.append("from", dateFrom);
     if (dateTo) params.append("to", dateTo);
+    if (filterFormNumber) params.append("formNumber", filterFormNumber);
+    if (filterReportNumber) params.append("reportNumber", filterReportNumber);
 
     // pagination + sort
     params.append("page", String(page));
@@ -418,6 +425,8 @@ export default function ClientAuditTrailPage() {
     filterAction,
     dateFrom,
     dateTo,
+    filterFormNumber,
+    filterReportNumber,
     page,
     pageSize,
     sortOrder,
@@ -491,6 +500,8 @@ export default function ClientAuditTrailPage() {
     setDateFrom("");
     setDateTo("");
     setSortOrder("desc");
+    setFilterFormNumber("");
+    setFilterReportNumber("");
     setPage(1);
   };
 
@@ -527,6 +538,8 @@ export default function ClientAuditTrailPage() {
     if (dateFrom) params.append("from", dateFrom);
     if (dateTo) params.append("to", dateTo);
     params.append("order", sortOrder);
+    params.append("role", "CLIENT");
+    if (user?.userId) params.append("userId", user.userId);
 
     const qs = params.toString();
     const url = `${API_URL}/audit/export.csv${qs ? `?${qs}` : ""}`;
@@ -669,6 +682,25 @@ export default function ClientAuditTrailPage() {
 
           <div className="md:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">
+              Form Number
+            </label>
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-3 text-gray-400"
+              />
+              <input
+                type="text"
+                placeholder="e.g. 12 or OMJ12..."
+                value={filterFormNumber}
+                onChange={(e) => setFilterFormNumber(e.target.value)}
+                className="w-full border rounded-lg pl-9 pr-3 py-2"
+              />
+            </div>
+          </div>
+
+          <div className="md:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               From
             </label>
             <input
@@ -763,48 +795,58 @@ export default function ClientAuditTrailPage() {
           </thead>
 
           <tbody>
-            {records.map((r) => (
-              <tr key={r.id} className="border-t hover:bg-gray-50 align-top">
-                <td className="p-3 whitespace-pre-wrap font-mono text-xs">
-                  {formatAuditTime(r.createdAt)}
-                </td>
+            {records.map((r) => {
+              const displayName = safeText(r.user?.name);
+              const displayUserId = safeText(r.user?.id);
+              const fallbackUserId = safeText(r.userId);
 
-                <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
-                <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
-                  {formatEntityIds(r.entityId)}
-                </td>
+              return (
+                <tr key={r.id} className="border-t hover:bg-gray-50 align-top">
+                  <td className="p-3 whitespace-pre-wrap font-mono text-xs">
+                    {formatAuditTime(r.createdAt)}
+                  </td>
 
-                <td className="p-3 whitespace-nowrap">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
-                      r.action,
-                    )}`}
-                  >
-                    {r.action}
-                  </span>
-                </td>
-                <td className="p-3 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    {safeText(r.user?.name) !== "-"
-                      ? safeText(r.user?.name)
-                      : safeText(r.userId)}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {safeText(r.user?.id)}
-                  </div>
-                </td>
-                <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
-                <td className="p-3 whitespace-nowrap font-mono text-xs">
-                  {safeText(r.ipAddress)}
-                </td>
-                <td className="p-3">
-                  <DetailsCell
-                    details={r.details || ""}
-                    changes={(r as any).changes}
-                  />
-                </td>
-              </tr>
-            ))}
+                  <td className="p-3 whitespace-nowrap">
+                    {safeText(r.entity)}
+                  </td>
+
+                  <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
+                    {formatEntityIds(r.entityId)}
+                  </td>
+
+                  <td className="p-3 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
+                        r.action,
+                      )}`}
+                    >
+                      {r.action}
+                    </span>
+                  </td>
+
+                  {/* ✅ USER COLUMN — CLEAN VERSION */}
+                  <td className="p-3 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {displayName !== "-" ? displayName : fallbackUserId}
+                    </div>
+                    <div className="text-xs text-gray-500">{displayUserId}</div>
+                  </td>
+
+                  <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
+
+                  <td className="p-3 whitespace-nowrap font-mono text-xs">
+                    {safeText(r.ipAddress)}
+                  </td>
+
+                  <td className="p-3">
+                    <DetailsCell
+                      details={r.details || ""}
+                      changes={(r as any).changes}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
 
             {!loading && records.length === 0 && (
               <tr>
