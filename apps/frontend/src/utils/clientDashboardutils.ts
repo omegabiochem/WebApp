@@ -35,3 +35,14 @@ export function parseIntSafe(v: string | null, fallback: number) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+export type DatePreset =
+  | "ALL"
+  | "TODAY"
+  | "YESTERDAY"
+  | "LAST_7_DAYS"
+  | "LAST_30_DAYS"
+  | "THIS_MONTH"
+  | "LAST_MONTH"
+  | "THIS_YEAR"
+  | "LAST_YEAR"
+  | "CUSTOM";
