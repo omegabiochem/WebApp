@@ -11,7 +11,7 @@ export type CoaVerificationRow = {
 };
 
 export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
-  { key: "IDENTIFICATION", item: "*Identification", Specification: "", result: "" },
+  { key: "IDENTIFICATION", item: "Identification", Specification: "", result: "" },
   {
     key: "SPECIFIC_ROTATION",
     item: "Specific Rotation",
@@ -24,10 +24,10 @@ export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
     Specification: "",
     result: "",
   },
-  { key: "WATER", item: "Water %", Specification: "", result: "" },
+  { key: "WATER", item: "Water Content", Specification: "", result: "" },
   {
     key: "RESIDUE_ON_IGNITION",
-    item: "*Residue on Ignition %",
+    item: "Residue on Ignition",
     Specification: "",
     result: "",
   },
