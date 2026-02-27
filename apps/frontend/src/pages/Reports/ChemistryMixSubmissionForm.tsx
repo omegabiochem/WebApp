@@ -349,6 +349,12 @@ export default function ChemistryMixSubmissionForm({
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
+  const returnTo = params.get("returnTo");
+const backToDashboard = () => {
+  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+  else navigate("/clientDashboard", { replace: true });
+};
+
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
   const isTemplateMode = mode === "template";
@@ -1122,7 +1128,7 @@ export default function ChemistryMixSubmissionForm({
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)
-        if (role === "CLIENT") navigate("/clientDashboard");
+        if (role === "CLIENT") backToDashboard();
         else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
         else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
         else if (role === "MC") navigate("/mcDashboard");
@@ -1147,13 +1153,21 @@ export default function ChemistryMixSubmissionForm({
     return "/";
   }, [role]);
 
-  const handleClose = () => {
-    if (onClose) return onClose();
 
-    // If opened from Gmail, history may not have a previous in-app page
-    if (window.history.length > 1) navigate(-1);
-    else navigate(fallbackRoute, { replace: true });
-  };
+  const handleClose = () => {
+  if (onClose) return onClose();
+  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
+  if (window.history.length > 1) navigate(-1);
+  else navigate(fallbackRoute, { replace: true });
+};
+
+  // const handleClose = () => {
+  //   if (onClose) return onClose();
+
+  //   // If opened from Gmail, history may not have a previous in-app page
+  //   if (window.history.length > 1) navigate(-1);
+  //   else navigate(fallbackRoute, { replace: true });
+  // };
 
   // const handleClose = () => {
   //   if (onClose) onClose();
@@ -2782,7 +2796,7 @@ export default function ChemistryMixSubmissionForm({
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
                   if (role === "CLIENT") {
-                    navigate("/clientDashboard");
+                    backToDashboard();
                   } else if (role === "FRONTDESK") {
                     navigate("/frontdeskDashboard");
                   } else if (role === "CHEMISTRY") {
