@@ -290,6 +290,12 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
+  const returnTo = params.get("returnTo");
+  const backToDashboard = () => {
+    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+    else navigate("/clientDashboard", { replace: true });
+  };
+
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
   const isTemplateMode = mode === "template";
@@ -562,7 +568,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   const [pendingStatus, setPendingStatus] = useState<COAReportStatus | null>(
     null,
   );
-  const otherLabel = (key: string) => key.replace("_", " "); // "OTHER_1" -> "OTHER 1"
+  const otherLabel = (key: string) => key.replace("_", " ");
 
   const [showCorrTray, setShowCorrTray] = useState(false);
 
@@ -883,7 +889,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)
-        if (role === "CLIENT") navigate("/clientDashboard");
+        if (role === "CLIENT") backToDashboard();
         else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
         else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
         else if (role === "MC") navigate("/mcDashboard");
@@ -910,16 +916,13 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
 
   const handleClose = () => {
     if (onClose) return onClose();
-
-    // If opened from Gmail, history may not have a previous in-app page
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
     if (window.history.length > 1) navigate(-1);
     else navigate(fallbackRoute, { replace: true });
   };
 
-  // const handleClose = () => {
-  //   if (onClose) onClose();
-  //   else navigate(-1);
-  // };
+
 
   const inputClass = (name: keyof typeof errors, extra = "") =>
     `input-editable px-1 py-[2px] text-[12px] leading-snug border ${
@@ -2046,7 +2049,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
                   if (role === "CLIENT") {
-                    navigate("/clientDashboard");
+                    backToDashboard();
                   } else if (role === "FRONTDESK") {
                     navigate("/frontdeskDashboard");
                   } else if (role === "CHEMISTRY") {

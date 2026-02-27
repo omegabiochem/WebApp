@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import type {
@@ -674,14 +674,16 @@ export default function ClientDashboard() {
     // return res;
   }
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(`/chemistry-reports/${slug}/${r.id}`);
-    } else {
-      navigate(`/reports/${slug}/${r.id}`);
-    }
+function goToReportEditor(r: Report) {
+  const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+  const returnTo = location.pathname + location.search;
+
+  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+    navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`);
+  } else {
+    navigate(`/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`);
   }
+}
 
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -919,6 +921,9 @@ export default function ClientDashboard() {
   if (!colsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
+
+
+  const location = useLocation();
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
