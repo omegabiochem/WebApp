@@ -6,49 +6,43 @@ import { api } from "../lib/api";
 export type CoaVerificationRow = {
   key: string;
   item: string; // fixed label
-  standard: string; // filled by CLIENT
+  Specification: string; // filled by CLIENT
   result: string; // filled by LAB
 };
 
 export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
-  { key: "IDENTIFICATION", item: "*Identification", standard: "", result: "" },
+  { key: "IDENTIFICATION", item: "*Identification", Specification: "", result: "" },
   {
     key: "SPECIFIC_ROTATION",
-    item: "Specific Rotation (deg) (on dried basis)",
-    standard: "",
+    item: "Specific Rotation",
+    Specification: "",
     result: "",
   },
   {
     key: "REFRACTIVE_INDEX",
     item: "Refractive Index",
-    standard: "",
+    Specification: "",
     result: "",
   },
-  {
-    key: "LIMIT_3_AMINOPROPANOL",
-    item: "Limit of 3-Aminopropanol %",
-    standard: "",
-    result: "",
-  },
-  { key: "WATER", item: "Water %", standard: "", result: "" },
+  { key: "WATER", item: "Water %", Specification: "", result: "" },
   {
     key: "RESIDUE_ON_IGNITION",
     item: "*Residue on Ignition %",
-    standard: "",
+    Specification: "",
     result: "",
   },
   {
     key: "ASSAY",
-    item: "Assay (C9H19NO4) % (on dried basis)",
-    standard: "",
+    item: "Assay",
+    Specification: "",
     result: "",
   },
-  { key: "PH_5", item: "PH(5%)", standard: "", result: "" },
-  { key: "OTHER_1", item: "OTHER 1", standard: "", result: "" },
-  { key: "OTHER_2", item: "OTHER 2", standard: "", result: "" },
-  { key: "OTHER_3", item: "OTHER 3", standard: "", result: "" },
-  { key: "OTHER_4", item: "OTHER 4", standard: "", result: "" },
-  { key: "OTHER_5", item: "OTHER 5", standard: "", result: "" },
+  { key: "PH_5", item: "PH %", Specification: "", result: "" },
+  { key: "OTHER_1", item: "OTHER 1", Specification: "", result: "" },
+  { key: "OTHER_2", item: "OTHER 2", Specification: "", result: "" },
+  { key: "OTHER_3", item: "OTHER 3", Specification: "", result: "" },
+  { key: "OTHER_4", item: "OTHER 4", Specification: "", result: "" },
+  { key: "OTHER_5", item: "OTHER 5", Specification: "", result: "" },
 ];
 
 export type Role =
@@ -238,8 +232,8 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
           if (rows.length === 0) return true;
 
           if (role === "CLIENT") {
-            // require at least one STANDARD filled
-            return !rows.some((r) => String(r.standard ?? "").trim());
+            // require at least one Specification filled
+            return !rows.some((r) => String(r.Specification ?? "").trim());
           }
 
           if (role === "CHEMISTRY" || role === "MC" || role === "ADMIN") {
@@ -301,25 +295,25 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
       // 2) ✅ extra COA table rules
       const rows = values.coaRows ?? [];
 
-      // Rule B: CLIENT must fill at least one Standard row
+      // Rule B: CLIENT must fill at least one Specification row
       if (role === "CLIENT") {
-        const hasAtLeastOneStandard = rows.some(
-          (r) => (r.standard ?? "").trim().length > 0,
+        const hasAtLeastOneSpecification = rows.some(
+          (r) => (r.Specification ?? "").trim().length > 0,
         );
-        if (!hasAtLeastOneStandard) {
-          next.coaRows = "Enter at least one Standard in the COA table.";
+        if (!hasAtLeastOneSpecification) {
+          next.coaRows = "Enter at least one Specification in the COA table.";
         }
       }
 
-      // Rule A: OTHER rows - if Standard filled, Item must be filled
+      // Rule A: OTHER rows - if Specification filled, Item must be filled
       for (const r of rows) {
         if (r.key?.startsWith("OTHER_")) {
-          const hasStandard = (r.standard ?? "").trim().length > 0;
+          const hasSpecification = (r.Specification ?? "").trim().length > 0;
           const hasItem = (r.item ?? "").trim().length > 0;
 
-          if (hasStandard && !hasItem) {
+          if (hasSpecification && !hasItem) {
             next.coaRows =
-              "For OTHER rows: Item is required when Standard is filled.";
+              "For OTHER rows: Item is required when Specification is filled.";
             break;
           }
         }

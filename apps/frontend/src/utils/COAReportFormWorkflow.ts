@@ -281,7 +281,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "sampleSize",
     "sampleTypes",
     "comments",
-    "coaRows", // client fills STANDARD column
+    "coaRows", // client fills Specification column
   ],
 };
 
