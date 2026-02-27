@@ -463,7 +463,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   }
 
   const coaRowKey = (rowKey: string) => `coaRows:${rowKey}`;
-  const coaCellKey = (rowKey: string, col: "standard" | "result") =>
+  const coaCellKey = (rowKey: string, col: "Specification" | "result") =>
     `coaRows:${rowKey}:${col}`;
 
   function getFieldDisplayValue(fieldKey: string) {
@@ -1048,7 +1048,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   {
     /* ITEM (fixed) */
   }
-  const isOtherRow = (k: string) => k.startsWith("OTHER_");
+  // const isOtherRow = (k: string) => k.startsWith("OTHER_");
 
   // ---------------- RENDER ----------------
   return (
@@ -1485,14 +1485,14 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
               Item
             </div>
             <div className="p-1 border-r border-black flex items-center justify-center">
-              Standard
+              Specification
             </div>
             <div className="p-1 flex items-center justify-center">Result</div>
           </div>
 
           {(coaRows ?? []).map((row) => {
             const rk = coaRowKey(row.key);
-            const kStd = coaCellKey(row.key, "standard");
+            const kStd = coaCellKey(row.key, "Specification");
             const kRes = coaCellKey(row.key, "result");
 
             return (
@@ -1511,7 +1511,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
                 }
               >
                 {/* ITEM (fixed OR editable for OTHER rows) */}
-                <div className="p-1 border-r border-black font-medium">
+                {/* <div className="p-1 border-r border-black font-medium">
                   {isOtherRow(row.key) &&
                   role === "CLIENT" &&
                   !lock("coaRows") &&
@@ -1560,9 +1560,33 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
                       {(row.item ?? "").trim() ? row.item : "-"}
                     </div>
                   )}
+                </div> */}
+
+                {/* ITEM (editable for ALL rows when coaRows is editable) */}
+                <div className="p-1 border-r border-black font-medium">
+                  {!lock("coaRows") && !selectingCorrections ? (
+                    <input
+                      className="w-full border-0 bg-transparent outline-none text-[11px]"
+                      value={row.item ?? ""}
+                      placeholder={otherLabel(row.key)} // optional
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCoaRows((prev) =>
+                          prev.map((r) =>
+                            r.key === row.key ? { ...r, item: v } : r,
+                          ),
+                        );
+                        markDirty();
+                      }}
+                    />
+                  ) : (
+                    <div className="min-h-[14px]">
+                      {(row.item ?? "").trim() ? row.item : "-"}
+                    </div>
+                  )}
                 </div>
 
-                {/* STANDARD (client only) */}
+                {/* Specification (client only) */}
                 <div
                   className={`border-r border-black px-1 relative ${dashClass(kStd)} ${corrCursor}`}
                   title={
@@ -1576,7 +1600,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
                 >
                   <ResolveOverlay field={kStd} />
                   <CellTextarea
-                    value={row.standard ?? ""}
+                    value={row.Specification ?? ""}
                     readOnly={
                       lock("coaRows") ||
                       role !== "CLIENT" ||
@@ -1591,7 +1615,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
                         return;
                       setCoaRows((prev) =>
                         prev.map((r) =>
-                          r.key === row.key ? { ...r, standard: v } : r,
+                          r.key === row.key ? { ...r, Specification: v } : r,
                         ),
                       );
                       markDirty();
