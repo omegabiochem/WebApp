@@ -511,6 +511,14 @@ export default function ChemistryMixReportFormView(
   const allActives = (report?.actives || DEFAULT_CHEM_ACTIVES) as any[];
   const checkedActives = allActives.filter((r) => r.checked);
 
+  const HIDE_DATE_INPUT_FOR = new Set([
+    "RECEIVED_BY_FRONTDESK",
+    "UNDER_QA_REVIEW",
+    // add more if needed
+  ]);
+
+  const hideDateInputs = HIDE_DATE_INPUT_FOR.has(report?.status);
+
   return (
     <div
       className={
@@ -994,15 +1002,25 @@ export default function ChemistryMixReportFormView(
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">DATE :</span>
-                      <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                          shouldBlurSignatures ? "blur-field" : ""
-                        }`}
-                        type="date"
-                        value={formatDateForInput(report?.testedDate) || ""}
-                        readOnly
-                        disabled
-                      />
+                      {hideDateInputs ? (
+                        <div
+                          className={`flex-1 border-b border-black/60 min-h-[20px] ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                        >
+                          {formatDateForInput(report?.testedDate) || ""}
+                        </div>
+                      ) : (
+                        <input
+                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                          type="date"
+                          value={formatDateForInput(report?.testedDate) || ""}
+                          readOnly
+                          disabled
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -1020,15 +1038,25 @@ export default function ChemistryMixReportFormView(
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">DATE :</span>
-                      <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                          shouldBlurSignatures ? "blur-field" : ""
-                        }`}
-                        type="date"
-                        value={formatDateForInput(report?.reviewedDate) || ""}
-                        readOnly
-                        disabled
-                      />
+                      {hideDateInputs ? (
+                        <div
+                          className={`flex-1 border-b border-black/60 min-h-[20px] ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                        >
+                          {formatDateForInput(report?.reviewedDate) || ""}
+                        </div>
+                      ) : (
+                        <input
+                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                          type="date"
+                          value={formatDateForInput(report?.reviewedDate) || ""}
+                          readOnly
+                          disabled
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
