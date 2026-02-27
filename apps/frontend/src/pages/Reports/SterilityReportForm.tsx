@@ -371,6 +371,12 @@ const [dateSent, setDateSent] = useState(
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
+  const returnTo = params.get("returnTo");
+const backToDashboard = () => {
+  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+  else navigate("/clientDashboard", { replace: true });
+};
+
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
   const isTemplateMode = mode === "template";
@@ -987,7 +993,7 @@ const [dateSent, setDateSent] = useState(
         setIsDirty(false);
         alert(`✅ Status changed to ${newStatus}`);
         if (role === "CLIENT") {
-          navigate("/clientDashboard");
+          backToDashboard();
         } else if (role === "FRONTDESK") {
           navigate("/frontdeskDashboard");
         } else if (role === "MICRO") {
@@ -1048,13 +1054,21 @@ const [dateSent, setDateSent] = useState(
     return "/";
   }, [role]);
 
-  const handleClose = () => {
-    if (onClose) return onClose();
 
-    // If opened from Gmail, history may not have a previous in-app page
-    if (window.history.length > 1) navigate(-1);
-    else navigate(fallbackRoute, { replace: true });
-  };
+  const handleClose = () => {
+  if (onClose) return onClose();
+  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
+  if (window.history.length > 1) navigate(-1);
+  else navigate(fallbackRoute, { replace: true });
+};
+
+  // const handleClose = () => {
+  //   if (onClose) return onClose();
+
+  //   // If opened from Gmail, history may not have a previous in-app page
+  //   if (window.history.length > 1) navigate(-1);
+  //   else navigate(fallbackRoute, { replace: true });
+  // };
 
   // any open correction = red
   // const hasOpenCorrection = (field: string) => !!corrByField[field];
@@ -2378,7 +2392,7 @@ const [dateSent, setDateSent] = useState(
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
                   if (role === "CLIENT") {
-                    navigate("/clientDashboard");
+                    backToDashboard();
                   } else if (role === "FRONTDESK") {
                     navigate("/frontdeskDashboard");
                   } else if (role === "MICRO") {

@@ -11,7 +11,12 @@ export type CoaVerificationRow = {
 };
 
 export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
-  { key: "IDENTIFICATION", item: "*Identification", Specification: "", result: "" },
+  {
+    key: "IDENTIFICATION",
+    item: "Identification",
+    Specification: "",
+    result: "",
+  },
   {
     key: "SPECIFIC_ROTATION",
     item: "Specific Rotation",
@@ -24,10 +29,10 @@ export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
     Specification: "",
     result: "",
   },
-  { key: "WATER", item: "Water %", Specification: "", result: "" },
+  { key: "WATER", item: "Water Content", Specification: "", result: "" },
   {
     key: "RESIDUE_ON_IGNITION",
-    item: "*Residue on Ignition %",
+    item: "Residue on Ignition",
     Specification: "",
     result: "",
   },
@@ -43,6 +48,13 @@ export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
   { key: "OTHER_3", item: "OTHER 3", Specification: "", result: "" },
   { key: "OTHER_4", item: "OTHER 4", Specification: "", result: "" },
   { key: "OTHER_5", item: "OTHER 5", Specification: "", result: "" },
+  { key: "OTHER_6", item: "OTHER 6", Specification: "", result: "" },
+  { key: "OTHER_7", item: "OTHER 7", Specification: "", result: "" },
+  { key: "OTHER_8", item: "OTHER 8", Specification: "", result: "" },
+  { key: "OTHER_9", item: "OTHER 9", Specification: "", result: "" },
+  { key: "OTHER_10", item: "OTHER 10", Specification: "", result: "" },
+  { key: "OTHER_11", item: "OTHER 11", Specification: "", result: "" },
+  { key: "OTHER_12", item: "OTHER 12", Specification: "", result: "" },
 ];
 
 export type Role =
