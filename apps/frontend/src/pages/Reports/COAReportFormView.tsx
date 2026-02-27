@@ -318,7 +318,7 @@ function canEdit(role: Role | undefined, field: string, status?: COAReportStatus
 function coaRowKey(rowKey: string) {
   return `coaRows:${rowKey}`;
 }
-function coaCellKey(rowKey: string, col: "standard" | "result") {
+function coaCellKey(rowKey: string, col: "Specification" | "result") {
   return `coaRows:${rowKey}:${col}`;
 }
 
@@ -491,7 +491,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
   const coaRows = (report?.coaRows ?? []) as Array<{
     key: string;
     item: string;
-    standard?: string | null;
+    Specification?: string | null;
     result?: string | null;
   }>;
 
@@ -658,14 +658,14 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   Item
                 </div>
                 <div className="p-1 border-r border-black flex items-center justify-center">
-                  Standard
+                  Specification
                 </div>
                 <div className="p-1 flex items-center justify-center">Result</div>
               </div>
 
               {coaRows.map((row) => {
                 const rk = coaRowKey(row.key);
-                const kStd = coaCellKey(row.key, "standard");
+                const kStd = coaCellKey(row.key, "Specification");
                 const kRes = coaCellKey(row.key, "result");
 
                 return (
@@ -680,7 +680,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
 
                     <div className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words relative ${dashClass(kStd)}`}>
                       <ResolveOverlay field={kStd} />
-                      {row.standard ?? ""}
+                      {row.Specification ?? ""}
                     </div>
 
                     <div className={`px-1 py-1 whitespace-pre-wrap break-words relative ${dashClass(kRes)}`}>
