@@ -279,7 +279,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
   CLIENT: [
     "client",
-    // "dateSent",
+    "dateSent",
     "sampleDescription",
     "testTypes",
     "sampleCollected",

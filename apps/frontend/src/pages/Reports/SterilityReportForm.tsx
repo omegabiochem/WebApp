@@ -151,7 +151,7 @@ function canEdit(
     QA: ["dateCompleted"],
     CLIENT: [
       "client",
-      // "dateSent",
+      "dateSent",
       "typeOfTest",
       "sampleType",
       "formulaNo",
@@ -958,9 +958,11 @@ export default function SterilityReportForm({
         }
       }
 
-      if (newStatus === "SUBMITTED_BY_CLIENT") {
-        setDateSent(todayISO());
-      }
+      //  if (newStatus === "SUBMITTED_BY_CLIENT") {
+      //   const sent = todayISO();
+      //   setDateSent(sent);
+      //   markDirty(); // ✅ IMPORTANT so handleSave runs
+      // }
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
