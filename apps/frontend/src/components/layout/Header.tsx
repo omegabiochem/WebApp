@@ -8,7 +8,7 @@ import TemplatesDropdown from "../../pages/Templates/TemplatesDropdown";
 export default function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   const isReportRoute =
     pathname.startsWith("/reports/") ||
@@ -101,6 +101,16 @@ export default function Header() {
     return () => clearInterval(t);
   }, [user]);
 
+  useEffect(() => {
+    // save current page search
+    sessionStorage.setItem(`lastSearch:${pathname}`, search || "");
+  }, [pathname, search]);
+
+  const toRemembered = (path: string) => {
+    const saved = sessionStorage.getItem(`lastSearch:${path}`) || "";
+    return `${path}${saved}`;
+  };
+
   return (
     <header className="border-b bg-white">
       <div className="mx-auto max-w-6xl p-4 flex items-center justify-between gap-4">
@@ -129,14 +139,17 @@ export default function Header() {
         <nav className="flex items-center gap-4 text-sm">
           {!user ? (
             <>
-              <Link to="/home" className="hover:underline">
+              <Link to={toRemembered("/home")} className="hover:underline">
                 Home
               </Link>
-              <Link to="/publicsupport" className="hover:underline">
+              <Link
+                to={toRemembered("/publicsupport")}
+                className="hover:underline"
+              >
                 Support
               </Link>
               <Link
-                to="/login"
+                to={toRemembered("/login")}
                 className="px-3 py-1 rounded-md bg-[var(--brand)] text-white hover:opacity-90 transition"
               >
                 Login
@@ -166,7 +179,7 @@ export default function Header() {
                                   : role === "SYSTEMADMIN"
                                     ? "/systemAdminDashboard"
                                     : "/home";
-                    navigate(home, { replace: true });
+                   navigate(toRemembered(home), { replace: true });
                   }
                 }}
                 className="px-3 py-1 rounded-md border hover:bg-gray-50"
@@ -192,7 +205,7 @@ export default function Header() {
                 ) : item.label === "Results" ? (
                   <Link
                     key={item.path}
-                    to={item.path}
+                    to={toRemembered(item.path)}
                     className="relative inline-flex items-center hover:underline"
                     onClick={async () => {
                       setUnreadResults(0); // immediate UI clear
@@ -224,7 +237,7 @@ export default function Header() {
                 ) : (
                   <Link
                     key={item.path}
-                    to={item.path}
+                    to={toRemembered(item.path)}
                     className="hover:underline"
                   >
                     {item.label}

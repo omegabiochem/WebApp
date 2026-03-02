@@ -22,6 +22,11 @@ import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import {
+  canShowSterilityUpdateButton,
+  STERILITY_STATUS_COLORS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -41,7 +46,8 @@ type Report = {
 // -----------------------------
 // Statuses
 // -----------------------------
-const MICRO_STATUSES = [
+// Micro + Micro Water (prelim/final workflow)
+const MICRO_ONLY_STATUSES = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
@@ -54,8 +60,12 @@ const MICRO_STATUSES = [
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+] as const;
 
-  // ✅ sterility (chemistry-like)
+// Sterility (chemistry-like workflow)
+const STERILITY_ONLY_STATUSES = [
+  "ALL",
+  "SUBMITTED_BY_CLIENT",
   "UNDER_TESTING_REVIEW",
   "TESTING_NEEDS_CORRECTION",
   "RESUBMISSION_BY_CLIENT",
@@ -212,11 +222,14 @@ export default function MicroDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   // selection & printing
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    (searchParams.get("sel") || "").split(",").filter(Boolean),
+  );
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
@@ -232,7 +245,6 @@ export default function MicroDashboard() {
 
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
 
@@ -240,9 +252,9 @@ export default function MicroDashboard() {
     (searchParams.get("form") as FormFilter) || "ALL",
   );
 
-  const [statusFilter, setStatusFilter] = useState<
-    (typeof MICRO_STATUSES)[number]
-  >((searchParams.get("status") as any) || "ALL");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    searchParams.get("status") || "ALL",
+  );
 
   const [search, setSearch] = useState(searchParams.get("q") || "");
 
@@ -278,8 +290,12 @@ export default function MicroDashboard() {
         setError(null);
         const all = await api<Report[]>("/reports");
         if (abort) return;
-        const keep = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
-        setReports(all.filter((r) => keep.has(r.status as any)));
+        const KEEP_STATUSES = new Set<string>([
+          ...MICRO_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
+          ...STERILITY_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
+        ]);
+
+        setReports(all.filter((r) => KEEP_STATUSES.has(String(r.status))));
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -291,6 +307,12 @@ export default function MicroDashboard() {
       abort = true;
     };
   }, []);
+
+  const statusOptions = useMemo(() => {
+    if (formFilter === "STERILITY") return STERILITY_ONLY_STATUSES;
+    // MICRO + MICRO_WATER + ALL => show micro statuses
+    return MICRO_ONLY_STATUSES;
+  }, [formFilter]);
 
   // derived
   const processed = useMemo(() => {
@@ -356,6 +378,12 @@ export default function MicroDashboard() {
     toDate,
   ]);
 
+  useEffect(() => {
+    if (!statusOptions.includes(statusFilter as any)) {
+      setStatusFilter("ALL");
+    }
+  }, [statusOptions, statusFilter]);
+
   // pagination
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -366,50 +394,62 @@ export default function MicroDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [formFilter, statusFilter, search, perPage]);
+  }, [formFilter, statusFilter, search, perPage, datePreset, fromDate, toDate]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
-    const isSterility = r.formType === "STERILITY";
-    const fieldsUsedOnForm = isSterility
-      ? [
-          "testSopNo",
-          "dateTested",
-          "ftm_turbidity",
-          "ftm_observation",
-          "ftm_result",
-          "scdb_turbidity",
-          "scdb_observation",
-          "scdb_result",
-        ]
-      : [
-          "testSopNo",
-          "dateTested",
-          "preliminaryResults",
-          "preliminaryResultsDate",
-          "tbc_gram",
-          "tbc_result",
-          "tmy_gram",
-          "tmy_result",
-          "pathogens",
-          "comments",
-          "testedBy",
-          "testedDate",
-        ];
+    const role = user?.role as Role | undefined;
+
+    if (r.formType === "STERILITY") {
+      const sterilityFieldsUsedOnForm = [
+        "testSopNo",
+        "dateTested",
+        "ftm_turbidity",
+        "ftm_observation",
+        "ftm_result",
+        "scdb_turbidity",
+        "scdb_observation",
+        "scdb_result",
+        "comments",
+      ];
+
+      return canShowSterilityUpdateButton(
+        role,
+        r.status as SterilityReportStatus,
+        sterilityFieldsUsedOnForm,
+      );
+    }
+
+    // MICRO + MICRO_WATER
+    const microFieldsUsedOnForm = [
+      "testSopNo",
+      "dateTested",
+      "preliminaryResults",
+      "preliminaryResultsDate",
+      "tbc_gram",
+      "tbc_result",
+      "tmy_gram",
+      "tmy_result",
+      "pathogens",
+      "comments",
+      "testedBy",
+      "testedDate",
+    ];
 
     return canShowUpdateButton(
-      user?.role as Role,
+      role,
       r.status as ReportStatus,
-      fieldsUsedOnForm,
+      microFieldsUsedOnForm,
     );
   }
 
   useEffect(() => {
-    const sp = new URLSearchParams();
+    const sp = new URLSearchParams(searchParams); // ✅ keep existing
 
     sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
 
     if (search.trim()) sp.set("q", search.trim());
+    else sp.delete("q");
 
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
@@ -419,10 +459,18 @@ export default function MicroDashboard() {
 
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
+    else sp.delete("from");
+
     if (toDate) sp.set("to", toDate);
+    else sp.delete("to");
+
+    // ✅ if you're persisting selection too:
+    // if (selectedIds.length) sp.set("sel", selectedIds.join(","));
+    // else sp.delete("sel");
 
     setSearchParams(sp, { replace: true });
   }, [
+    searchParams, // ✅ add
     formFilter,
     statusFilter,
     search,
@@ -438,7 +486,11 @@ export default function MicroDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    navigate(`/reports/${slug}/${r.id}`);
+    const returnTo = encodeURIComponent(
+      window.location.pathname + window.location.search,
+    );
+
+    navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
   }
 
   // selection
@@ -718,6 +770,42 @@ export default function MicroDashboard() {
 
   useLiveReportStatus(setReports);
 
+  useEffect(() => {
+    // URL -> State (handles back/forward and external param changes)
+
+    const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
+    const nextStatus = searchParams.get("status") || "ALL";
+
+    const nextQ = searchParams.get("q") || "";
+    const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
+      | "dateSent"
+      | "reportNumber";
+    const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
+      | "asc"
+      | "desc";
+
+    const nextPp = parseIntSafe(searchParams.get("pp"), 10);
+    const nextP = parseIntSafe(searchParams.get("p"), 1);
+
+    const nextDp = ((searchParams.get("dp") as any) || "ALL") as DatePreset;
+    const nextFrom = searchParams.get("from") || "";
+    const nextTo = searchParams.get("to") || "";
+
+    // Only update if changed (prevents loops)
+    if (nextForm !== formFilter) setFormFilter(nextForm);
+    if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
+    if (nextQ !== search) setSearch(nextQ);
+    if (nextSortBy !== sortBy) setSortBy(nextSortBy);
+    if (nextSortDir !== sortDir) setSortDir(nextSortDir);
+
+    if (nextPp !== perPage) setPerPage(nextPp);
+    if (nextP !== page) setPage(nextP);
+
+    if (nextDp !== datePreset) setDatePreset(nextDp);
+    if (nextFrom !== fromDate) setFromDate(nextFrom);
+    if (nextTo !== toDate) setToDate(nextTo);
+  }, [searchParams]); // ✅ important
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -852,13 +940,13 @@ export default function MicroDashboard() {
       {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {MICRO_STATUSES.map((s) => (
+          {statusOptions.map((s) => (
             <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
+              key={String(s)}
+              onClick={() => setStatusFilter(String(s))}
               className={classNames(
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
-                statusFilter === s
+                statusFilter === String(s)
                   ? "bg-blue-600 text-white ring-blue-600"
                   : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
               )}
@@ -1055,6 +1143,15 @@ export default function MicroDashboard() {
                     (r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
                       r.status === "PRELIMINARY_APPROVED");
 
+                  const badgeClass =
+                    r.formType === "STERILITY"
+                      ? (STERILITY_STATUS_COLORS[
+                          r.status as SterilityReportStatus
+                        ] ??
+                        "bg-slate-100 text-slate-800 ring-1 ring-slate-200")
+                      : (STATUS_COLORS[r.status as ReportStatus] ??
+                        "bg-slate-100 text-slate-800 ring-1 ring-slate-200");
+
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
                       <td className="px-4 py-3">
@@ -1077,8 +1174,7 @@ export default function MicroDashboard() {
                         <span
                           className={classNames(
                             "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                            STATUS_COLORS[r.status as ReportStatus] ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                            badgeClass,
                           )}
                         >
                           {niceStatus(String(r.status))}

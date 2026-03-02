@@ -4,6 +4,7 @@ import { Download, RefreshCcw, Search } from "lucide-react";
 import { api, API_URL } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { logUiEvent } from "../../lib/uiAudit";
+import { useSearchParams } from "react-router-dom";
 
 type AuditRecord = {
   id: string;
@@ -346,40 +347,47 @@ export default function ClientAuditTrailPage() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // filters
-  const [filterEntity, setFilterEntity] = useState("");
-  const [filterUserId, setFilterUserId] = useState("");
-  const [filterEntityId, setFilterEntityId] = useState(""); // reportId/entityId search
-  const [filterAction, setFilterAction] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // URL-backed filters
+const [filterEntity, setFilterEntity] = useState(searchParams.get("entity") || "");
+const [filterEntityId, setFilterEntityId] = useState(searchParams.get("entityId") || "");
+const [filterAction, setFilterAction] = useState(searchParams.get("action") || "");
+const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
+const [filterFormNumber, setFilterFormNumber] = useState(searchParams.get("formNumber") || "");
+const [filterReportNumber, setFilterReportNumber] = useState(searchParams.get("reportNumber") || "");
 
-  // sort + pagination
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
+// sort + pagination
+const [sortOrder, setSortOrder] = useState<"desc" | "asc">(
+  (searchParams.get("order") as "desc" | "asc") || "desc",
+);
+const [page, setPage] = useState<number>(Number(searchParams.get("page") || 1));
+const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(
+  (Number(searchParams.get("pageSize")) as any) || 20,
+);
+
+// OPTIONAL: you don’t need this anymore for CLIENT page
+const [filterUserId, setFilterUserId] = useState("");
 
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [filterFormNumber, setFilterFormNumber] = useState("");
-  const [filterReportNumber, setFilterReportNumber] = useState("");
 
   // Reset page when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [
-    filterEntity,
-    filterUserId,
-    filterEntityId,
-    filterAction,
-    dateFrom,
-    dateTo,
-    sortOrder,
-    pageSize,
-    filterFormNumber,
-    filterReportNumber,
-  ]);
+useEffect(() => {
+  setPage(1);
+}, [
+  filterEntity,
+  filterEntityId,
+  filterAction,
+  dateFrom,
+  dateTo,
+  filterFormNumber,
+  filterReportNumber,
+  sortOrder,
+  pageSize,
+]);
 
   const didLog = useRef(false);
 
@@ -394,43 +402,10 @@ export default function ClientAuditTrailPage() {
     });
   }, []);
 
-  // Build query string
-  const queryString = useMemo(() => {
-    const params = new URLSearchParams();
-    params.append("role", "CLIENT");
-    // params.append("clientCode", "JJL");
-    if (user?.userId) params.append("userId", user.userId);
-    if (filterEntity) params.append("entity", filterEntity);
-    // if (filterUserId) params.append("userId", filterUserId);
-    if (filterEntityId) params.append("entityId", filterEntityId);
-    if (filterAction) params.append("action", filterAction);
-    if (dateFrom) params.append("from", dateFrom);
-    if (dateTo) params.append("to", dateTo);
-    if (filterFormNumber) params.append("formNumber", filterFormNumber);
-    if (filterReportNumber) params.append("reportNumber", filterReportNumber);
-
-    // pagination + sort
-    params.append("page", String(page));
-    params.append("pageSize", String(pageSize));
-    params.append("sort", "createdAt");
-    params.append("order", sortOrder);
-
-    const qs = params.toString();
-    return qs ? `?${qs}` : "";
-  }, [
-    user?.userId,
-    filterEntity,
-    filterUserId,
-    filterEntityId,
-    filterAction,
-    dateFrom,
-    dateTo,
-    filterFormNumber,
-    filterReportNumber,
-    page,
-    pageSize,
-    sortOrder,
-  ]);
+ const queryString = useMemo(() => {
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : "";
+}, [searchParams]);
 
   // Fetch data (debounced)
   useEffect(() => {
@@ -476,6 +451,45 @@ export default function ClientAuditTrailPage() {
     };
   }, [queryString, refreshKey]);
 
+
+  useEffect(() => {
+  const sp = new URLSearchParams();
+
+  // 🔒 forced constraints for Client page:
+  sp.set("role", "CLIENT");
+  if (user?.userId) sp.set("userId", user.userId);
+
+  // filters
+  if (filterEntity) sp.set("entity", filterEntity);
+  if (filterEntityId) sp.set("entityId", filterEntityId);
+  if (filterAction) sp.set("action", filterAction);
+  if (dateFrom) sp.set("from", dateFrom);
+  if (dateTo) sp.set("to", dateTo);
+  if (filterFormNumber) sp.set("formNumber", filterFormNumber);
+  if (filterReportNumber) sp.set("reportNumber", filterReportNumber);
+
+  // pagination + sort
+  sp.set("page", String(page));
+  sp.set("pageSize", String(pageSize));
+  sp.set("order", sortOrder);
+  sp.set("sort", "createdAt");
+
+  setSearchParams(sp, { replace: true });
+}, [
+  user?.userId,
+  filterEntity,
+  filterEntityId,
+  filterAction,
+  dateFrom,
+  dateTo,
+  filterFormNumber,
+  filterReportNumber,
+  page,
+  pageSize,
+  sortOrder,
+  setSearchParams,
+]);
+
   const totalPages = useMemo(() => {
     if (!total || total < 0) return 1;
     return Math.max(1, Math.ceil(total / pageSize));
@@ -492,18 +506,18 @@ export default function ClientAuditTrailPage() {
     [records],
   );
 
-  const clearFilters = () => {
-    setFilterEntity("");
-    setFilterUserId("");
-    setFilterEntityId("");
-    setFilterAction("");
-    setDateFrom("");
-    setDateTo("");
-    setSortOrder("desc");
-    setFilterFormNumber("");
-    setFilterReportNumber("");
-    setPage(1);
-  };
+const clearFilters = () => {
+  setFilterEntity("");
+  setFilterEntityId("");
+  setFilterAction("");
+  setDateFrom("");
+  setDateTo("");
+  setFilterFormNumber("");
+  setFilterReportNumber("");
+  setSortOrder("desc");
+  setPageSize(20);
+  setPage(1);
+};
 
   const downloadCSV = async () => {
     const token = localStorage.getItem("token");
@@ -760,11 +774,31 @@ export default function ClientAuditTrailPage() {
             dateFrom ||
             dateTo ? (
               <button
-                className="text-sm border rounded-lg px-3 py-2 hover:bg-gray-50"
+                className={[
+                  "text-sm rounded-lg px-3 py-2 transition font-medium",
+                  filterEntity ||
+                  filterUserId ||
+                  filterEntityId ||
+                  filterAction ||
+                  dateFrom ||
+                  dateTo
+                    ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed",
+                ].join(" ")}
                 onClick={clearFilters}
+                disabled={
+                  !(
+                    filterEntity ||
+                    filterUserId ||
+                    filterEntityId ||
+                    filterAction ||
+                    dateFrom ||
+                    dateTo
+                  )
+                }
                 title="Clear all filters"
               >
-                Clear Filters
+            ✕ Clear
               </button>
             ) : (
               <div />

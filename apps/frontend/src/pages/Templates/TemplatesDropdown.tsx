@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
+import { rememberedPath } from "../../utils/globalUtils";
 
 type TemplateRow = {
   id: string;
@@ -309,7 +310,7 @@ export default function TemplatesDropdown({
 
   function goTemplatesPage() {
     closeAll();
-    navigate("/templatesPage"); // if that exists
+    navigate(rememberedPath("/templatesPage"));
   }
 
   function closeAll() {
@@ -460,7 +461,7 @@ export default function TemplatesDropdown({
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50"
                     onClick={() => {
                       closeAll();
-                      navigate(
+                      navigate(rememberedPath(
                         TEMPLATE_NEW_PATH_BY_FORM[
                           f.id as
                             | "MICRO_MIX"
@@ -468,7 +469,7 @@ export default function TemplatesDropdown({
                             | "STERILITY"
                             | "CHEMISTRY_MIX"
                             | "COA"
-                        ],
+                        ],)
                       );
                     }}
                   >
