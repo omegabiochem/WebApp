@@ -563,10 +563,26 @@ export default function MicroMixReportForm({
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const returnTo = params.get("returnTo");
-const backToDashboard = () => {
-  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  else navigate("/clientDashboard", { replace: true });
-};
+  // const backToDashboard = () => {
+  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+  //   else navigate("/clientDashboard", { replace: true });
+  // };
+
+  const backToDashboard = () => {
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+
+    if (role === "FRONTDESK")
+      return navigate("/frontdeskDashboard", { replace: true });
+    if (role === "MICRO") return navigate("/microDashboard", { replace: true });
+    if (role === "MC") return navigate("/mcDashboard", { replace: true });
+    if (role === "QA") return navigate("/qaDashboard", { replace: true });
+    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+    if (role === "SYSTEMADMIN")
+      return navigate("/systemAdminDashboard", { replace: true });
+
+    return navigate("/", { replace: true });
+  };
 
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1431,7 +1447,8 @@ const backToDashboard = () => {
         } else if (role === "FRONTDESK") {
           navigate("/frontdeskDashboard");
         } else if (role === "MICRO") {
-          navigate("/microDashboard");
+          // navigate("/microDashboard");
+          backToDashboard();
         } else if (role === "MC") {
           navigate("/mcDashboard");
         } else if (role === "QA") {
@@ -1489,11 +1506,12 @@ const backToDashboard = () => {
   }, [role]);
 
   const handleClose = () => {
-  if (onClose) return onClose();
-  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
-  if (window.history.length > 1) navigate(-1);
-  else navigate(fallbackRoute, { replace: true });
-};
+    if (onClose) return onClose();
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
+  };
 
   // const handleClose = () => {
   //   if (onClose) return onClose();
@@ -3214,7 +3232,7 @@ const backToDashboard = () => {
                   } else if (role === "FRONTDESK") {
                     navigate("/frontdeskDashboard");
                   } else if (role === "MICRO") {
-                    navigate("/microDashboard");
+                    backToDashboard();
                   } else if (role === "MC") {
                     navigate("/mcDashboard");
                   } else if (role === "QA") {

@@ -747,6 +747,28 @@ export class ChemistryReportsService {
 
     const prevStatus = String(current.status);
 
+    const newStatus = patchIn.status ? String(patchIn.status) : null;
+
+    if (newStatus && prevStatus !== newStatus) {
+      const ctx = getRequestContext() || {};
+
+      const reason =
+        (ctx as any).reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
+
+      await this.logChemStatusChange({
+        chemistryReportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: current.status as ChemistryReportStatus,
+        to: patchIn.status as ChemistryReportStatus,
+        reason,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
     if (patchIn.status) {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
     } else {
@@ -834,12 +856,155 @@ export class ChemistryReportsService {
 
   // TO CHANGE STATUS
 
+  // async changeStatus(
+  //   user: { userId: string; role: UserRole },
+  //   id: string,
+  //   input: ChangeStatusInput,
+  // ) {
+  //   const current = await this.get(id);
+
+  //   if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
+  //     throw new ForbiddenException(
+  //       'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
+  //     );
+  //   }
+
+  //   const target: ChemistryReportStatus =
+  //     typeof input === 'string' ? input : input.status;
+  //   if (!target) {
+  //     throw new BadRequestException('Status is required');
+  //   }
+
+  //   const ctx = getRequestContext() || {};
+
+  //   const reason =
+  //     typeof input === 'string'
+  //       ? undefined
+  //       : (input.reason ?? (ctx as any)?.reason);
+  //   const eSignPassword =
+  //     typeof input === 'string'
+  //       ? undefined
+  //       : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
+
+  //   if (!reason) {
+  //     throw new BadRequestException(
+  //       'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
+  //     );
+  //   }
+
+  //   if (!eSignPassword) {
+  //     throw new BadRequestException(
+  //       'Electronic Signature (password) is required for status changes',
+  //     );
+  //   }
+
+  //   await this.esign.verifyPassword(user.userId, String(eSignPassword));
+
+  //   const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
+  //   if (!trans) {
+  //     throw new BadRequestException(
+  //       `Invalid current status: ${current.status}`,
+  //     );
+  //   }
+
+  //   const patch: any = { status: target };
+
+  //   function yyyy(d: Date = new Date()): string {
+  //     const yyyy = String(d.getFullYear());
+  //     return yyyy; // e.g. "2410"
+  //   }
+
+  //   // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+  //   function seqPad(num: number): string {
+  //     const width = Math.max(4, String(num).length);
+  //     return String(num).padStart(width, '0');
+  //   }
+
+  //   if (target === 'UNDER_TESTING_REVIEW' && !current.reportNumber) {
+  //     const deptLetter =
+  //       getDeptLetterForForm((current as any).formType) ||
+  //       getDepartmentLetter(user.role);
+  //     if (deptLetter) {
+  //       const seq = await this.prisma.labReportSequence.upsert({
+  //         where: { department: deptLetter },
+  //         update: { lastNumber: { increment: 1 } },
+  //         create: { department: deptLetter, lastNumber: 1 },
+  //       });
+  //       const n = seqPad(seq.lastNumber);
+  //       patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+  //     }
+  //   }
+
+  //   const updated = await this.prisma.chemistryReport.update({
+  //     where: { id },
+  //     data: { ...patch, updatedBy: user.userId },
+  //   });
+
+  //   this.reportsGateway.notifyStatusChange(id, target);
+  //   return updated;
+  // }
+
+  private async logChemStatusChange(args: {
+    chemistryReportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+    from: ChemistryReportStatus;
+    to: ChemistryReportStatus;
+    reason: string | null;
+    actorUserId: string;
+    actorRole: UserRole;
+  }) {
+    const ctx = getRequestContext();
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.$transaction([
+      this.prisma.chemistryReportStatusHistory.create({
+        data: {
+          chemistryId: args.chemistryReportId,
+          from: args.from,
+          to: args.to,
+          reason: args.reason ?? null,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+        },
+      }),
+      this.prisma.auditTrail.create({
+        data: {
+          action: 'STATUS_CHANGE',
+          entity: args.formType, // CHEMISTRY_MIX or COA
+          entityId: args.chemistryReportId,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+          clientCode: args.clientCode ?? null,
+          details: `Status changed: ${args.from} → ${args.to}`,
+          changes: {
+            from: args.from,
+            to: args.to,
+            reason: args.reason ?? null,
+            formNumber: args.formNumber,
+            reportNumber: args.reportNumber ?? null,
+          },
+        },
+      }),
+    ]);
+  }
+
   async changeStatus(
     user: { userId: string; role: UserRole },
     id: string,
     input: ChangeStatusInput,
   ) {
-    const current = await this.get(id);
+    const current = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: { chemistryMix: true, coa: true },
+    });
+    if (!current) throw new NotFoundException('Report not found');
+
+    const prevStatus = current.status;
 
     if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
@@ -849,19 +1014,18 @@ export class ChemistryReportsService {
 
     const target: ChemistryReportStatus =
       typeof input === 'string' ? input : input.status;
-    if (!target) {
-      throw new BadRequestException('Status is required');
-    }
+    if (!target) throw new BadRequestException('Status is required');
 
     const ctx = getRequestContext() || {};
 
     const reason =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.reason
         : (input.reason ?? (ctx as any)?.reason);
+
     const eSignPassword =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.eSignPassword
         : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
 
     if (!reason) {
@@ -875,51 +1039,97 @@ export class ChemistryReportsService {
         'Electronic Signature (password) is required for status changes',
       );
     }
-
     await this.esign.verifyPassword(user.userId, String(eSignPassword));
 
-    const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
+    // ✅ validate transition properly
+    const trans = STATUS_TRANSITIONS[prevStatus as ChemistryReportStatus];
     if (!trans) {
+      throw new BadRequestException(`Invalid current status: ${prevStatus}`);
+    }
+    if (!trans.canSet.includes(user.role)) {
+      throw new ForbiddenException(
+        `Role ${user.role} cannot change status from ${prevStatus}`,
+      );
+    }
+    if (!trans.next.includes(target)) {
       throw new BadRequestException(
-        `Invalid current status: ${current.status}`,
+        `Invalid transition: ${prevStatus} → ${target}`,
       );
     }
 
     const patch: any = { status: target };
 
+    // ✅ report number assignment (same behavior as update())
     function yyyy(d: Date = new Date()): string {
-      const yyyy = String(d.getFullYear());
-      return yyyy; // e.g. "2410"
+      return String(d.getFullYear());
     }
-
-    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
     function seqPad(num: number): string {
       const width = Math.max(4, String(num).length);
       return String(num).padStart(width, '0');
     }
 
     if (target === 'UNDER_TESTING_REVIEW' && !current.reportNumber) {
-      const deptLetter =
-        getDeptLetterForForm((current as any).formType) ||
-        getDepartmentLetter(user.role);
-      if (deptLetter) {
-        const seq = await this.prisma.labReportSequence.upsert({
-          where: { department: deptLetter },
-          update: { lastNumber: { increment: 1 } },
-          create: { department: deptLetter, lastNumber: 1 },
-        });
-        const n = seqPad(seq.lastNumber);
-        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
-      }
+      const deptLetter = getDeptLetterForForm(current.formType);
+      const seq = await this.prisma.labReportSequence.upsert({
+        where: { department: deptLetter },
+        update: { lastNumber: { increment: 1 } },
+        create: { department: deptLetter, lastNumber: 1 },
+      });
+      patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
     }
+
+    if (target === 'LOCKED') patch.lockedAt = new Date();
 
     const updated = await this.prisma.chemistryReport.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
+      include: { chemistryMix: true, coa: true },
     });
 
+    // ✅ log StatusHistory + AuditTrail
+    if (prevStatus !== target) {
+      await this.logChemStatusChange({
+        chemistryReportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: prevStatus as ChemistryReportStatus,
+        to: target,
+        reason: reason ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    // ✅ websocket
     this.reportsGateway.notifyStatusChange(id, target);
-    return updated;
+
+    // ✅ OPTIONAL: send same email notification as update()
+    if (prevStatus !== target) {
+      const slug =
+        current.formType === 'CHEMISTRY_MIX'
+          ? 'chemistry-mix'
+          : current.formType === 'COA'
+            ? 'coa'
+            : 'chemistry-mix';
+
+      const clientName = pickDetails(current)?.client ?? '-';
+
+      await this.chemistryNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName,
+        clientCode: current.clientCode ?? null,
+        oldStatus: String(prevStatus),
+        newStatus: String(target),
+        reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
+    }
+
+    return flattenReport(updated);
   }
 
   async addAttachment(

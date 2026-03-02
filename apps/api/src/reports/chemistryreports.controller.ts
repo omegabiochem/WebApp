@@ -119,16 +119,16 @@ export class ChemistryReportsController {
       | string
       | undefined;
 
-    setRequestContext({
-      userId: req.user?.userId,
-      role: req.user?.role,
-      ip: req.ip,
-      reason: body?.reason ?? reasonFromHeader,
-      eSignPassword: body?.eSignPassword ?? eSignFromHeader,
-    });
-
-    // ✅ pass full payload through
-    return this.svc.update(req.user, id, body);
+    return withRequestContext(
+      {
+        userId: req.user?.userId,
+        role: req.user?.role,
+        ip: req.ip,
+        reason: body?.reason ?? reasonFromHeader,
+        eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+      },
+      () => this.svc.update(req.user, id, body),
+    );
   }
 
   @Get(':id')

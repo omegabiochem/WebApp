@@ -11,6 +11,7 @@ import {
   UserRole,
   Prisma,
   FormType,
+  $Enums,
 } from '@prisma/client';
 
 import { ReportsGateway } from './reports.gateway';
@@ -1048,6 +1049,25 @@ export class ReportsService {
     }
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
+      const ctx = getRequestContext() || {};
+      const reason =
+        (ctx as any)?.reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
+
+      await this.logStatusChange({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: current.status,
+        to: patchIn.status,
+        reason,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    if (patchIn.status && prevStatus !== String(patchIn.status)) {
       const slug =
         current.formType === 'MICRO_MIX'
           ? 'micro-mix'
@@ -1075,6 +1095,59 @@ export class ReportsService {
 
     return flattenReport(updated);
   }
+  private async logStatusChange(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+    from: ReportStatus;
+    to: ReportStatus;
+    reason: string | null;
+    actorUserId: string;
+    actorRole: UserRole;
+  }) {
+    const ctx = getRequestContext();
+
+    // optional bypass
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.$transaction([
+      // Status history (your dedicated table)
+      this.prisma.statusHistory.create({
+        data: {
+          reportId: args.reportId,
+          from: args.from,
+          to: args.to,
+          reason: args.reason ?? null,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+        },
+      }),
+
+      // Audit trail (what your Audit page reads)
+      this.prisma.auditTrail.create({
+        data: {
+          action: 'STATUS_CHANGE',
+          entity: args.formType, // OR "REPORT" if you want one entity name for all
+          entityId: args.reportId,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+          clientCode: args.clientCode ?? null,
+          details: `Status changed: ${args.from} → ${args.to}`,
+          changes: {
+            from: args.from,
+            to: args.to,
+            reason: args.reason ?? null,
+            formNumber: args.formNumber,
+            reportNumber: args.reportNumber ?? null,
+          },
+        },
+      }),
+    ]);
+  }
 
   // async updateStatus(
   //   user: { userId: string; role: UserRole },
@@ -1097,12 +1170,114 @@ export class ReportsService {
     return this.update(user, id, body);
   }
 
+  // async changeStatus(
+  //   user: { userId: string; role: UserRole },
+  //   id: string,
+  //   input: ChangeStatusInput,
+  // ) {
+  //   const current = await this.get(id);
+
+  //   if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
+  //     throw new ForbiddenException(
+  //       'Only ADMIN/SYSTEMADMIN/QA/MICRO can Change Status this directly',
+  //     );
+  //   }
+
+  //   const target: ReportStatus =
+  //     typeof input === 'string' ? input : input.status;
+  //   if (!target) {
+  //     throw new BadRequestException('Status is required');
+  //   }
+
+  //   const ctx = getRequestContext() || {};
+
+  //   const reason =
+  //     typeof input === 'string'
+  //       ? undefined
+  //       : (input.reason ?? (ctx as any)?.reason);
+  //   const eSignPassword =
+  //     typeof input === 'string'
+  //       ? undefined
+  //       : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
+
+  //   if (!reason) {
+  //     throw new BadRequestException(
+  //       'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
+  //     );
+  //   }
+
+  //   const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW'; // ✅ only for Start Final
+
+  //   if (!skipESign) {
+  //     if (!eSignPassword) {
+  //       throw new BadRequestException(
+  //         'Electronic Signature (password) is required for status changes',
+  //       );
+  //     }
+  //     await this.esign.verifyPassword(user.userId, String(eSignPassword));
+  //   }
+  //   const transitions = transitionsFor((current as any).formType);
+  //   const trans = transitions[current.status as ReportStatus];
+
+  //   if (!trans) {
+  //     throw new BadRequestException(
+  //       `No transition config for status: ${current.status} (formType: ${(current as any).formType})`,
+  //     );
+  //   }
+
+  //   const patch: any = { status: target };
+
+  //   function yyyy(d: Date = new Date()): string {
+  //     const yyyy = String(d.getFullYear());
+  //     return yyyy; // e.g. "2410"
+  //   }
+
+  //   // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
+  //   function seqPad(num: number): string {
+  //     const width = Math.max(4, String(num).length);
+  //     return String(num).padStart(width, '0');
+  //   }
+  //   if (
+  //     target &&
+  //     !current.reportNumber &&
+  //     shouldAssignReportNumber((current as any).formType, target)
+  //   ) {
+  //     const deptLetter =
+  //       getDeptLetterForForm((current as any).formType) ||
+  //       getDepartmentLetter(user.role);
+  //     if (deptLetter) {
+  //       const seq = await this.prisma.labReportSequence.upsert({
+  //         where: { department: deptLetter },
+  //         update: { lastNumber: { increment: 1 } },
+  //         create: { department: deptLetter, lastNumber: 1 },
+  //       });
+  //       const n = seqPad(seq.lastNumber);
+  //       patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+  //     }
+  //   }
+
+  //   const updated = await this.prisma.report.update({
+  //     where: { id },
+  //     data: { ...patch, updatedBy: user.userId },
+  //   });
+
+  //   this.reportsGateway.notifyStatusChange(id, target);
+  //   return updated;
+  // }
+
   async changeStatus(
     user: { userId: string; role: UserRole },
     id: string,
     input: ChangeStatusInput,
   ) {
-    const current = await this.get(id);
+    // IMPORTANT: use prisma findUnique so we have base + details
+    const current = await this.prisma.report.findUnique({
+      where: { id },
+      include: { microMix: true, microMixWater: true, sterility: true },
+    });
+    if (!current) throw new NotFoundException('Report not found');
+
+    const prevStatus = current.status;
 
     if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
       throw new ForbiddenException(
@@ -1112,19 +1287,18 @@ export class ReportsService {
 
     const target: ReportStatus =
       typeof input === 'string' ? input : input.status;
-    if (!target) {
-      throw new BadRequestException('Status is required');
-    }
+    if (!target) throw new BadRequestException('Status is required');
 
     const ctx = getRequestContext() || {};
 
     const reason =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.reason
         : (input.reason ?? (ctx as any)?.reason);
+
     const eSignPassword =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.eSignPassword
         : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
 
     if (!reason) {
@@ -1133,8 +1307,8 @@ export class ReportsService {
       );
     }
 
-    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW'; // ✅ only for Start Final
-
+    // ✅ e-sign rules (keep your existing rule)
+    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW';
     if (!skipESign) {
       if (!eSignPassword) {
         throw new BadRequestException(
@@ -1143,53 +1317,105 @@ export class ReportsService {
       }
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
-    const transitions = transitionsFor((current as any).formType);
-    const trans = transitions[current.status as ReportStatus];
+
+    // ✅ validate transition (YOU WERE MISSING the "next includes target" check)
+    const transitions = transitionsFor(current.formType);
+    const trans = transitions[prevStatus];
 
     if (!trans) {
       throw new BadRequestException(
-        `No transition config for status: ${current.status} (formType: ${(current as any).formType})`,
+        `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
+      );
+    }
+    if (!trans.canSet.includes(user.role)) {
+      throw new ForbiddenException(
+        `Role ${user.role} cannot change status from ${prevStatus}`,
+      );
+    }
+    if (!trans.next.includes(target)) {
+      throw new BadRequestException(
+        `Invalid transition: ${prevStatus} → ${target}`,
       );
     }
 
     const patch: any = { status: target };
 
+    // ✅ assign report number same behavior as update()
     function yyyy(d: Date = new Date()): string {
-      const yyyy = String(d.getFullYear());
-      return yyyy; // e.g. "2410"
+      return String(d.getFullYear());
     }
-
-    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
     function seqPad(num: number): string {
       const width = Math.max(4, String(num).length);
       return String(num).padStart(width, '0');
     }
+
     if (
-      target &&
       !current.reportNumber &&
-      shouldAssignReportNumber((current as any).formType, target)
+      shouldAssignReportNumber(current.formType, target)
     ) {
-      const deptLetter =
-        getDeptLetterForForm((current as any).formType) ||
-        getDepartmentLetter(user.role);
-      if (deptLetter) {
-        const seq = await this.prisma.labReportSequence.upsert({
-          where: { department: deptLetter },
-          update: { lastNumber: { increment: 1 } },
-          create: { department: deptLetter, lastNumber: 1 },
-        });
-        const n = seqPad(seq.lastNumber);
-        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
-      }
+      const deptLetter = getDeptLetterForForm(current.formType);
+      const seq = await this.prisma.labReportSequence.upsert({
+        where: { department: deptLetter },
+        update: { lastNumber: { increment: 1 } },
+        create: { department: deptLetter, lastNumber: 1 },
+      });
+      patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
     }
+
+    // ✅ apply lock timestamp
+    if (target === 'LOCKED') patch.lockedAt = new Date();
 
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
+      include: { microMix: true, microMixWater: true, sterility: true },
     });
 
+    // ✅ NOW log status change (StatusHistory + AuditTrail)
+    if (prevStatus !== target) {
+      await this.logStatusChange({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: prevStatus,
+        to: target,
+        reason: reason ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    // ✅ notify websocket
     this.reportsGateway.notifyStatusChange(id, target);
-    return updated;
+
+    // ✅ OPTIONAL: if you also want emails for change-status (same as update())
+    if (prevStatus !== target) {
+      const slug =
+        current.formType === 'MICRO_MIX'
+          ? 'micro-mix'
+          : current.formType === 'MICRO_MIX_WATER'
+            ? 'micro-mix-water'
+            : current.formType === 'STERILITY'
+              ? 'sterility'
+              : 'micro-mix';
+
+      const clientName = pickDetails(current)?.client ?? '-';
+      await this.reportNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName,
+        clientCode: current.clientCode ?? null,
+        oldStatus: String(prevStatus),
+        newStatus: String(target),
+        reportUrl: `${process.env.APP_URL}/reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
+    }
+
+    return flattenReport(updated);
   }
 
   async findAll() {

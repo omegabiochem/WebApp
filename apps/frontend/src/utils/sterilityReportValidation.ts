@@ -58,69 +58,6 @@ export type PathRow = {
   result: "Absent" | "Present" | "";
   spec: "Absent" | "Present" | "";
 };
-// export type MicroMixReportFormValues = {
-//   client: string;
-//   dateSent: string;
-//   typeOfTest: string;
-//   sampleType: string;
-//   formulaNo: string;
-//   description: string;
-//   lotNo: string;
-//   manufactureDate: string;
-
-//   testSopNo: string;
-//   dateTested: string;
-//   preliminaryResults: string;
-//   preliminaryResultsDate: string;
-
-//   tbc_gram: string;
-//   tbc_result: string;
-//   tbc_spec: string;
-//   tmy_gram: string;
-//   tmy_result: string;
-//   tmy_spec: string;
-
-//   comments: string;
-//   testedBy: string;
-//   testedDate: string;
-//   dateCompleted: string;
-//   reviewedBy: string;
-//   reviewedDate: string;
-
-//   pathogens: PathRow[];
-// };
-
-// export type MicroMixWaterReportFormValues = {
-//   client: string;
-//   dateSent: string;
-//   typeOfTest: string;
-//   sampleType: string;
-//   idNo: string;
-//   description: string;
-//   lotNo: string;
-//   samplingDate: string;
-
-//   testSopNo: string;
-//   dateTested: string;
-//   preliminaryResults: string;
-//   preliminaryResultsDate: string;
-
-//   tbc_gram: string;
-//   tbc_result: string;
-//   tbc_spec: string;
-//   tmy_gram: string;
-//   tmy_result: string;
-//   tmy_spec: string;
-
-//   comments: string;
-//   testedBy: string;
-//   testedDate: string;
-//   dateCompleted: string;
-//   reviewedBy: string;
-//   reviewedDate: string;
-
-//   pathogens: PathRow[];
-// };
 
 export type SterilityReportFormValues = {
   client: string;
@@ -210,56 +147,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
 
 export type MicroPhase = "PRELIM" | "FINAL";
 
-// /** Fine-grained MICRO required fields by phase */
-// export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
-//   PRELIM: [
-//     "testSopNo",
-//     "dateTested",
-//     "preliminaryResults",
-//     "preliminaryResultsDate",
-//     "tbc_gram",
-//     "tbc_result",
-//   ],
-//   FINAL: [
-//     "tmy_gram",
-//     "tmy_result",
-//     "pathogens",
-//     // "comments",
-//     // "testedBy",
-//     // "testedDate",
-//   ],
-// };
 
-// /** Statuses that should validate the MICRO "Preliminary" subset */
-// export const PRELIM_STATUSES: ReportStatus[] = [
-//   "UNDER_PRELIMINARY_TESTING_REVIEW",
-//   "PRELIMINARY_TESTING_ON_HOLD",
-//   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-//   "PRELIMINARY_RESUBMISSION_BY_TESTING",
-//   "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
-//   "PRELIMINARY_APPROVED", // up to this point it's still the preliminary pass
-//   "UNDER_QA_PRELIMINARY_REVIEW",
-// ];
-
-// /** Statuses that should validate the MICRO "Final" subset */
-// export const FINAL_STATUSES: ReportStatus[] = [
-//   "UNDER_FINAL_TESTING_REVIEW",
-//   "FINAL_TESTING_ON_HOLD",
-//   "FINAL_TESTING_NEEDS_CORRECTION",
-//   "FINAL_RESUBMISSION_BY_TESTING",
-//   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
-//   "UNDER_QA_FINAL_REVIEW",
-// ];
-
-// /** Helper: derive MICRO phase from a status */
-// export function deriveMicroPhaseFromStatus(
-//   status?: ReportStatus,
-// ): MicroPhase | undefined {
-//   if (!status) return undefined;
-//   if (PRELIM_STATUSES.includes(status)) return "PRELIM";
-//   if (FINAL_STATUSES.includes(status)) return "FINAL";
-//   return undefined;
-// }
 
 // Small helper you can use instead of a local canEdit()
 export function canEditBy(

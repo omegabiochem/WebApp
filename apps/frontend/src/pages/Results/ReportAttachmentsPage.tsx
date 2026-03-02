@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, API_URL, getToken } from "../../lib/api";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { logUiEvent } from "../../lib/uiAudit";
 
-type ReportType = "MICRO" | "MICRO_WATER" | "CHEMISTRY";
+type ReportType = "MICRO" | "MICRO_WATER" | "CHEMISTRY" | "STERILITY" | "COA"; // keep in sync with backend enum (and add new types there as needed)
 type ReportTypeFilter = "ALL" | ReportType;
 
 type AttachmentItem = {
@@ -134,6 +134,8 @@ function matchesDateRange(createdAtISO: string, from?: string, to?: string) {
 function reportLinkFor(type: ReportType, reportId: string) {
   if (type === "CHEMISTRY") return `/reports/chemistry-mix/${reportId}`;
   if (type === "MICRO_WATER") return `/reports/micro-mix-water/${reportId}`;
+  if (type === "STERILITY") return `/reports/sterility/${reportId}`;
+  if (type === "COA") return `/reports/coa/${reportId}`;
   return `/reports/micro-mix/${reportId}`;
 }
 
@@ -141,6 +143,8 @@ function reportTypeLabel(t: ReportTypeFilter) {
   if (t === "ALL") return "All";
   if (t === "MICRO") return "Micro";
   if (t === "MICRO_WATER") return "Micro Water";
+  if (t === "STERILITY") return "Sterility";
+  if (t === "COA") return "COA";
   return "Chemistry";
 }
 
@@ -505,34 +509,114 @@ function BulkPrintAttachmentsArea({
   );
 }
 
+function getParam(sp: URLSearchParams, key: string, fallback = "") {
+  return sp.get(key) ?? fallback;
+}
+
+function getParamEnum<T extends string>(
+  sp: URLSearchParams,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const v = sp.get(key);
+  return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
+// function getParamBool(sp: URLSearchParams, key: string, fallback = false) {
+//   const v = sp.get(key);
+//   if (v === null) return fallback;
+//   return v === "1" || v === "true";
+// }
+
 export default function ReportAttachmentsPage() {
   const [items, setItems] = useState<AttachmentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [view, setView] = useState<ViewMode>("GRID");
-  const [q, setQ] = useState("");
-  const [kind, setKind] = useState<string>("ALL");
-  const [fileType, setFileType] = useState<"ALL" | "image" | "pdf" | "other">(
-    "ALL",
+  // URL-backed initial values
+  const [view, setView] = useState<ViewMode>(
+    getParamEnum(searchParams, "view", ["GRID", "TABLE"] as const, "GRID"),
   );
-  const [createdBy, setCreatedBy] = useState<string>("ALL");
-  const [source, setSource] = useState<string>("ALL");
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
 
-  const [reportType, setReportType] = useState<ReportTypeFilter>("ALL");
+  const [q, setQ] = useState(getParam(searchParams, "q", ""));
+  const [kind, setKind] = useState(getParam(searchParams, "kind", "ALL"));
+
+  const [fileType, setFileType] = useState<"ALL" | "image" | "pdf" | "other">(
+    getParamEnum(
+      searchParams,
+      "fileType",
+      ["ALL", "image", "pdf", "other"] as const,
+      "ALL",
+    ),
+  );
+
+  const [createdBy, setCreatedBy] = useState(
+    getParam(searchParams, "createdBy", "ALL"),
+  );
+  const [source, setSource] = useState(getParam(searchParams, "source", "ALL"));
+
+  const [fromDate, setFromDate] = useState(getParam(searchParams, "from", ""));
+  const [toDate, setToDate] = useState(getParam(searchParams, "to", ""));
+
+  const [reportType, setReportType] = useState<ReportTypeFilter>(
+    getParamEnum(
+      searchParams,
+      "reportType",
+      ["ALL", "MICRO", "MICRO_WATER", "CHEMISTRY", "STERILITY", "COA"] as const,
+      "ALL",
+    ),
+  );
 
   const [sort, setSort] = useState<
     "NEWEST" | "OLDEST" | "FILENAME_AZ" | "FILENAME_ZA" | "KIND"
-  >("NEWEST");
+  >(
+    getParamEnum(
+      searchParams,
+      "sort",
+      ["NEWEST", "OLDEST", "FILENAME_AZ", "FILENAME_ZA", "KIND"] as const,
+      "NEWEST",
+    ),
+  );
+
+  type DatePreset =
+    | ""
+    | "TODAY"
+    | "YESTERDAY"
+    | "LAST_7"
+    | "LAST_30"
+    | "THIS_MONTH"
+    | "LAST_MONTH";
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    getParamEnum(
+      searchParams,
+      "datePreset",
+      [
+        "",
+        "TODAY",
+        "YESTERDAY",
+        "LAST_7",
+        "LAST_30",
+        "THIS_MONTH",
+        "LAST_MONTH",
+      ] as const,
+      "",
+    ),
+  );
 
   const [open, setOpen] = useState<{ id: string; filename: string } | null>(
     null,
   );
 
   // selection + print
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    (searchParams.get("selected") || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  );
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [printingBulk, setPrintingBulk] = useState(false);
 
@@ -546,8 +630,8 @@ export default function ReportAttachmentsPage() {
 
   const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
     if (!role) return "ALL";
-    if (role === "CHEMISTRY") return ["CHEMISTRY"];
-    if (role === "MICRO") return ["MICRO", "MICRO_WATER"];
+    if (role === "CHEMISTRY") return ["CHEMISTRY","COA"];
+    if (role === "MICRO") return ["MICRO", "MICRO_WATER","STERILITY"];
     return "ALL";
   }, [role]);
 
@@ -561,10 +645,16 @@ export default function ReportAttachmentsPage() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (role === "CHEMISTRY") setReportType("CHEMISTRY");
-    if (role === "MICRO") setReportType("MICRO");
-  }, [role]);
+  // useEffect(() => {
+  //   if (role === "CHEMISTRY") {
+  //     setReportType((prev) => (prev === "ALL" ? "CHEMISTRY" : prev));
+  //     return;
+  //   }
+  //   if (role === "MICRO") {
+  //     setReportType((prev) => (prev === "ALL" ? "MICRO" : prev));
+  //     return;
+  //   }
+  // }, [role]);
 
   const isRowSelected = (id: string) => selectedIds.includes(id);
   const toggleRow = (id: string) => {
@@ -733,11 +823,45 @@ export default function ReportAttachmentsPage() {
     setFromDate("");
     setToDate("");
     setSort("NEWEST");
+    setSelectedIds([]); // optional
+    setDatePreset("");
 
-    if (role === "CHEMISTRY") setReportType("CHEMISTRY");
-    else if (role === "MICRO") setReportType("MICRO");
-    else setReportType("ALL");
+    // if (role === "CHEMISTRY") setReportType("CHEMISTRY");
+    // else if (role === "MICRO") setReportType("MICRO");
+    // else setReportType("ALL");
+
+    setReportType("ALL");
+
+    setView("GRID"); // optional default
   };
+
+  const hasActiveFilters = useMemo(() => {
+    return !!(
+      q.trim() ||
+      kind !== "ALL" ||
+      fileType !== "ALL" ||
+      createdBy !== "ALL" ||
+      source !== "ALL" ||
+      fromDate ||
+      toDate ||
+      sort !== "NEWEST" ||
+      reportType !== "ALL" ||
+      view !== "GRID" || // include if you want Clear to reset view too
+      selectedIds.length > 0 // include if you consider selection a “filter”
+    );
+  }, [
+    q,
+    kind,
+    fileType,
+    createdBy,
+    source,
+    fromDate,
+    toDate,
+    sort,
+    reportType,
+    view,
+    selectedIds.length,
+  ]);
 
   // Selected objects (printable only)
   const selectedObjects = selectedIds
@@ -836,6 +960,8 @@ export default function ReportAttachmentsPage() {
       "MICRO",
       "MICRO_WATER",
       "CHEMISTRY",
+      "STERILITY",
+      "COA"
     ];
     if (allowedTypes === "ALL") return all;
 
@@ -854,6 +980,44 @@ export default function ReportAttachmentsPage() {
       }),
     );
   }, [allowedTypes, items]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    if (view !== "GRID") sp.set("view", view);
+
+    if (q) sp.set("q", q);
+    if (kind !== "ALL") sp.set("kind", kind);
+    if (fileType !== "ALL") sp.set("fileType", fileType);
+
+    if (createdBy !== "ALL") sp.set("createdBy", createdBy);
+    if (source !== "ALL") sp.set("source", source);
+
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    if (reportType !== "ALL") sp.set("reportType", reportType);
+    if (sort !== "NEWEST") sp.set("sort", sort);
+
+    // OPTIONAL
+    if (selectedIds.length) sp.set("selected", selectedIds.join(","));
+    if (datePreset) sp.set("datePreset", datePreset);
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    view,
+    q,
+    kind,
+    fileType,
+    createdBy,
+    source,
+    fromDate,
+    toDate,
+    reportType,
+    sort,
+    selectedIds,
+    setSearchParams,
+  ]);
 
   return (
     <div className="p-6">
@@ -950,9 +1114,12 @@ export default function ReportAttachmentsPage() {
           <button
             type="button"
             onClick={clearFilters}
+            disabled={!hasActiveFilters}
             className={classNames(
               "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-              "border bg-white hover:bg-slate-50 text-slate-700",
+              hasActiveFilters
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed",
             )}
           >
             ✕ Clear
@@ -1061,10 +1228,9 @@ export default function ReportAttachmentsPage() {
             />
 
             <select
-              defaultValue=""
+              value={datePreset}
               onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
+                const v = e.target.value as DatePreset;
 
                 const now = new Date();
                 const apply = (from: Date, to: Date) => {
@@ -1087,12 +1253,12 @@ export default function ReportAttachmentsPage() {
                     1,
                   );
                   apply(startOfMonth(lastMonth), endOfMonth(lastMonth));
-                } else if (v === "CLEAR") {
-                  setFromDate("");
-                  setToDate("");
+                } else if (v === "") {
+                  // user picked placeholder again
+                  return;
                 }
 
-                e.currentTarget.value = "";
+                setDatePreset(v);
               }}
               className={inputCls}
               title="Quick date ranges"
@@ -1106,7 +1272,6 @@ export default function ReportAttachmentsPage() {
               <option value="LAST_30">Last 30 days</option>
               <option value="THIS_MONTH">This month</option>
               <option value="LAST_MONTH">Last month</option>
-              <option value="CLEAR">Clear dates</option>
             </select>
           </div>
 

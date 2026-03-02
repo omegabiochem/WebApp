@@ -287,9 +287,7 @@ export default function SterilityReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-const [dateSent, setDateSent] = useState(
-  report?.dateSent || todayISO()
-);
+  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -372,10 +370,10 @@ const [dateSent, setDateSent] = useState(
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const returnTo = params.get("returnTo");
-const backToDashboard = () => {
-  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  else navigate("/clientDashboard", { replace: true });
-};
+  const backToDashboard = () => {
+    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+    else navigate("/clientDashboard", { replace: true });
+  };
 
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -799,7 +797,7 @@ const backToDashboard = () => {
           QA: ["dateCompleted"],
           CLIENT: [
             "client",
-            // "dateSent",
+            "dateSent",
             "typeOfTest",
             "sampleType",
             "formulaNo",
@@ -961,8 +959,8 @@ const backToDashboard = () => {
       }
 
       if (newStatus === "SUBMITTED_BY_CLIENT") {
-  setDateSent(todayISO());
-}
+        setDateSent(todayISO());
+      }
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
@@ -992,6 +990,11 @@ const backToDashboard = () => {
         setReportNumber(updated.reportNumber || reportNumber);
         setIsDirty(false);
         alert(`✅ Status changed to ${newStatus}`);
+
+        if (returnTo) {
+          backToDashboard();
+          return;
+        }
         if (role === "CLIENT") {
           backToDashboard();
         } else if (role === "FRONTDESK") {
@@ -1054,13 +1057,13 @@ const backToDashboard = () => {
     return "/";
   }, [role]);
 
-
   const handleClose = () => {
-  if (onClose) return onClose();
-  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
-  if (window.history.length > 1) navigate(-1);
-  else navigate(fallbackRoute, { replace: true });
-};
+    if (onClose) return onClose();
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
+  };
 
   // const handleClose = () => {
   //   if (onClose) return onClose();

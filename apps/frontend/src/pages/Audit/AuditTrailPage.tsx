@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, RefreshCcw, Search } from "lucide-react";
 import { api, API_URL } from "../../lib/api";
 import { logUiEvent } from "../../lib/uiAudit";
+import { useSearchParams } from "react-router-dom";
 
 type AuditRecord = {
   id: string;
@@ -368,19 +369,31 @@ export default function AuditTrailPage() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // filters
-  const [filterEntity, setFilterEntity] = useState("");
-  const [filterUserId, setFilterUserId] = useState("");
-  const [filterEntityId, setFilterEntityId] = useState(""); // reportId/entityId search
-  const [filterAction, setFilterAction] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [filterEntity, setFilterEntity] = useState(
+    searchParams.get("entity") || "",
+  );
+  const [filterUserId, setFilterUserId] = useState(
+    searchParams.get("userId") || "",
+  );
+  const [filterEntityId, setFilterEntityId] = useState(
+    searchParams.get("entityId") || "",
+  );
+  const [filterAction, setFilterAction] = useState(
+    searchParams.get("action") || "",
+  );
+  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
 
-  // sort + pagination
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">(
+    (searchParams.get("order") as any) || "desc",
+  );
+
+  const [page, setPage] = useState(Number(searchParams.get("page") || 1));
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(
+    (Number(searchParams.get("pageSize")) as any) || 20,
+  );
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -420,34 +433,39 @@ export default function AuditTrailPage() {
   }, []);
 
   // Build query string
+  // const queryString = useMemo(() => {
+  //   const params = new URLSearchParams();
+  //   if (filterEntity) params.append("entity", filterEntity);
+  //   if (filterUserId) params.append("userId", filterUserId);
+  //   if (filterEntityId) params.append("entityId", filterEntityId);
+  //   if (filterAction) params.append("action", filterAction);
+  //   if (dateFrom) params.append("from", dateFrom);
+  //   if (dateTo) params.append("to", dateTo);
+
+  //   // pagination + sort
+  //   params.append("page", String(page));
+  //   params.append("pageSize", String(pageSize));
+  //   params.append("sort", "createdAt");
+  //   params.append("order", sortOrder);
+
+  //   const qs = params.toString();
+  //   return qs ? `?${qs}` : "";
+  // }, [
+  //   filterEntity,
+  //   filterUserId,
+  //   filterEntityId,
+  //   filterAction,
+  //   dateFrom,
+  //   dateTo,
+  //   page,
+  //   pageSize,
+  //   sortOrder,
+  // ]);
+
   const queryString = useMemo(() => {
-    const params = new URLSearchParams();
-    if (filterEntity) params.append("entity", filterEntity);
-    if (filterUserId) params.append("userId", filterUserId);
-    if (filterEntityId) params.append("entityId", filterEntityId);
-    if (filterAction) params.append("action", filterAction);
-    if (dateFrom) params.append("from", dateFrom);
-    if (dateTo) params.append("to", dateTo);
-
-    // pagination + sort
-    params.append("page", String(page));
-    params.append("pageSize", String(pageSize));
-    params.append("sort", "createdAt");
-    params.append("order", sortOrder);
-
-    const qs = params.toString();
+    const qs = searchParams.toString();
     return qs ? `?${qs}` : "";
-  }, [
-    filterEntity,
-    filterUserId,
-    filterEntityId,
-    filterAction,
-    dateFrom,
-    dateTo,
-    page,
-    pageSize,
-    sortOrder,
-  ]);
+  }, [searchParams]);
 
   // Fetch data (debounced)
   useEffect(() => {
@@ -493,6 +511,34 @@ export default function AuditTrailPage() {
     };
   }, [queryString, refreshKey]);
 
+  useEffect(() => {
+    const sp = new URLSearchParams();
+
+    if (filterEntity) sp.set("entity", filterEntity);
+    if (filterUserId) sp.set("userId", filterUserId);
+    if (filterEntityId) sp.set("entityId", filterEntityId);
+    if (filterAction) sp.set("action", filterAction);
+    if (dateFrom) sp.set("from", dateFrom);
+    if (dateTo) sp.set("to", dateTo);
+
+    sp.set("order", sortOrder);
+    sp.set("page", String(page));
+    sp.set("pageSize", String(pageSize));
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    filterEntity,
+    filterUserId,
+    filterEntityId,
+    filterAction,
+    dateFrom,
+    dateTo,
+    sortOrder,
+    page,
+    pageSize,
+    setSearchParams,
+  ]);
+
   const totalPages = useMemo(() => {
     if (!total || total < 0) return 1;
     return Math.max(1, Math.ceil(total / pageSize));
@@ -518,6 +564,9 @@ export default function AuditTrailPage() {
     setDateTo("");
     setSortOrder("desc");
     setPage(1);
+    setPageSize(20);
+
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
   const downloadCSV = async () => {
@@ -755,11 +804,31 @@ export default function AuditTrailPage() {
             dateFrom ||
             dateTo ? (
               <button
-                className="text-sm border rounded-lg px-3 py-2 hover:bg-gray-50"
+                className={[
+                  "text-sm rounded-lg px-3 py-2 transition font-medium",
+                  filterEntity ||
+                  filterUserId ||
+                  filterEntityId ||
+                  filterAction ||
+                  dateFrom ||
+                  dateTo
+                    ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed",
+                ].join(" ")}
                 onClick={clearFilters}
+                disabled={
+                  !(
+                    filterEntity ||
+                    filterUserId ||
+                    filterEntityId ||
+                    filterAction ||
+                    dateFrom ||
+                    dateTo
+                  )
+                }
                 title="Clear all filters"
               >
-                Clear Filters
+                ✕ Clear
               </button>
             ) : (
               <div />
@@ -797,7 +866,7 @@ export default function AuditTrailPage() {
                 </td>
                 <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
                 <td className="p-3 whitespace-nowrap text-xs">
-                  <div className="font-medium">{userNameFor(r.entityId)}</div>
+                  <div className="font-medium">{safeText(r.entityId)}</div>
                   <div className="font-mono text-[10px] text-gray-500">
                     {safeText(r.entityId)}
                   </div>
