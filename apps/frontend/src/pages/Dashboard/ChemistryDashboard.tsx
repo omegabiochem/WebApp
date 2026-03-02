@@ -222,7 +222,9 @@ export default function ChemistryDashboard() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   // selection & printing
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    (searchParams.get("sel") || "").split(",").filter(Boolean),
+  );
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
@@ -340,6 +342,7 @@ export default function ChemistryDashboard() {
     fromDate,
     toDate,
     activeFilter,
+    datePreset,
   ]);
 
   // pagination
@@ -349,10 +352,9 @@ export default function ChemistryDashboard() {
   const start = (pageClamped - 1) * perPage;
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
-
   useEffect(() => {
-    setPage(1);
-  }, [statusFilter, search, perPage, activeFilter]);
+    setSelectedIds([]);
+  }, [statusFilter]);
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -372,6 +374,9 @@ export default function ChemistryDashboard() {
 
     if (activeFilter && activeFilter !== "ALL") sp.set("active", activeFilter);
 
+    // selection
+    if (selectedIds.length) sp.set("sel", selectedIds.join(","));
+
     setSearchParams(sp, { replace: true });
   }, [
     statusFilter,
@@ -384,6 +389,7 @@ export default function ChemistryDashboard() {
     fromDate,
     toDate,
     activeFilter,
+    selectedIds,
     setSearchParams,
   ]);
 
@@ -1273,7 +1279,7 @@ export default function ChemistryDashboard() {
                         // optional: close modal first
                         setSelectedReport(null);
 
-                        await autoAdvanceAndOpen(r, "micro");
+                        await autoAdvanceAndOpen(r, "chemistry");
                       } catch (e: any) {
                         toast.error(e?.message || "Failed to update status");
                       } finally {

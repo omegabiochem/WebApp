@@ -412,7 +412,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   QA: ["*"],
   CLIENT: [
     "client",
-    // "dateSent",
+    "dateSent",
     "typeOfTest",
     "sampleType",
     "formulaNo",

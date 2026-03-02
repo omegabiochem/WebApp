@@ -33,7 +33,8 @@ import {
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
-import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import COAReportFormView from "../Reports/COAReportFormView";
+import { getEnum, getInt, getParam } from "../../utils/globalUtils";
 
 // ---------------------------------
 // Types
@@ -58,6 +59,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
@@ -271,29 +273,58 @@ export default function AdminDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Filters (init from URL)
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
-  >((searchParams.get("form") as any) || "ALL");
+  // const [formFilter, setFormFilter] = useState<
+  //   "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  // >((searchParams.get("form") as any) || "ALL");
+
+  const FORM_TABS = [
+    "ALL",
+    "MICRO",
+    "MICROWATER",
+    "STERILITY",
+    "CHEMISTRY",
+    "COA",
+  ] as const;
+  type FormFilter = (typeof FORM_TABS)[number];
+
+  const [formFilter, setFormFilter] = useState<FormFilter>(
+    getEnum(searchParams, "form", FORM_TABS, "ALL"),
+  );
 
   const [searchClient, setSearchClient] = useState(
-    searchParams.get("client") || "",
+    getParam(searchParams, "client", ""),
   );
   const [searchReport, setSearchReport] = useState(
-    searchParams.get("report") || "",
+    getParam(searchParams, "report", ""),
   );
 
-  // Date
+  const DATE_PRESETS = [
+    "ALL",
+    "TODAY",
+    "YESTERDAY",
+    "LAST_7_DAYS",
+    "LAST_30_DAYS",
+    "THIS_MONTH",
+    "LAST_MONTH",
+    "THIS_YEAR",
+    "LAST_YEAR",
+    "CUSTOM",
+  ] as const;
+
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
+    getEnum(searchParams, "dp", DATE_PRESETS as any, "ALL"),
   );
-  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
-  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
 
-  // Pagination
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
+  const [dateFrom, setDateFrom] = useState(getParam(searchParams, "from", ""));
+  const [dateTo, setDateTo] = useState(getParam(searchParams, "to", ""));
+
+  // paging (clamp pp to allowed)
+  const allowedPP = [10, 20, 50] as const;
+  const initPP = getInt(searchParams, "pp", 10);
+  const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
+    (allowedPP as readonly number[]).includes(initPP) ? (initPP as any) : 10,
   );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+  const [page, setPage] = useState(getInt(searchParams, "p", 1));
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -314,7 +345,9 @@ export default function AdminDashboard() {
   );
 
   const statusOptions =
-    formFilter === "CHEMISTRY" ? ADMIN_CHEM_STATUSES : ADMIN_MICRO_STATUSES;
+    formFilter === "CHEMISTRY" || formFilter === "COA"
+      ? ADMIN_CHEM_STATUSES
+      : ADMIN_MICRO_STATUSES;
 
   // ✅ UX guards
   const [refreshing, setRefreshing] = useState(false);
@@ -323,7 +356,9 @@ export default function AdminDashboard() {
   // -----------------------------
   // Selection + Printing (Admin)
   // -----------------------------
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    (searchParams.get("sel") || "").split(",").filter(Boolean),
+  );
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
@@ -341,7 +376,7 @@ export default function AdminDashboard() {
     reasonText = "Common Status Change",
   ) {
     // ✅ IMPORTANT: your chemistry status endpoint expects NO reason (based on your other dashboards)
-    const isChem = r.formType === "CHEMISTRY_MIX";
+    const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
     const endpoint = isChem
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
@@ -384,12 +419,15 @@ export default function AdminDashboard() {
 
   // ✅ Reset invalid status when switching formFilter
   useEffect(() => {
-    const opts = statusOptions.map(String);
+    const opts =
+      formFilter === "CHEMISTRY" || formFilter === "COA"
+        ? ADMIN_CHEM_STATUSES.map(String)
+        : ADMIN_MICRO_STATUSES.map(String);
+
     if (statusFilter !== "ALL" && !opts.includes(String(statusFilter))) {
       setStatusFilter("ALL");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formFilter]);
+  }, [formFilter, statusFilter]);
 
   // Derived rows
   const processed = useMemo(() => {
@@ -400,8 +438,10 @@ export default function AdminDashboard() {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
+            if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
@@ -482,6 +522,7 @@ export default function AdminDashboard() {
     // paging
     if (perPage !== 10) sp.set("pp", String(perPage));
     if (pageClamped !== 1) sp.set("p", String(pageClamped));
+    if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
     setSearchParams(sp, { replace: true });
   }, [
@@ -494,6 +535,7 @@ export default function AdminDashboard() {
     dateTo,
     perPage,
     pageClamped,
+    selectedIds,
     setSearchParams,
   ]);
 
@@ -548,16 +590,7 @@ export default function AdminDashboard() {
   // optional: clear selection when filters change (avoids printing hidden rows)
   useEffect(() => {
     setSelectedIds([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-  ]);
+  }, [formFilter]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -601,7 +634,7 @@ export default function AdminDashboard() {
       }
 
       const endpoint =
-        report.formType === "CHEMISTRY_MIX"
+        report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
           ? `/chemistry-reports/${report.id}/change-status`
           : `/reports/${report.id}/change-status`;
 
@@ -647,7 +680,7 @@ export default function AdminDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX") {
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -655,7 +688,7 @@ export default function AdminDashboard() {
   }
 
   const badgeClasses = (r: Report) => {
-    const isChem = r.formType === "CHEMISTRY_MIX";
+    const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
     return (
       (isChem
         ? CHEMISTRY_STATUS_COLORS[r.status as ChemistryReportStatus]
@@ -757,11 +790,7 @@ export default function AdminDashboard() {
     setFormFilter("ALL");
     setPerPage(10);
     setPage(1);
-
-    setSearchParams(new URLSearchParams(), { replace: true });
   };
-
-
 
   useLiveReportStatus(setReports);
 
@@ -871,7 +900,14 @@ export default function AdminDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -894,7 +930,9 @@ export default function AdminDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "COA"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -1084,7 +1122,8 @@ export default function AdminDashboard() {
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
                     r.formType === "MICRO_MIX_WATER";
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
                   return (
@@ -1221,7 +1260,8 @@ export default function AdminDashboard() {
                             onClick={() => {
                               setChangeStatusReport(r);
                               const options =
-                                r.formType === "CHEMISTRY_MIX"
+                                r.formType === "CHEMISTRY_MIX" ||
+                                r.formType === "COA"
                                   ? ADMIN_CHEM_STATUSES
                                   : ADMIN_MICRO_STATUSES;
 
@@ -1273,7 +1313,9 @@ export default function AdminDashboard() {
               <select
                 id="perPage"
                 value={perPage}
-                onChange={(e) => setPerPage(Number(e.target.value))}
+                onChange={(e) =>
+                  setPerPage(Number(e.target.value) as typeof perPage)
+                }
                 className="rounded-lg border bg-white px-3 py-1.5 text-sm ring-1 ring-inset ring-slate-200"
               >
                 {[10, 20, 50].map((n) => (
@@ -1362,7 +1404,8 @@ export default function AdminDashboard() {
                     logUiEvent({
                       action: "UI_PRINT_SINGLE",
                       entity:
-                        selectedReport.formType === "CHEMISTRY_MIX"
+                        selectedReport.formType === "CHEMISTRY_MIX" ||
+                        selectedReport.formType === "COA"
                           ? "ChemistryReport"
                           : "MicroReport",
                       entityId: selectedReport.id,
@@ -1383,7 +1426,8 @@ export default function AdminDashboard() {
                 </button>
 
                 {/* ✅ show Update in modal for micro or chem */}
-                {(selectedReport.formType === "CHEMISTRY_MIX"
+                {(selectedReport.formType === "CHEMISTRY_MIX" ||
+                selectedReport.formType === "COA"
                   ? canUpdateThisChem(selectedReport, user)
                   : canUpdateThisMicro(selectedReport, user)) && (
                   <button
@@ -1457,6 +1501,14 @@ export default function AdminDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

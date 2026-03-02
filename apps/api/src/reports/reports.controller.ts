@@ -43,8 +43,8 @@ const slugToFormType = (slug: string): FormType | null => {
       return 'MICRO_MIX';
     case 'micro-mix-water':
       return 'MICRO_MIX_WATER';
-      case 'sterility':
-        return 'STERILITY';
+    case 'sterility':
+      return 'STERILITY';
     default:
       return null;
   }
@@ -117,18 +117,39 @@ export class ReportsController {
     return this.svc.update(req.user, id, body);
   }
 
+  // @Patch(':id/status')
+  // async updateStatus(
+  //   @Req() req: any,
+  //   @Param('id') id: string,
+  //   @Body()
+  //   body: {
+  //     status: ReportStatus;
+  //     reason?: string;
+  //     eSignPassword?: string;
+  //     expectedVersion?: number;
+  //   },
+  // ) {
+  //   const reasonFromHeader = req.headers['x-change-reason'] as
+  //     | string
+  //     | undefined;
+  //   const eSignFromHeader = req.headers['x-esign-password'] as
+  //     | string
+  //     | undefined;
+
+  //   setRequestContext({
+  //     userId: req.user?.userId,
+  //     role: req.user?.role,
+  //     ip: req.ip,
+  //     reason: body?.reason ?? reasonFromHeader ?? undefined,
+  //     eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+  //   });
+
+  //   // forward full body so service can pick up status + reason/eSign via ctx
+  //   return this.svc.update(req.user, id, body);
+  // }
+
   @Patch(':id/status')
-  async updateStatus(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body()
-    body: {
-      status: ReportStatus;
-      reason?: string;
-      eSignPassword?: string;
-      expectedVersion?: number;
-    },
-  ) {
+  updateStatus(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     const reasonFromHeader = req.headers['x-change-reason'] as
       | string
       | undefined;
@@ -136,16 +157,16 @@ export class ReportsController {
       | string
       | undefined;
 
-    setRequestContext({
-      userId: req.user?.userId,
-      role: req.user?.role,
-      ip: req.ip,
-      reason: body?.reason ?? reasonFromHeader ?? undefined,
-      eSignPassword: body?.eSignPassword ?? eSignFromHeader,
-    });
-
-    // forward full body so service can pick up status + reason/eSign via ctx
-    return this.svc.update(req.user, id, body);
+    return withRequestContext(
+      {
+        userId: req.user?.userId,
+        role: req.user?.role,
+        ip: req.ip,
+        reason: body?.reason ?? reasonFromHeader,
+        eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+      },
+      () => this.svc.update(req.user, id, body),
+    );
   }
 
   @Patch(':id/change-status')

@@ -1199,7 +1199,7 @@ const backToDashboard = () => {
           QA: ["dateCompleted"],
           CLIENT: [
             "client",
-            // "dateSent",
+            "dateSent",
             "typeOfTest",
             "sampleType",
             "idNo",
