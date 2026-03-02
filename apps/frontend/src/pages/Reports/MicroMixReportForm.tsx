@@ -207,7 +207,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
     QA: ["dateCompleted"],
     CLIENT: [
       "client",
-      // "dateSent",
+      "dateSent",
       "typeOfTest",
       "sampleType",
       "formulaNo",
@@ -1360,8 +1360,7 @@ export default function MicroMixReportForm({
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      // const token = localStorage.getItem("token");
-      // const API_BASE = "http://localhost:3000";
+    
 
       const values = makeValues();
       const okFields = validateAndSetErrors(values);
@@ -1409,9 +1408,6 @@ export default function MicroMixReportForm({
           alert("⚠️ Please fix the highlighted rows before changing status.");
           return;
         }
-      }
-      if (newStatus === "SUBMITTED_BY_CLIENT") {
-        setDateSent(todayISO());
       }
 
       // ensure latest edits are saved

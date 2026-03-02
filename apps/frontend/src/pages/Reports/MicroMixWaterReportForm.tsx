@@ -203,7 +203,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
     QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
-      // "dateSent",
+      "dateSent",
       "typeOfTest",
       "sampleType",
       "idNo",
@@ -1390,9 +1390,11 @@ const backToDashboard = () => {
           return;
         }
       }
-      if (newStatus === "SUBMITTED_BY_CLIENT") {
-        setDateSent(todayISO());
-      }
+      //   if (newStatus === "SUBMITTED_BY_CLIENT") {
+      //   const sent = todayISO();
+      //   setDateSent(sent);
+      //   markDirty(); // ✅ IMPORTANT so handleSave runs
+      // }
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
