@@ -1318,25 +1318,32 @@ export class ReportsService {
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
 
-    // ✅ validate transition (YOU WERE MISSING the "next includes target" check)
-    const transitions = transitionsFor(current.formType);
-    const trans = transitions[prevStatus];
-
+    const trans = STATUS_TRANSITIONS[current.status as ReportStatus];
     if (!trans) {
       throw new BadRequestException(
-        `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
+        `Invalid current status: ${current.status}`,
       );
     }
-    if (!trans.canSet.includes(user.role)) {
-      throw new ForbiddenException(
-        `Role ${user.role} cannot change status from ${prevStatus}`,
-      );
-    }
-    if (!trans.next.includes(target)) {
-      throw new BadRequestException(
-        `Invalid transition: ${prevStatus} → ${target}`,
-      );
-    }
+
+    // // ✅ validate transition (YOU WERE MISSING the "next includes target" check)
+    // const transitions = transitionsFor(current.formType);
+    // const trans = transitions[prevStatus];
+
+    // if (!trans) {
+    //   throw new BadRequestException(
+    //     `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
+    //   );
+    // }
+    // if (!trans.canSet.includes(user.role)) {
+    //   throw new ForbiddenException(
+    //     `Role ${user.role} cannot change status from ${prevStatus}`,
+    //   );
+    // }
+    // if (!trans.next.includes(target)) {
+    //   throw new BadRequestException(
+    //     `Invalid transition: ${prevStatus} → ${target}`,
+    //   );
+    // }
 
     const patch: any = { status: target };
 

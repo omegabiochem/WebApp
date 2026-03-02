@@ -1041,19 +1041,26 @@ export class ChemistryReportsService {
     }
     await this.esign.verifyPassword(user.userId, String(eSignPassword));
 
-    // ✅ validate transition properly
-    const trans = STATUS_TRANSITIONS[prevStatus as ChemistryReportStatus];
+    // // ✅ validate transition properly
+    // const trans = STATUS_TRANSITIONS[prevStatus as ChemistryReportStatus];
+    // if (!trans) {
+    //   throw new BadRequestException(`Invalid current status: ${prevStatus}`);
+    // }
+    // if (!trans.canSet.includes(user.role)) {
+    //   throw new ForbiddenException(
+    //     `Role ${user.role} cannot change status from ${prevStatus}`,
+    //   );
+    // }
+    // if (!trans.next.includes(target)) {
+    //   throw new BadRequestException(
+    //     `Invalid transition: ${prevStatus} → ${target}`,
+    //   );
+    // }
+
+    const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
     if (!trans) {
-      throw new BadRequestException(`Invalid current status: ${prevStatus}`);
-    }
-    if (!trans.canSet.includes(user.role)) {
-      throw new ForbiddenException(
-        `Role ${user.role} cannot change status from ${prevStatus}`,
-      );
-    }
-    if (!trans.next.includes(target)) {
       throw new BadRequestException(
-        `Invalid transition: ${prevStatus} → ${target}`,
+        `Invalid current status: ${current.status}`,
       );
     }
 
