@@ -272,7 +272,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 
   CLIENT: [
     "client",
-    // "dateSent",
+    "dateSent",
     "sampleDescription",
     // "testTypes", // only COA_VERIFICATION
     "lotBatchNo",

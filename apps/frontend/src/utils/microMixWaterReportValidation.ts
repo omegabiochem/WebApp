@@ -147,7 +147,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   ],
   QA: ["dateCompleted"],
   CLIENT: [
-    // "dateSent",
+    "dateSent",
     "typeOfTest",
     "sampleType",
     // "idNo",

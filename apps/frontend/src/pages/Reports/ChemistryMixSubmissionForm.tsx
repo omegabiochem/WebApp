@@ -1097,9 +1097,11 @@ const backToDashboard = () => {
         }
       }
 
-      if (newStatus === "SUBMITTED_BY_CLIENT") {
-        setDateSent(todayISO());
-      }
+    // if (newStatus === "SUBMITTED_BY_CLIENT") {
+    //     const sent = todayISO();
+    //     setDateSent(sent);
+    //     markDirty(); // ✅ IMPORTANT so handleSave runs
+    //   }
 
       // 3) Ensure latest edits are saved
       if (!reportId || isDirty) {
