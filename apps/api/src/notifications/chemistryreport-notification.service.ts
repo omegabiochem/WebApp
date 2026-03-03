@@ -21,11 +21,34 @@ function nice(s: string) {
   return String(s).replace(/_/g, ' ');
 }
 
+function normalizeEmails(emails: string[]) {
+  return [
+    ...new Set(
+      (emails ?? []).map((e) => (e ?? '').trim().toLowerCase()).filter(Boolean),
+    ),
+  ].sort();
+}
+
+// ✅ Option C policy for Chemistry
+function isUrgentChemStatus(s: ChemistryReportStatus) {
+  // human action right now
+  // if (s === ChemistryReportStatus.SUBMITTED_BY_CLIENT) return true;
+
+  // any NEEDS_CORRECTION
+  if (String(s).includes('NEEDS_CORRECTION')) return true;
+
+  // client must act (review/approve)
+  // if (s === ChemistryReportStatus.UNDER_CLIENT_REVIEW) return true;
+
+  return false;
+}
+
 @Injectable()
 export class ChemistryReportNotificationsService {
   private readonly log = new Logger(ChemistryReportNotificationsService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly recipients: NotificationRecipientsService,
   ) {}
@@ -39,6 +62,10 @@ export class ChemistryReportNotificationsService {
 
   async onStatusChanged(args: NotifyArgs) {
     const newStatus = args.newStatus as ChemistryReportStatus;
+
+     this.log.warn(
+    `[CHEM NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
+  );
 
     // ---- recipients helpers ----
     const labRecipient = () => this.chemistryTo();
@@ -57,41 +84,8 @@ export class ChemistryReportNotificationsService {
     // CLIENT -> LAB (notify chemistry/lab)
     // -------------------------
 
-    const notifyLab = async (title: string, tag: string) => {
-      const to = labRecipient();
-
-      await this.mail.sendStatusNotificationEmail({
-        to,
-        subject: `Omega LIMS — ${title} (${args.formNumber})`,
-        title,
-        lines: [
-          `Form #: ${args.formNumber}`,
-          `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
-          `Form Type: ${args.formType}`,
-          `Status: ${nice(args.newStatus)}`,
-        ],
-        actionUrl: args.reportUrl,
-        actionLabel: 'Open report',
-        tag,
-        metadata: {
-          chemistryId: args.reportId,
-          formNumber: args.formNumber,
-          formType: args.formType,
-          status: args.newStatus,
-        },
-      });
-
-      this.log.log(
-        `Email sent (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
-      );
-    };
-
-    // -------------------------
-    // LAB -> CLIENT (notify client)
-    // -------------------------
-    // const notifyClient = async (title: string, tag: string) => {
-    //   const to = requireClientEmail();
-    //   if (!to) return;
+    // const notifyLab = async (title: string, tag: string) => {
+    //   const to = labRecipient();
 
     //   await this.mail.sendStatusNotificationEmail({
     //     to,
@@ -115,7 +109,115 @@ export class ChemistryReportNotificationsService {
     //   });
 
     //   this.log.log(
-    //     `Email sent (LAB → CLIENT): ${newStatus} → ${to} (${args.formNumber})`,
+    //     `Email sent (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+    //   );
+    // };
+
+    const notifyLab = async (title: string, tag: string) => {
+      const to = labRecipient();
+      const urgent = isUrgentChemStatus(newStatus);
+
+      if (urgent) {
+        await this.mail.sendStatusNotificationEmail({
+          to,
+          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          title,
+          lines: [
+            `Form #: ${args.formNumber}`,
+            `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+            `Form Type: ${args.formType}`,
+            `Status: ${nice(args.newStatus)}`,
+          ],
+          actionUrl: args.reportUrl,
+          actionLabel: 'Open report',
+          tag,
+          metadata: {
+            chemistryId: args.reportId,
+            formNumber: args.formNumber,
+            formType: args.formType,
+            status: args.newStatus,
+          },
+        });
+
+        this.log.log(
+          `Email sent IMMEDIATE (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+        );
+        return;
+      }
+
+      // ✅ queue digest
+      await this.prisma.notificationOutbox.create({
+        data: {
+          scope: 'LAB',
+          dept: 'CHEMISTRY',
+          clientCode: args.clientCode ?? null,
+          recipientsKey: JSON.stringify(normalizeEmails([to])),
+          tag,
+
+          reportId: args.reportId, // chemistryReport.id stored here
+          formType: args.formType,
+          formNumber: args.formNumber,
+          clientName: args.clientName,
+          oldStatus: args.oldStatus,
+          newStatus: args.newStatus,
+          reportUrl: args.reportUrl ?? null,
+          actorUserId: args.actorUserId ?? null,
+        },
+      });
+
+      this.log.log(
+        `Queued DIGEST (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+      );
+    };
+
+    // -------------------------
+    // LAB -> CLIENT (notify client)
+    // -------------------------
+
+    // const notifyClient = async (title: string, tag: string) => {
+    //   const clientCode = args.clientCode?.trim();
+    //   if (!clientCode) {
+    //     this.log.warn(
+    //       `${newStatus} but no clientCode for form ${args.formNumber}`,
+    //     );
+    //     return;
+    //   }
+
+    //   // const emails = await this.recipients.getClientEmails(clientCode);
+    //   const emails =
+    //     await this.recipients.getClientNotificationEmails(clientCode);
+
+    //   if (emails.length === 0) {
+    //     this.log.warn(
+    //       `No active client emails for clientCode=${clientCode} (${args.formNumber})`,
+    //     );
+    //     return;
+    //   }
+
+    //   await this.mail.sendStatusNotificationEmail({
+    //     to: emails, // ✅ now list
+    //     subject: `Omega LIMS — ${title} (${args.formNumber})`,
+    //     title,
+    //     lines: [
+    //       `Form #: ${args.formNumber}`,
+    //       `Client: ${args.clientName} (${clientCode})`,
+    //       `Form Type: ${args.formType}`,
+    //       `Status: ${nice(args.newStatus)}`,
+    //     ],
+    //     actionUrl: args.reportUrl,
+    //     actionLabel: 'Open report',
+    //     tag,
+    //     metadata: {
+    //       reportId: args.reportId,
+    //       formNumber: args.formNumber,
+    //       formType: args.formType,
+    //       status: args.newStatus,
+    //       clientCode,
+    //     },
+    //   });
+
+    //   this.log.log(
+    //     `Email sent (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
     //   );
     // };
 
@@ -128,9 +230,9 @@ export class ChemistryReportNotificationsService {
         return;
       }
 
-      // const emails = await this.recipients.getClientEmails(clientCode);
-      const emails =
+      const emailsRaw =
         await this.recipients.getClientNotificationEmails(clientCode);
+      const emails = normalizeEmails(emailsRaw);
 
       if (emails.length === 0) {
         this.log.warn(
@@ -139,30 +241,59 @@ export class ChemistryReportNotificationsService {
         return;
       }
 
-      await this.mail.sendStatusNotificationEmail({
-        to: emails, // ✅ now list
-        subject: `Omega LIMS — ${title} (${args.formNumber})`,
-        title,
-        lines: [
-          `Form #: ${args.formNumber}`,
-          `Client: ${args.clientName} (${clientCode})`,
-          `Form Type: ${args.formType}`,
-          `Status: ${nice(args.newStatus)}`,
-        ],
-        actionUrl: args.reportUrl,
-        actionLabel: 'Open report',
-        tag,
-        metadata: {
-          reportId: args.reportId,
-          formNumber: args.formNumber,
-          formType: args.formType,
-          status: args.newStatus,
+      const urgent = isUrgentChemStatus(newStatus);
+
+      if (urgent) {
+        await this.mail.sendStatusNotificationEmail({
+          to: emails,
+          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          title,
+          lines: [
+            `Form #: ${args.formNumber}`,
+            `Client: ${args.clientName} (${clientCode})`,
+            `Form Type: ${args.formType}`,
+            `Status: ${nice(args.newStatus)}`,
+          ],
+          actionUrl: args.reportUrl,
+          actionLabel: 'Open report',
+          tag,
+          metadata: {
+            chemistryId: args.reportId,
+            formNumber: args.formNumber,
+            formType: args.formType,
+            status: args.newStatus,
+            clientCode,
+          },
+        });
+
+        this.log.log(
+          `Email sent IMMEDIATE (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+        );
+        return;
+      }
+
+      // ✅ queue digest
+      await this.prisma.notificationOutbox.create({
+        data: {
+          scope: 'CLIENT',
+          dept: 'CHEMISTRY',
           clientCode,
+          recipientsKey: JSON.stringify(emails),
+          tag,
+
+          reportId: args.reportId, // chemistryReport.id stored here
+          formType: args.formType,
+          formNumber: args.formNumber,
+          clientName: args.clientName,
+          oldStatus: args.oldStatus,
+          newStatus: args.newStatus,
+          reportUrl: args.reportUrl ?? null,
+          actorUserId: args.actorUserId ?? null,
         },
       });
 
       this.log.log(
-        `Email sent (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+        `Queued DIGEST (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
       );
     };
 
@@ -235,5 +366,4 @@ export class ChemistryReportNotificationsService {
 
     // otherwise: no email
   }
-
 }

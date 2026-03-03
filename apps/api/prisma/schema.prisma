@@ -707,3 +707,36 @@ model FormTemplate {
   @@index([clientCode, formType])
   @@index([createdBy])
 }
+
+
+model NotificationOutbox {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+  claimedAt DateTime?
+  claimKey  String?
+
+  // grouping
+  scope         String   // "LAB" | "CLIENT"
+  dept          String?  // "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode    String?
+  recipientsKey String   // JSON string of normalized emails
+  tag           String?
+
+  // event payload
+  reportId    String
+  formType    FormType
+  formNumber  String
+  clientName  String
+  oldStatus   String
+  newStatus   String
+  reportUrl   String?
+  actorUserId String?
+
+  attempts  Int     @default(0)
+  lastError String?
+
+  @@index([sentAt, createdAt])
+  @@index([claimedAt])
+  @@index([scope, dept, clientCode])
+}
