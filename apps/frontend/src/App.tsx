@@ -9,8 +9,8 @@ import {
 import Header from "./components/layout/Header";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
-import SupportWidget from "./components/support/SupportWidget";
 import { socket } from "./lib/socket";
+import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 
 const qc = new QueryClient();
 
@@ -58,7 +58,7 @@ function AppShell() {
         <Outlet />
       </main>
 
-      {user && !isPublicLegal && <SupportWidget />}
+      {user && !isPublicLegal && <OmegaChatBox />}
     </div>
   );
 }

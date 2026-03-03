@@ -22,4 +22,9 @@ export class CreateMessageDto {
   @IsOptional()
   @IsString()
   clientCode?: string;
+
+  // ✅ NEW — reply support
+  @IsOptional()
+  @IsString()
+  replyToMessageId?: string;
 }

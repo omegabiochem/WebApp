@@ -48,7 +48,7 @@ type Report = {
   reportNumber: string | number | null;
   formNumber: string | null;
   createdAt: string;
-  version?: number; // optional; not required for printing
+  version: number; // optional; not required for printing
 };
 
 // ---------------------------------
@@ -98,6 +98,7 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
   "LOCKED",
+   "VOID",
 ];
 
 // A status filter can be micro OR chemistry OR "ALL"
@@ -132,6 +133,7 @@ const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
   "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
+   "VOID",
 ];
 
 // ---------------------------------
@@ -370,25 +372,89 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+    type StatusActionModalState = {
+      open: boolean;
+      action: "VOID_SELECTED" | null;
+      reason: string;
+      password: string;
+      submitting: boolean;
+      error: string | null;
+    };
+  
+    const [statusModal, setStatusModal] = useState<StatusActionModalState>({
+      open: false,
+      action: null,
+      reason: "",
+      password: "",
+      submitting: false,
+      error: null,
+    });
+
+  // async function setStatus(
+  //   r: Report,
+  //   nextStatus: string,
+  //   reasonText = "Common Status Change",
+  // ) {
+  //   // ✅ IMPORTANT: your chemistry status endpoint expects NO reason (based on your other dashboards)
+  //   const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+  //   const endpoint = isChem
+  //     ? `/chemistry-reports/${r.id}/status`
+  //     : `/reports/${r.id}/status`;
+
+  //   const body = isChem
+  //     ? { status: nextStatus }
+  //     : { reason: reasonText, status: nextStatus };
+
+  //   await api(endpoint, {
+  //     method: "PATCH",
+  //     body: JSON.stringify(body),
+  //   });
+  // }
+
   async function setStatus(
     r: Report,
-    nextStatus: string,
-    reasonText = "Common Status Change",
+    newStatus: string,
+    reason = "Client correction update",
+    eSignPassword?: string,
   ) {
-    // ✅ IMPORTANT: your chemistry status endpoint expects NO reason (based on your other dashboards)
-    const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-    const endpoint = isChem
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+
+    const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    const body = isChem
-      ? { status: nextStatus }
-      : { reason: reasonText, status: nextStatus };
+    // statuses that require e-sign per backend
+    const needsESign =
+      newStatus === "VOID" ||
+      newStatus === "LOCKED" ||
+      newStatus === "UNDER_CLIENT_FINAL_REVIEW";
 
-    await api(endpoint, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
+    const body: any = { reason, status: newStatus, expectedVersion: r.version };
+    if (
+      newStatus === "VOID" ||
+      newStatus === "LOCKED" ||
+      newStatus === "UNDER_CLIENT_FINAL_REVIEW"
+    ) {
+      body.eSignPassword = eSignPassword;
+    }
+
+    if (needsESign) {
+      if (!eSignPassword) {
+        throw new Error("Electronic signature (password) is required");
+      }
+      body.eSignPassword = eSignPassword;
+    }
+
+    await api(url, { method: "PATCH", body: JSON.stringify(body) });
+
+    // keep local state in sync (status + bump version)
+    setReports((prev) =>
+      prev.map((x) =>
+        x.id === r.id
+          ? { ...x, status: newStatus, version: (x.version ?? r.version) + 1 }
+          : x,
+      ),
+    );
   }
 
   const fetchAll = async () => {
@@ -482,6 +548,9 @@ export default function AdminDashboard() {
     dateFrom,
     dateTo,
   ]);
+
+
+  
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -792,7 +861,51 @@ export default function AdminDashboard() {
     setPage(1);
   };
 
+    function niceFormType(ft?: string) {
+    switch (ft) {
+      case "MICRO_MIX":
+        return "MICRO";
+      case "MICRO_MIX_WATER":
+        return "MICRO_WATER";
+      case "CHEMISTRY_MIX":
+        return "CHEMISTRY";
+      default:
+        return ft || "-";
+    }
+  }
+
   useLiveReportStatus(setReports);
+
+ const handleVoidSelected = async (reason: string, password: string) => {
+  if (!voidableSelected.length) return;
+
+  logUiEvent({
+    action: "UI_VOID_SELECTED",
+    entity: "Report",
+    details: `Voided selected reports (${voidableSelected.length})`,
+    entityId: voidableSelected.map((r) => r.id).join(","),
+    meta: { reportIds: voidableSelected.map((r) => r.id), count: voidableSelected.length, reason },
+  });
+
+  await Promise.all(
+    voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
+  );
+
+  toast.success(`Voided ${voidableSelected.length} report(s)`);
+  setSelectedIds([]);
+};
+
+  const voidableSelected = selectedReportObjects.filter(
+  (r) => String(r.status) !== "VOID",
+);
+
+const voidableCount = voidableSelected.length;
+const allSelectedAreVoid =
+  selectedReportObjects.length > 0 && voidableCount === 0;
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   return (
     <div className="p-6">
@@ -860,6 +973,34 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+        <button
+  type="button"
+  onClick={() => {
+    if (!voidableCount) return; // ✅ nothing to void
+    setStatusModal({
+      open: true,
+      action: "VOID_SELECTED",
+      reason: "",
+      password: "",
+      submitting: false,
+      error: null,
+    });
+  }}
+  disabled={!voidableCount || printingBulk}
+  className={classNames(
+    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+    voidableCount
+      ? "bg-rose-600 text-white hover:bg-rose-700"
+      : "bg-slate-200 text-slate-500", // ✅ not red anymore
+  )}
+  title={
+    allSelectedAreVoid
+      ? "All selected reports are already VOID"
+      : "Void selected reports"
+  }
+>
+  ⛔ Void ({voidableCount})
+</button>
           {/* ✅ Print selected */}
           <button
             type="button"
@@ -1668,6 +1809,228 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {statusModal.open &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Void selected reports"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !statusModal.submitting) {
+                setStatusModal((s) => ({
+                  ...s,
+                  open: false,
+                  reason: "",
+                  password: "",
+                  error: null,
+                }));
+              }
+            }}
+          >
+            <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Void selected reports
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {selectedIds.length} report(s) will be marked{" "}
+                    <span className="font-medium text-slate-700">VOID</span>.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  disabled={statusModal.submitting}
+                  onClick={() =>
+                    setStatusModal((s) => ({
+                      ...s,
+                      open: false,
+                      reason: "",
+                      password: "",
+                      error: null,
+                    }))
+                  }
+                  aria-label="Close"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Body */}
+              <form
+                className="space-y-3 px-4 py-3"
+                autoComplete="off"
+                onSubmit={(e) => e.preventDefault()}
+              >
+                {/* Selected reports (compact) */}
+                <div className="rounded-lg border bg-slate-50 p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-slate-700">
+                      Selected
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {selectedReportObjects.length}
+                    </div>
+                  </div>
+
+                  <div className="max-h-28 overflow-auto rounded-md bg-white ring-1 ring-slate-200">
+                    <table className="w-full text-[11px]">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-slate-600">
+                          <th className="px-2 py-1.5 font-medium">Form #</th>
+                          <th className="px-2 py-1.5 font-medium">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedReportObjects.map((r) => (
+                          <tr key={r.id} className="border-t">
+                            <td className="px-2 py-1.5 font-medium text-slate-900">
+                              {r.formNumber}
+                            </td>
+                            <td className="px-2 py-1.5 text-slate-700">
+                              {niceFormType(r.formType)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Reason */}
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-700">
+                    Reason <span className="text-rose-600">*</span>
+                  </label>
+                  <textarea
+                    value={statusModal.reason}
+                    onChange={(e) =>
+                      setStatusModal((s) => ({
+                        ...s,
+                        reason: e.target.value,
+                        error: null,
+                      }))
+                    }
+                    rows={2}
+                    placeholder="Reason for voiding…"
+                    className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-rose-500"
+                    disabled={statusModal.submitting}
+                  />
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-700">
+                    E-sign password <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={statusModal.password}
+                    onChange={(e) =>
+                      setStatusModal((s) => ({
+                        ...s,
+                        password: e.target.value,
+                        error: null,
+                      }))
+                    }
+                    name="void_esign_password"
+                    autoComplete="new-password"
+                    placeholder="Password…"
+                    className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-rose-500"
+                    disabled={statusModal.submitting}
+                  />
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    Required for 21 CFR Part 11.
+                  </div>
+                </div>
+
+                {statusModal.error && (
+                  <div className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-700">
+                    {statusModal.error}
+                  </div>
+                )}
+              </form>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+                <button
+                  type="button"
+                  className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                  disabled={statusModal.submitting}
+                  onClick={() =>
+                    setStatusModal((s) => ({
+                      ...s,
+                      open: false,
+                      reason: "",
+                      password: "",
+                      error: null,
+                    }))
+                  }
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                  disabled={statusModal.submitting}
+                  onClick={async () => {
+                    const reason = statusModal.reason.trim();
+                    const pwd = statusModal.password.trim();
+
+                    if (!reason) {
+                      setStatusModal((s) => ({
+                        ...s,
+                        error: "Reason is required.",
+                      }));
+                      return;
+                    }
+                    if (!pwd) {
+                      setStatusModal((s) => ({
+                        ...s,
+                        error: "E-sign password is required.",
+                      }));
+                      return;
+                    }
+
+                    setStatusModal((s) => ({
+                      ...s,
+                      submitting: true,
+                      error: null,
+                    }));
+                    try {
+                      await handleVoidSelected(reason, pwd);
+                      setStatusModal((s) => ({
+                        ...s,
+                        open: false,
+                        submitting: false,
+                        reason: "",
+                        password: "",
+                        error: null,
+                      }));
+                    } catch (e: any) {
+                      setStatusModal((s) => ({
+                        ...s,
+                        submitting: false,
+                        error: e?.message || "Failed to void selected reports.",
+                      }));
+                    }
+                  }}
+                >
+                  {statusModal.submitting ? <SpinnerDark /> : null}
+                  {statusModal.submitting ? "Voiding..." : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

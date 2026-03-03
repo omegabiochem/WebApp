@@ -368,6 +368,12 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: [],
     canEdit: [],
   },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ['ADMIN', 'SYSTEMADMIN', 'QA'],
+    canEdit: [],
+  },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
 // 🔁 Keep this in sync with backend
@@ -516,6 +522,12 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
     next: [],
     nextEditableBy: [],
+    canEdit: [],
+  },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
@@ -819,10 +831,10 @@ export class ReportsService {
 
     // LOCK guard
     if (
-      current.status === 'LOCKED' &&
+      (current.status === 'LOCKED' || current.status === 'VOID') &&
       !['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)
     ) {
-      throw new ForbiddenException('Report is locked');
+      throw new ForbiddenException('Report is locked/void');
     }
 
     const ctx = getRequestContext() || {};
@@ -902,25 +914,48 @@ export class ReportsService {
     // handle status transitions (base.status)
     if (patchIn.status) {
       const transitions = transitionsFor(current.formType);
-
       const trans = transitions[current.status];
+
       if (!trans) {
         throw new BadRequestException(
           `No transition config for status: ${current.status} (formType: ${current.formType})`,
         );
       }
 
-      if (!trans.canSet.includes(user.role)) {
-        throw new ForbiddenException(
-          `Role ${user.role} cannot change status from ${current.status}`,
-        );
+      const targetStatus = patchIn.status as ReportStatus;
+      const isVoid = targetStatus === 'VOID';
+
+      if (isVoid) {
+        if (current.status === 'VOID') {
+          throw new BadRequestException('Report is already VOID');
+        }
+
+        // ✅ allow VOID only if role is allowed by VOID rule
+        const voidRule = transitions.VOID;
+
+        // ✅ force the array element type to be UserRole
+        const allowed: UserRole[] = (voidRule?.canSet as
+          | UserRole[]
+          | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+        if (!allowed.includes(user.role)) {
+          throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+        }
+      } else {
+        // normal transitions
+        if (!trans.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status from ${current.status}`,
+          );
+        }
+        if (!trans.next.includes(targetStatus)) {
+          throw new BadRequestException(
+            `Invalid transition: ${current.status} → ${targetStatus}`,
+          );
+        }
       }
 
-      if (!trans.next.includes(patchIn.status)) {
-        throw new BadRequestException(
-          `Invalid transition: ${current.status} → ${patchIn.status}`,
-        );
-      }
+      base.status = targetStatus;
 
       function yyyy(d: Date = new Date()): string {
         const yyyy = String(d.getFullYear());
@@ -952,7 +987,8 @@ export class ReportsService {
       // e-sign requirements
       if (
         patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
-        patchIn.status === 'LOCKED'
+        patchIn.status === 'LOCKED' ||
+        patchIn.status === 'VOID'
       ) {
         const password =
           _pwdFromBody ||
@@ -1318,12 +1354,44 @@ export class ReportsService {
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
 
-    const trans = STATUS_TRANSITIONS[current.status as ReportStatus];
+    const transitions = transitionsFor(current.formType);
+    const trans = transitions[prevStatus];
+
     if (!trans) {
       throw new BadRequestException(
-        `Invalid current status: ${current.status}`,
+        `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
       );
     }
+
+    const isVoid = target === 'VOID';
+
+    if (isVoid) {
+      if (prevStatus === 'VOID') {
+        throw new BadRequestException('Report is already VOID');
+      }
+      const voidRule = transitions.VOID;
+
+      // ✅ force the array element type to be UserRole
+      const allowed: UserRole[] = (voidRule?.canSet as
+        | UserRole[]
+        | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+      if (!allowed.includes(user.role)) {
+        throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+      }
+    }
+    // else {
+    //   if (!trans.canSet.includes(user.role)) {
+    //     throw new ForbiddenException(
+    //       `Role ${user.role} cannot change status from ${prevStatus}`,
+    //     );
+    //   }
+    //   if (!trans.next.includes(target)) {
+    //     throw new BadRequestException(
+    //       `Invalid transition: ${prevStatus} → ${target}`,
+    //     );
+    //   }
+    // }
 
     // // ✅ validate transition (YOU WERE MISSING the "next includes target" check)
     // const transitions = transitionsFor(current.formType);
