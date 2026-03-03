@@ -26,7 +26,7 @@ export class NotificationsDigestService {
   ) {}
 
   // every 10 minutes
-  @Cron('*/10 * * * *')
+  @Cron('*/30 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
     const now = new Date();
