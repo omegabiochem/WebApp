@@ -12,6 +12,8 @@ import {
   BadRequestException,
   Param,
   Res,
+  Patch,
+  Delete,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { MessagesService } from './messages.service';
@@ -203,5 +205,26 @@ export class MessagesController {
     const stream = await this.storage.createReadStream(row.storageKey);
     stream.on('error', () => res.status(404).end());
     stream.pipe(res);
+  }
+
+  @Patch(':id')
+  async editMessage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { body: string },
+  ) {
+    const user = req.user;
+    const userId = user.userId ?? user.sub;
+    return this.service.editMessage(user, userId, id, body.body);
+  }
+
+  @Delete(':id')
+  async deleteMsg(@Req() req: any, @Param('id') id: string) {
+    return this.service.softDeleteMessage(req.user, id);
+  }
+
+  @Post(':id/restore')
+  async restoreMsg(@Req() req: any, @Param('id') id: string) {
+    return this.service.restoreMessage(req.user, id);
   }
 }
