@@ -444,19 +444,30 @@ model MessageThread {
 }
 
 model Message {
-  id          String        @id @default(cuid())
-  threadId    String
-  senderId    String
-  senderRole  UserRole
-  senderName  String?
-  body        String
-  mentions    UserRole[]    @default([])
-  attachments Json?
-  createdAt   DateTime      @default(now())
-  readAt      DateTime?
-  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  threadId        String
+  senderId        String
+  senderRole      UserRole
+  senderName      String?
+  body            String
+  mentions        UserRole[]    @default([])
+  attachments     Json?
+  createdAt       DateTime      @default(now())
+  readAt          DateTime?
+
+  deletedAt       DateTime?
+  deletedBy       String?
+
+
+  replyToMessageId String?
+  replyTo          Message?   @relation("MessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[]  @relation("MessageReply")
+
+
+  thread          MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
+  @@index([replyToMessageId])
 }
 
 model MessageThreadRead {
@@ -540,6 +551,7 @@ enum ReportStatus {
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW
   FINAL_APPROVED
   LOCKED
+  VOID
 
 
 
@@ -600,6 +612,7 @@ enum ChemistryReportStatus {
   UNDER_RESUBMISSION_ADMIN_REVIEW
   APPROVED
   LOCKED
+  VOID
   UNDER_RESUBMISSION_QA_REVIEW
 }
 

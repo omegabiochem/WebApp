@@ -227,9 +227,15 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   LOCKED: {
-    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN', 'QA'],
     next: [],
-    nextEditableBy: [],
+    nextEditableBy: ['ADMIN', 'SYSTEMADMIN', 'QA'],
+    canEdit: [],
+  },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: [ "SYSTEMADMIN"],
     canEdit: [],
   },
 };
@@ -291,6 +297,18 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'coaRows',
   ],
 };
+
+const STATUSES_REQUIRING_ESIGN = new Set<ChemistryReportStatus>([
+  'UNDER_CLIENT_REVIEW',
+  'LOCKED',
+  'VOID', // ✅ add
+]);
+
+const STATUSES_REQUIRING_REASON = new Set<ChemistryReportStatus>([
+  'UNDER_CLIENT_REVIEW',
+  'LOCKED',
+  'VOID', // ✅ add
+]);
 
 type ChangeStatusInput =
   | ChemistryReportStatus
@@ -556,10 +574,12 @@ export class ChemistryReportsService {
     if (!current) throw new BadRequestException('Report not found');
 
     if (
-      current.status === 'LOCKED' &&
+      (current.status === 'LOCKED' || current.status === 'VOID') &&
       !['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)
     ) {
-      throw new ForbiddenException('Report is locked and cannot be edited');
+      throw new ForbiddenException(
+        'Report is locked/void and cannot be edited',
+      );
     }
 
     const ctx = getRequestContext() || {};
@@ -625,15 +645,35 @@ export class ChemistryReportsService {
           `Invalid status transition from ${current.status}`,
         );
       }
-      if (!trans.canSet.includes(user.role)) {
-        throw new ForbiddenException(
-          `User role ${user.role} cannot set status to ${patchIn.status}`,
-        );
-      }
-      if (!trans.next.includes(patchIn.status)) {
-        throw new BadRequestException(
-          `Invalid transition: ${current.status} → ${patchIn.status}`,
-        );
+      const targetStatus = patchIn.status as ChemistryReportStatus;
+      const isVoid = targetStatus === 'VOID';
+
+      if (isVoid) {
+        if (current.status === 'VOID') {
+          throw new BadRequestException('Report is already VOID');
+        }
+
+        const voidRule = STATUS_TRANSITIONS.VOID;
+
+        const allowed: UserRole[] = (voidRule?.canSet as
+          | UserRole[]
+          | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+        if (!allowed.includes(user.role)) {
+          throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+        }
+      } else {
+        // normal transitions
+        if (!trans.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status from ${current.status}`,
+          );
+        }
+        if (!trans.next.includes(targetStatus)) {
+          throw new BadRequestException(
+            `Invalid transition: ${current.status} → ${targetStatus}`,
+          );
+        }
       }
 
       function yyyy(d: Date = new Date()): string {
@@ -1057,12 +1097,44 @@ export class ChemistryReportsService {
     //   );
     // }
 
-    const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
+    const transitions = STATUS_TRANSITIONS;
+    const trans = transitions[prevStatus as ChemistryReportStatus];
+
     if (!trans) {
       throw new BadRequestException(
-        `Invalid current status: ${current.status}`,
+        `No transition config for status: ${prevStatus}`,
       );
     }
+
+    const isVoid = target === 'VOID';
+
+    if (isVoid) {
+      if (prevStatus === 'VOID') {
+        throw new BadRequestException('Report is already VOID');
+      }
+
+      const voidRule = transitions.VOID;
+
+      const allowed: UserRole[] = (voidRule?.canSet as
+        | UserRole[]
+        | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+      if (!allowed.includes(user.role)) {
+        throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+      }
+    }
+    //  else {
+    //   if (!trans.canSet.includes(user.role)) {
+    //     throw new ForbiddenException(
+    //       `Role ${user.role} cannot change status from ${prevStatus}`,
+    //     );
+    //   }
+    //   if (!trans.next.includes(target)) {
+    //     throw new BadRequestException(
+    //       `Invalid transition: ${prevStatus} → ${target}`,
+    //     );
+    //   }
+    // }
 
     const patch: any = { status: target };
 
