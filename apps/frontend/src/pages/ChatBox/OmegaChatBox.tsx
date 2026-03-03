@@ -624,23 +624,23 @@ export default function OmegaChatBox() {
     }
   }
 
-  async function deleteWithUndo(m: Message) {
-    // 1) soft delete
-    await api(`/messages/${m.id}`, { method: "DELETE" });
+  // async function deleteWithUndo(m: Message) {
+  //   // 1) soft delete
+  //   await api(`/messages/${m.id}`, { method: "DELETE" });
 
-    // 2) refresh so message disappears
-    await refresh();
+  //   // 2) refresh so message disappears
+  //   await refresh();
 
-    // 3) show undo banner for 6s
-    clearUndoTimer();
-    const expiresAt = Date.now() + 6000;
-    setUndoBar({ messageId: m.id, expiresAt });
+  //   // 3) show undo banner for 6s
+  //   clearUndoTimer();
+  //   const expiresAt = Date.now() + 6000;
+  //   setUndoBar({ messageId: m.id, expiresAt });
 
-    undoTimerRef.current = window.setTimeout(() => {
-      setUndoBar(null);
-      undoTimerRef.current = null;
-    }, 6000);
-  }
+  //   undoTimerRef.current = window.setTimeout(() => {
+  //     setUndoBar(null);
+  //     undoTimerRef.current = null;
+  //   }, 6000);
+  // }
 
   async function handleUndo() {
     if (!undoBar) return;
@@ -876,7 +876,7 @@ export default function OmegaChatBox() {
                                   Copy
                                 </button>
 
-                                {isMine && (
+                                {/* {isMine && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -892,9 +892,9 @@ export default function OmegaChatBox() {
                                   >
                                     Edit
                                   </button>
-                                )}
+                                )} */}
 
-                                {isMine && (
+                                {/* {isMine && (
                                   <button
                                     type="button"
                                     onClick={async () => {
@@ -911,7 +911,7 @@ export default function OmegaChatBox() {
                                   >
                                     Delete
                                   </button>
-                                )}
+                                )} */}
                               </div>
                             )}
                           </div>

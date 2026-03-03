@@ -48,7 +48,8 @@ export type ChemistryReportStatus =
   | "ADMIN_REJECTED"
   | "UNDER_RESUBMISSION_ADMIN_REVIEW"
   | "APPROVED"
-  | "LOCKED";
+  | "LOCKED"
+  | "VOID";
 
 // 🔁 Keep this in sync with backend
 export const STATUS_TRANSITIONS: Record<
@@ -206,6 +207,12 @@ export const STATUS_TRANSITIONS: Record<
     nextEditableBy: [],
     canEdit: [],
   },
+  VOID: {
+    canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN", "QA"], // nobody can set FROM VOID (no transitions out)
+    next: [],
+   nextEditableBy: [ "SYSTEMADMIN"],
+    canEdit: [],
+  },
 };
 
 //  these are designed for readable badges on white UI
@@ -249,6 +256,7 @@ export const CHEMISTRY_STATUS_COLORS: Record<ChemistryReportStatus, string> = {
 
   APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+  VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
 };
 
 // Field-level permissions (frontend hint; backend is source of truth)
