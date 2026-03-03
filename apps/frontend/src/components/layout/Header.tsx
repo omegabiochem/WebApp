@@ -164,22 +164,25 @@ export default function Header() {
                   if (window.history.length > 1) navigate(-1);
                   else {
                     const home =
-                      role === "CHEMISTRY"
-                        ? "/chemistryDashboard"
-                        : role === "MC"
-                          ? "/mcDashboard"
-                          : role === "MICRO"
-                            ? "/microDashboard"
-                            : role === "QA"
-                              ? "/qaDashboard"
-                              : role === "FRONTDESK"
-                                ? "/frontdeskDashboard"
-                                : role === "ADMIN"
-                                  ? "/adminDashboard"
-                                  : role === "SYSTEMADMIN"
-                                    ? "/systemAdminDashboard"
-                                    : "/home";
-                   navigate(toRemembered(home), { replace: true });
+                      role === "CLIENT"
+                        ? "/clientDashboard"
+                        : role === "CHEMISTRY"
+                          ? "/chemistryDashboard"
+                          : role === "MC"
+                            ? "/mcDashboard"
+                            : role === "MICRO"
+                              ? "/microDashboard"
+                              : role === "QA"
+                                ? "/qaDashboard"
+                                : role === "FRONTDESK"
+                                  ? "/frontdeskDashboard"
+                                  : role === "ADMIN"
+                                    ? "/adminDashboard"
+                                    : role === "SYSTEMADMIN"
+                                      ? "/systemAdminDashboard"
+                                      : "/home";
+
+                    navigate(toRemembered(home), { replace: true });
                   }
                 }}
                 className="px-3 py-1 rounded-md border hover:bg-gray-50"

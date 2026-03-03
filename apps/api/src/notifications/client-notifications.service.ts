@@ -97,36 +97,7 @@ export class ClientNotificationsService {
     return { ok: true };
   }
 
-  //   // ✅ NEW: list all configs
-  // async listAll(q?: string) {
-  //   const where = q?.trim()
-  //     ? {
-  //         clientCode: {
-  //           contains: q.trim().toUpperCase(),
-  //           mode: 'insensitive' as const,
-  //         },
-  //       }
-  //     : undefined;
 
-  //   const rows = await this.prisma.clientNotificationConfig.findMany({
-  //     where,
-  //     orderBy: { clientCode: 'asc' },
-  //     include: {
-  //       emails: { orderBy: { email: 'asc' } },
-  //     },
-  //   });
-
-  //   return rows.map((r) => ({
-  //     clientCode: r.clientCode,
-  //     mode: r.mode,
-  //     emails: r.emails.map((e) => ({
-  //       id: e.id,
-  //       email: e.email,
-  //       label: e.label,
-  //       active: e.active,
-  //     })),
-  //   }));
-  // }
 
 
   // ✅ list ALL clients from ClientSequence, and ensure config exists

@@ -20,6 +20,7 @@ import { ChemistryReportNotificationsService } from './chemistryreport-notificat
 
 import { ClientNotificationsService } from './client-notifications.service';
 import { ClientNotificationsController } from './client-notifications.controller';
+import { NotificationsDigestService } from './notifications-digest.service';
 
 @Module({
   imports: [
@@ -29,13 +30,14 @@ import { ClientNotificationsController } from './client-notifications.controller
     ClientNotificationsController, // ✅ ADMIN API (new)
   ],
   providers: [
-    PrismaService,                 // ✅ needed for client notifications
-    ClientNotificationsService,    // ✅ custom emails + mode logic
-    ReportNotificationsService,    // existing
+    PrismaService,
+    NotificationsDigestService, // ✅ needed for client notifications
+    ClientNotificationsService, // ✅ custom emails + mode logic
+    ReportNotificationsService, // existing
     ChemistryReportNotificationsService,
   ],
   exports: [
-    ClientNotificationsService,    // (optional but useful later)
+    ClientNotificationsService, // (optional but useful later)
     ReportNotificationsService,
     ChemistryReportNotificationsService,
   ],
