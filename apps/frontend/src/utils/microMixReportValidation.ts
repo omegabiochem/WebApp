@@ -47,6 +47,7 @@ export type ReportStatus =
   | "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
   | "FINAL_APPROVED"
+  | "VOID"
   | "LOCKED";
 
 // The values your form passes into validation
