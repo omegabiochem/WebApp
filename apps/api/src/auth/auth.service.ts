@@ -215,6 +215,84 @@ export class AuthService {
   //   return { method, expiresAt };
   // }
 
+  private envBool(name: string, def = false) {
+    const v = (process.env[name] ?? '').trim().toLowerCase();
+    if (!v) return def;
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  }
+
+  private envList(name: string): string[] {
+    return (process.env[name] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  private get2FAMethod(): 'EMAIL' | 'SMS' {
+    const m = (process.env.TWO_FACTOR_METHOD ?? 'EMAIL').toUpperCase();
+    return m === 'SMS' ? 'SMS' : 'EMAIL';
+  }
+
+  private shouldRequire2FA(user: {
+    role: any;
+    twoFactorEnabled?: boolean | null;
+  }) {
+    // global kill switch
+    const globalEnabled = this.envBool('TWO_FACTOR_ENABLED', true);
+    if (!globalEnabled) return false;
+
+    const role = String(user.role ?? '').toUpperCase();
+
+    // role overrides (optional)
+    const disabledRoles = this.envList('TWO_FACTOR_DISABLE_ROLES').map((x) =>
+      x.toUpperCase(),
+    );
+    if (disabledRoles.includes(role)) return false;
+
+    const forcedRoles = this.envList('TWO_FACTOR_FORCE_ROLES').map((x) =>
+      x.toUpperCase(),
+    );
+    if (forcedRoles.includes(role)) return true;
+
+    // default: per-user flag
+    return !!user.twoFactorEnabled;
+  }
+
+  // private async start2FA(
+  //   user: {
+  //     id: string;
+  //     email: string;
+  //     role: any;
+  //     phoneNumber?: string | null;
+  //     name?: string | null;
+  //   },
+  //   req?: any,
+  // ) {
+  //   const method: 'EMAIL' | 'SMS' = 'EMAIL'; // TEMP: A2P pending
+
+  //   const code = this.generateOtp6();
+  //   const codeHash = await bcrypt.hash(code, 12);
+  //   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  //   await this.prisma.user.update({
+  //     where: { id: user.id },
+  //     data: {
+  //       twoFactorCodeHash: codeHash,
+  //       twoFactorExpiresAt: expiresAt,
+  //       twoFactorAttempts: 0,
+  //     } as any,
+  //   });
+
+  //   await this.mail.sendTwoFactorOtpEmail({
+  //     to: user.email,
+  //     name: user.name ?? null,
+  //     code,
+  //     expiresAt,
+  //   });
+
+  //   return { method, expiresAt };
+  // }
+
   private async start2FA(
     user: {
       id: string;
@@ -225,7 +303,15 @@ export class AuthService {
     },
     req?: any,
   ) {
-    const method: 'EMAIL' | 'SMS' = 'EMAIL'; // TEMP: A2P pending
+    const method = this.get2FAMethod(); // EMAIL | SMS
+
+    // If SMS chosen, enforce phone existence
+    if (method === 'SMS' && !user.phoneNumber) {
+      throw new BadRequestException({
+        code: 'PHONE_REQUIRED',
+        message: 'Phone number is required for SMS 2FA. Contact admin.',
+      });
+    }
 
     const code = this.generateOtp6();
     const codeHash = await bcrypt.hash(code, 12);
@@ -240,12 +326,16 @@ export class AuthService {
       } as any,
     });
 
-    await this.mail.sendTwoFactorOtpEmail({
-      to: user.email,
-      name: user.name ?? null,
-      code,
-      expiresAt,
-    });
+    if (method === 'EMAIL') {
+      await this.mail.sendTwoFactorOtpEmail({
+        to: user.email,
+        name: user.name ?? null,
+        code,
+        expiresAt,
+      });
+    } else {
+      await this.sms.sendOtp(user.phoneNumber!, code);
+    }
 
     return { method, expiresAt };
   }
@@ -529,7 +619,28 @@ export class AuthService {
     });
 
     // ✅ OTP FIRST (if enabled)
-    if (user.twoFactorEnabled) {
+    // if (user.twoFactorEnabled) {
+    //   const { method, expiresAt } = await this.start2FA(
+    //     {
+    //       id: user.id,
+    //       email: user.email,
+    //       role: user.role,
+    //       phoneNumber: user.phoneNumber,
+    //       name: user.name ?? null,
+    //     },
+    //     req,
+    //   );
+
+    //   return {
+    //     requiresTwoFactor: true,
+    //     method,
+    //     expiresAt: expiresAt.toISOString(),
+    //     userId: user.userId, // FE will store in sessionStorage and verify OTP
+    //     mustChangePassword: user.mustChangePassword, // optional hint for FE
+    //   };
+    // }
+
+    if (this.shouldRequire2FA(user)) {
       const { method, expiresAt } = await this.start2FA(
         {
           id: user.id,
@@ -545,8 +656,8 @@ export class AuthService {
         requiresTwoFactor: true,
         method,
         expiresAt: expiresAt.toISOString(),
-        userId: user.userId, // FE will store in sessionStorage and verify OTP
-        mustChangePassword: user.mustChangePassword, // optional hint for FE
+        userId: user.userId,
+        mustChangePassword: user.mustChangePassword,
       };
     }
 
@@ -653,6 +764,14 @@ export class AuthService {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid session.',
+      });
+    }
+
+    // 🔒 If 2FA disabled globally
+    if (!this.shouldRequire2FA(user)) {
+      throw new BadRequestException({
+        code: '2FA_DISABLED',
+        message: 'Two-factor authentication is currently disabled.',
       });
     }
 
@@ -866,6 +985,27 @@ export class AuthService {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid credentials.',
+      });
+    }
+
+    // 🔒 If 2FA is globally disabled, stop here
+    if (!this.shouldRequire2FA(user)) {
+      // Clean up any existing OTP state
+      if (user.twoFactorCodeHash || user.twoFactorExpiresAt) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            twoFactorCodeHash: null,
+            twoFactorExpiresAt: null,
+            twoFactorAttempts: 0,
+          } as any,
+        });
+      }
+
+      throw new ForbiddenException({
+        code: '2FA_DISABLED',
+        message:
+          'Two-factor verification is currently disabled. Please sign in again.',
       });
     }
 

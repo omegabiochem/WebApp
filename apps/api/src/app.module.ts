@@ -25,10 +25,12 @@ import { IpAllowlistMiddleware } from './common/ip-allowlist.middleware';
 import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
 import { TemplatesModule } from './templates/templates.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     AuthModule,
     SamplesModule,
     UsersModule,

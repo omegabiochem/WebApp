@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ReportStatus, FormType } from '@prisma/client';
 import { MailService } from '../mail/mail.service';
 import { NotificationRecipientsService } from '../mail/notification-recipients.service';
+import { PrismaService } from 'prisma/prisma.service';
 
 type NotifyArgs = {
   formType: FormType;
@@ -21,10 +22,34 @@ function nice(s: string) {
 }
 
 function deptForFormType(formType: FormType) {
-  if (formType === 'MICRO_MIX' || formType === 'MICRO_MIX_WATER' || formType === 'STERILITY')
+  if (
+    formType === 'MICRO_MIX' ||
+    formType === 'MICRO_MIX_WATER' ||
+    formType === 'STERILITY'
+  )
     return 'MICRO';
   if (formType === 'CHEMISTRY_MIX') return 'CHEMISTRY';
   return 'LAB';
+}
+
+function normalizeEmails(emails: string[]) {
+  return [
+    ...new Set(
+      emails.map((e) => (e ?? '').trim().toLowerCase()).filter(Boolean),
+    ),
+  ].sort();
+}
+
+// ✅ your Option C policy
+function isUrgentStatus(s: ReportStatus) {
+  // “requires human action right now”
+  // if (s === 'SUBMITTED_BY_CLIENT') return true;
+
+  // anything “needs correction”
+  if (String(s).includes('NEEDS_CORRECTION')) return true;
+
+  // you can add more if needed (optional)
+  return false;
 }
 
 @Injectable()
@@ -32,6 +57,7 @@ export class ReportNotificationsService {
   private readonly log = new Logger(ReportNotificationsService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly recipients: NotificationRecipientsService,
   ) {}
@@ -57,6 +83,9 @@ export class ReportNotificationsService {
 
   async onStatusChanged(args: NotifyArgs) {
     const newStatus = args.newStatus as ReportStatus;
+     this.log.warn(
+    `[MIC NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
+  );
     const dept = deptForFormType(args.formType);
 
     const labRecipient = () => {
@@ -80,38 +109,142 @@ export class ReportNotificationsService {
     // -------------------------
     // CLIENT -> LAB (notify lab)
     // -------------------------
+    // const notifyLab = async (title: string, tag: string) => {
+    //   const to = labRecipient();
+
+    //   await this.mail.sendStatusNotificationEmail({
+    //     to,
+    //     subject: `Omega LIMS — ${title} (${args.formNumber})`,
+    //     title,
+    //     lines: [
+    //       `Form #: ${args.formNumber}`,
+    //       `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+    //       `Form Type: ${args.formType}`,
+    //       `Status: ${nice(args.newStatus)}`,
+    //     ],
+    //     actionUrl: args.reportUrl,
+    //     actionLabel: 'Open report',
+    //     tag,
+    //     metadata: {
+    //       reportId: args.reportId,
+    //       formNumber: args.formNumber,
+    //       formType: args.formType,
+    //       status: args.newStatus,
+    //     },
+    //   });
+
+    //   this.log.log(
+    //     `Email sent (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+    //   );
+    // };
+
     const notifyLab = async (title: string, tag: string) => {
       const to = labRecipient();
+      const urgent = isUrgentStatus(newStatus);
 
-      await this.mail.sendStatusNotificationEmail({
-        to,
-        subject: `Omega LIMS — ${title} (${args.formNumber})`,
-        title,
-        lines: [
-          `Form #: ${args.formNumber}`,
-          `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
-          `Form Type: ${args.formType}`,
-          `Status: ${nice(args.newStatus)}`,
-        ],
-        actionUrl: args.reportUrl,
-        actionLabel: 'Open report',
-        tag,
-        metadata: {
+      if (urgent) {
+        await this.mail.sendStatusNotificationEmail({
+          to,
+          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          title,
+          lines: [
+            `Form #: ${args.formNumber}`,
+            `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+            `Form Type: ${args.formType}`,
+            `Status: ${nice(args.newStatus)}`,
+          ],
+          actionUrl: args.reportUrl,
+          actionLabel: 'Open report',
+          tag,
+          metadata: {
+            reportId: args.reportId,
+            formNumber: args.formNumber,
+            formType: args.formType,
+            status: args.newStatus,
+          },
+        });
+
+        this.log.log(
+          `Email sent IMMEDIATE (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+        );
+        return;
+      }
+
+      // ✅ digest queue
+      await this.prisma.notificationOutbox.create({
+        data: {
+          scope: 'LAB',
+          dept,
+          clientCode: args.clientCode ?? null,
+          recipientsKey: JSON.stringify(normalizeEmails([to])),
+          tag,
+
           reportId: args.reportId,
-          formNumber: args.formNumber,
           formType: args.formType,
-          status: args.newStatus,
+          formNumber: args.formNumber,
+          clientName: args.clientName,
+          oldStatus: args.oldStatus,
+          newStatus: args.newStatus,
+          reportUrl: args.reportUrl ?? null,
+          actorUserId: args.actorUserId ?? null,
         },
       });
 
       this.log.log(
-        `Email sent (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+        `Queued DIGEST (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
       );
     };
 
     // -------------------------
     // LAB -> CLIENT (notify client)
     // -------------------------
+    // const notifyClient = async (title: string, tag: string) => {
+    //   const clientCode = args.clientCode?.trim();
+    //   if (!clientCode) {
+    //     this.log.warn(
+    //       `${newStatus} but no clientCode for form ${args.formNumber}`,
+    //     );
+    //     return;
+    //   }
+
+    //   // const emails = await this.recipients.getClientEmails(clientCode);
+    //   const emails =
+    //     await this.recipients.getClientNotificationEmails(clientCode);
+
+    //   if (emails.length === 0) {
+    //     this.log.warn(
+    //       `No active client emails for clientCode=${clientCode} (${args.formNumber})`,
+    //     );
+    //     return;
+    //   }
+
+    //   await this.mail.sendStatusNotificationEmail({
+    //     to: emails, // ✅ now list
+    //     subject: `Omega LIMS — ${title} (${args.formNumber})`,
+    //     title,
+    //     lines: [
+    //       `Form #: ${args.formNumber}`,
+    //       `Client: ${args.clientName} (${clientCode})`,
+    //       `Form Type: ${args.formType}`,
+    //       `Status: ${nice(args.newStatus)}`,
+    //     ],
+    //     actionUrl: args.reportUrl,
+    //     actionLabel: 'Open report',
+    //     tag,
+    //     metadata: {
+    //       reportId: args.reportId,
+    //       formNumber: args.formNumber,
+    //       formType: args.formType,
+    //       status: args.newStatus,
+    //       clientCode,
+    //     },
+    //   });
+
+    //   this.log.log(
+    //     `Email sent (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+    //   );
+    // };
+
     const notifyClient = async (title: string, tag: string) => {
       const clientCode = args.clientCode?.trim();
       if (!clientCode) {
@@ -121,9 +254,9 @@ export class ReportNotificationsService {
         return;
       }
 
-      // const emails = await this.recipients.getClientEmails(clientCode);
-      const emails = await this.recipients.getClientNotificationEmails(clientCode);
-
+      const emailsRaw =
+        await this.recipients.getClientNotificationEmails(clientCode);
+      const emails = normalizeEmails(emailsRaw);
 
       if (emails.length === 0) {
         this.log.warn(
@@ -132,30 +265,59 @@ export class ReportNotificationsService {
         return;
       }
 
-      await this.mail.sendStatusNotificationEmail({
-        to: emails, // ✅ now list
-        subject: `Omega LIMS — ${title} (${args.formNumber})`,
-        title,
-        lines: [
-          `Form #: ${args.formNumber}`,
-          `Client: ${args.clientName} (${clientCode})`,
-          `Form Type: ${args.formType}`,
-          `Status: ${nice(args.newStatus)}`,
-        ],
-        actionUrl: args.reportUrl,
-        actionLabel: 'Open report',
-        tag,
-        metadata: {
-          reportId: args.reportId,
-          formNumber: args.formNumber,
-          formType: args.formType,
-          status: args.newStatus,
+      const urgent = isUrgentStatus(newStatus);
+
+      if (urgent) {
+        await this.mail.sendStatusNotificationEmail({
+          to: emails,
+          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          title,
+          lines: [
+            `Form #: ${args.formNumber}`,
+            `Client: ${args.clientName} (${clientCode})`,
+            `Form Type: ${args.formType}`,
+            `Status: ${nice(args.newStatus)}`,
+          ],
+          actionUrl: args.reportUrl,
+          actionLabel: 'Open report',
+          tag,
+          metadata: {
+            reportId: args.reportId,
+            formNumber: args.formNumber,
+            formType: args.formType,
+            status: args.newStatus,
+            clientCode,
+          },
+        });
+
+        this.log.log(
+          `Email sent IMMEDIATE (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+        );
+        return;
+      }
+
+      // ✅ digest queue
+      await this.prisma.notificationOutbox.create({
+        data: {
+          scope: 'CLIENT',
+          dept,
           clientCode,
+          recipientsKey: JSON.stringify(emails),
+          tag,
+
+          reportId: args.reportId,
+          formType: args.formType,
+          formNumber: args.formNumber,
+          clientName: args.clientName,
+          oldStatus: args.oldStatus,
+          newStatus: args.newStatus,
+          reportUrl: args.reportUrl ?? null,
+          actorUserId: args.actorUserId ?? null,
         },
       });
 
       this.log.log(
-        `Email sent (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+        `Queued DIGEST (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
       );
     };
 
