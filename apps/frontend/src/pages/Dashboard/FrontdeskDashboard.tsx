@@ -10,7 +10,7 @@ import {
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
@@ -268,6 +268,13 @@ export default function FrontDeskDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [modalUpdating, setModalUpdating] = useState(false);
 
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  // one hidden input per row (keyed by report id)
+  // const fileInputs = React.useRef<Record<string, HTMLInputElement | null>>({});
+
+  const fileInputs = React.useRef<Record<string, HTMLInputElement>>({});
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -444,6 +451,45 @@ export default function FrontDeskDashboard() {
         expectedVersion: r.version,
       }),
     });
+  }
+
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+    const base = isChemistry
+      ? `/chemistry-reports/${r.id}`
+      : `/reports/${r.id}`;
+    const url = `${base}/attachments`;
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "frontdesk");
+    form.append("kind", "SIGNED_FORM"); // or "RAW_SCAN" etc.
+    form.append("meta", JSON.stringify({ via: "frontdesk-dashboard" }));
+
+    // IMPORTANT: Your `api()` helper is JSON-based.
+    // Use fetch directly so browser sets multipart boundary automatically.
+    const token = localStorage.getItem("token"); // adjust if you store token differently
+
+    const res = await fetch(`${API_URL}${url}`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // DO NOT set Content-Type for FormData
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      let msg = `Upload failed (${res.status})`;
+      try {
+        const data = await res.json();
+        msg = data?.message || JSON.stringify(data) || msg;
+      } catch {}
+      const err: any = new Error(msg);
+      err.status = res.status;
+      throw err;
+    }
   }
 
   function goToReportEditor(r: Report) {
@@ -975,6 +1021,8 @@ export default function FrontDeskDashboard() {
                     r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
+                  const rowUploading = uploadingId === r.id;
+
                   return (
                     <tr key={r.id} className="border-t hover:bg-slate-50">
                       <td className="px-4 py-3">
@@ -1088,6 +1136,80 @@ export default function FrontDeskDashboard() {
                             {rowBusy ? <Spinner /> : null}
                             {rowBusy ? "Updating..." : "Update"}
                           </button>
+
+                          <>
+                            {/* Hidden input */}
+                            <input
+                              type="file"
+                              accept=".pdf,image/*"
+                              className="hidden"
+                              ref={(el) => {
+                                if (el) fileInputs.current[r.id] = el;
+                                else delete fileInputs.current[r.id]; // cleanup on unmount
+                              }}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = ""; // allow re-upload same file again
+                                if (!file) return;
+
+                                if (rowUploading) return;
+                                setUploadingId(r.id);
+
+                                // ✅ AUDIT
+                                logUiEvent({
+                                  action: "UI_UPLOAD_ATTACHMENT",
+                                  entity:
+                                    r.formType === "CHEMISTRY_MIX"
+                                      ? "ChemistryReport"
+                                      : r.formType === "COA"
+                                        ? "CoaReport"
+                                        : r.formType === "STERILITY"
+                                          ? "SterilityReport"
+                                          : "MicroReport",
+                                  entityId: r.id,
+                                  details: `Uploaded attachment for ${r.formNumber}`,
+                                  meta: {
+                                    filename: file.name,
+                                    size: file.size,
+                                    type: file.type,
+                                  },
+                                });
+
+                                try {
+                                  await uploadAttachmentForReport(r, file);
+                                  alert("✅ Uploaded!");
+                                  // optional: if modal open for same report, switch pane
+                                  if (selectedReport?.id === r.id)
+                                    setModalPane("ATTACHMENTS");
+                                } catch (err: any) {
+                                  if (err?.status === 409) {
+                                    alert(
+                                      "ℹ️ Duplicate attachment already exists.",
+                                    );
+                                  } else if (err?.status === 403) {
+                                    alert(
+                                      "⚠️ Forbidden. Check role/scopes for attachment upload.",
+                                    );
+                                  } else {
+                                    alert(err?.message || "Upload failed");
+                                  }
+                                } finally {
+                                  setUploadingId(null);
+                                }
+                              }}
+                            />
+
+                            {/* Upload Button */}
+                            <button
+                              type="button"
+                              disabled={rowBusy || rowUploading}
+                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              onClick={() => fileInputs.current[r.id]?.click()}
+                            >
+                              {rowUploading ? <Spinner /> : "⬆️"}
+                              {rowUploading ? "Uploading..." : "Upload"}
+                            </button>
+                          </>
                         </div>
                       </td>
                     </tr>
