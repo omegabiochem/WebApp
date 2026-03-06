@@ -264,6 +264,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   MICRO: [
     "testSopNo",
     "dateTested",
+    "dateCompleted",
     "ftm_turbidity",
     "ftm_observation",
     "ftm_result",
@@ -275,6 +276,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   MC: [
     "testSopNo",
     "dateTested",
+    "dateCompleted",
     "ftm_turbidity",
     "ftm_observation",
     "ftm_result",
@@ -283,7 +285,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "scdb_result",
     "comments",
   ],
-  QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+  QA: [ "reviewedBy", "reviewedDate"],
   CLIENT: [
     "client",
     "dateSent",

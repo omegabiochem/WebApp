@@ -11,6 +11,7 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 import {
+  STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
   STATUS_COLORS,
   canShowUpdateButton,
   type ReportStatus as MicroReportStatus,
@@ -18,6 +19,7 @@ import {
 } from "../../utils/microMixReportFormWorkflow";
 
 import {
+  STATUS_TRANSITIONS as CHEM_STATUS_TRANSITIONS,
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
@@ -36,6 +38,7 @@ import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import {
   canShowSterilityUpdateButton,
   STERILITY_STATUS_COLORS,
+  STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import COAReportFormView from "../Reports/COAReportFormView";
@@ -76,6 +79,59 @@ type ChemReport = {
 type UnifiedRow =
   | ({ kind: "MICRO" } & MicroReport)
   | ({ kind: "CHEMISTRY" } & ChemReport);
+
+type BulkWorkflowGroup = "MICRO" | "STERILITY" | "CHEMISTRY" | "COA";
+
+function getBulkWorkflowGroup(r: UnifiedRow): BulkWorkflowGroup {
+  if (r.kind === "MICRO") {
+    if (r.formType === "STERILITY") return "STERILITY";
+    return "MICRO";
+  }
+
+  if (r.formType === "COA") return "COA";
+  return "CHEMISTRY";
+}
+
+function getNextStatusesForRow(r: UnifiedRow): string[] {
+  const s = String(r.status);
+
+  if (r.kind === "MICRO") {
+    if (r.formType === "STERILITY") {
+      return (STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]
+        ?.next ?? []) as string[];
+    }
+
+    const next = MICRO_STATUS_TRANSITIONS?.[s as MicroReportStatus]?.next ?? [];
+
+    // keep Start Final as row/modal-only action
+    return next.filter(
+      (ns) =>
+        !(
+          ns === "UNDER_FINAL_TESTING_REVIEW" &&
+          (s === "PRELIMINARY_APPROVED" ||
+            s === "UNDER_CLIENT_PRELIMINARY_REVIEW")
+        ),
+    ) as string[];
+  }
+
+  // CHEMISTRY + COA
+  return (CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus]?.next ??
+    []) as string[];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+
+  for (let i = 1; i < lists.length; i++) {
+    const current = new Set(lists[i]);
+    for (const value of Array.from(set)) {
+      if (!current.has(value)) set.delete(value);
+    }
+  }
+
+  return Array.from(set);
+}
 
 // ----------------------------------
 // Status lists (same as your pages)
@@ -539,28 +595,6 @@ export default function MCDashboard() {
   );
   const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
-  // type MicroFormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
-  // const [microFormFilter, setMicroFormFilter] =
-  //   useState<MicroFormFilter>("ALL");
-
-  // type ChemFormFilter = "ALL" | "CHEMISTRY_MIX" | "COA";
-
-  // const [chemFormFilter, setChemFormFilter] = useState<ChemFormFilter>("ALL");
-
-  // const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  // const [search, setSearch] = useState("");
-  // const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  // const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  // const [page, setPage] = useState(1);
-  // const [perPage, setPerPage] = useState(10);
-
-  // const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  // const [fromDate, setFromDate] = useState<string>("");
-  // const [toDate, setToDate] = useState<string>("");
-
-  // const [activeFilter, setActiveFilter] = useState<string>("ALL"); // chemistry actives
-
   // Selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
@@ -576,6 +610,9 @@ export default function MCDashboard() {
   const [modalUpdating, setModalUpdating] = useState(false);
 
   const [selectedReport, setSelectedReport] = useState<UnifiedRow | null>(null);
+
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   // -----------------------------
   // Fetch both queues
@@ -1068,6 +1105,31 @@ export default function MCDashboard() {
     unified.forEach((r) => map.set(rowKey(r), r));
     return selectedIds.map((id) => map.get(id)).filter(Boolean) as UnifiedRow[];
   }, [selectedIds, unified]);
+  const selected = selectedReportObjects;
+
+  const selectedSameGroupAndStatus = useMemo(() => {
+    if (!selected.length) return false;
+
+    const group0 = getBulkWorkflowGroup(selected[0]);
+    const status0 = String(selected[0].status);
+
+    return selected.every(
+      (r) => getBulkWorkflowGroup(r) === group0 && String(r.status) === status0,
+    );
+  }, [selected]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selected.length) return [];
+    if (!selectedSameGroupAndStatus) return [];
+
+    return intersectAll(selected.map(getNextStatusesForRow));
+  }, [selected, selectedSameGroupAndStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   const handlePrintSelected = () => {
     if (printingBulk) return; // 🚫 prevent double
@@ -1257,6 +1319,75 @@ export default function MCDashboard() {
       : canUpdateChemLocal(r as ChemReport, user);
   }
 
+  async function applyBulkStatusChange(toStatus: string) {
+    setBulkUpdating(true);
+
+    try {
+      await Promise.all(
+        selected.map((r) => {
+          if (r.kind === "MICRO") {
+            return setMicroStatus(
+              r as MicroReport,
+              toStatus,
+              "Bulk Status Change",
+            );
+          }
+
+          return setChemStatus(r as ChemReport, toStatus, "Bulk Status Change");
+        }),
+      );
+
+      const keepMicro = new Set(
+        MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
+      );
+
+      const keepChem = new Set<string>([
+        ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
+        ...Object.keys(COA_STATUS_COLORS),
+      ]);
+
+      setMicroReports((prev) => {
+        const updated = prev.map((x) =>
+          selectedIds.includes(`MICRO:${x.id}`)
+            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
+            : x,
+        );
+
+        return updated.filter((r) => keepMicro.has(String(r.status)));
+      });
+
+      setChemReports((prev) => {
+        const updated = prev.map((x) =>
+          selectedIds.includes(`CHEMISTRY:${x.id}`)
+            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
+            : x,
+        );
+
+        return updated.filter((r) => keepChem.has(String(r.status)));
+      });
+
+      logUiEvent({
+        action: "UI_BULK_STATUS_CHANGE",
+        entity: "Report",
+        entityId: selectedIds.join(","),
+        details: `Bulk status → ${toStatus} (${selectedIds.length})`,
+        meta: {
+          reportIds: selectedIds,
+          count: selectedIds.length,
+          fromStatus: String(selected[0]?.status ?? ""),
+          toStatus,
+          group: selected[0] ? getBulkWorkflowGroup(selected[0]) : "",
+        },
+      });
+
+      setSelectedIds([]);
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
+  const ENABLE_BULK_STATUS = false;
+
   // ----------------------------------
   // Render
   // ----------------------------------
@@ -1265,7 +1396,7 @@ export default function MCDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
                 @media print {
                   body > *:not(#bulk-print-root) { display: none !important; }
@@ -1296,6 +1427,50 @@ export default function MCDashboard() {
                   }
                 }
               `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -1323,6 +1498,61 @@ export default function MCDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {ENABLE_BULK_STATUS && (
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length ||
+                !selectedSameGroupAndStatus ||
+                bulkUpdating ||
+                printingBulk
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                selectedIds.length && selectedSameGroupAndStatus
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+              )}
+            >
+              {bulkUpdating ? <Spinner /> : "⚡"}
+              {bulkUpdating
+                ? "Applying..."
+                : `Bulk Status (${selectedIds.length})`}
+            </button>
+
+            {bulkMenuOpen && commonNextStatuses.length > 0 && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="py-1 text-sm">
+                  {commonNextStatuses.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-100"
+                      onClick={async () => {
+                        if (bulkUpdating) return;
+                        setBulkMenuOpen(false);
+
+                        try {
+                          await applyBulkStatusChange(s);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Bulk update failed");
+                        }
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          )}
           <button
             type="button"
             onClick={handlePrintSelected}

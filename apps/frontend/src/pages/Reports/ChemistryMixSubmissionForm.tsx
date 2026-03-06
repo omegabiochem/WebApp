@@ -2376,8 +2376,13 @@ export default function ChemistryMixSubmissionForm({
 
                   {/* DATE TESTED / INITIAL */}
                   {/* DATE TESTED / INITIAL */}
-                  <div className="px-1 flex items-center gap-1 min-w-0 overflow-hidden">
-                    {/* date takes remaining space */}
+                  <div
+                    className={`px-1 flex items-center gap-1 min-w-0 overflow-hidden border ${
+                      rowErr.dateTestedInitial
+                        ? "border-red-500 ring-1 ring-red-500"
+                        : "border-transparent"
+                    }`}
+                  >
                     <input
                       type="date"
                       className="min-w-0 flex-1 border-none outline-none text-[11px]"
@@ -2399,7 +2404,6 @@ export default function ChemistryMixSubmissionForm({
 
                     <span className="text-[11px] shrink-0">/</span>
 
-                    {/* initials fixed width */}
                     <input
                       type="text"
                       maxLength={3}

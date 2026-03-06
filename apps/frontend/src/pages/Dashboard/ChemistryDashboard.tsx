@@ -7,6 +7,7 @@ import { api } from "../../lib/api";
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  STATUS_TRANSITIONS as CHEM_STATUS_TRANSITIONS,
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
@@ -78,17 +79,34 @@ function displayReportNo(r: Report) {
 // -----------------------------
 // API helper
 // -----------------------------
-async function setStatus(
-  r: Report,
-  newStatus: string,
-  reason = "Common Status Change",
-) {
-  await api(`/chemistry-reports/${r.id}/status`, {
+// async function setStatus(
+//   r: Report,
+//   newStatus: string,
+//   reason = "Common Status Change",
+// ) {
+//   await api(`/chemistry-reports/${r.id}/status`, {
+//     method: "PATCH",
+//     body: JSON.stringify({
+//       reason,
+//       status: newStatus,
+//       expectedVersion: r.version,
+//     }),
+//   });
+// }
+
+async function setStatus(args: {
+  report: Report;
+  newStatus: string;
+  reason?: string;
+}) {
+  const { report, newStatus, reason } = args;
+
+  await api(`/chemistry-reports/${report.id}/status`, {
     method: "PATCH",
     body: JSON.stringify({
-      reason,
       status: newStatus,
-      expectedVersion: r.version,
+      ...(reason?.trim() ? { reason: reason.trim() } : {}),
+      expectedVersion: report.version,
     }),
   });
 }
@@ -186,6 +204,24 @@ function BulkPrintArea({
   );
 }
 
+function getNextStatusesForReport(r: Report): string[] {
+  const s = String(r.status);
+  const t = CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus];
+  return (t?.next ?? []) as string[];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+  for (let i = 1; i < lists.length; i++) {
+    const s = new Set(lists[i]);
+    for (const v of Array.from(set)) {
+      if (!s.has(v)) set.delete(v);
+    }
+  }
+  return Array.from(set);
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -195,6 +231,12 @@ export default function ChemistryDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
+
+  type FormFilter = "ALL" | "CHEMISTRY" | "COA";
+
+  const [formFilter, setFormFilter] = useState<FormFilter>(
+    (searchParams.get("form") as FormFilter) || "ALL",
+  );
 
   const [statusFilter, setStatusFilter] = useState<
     (typeof CHEMISTRY_STATUSES)[number]
@@ -260,8 +302,13 @@ export default function ChemistryDashboard() {
         setError(null);
         const all = await api<Report[]>("/chemistry-reports");
         if (abort) return;
-        const keep = new Set(CHEMISTRY_STATUSES.filter((s) => s !== "ALL"));
-        setReports(all.filter((r) => keep.has(r.status as any)));
+
+        const keep = new Set<string>([
+          ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
+          ...Object.keys(CHEMISTRY_STATUS_COLORS),
+        ]);
+
+        setReports(all.filter((r) => keep.has(String(r.status))));
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -276,10 +323,22 @@ export default function ChemistryDashboard() {
 
   // derived
   const processed = useMemo(() => {
+    // ✅ 0) form filter
+    const byForm =
+      formFilter === "ALL"
+        ? reports
+        : reports.filter((r) => {
+            if (formFilter === "CHEMISTRY")
+              return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
+            return true;
+          });
+
+    // ✅ 1) status filter
     const byStatus =
       statusFilter === "ALL"
-        ? reports
-        : reports.filter((r) => r.status === statusFilter);
+        ? byForm
+        : byForm.filter((r) => r.status === statusFilter);
 
     const q = search.trim().toLowerCase();
     const bySearch = q
@@ -335,6 +394,7 @@ export default function ChemistryDashboard() {
     return sorted;
   }, [
     reports,
+    formFilter,
     statusFilter,
     search,
     sortBy,
@@ -354,7 +414,11 @@ export default function ChemistryDashboard() {
   const pageRows = processed.slice(start, end);
   useEffect(() => {
     setSelectedIds([]);
-  }, [statusFilter]);
+  }, [statusFilter, formFilter]);
+  useEffect(() => {
+    const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
+    if (nextForm !== formFilter) setFormFilter(nextForm);
+  }, [searchParams]);
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -369,6 +433,7 @@ export default function ChemistryDashboard() {
     sp.set("p", String(pageClamped));
 
     sp.set("dp", datePreset);
+    sp.set("form", formFilter);
     if (fromDate) sp.set("from", fromDate);
     if (toDate) sp.set("to", toDate);
 
@@ -470,21 +535,38 @@ export default function ChemistryDashboard() {
 
     if (r.status === "SUBMITTED_BY_CLIENT") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Move to testing");
-    } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-      nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Move to RESUBMISSION");
+      await setStatus({
+        report: r,
+        newStatus: nextStatus,
+        reason: "Move to testing",
+      });
     } else if (r.status === "RESUBMISSION_BY_CLIENT") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus(r, nextStatus, "Resubmitted by client");
+      await setStatus({
+        report: r,
+        newStatus: nextStatus,
+        reason: "Resubmitted by client",
+      });
     } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
       nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
-      await setStatus(r, nextStatus, `Set by ${actor}`);
+      await setStatus({
+        report: r,
+        newStatus: nextStatus,
+        reason: `Set by ${actor}`,
+      });
     }
 
     if (nextStatus) {
       setReports((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
+        prev.map((x) =>
+          x.id === r.id
+            ? {
+                ...x,
+                status: nextStatus!,
+                version: (x.version ?? r.version) + 1,
+              }
+            : x,
+        ),
       );
     }
 
@@ -731,6 +813,31 @@ export default function ChemistryDashboard() {
     return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [reports]);
 
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+
+  const selected = selectedReportObjects;
+
+  const selectedSameStatus = useMemo(() => {
+    if (!selected.length) return false;
+    const status0 = String(selected[0].status);
+    return selected.every((r) => String(r.status) === status0);
+  }, [selected]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selected.length) return [];
+    if (!selectedSameStatus) return [];
+    return intersectAll(selected.map(getNextStatusesForReport));
+  }, [selected, selectedSameStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
+  const ENABLE_BULK_STATUS = false;
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -740,7 +847,7 @@ export default function ChemistryDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
                 @media print {
                   body > *:not(#bulk-print-root) { display: none !important; }
@@ -771,6 +878,50 @@ export default function ChemistryDashboard() {
                   }
                 }
               `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -800,6 +951,91 @@ export default function ChemistryDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {ENABLE_BULK_STATUS && (
+            <div className="relative">
+              <button
+                type="button"
+                disabled={
+                  !selectedIds.length || !selectedSameStatus || bulkUpdating
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBulkMenuOpen((o) => !o);
+                }}
+                className={classNames(
+                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                  selectedIds.length && selectedSameStatus
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-slate-200 text-slate-500 cursor-not-allowed",
+                )}
+              >
+                {bulkUpdating ? <Spinner /> : "⚡"}
+                {bulkUpdating
+                  ? "Applying..."
+                  : `Bulk Status (${selectedIds.length})`}
+              </button>
+
+              {bulkMenuOpen && commonNextStatuses.length > 0 && (
+                <div className="absolute right-0 mt-2 w-52 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                  <div className="py-1 text-sm">
+                    {commonNextStatuses.map((s) => (
+                      <button
+                        key={s}
+                        className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
+                        onClick={async () => {
+                          if (bulkUpdating) return;
+
+                          setBulkMenuOpen(false);
+                          setBulkUpdating(true);
+
+                          try {
+                            await Promise.all(
+                              selected.map((r) =>
+                                setStatus({
+                                  report: r,
+                                  newStatus: s,
+                                  reason: "Bulk Status Change",
+                                }),
+                              ),
+                            );
+
+                            const keep = new Set(
+                              CHEMISTRY_STATUSES.filter((x) => x !== "ALL"),
+                            );
+
+                            setReports((prev) => {
+                              const updated = prev.map((x) =>
+                                selectedIds.includes(x.id)
+                                  ? {
+                                      ...x,
+                                      status: s,
+                                      version: (x.version ?? 0) + 1,
+                                    }
+                                  : x,
+                              );
+
+                              return updated.filter((r) =>
+                                keep.has(r.status as any),
+                              );
+                            });
+
+                            setSelectedIds([]);
+                          } catch (e: any) {
+                            alert(e?.message || "Bulk update failed");
+                          } finally {
+                            setBulkUpdating(false);
+                          }
+                        }}
+                      >
+                        {niceStatus(s)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handlePrintSelected}
@@ -832,6 +1068,34 @@ export default function ChemistryDashboard() {
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
+      </div>
+
+      {/* Form Type filter */}
+      <div className="mb-3 border-b border-slate-200">
+        <nav className="-mb-px flex gap-6 text-sm">
+          {(["ALL", "CHEMISTRY", "COA"] as const).map((ft) => {
+            const isActive = formFilter === ft;
+            return (
+              <button
+                key={ft}
+                type="button"
+                onClick={() => setFormFilter(ft)}
+                className={classNames(
+                  "pb-2 border-b-2 text-sm font-medium",
+                  isActive
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
+                )}
+              >
+                {ft === "ALL"
+                  ? "All"
+                  : ft === "CHEMISTRY"
+                    ? "Chemistry"
+                    : "COA"}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Controls */}

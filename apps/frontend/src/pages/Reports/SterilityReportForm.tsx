@@ -135,6 +135,7 @@ function canEdit(
       "scdb_turbidity",
       "scdb_observation",
       "scdb_result",
+      "dateCompleted",
       "comments",
     ],
     MC: [
@@ -146,9 +147,10 @@ function canEdit(
       "scdb_turbidity",
       "scdb_observation",
       "scdb_result",
+      "dateCompleted",
       "comments",
     ],
-    QA: ["dateCompleted"],
+    QA: [],
     CLIENT: [
       "client",
       "dateSent",
@@ -794,7 +796,7 @@ export default function SterilityReportForm({
             "scdb_result",
             "comments",
           ],
-          QA: ["dateCompleted"],
+          QA: [],
           CLIENT: [
             "client",
             "dateSent",

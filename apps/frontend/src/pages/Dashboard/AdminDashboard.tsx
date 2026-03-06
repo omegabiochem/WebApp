@@ -35,6 +35,10 @@ import {
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
 import { getEnum, getInt, getParam } from "../../utils/globalUtils";
+import {
+  STERILITY_STATUS_COLORS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
 
 // ---------------------------------
 // Types
@@ -62,7 +66,12 @@ const formTypeToSlug: Record<string, string> = {
   COA: "coa",
 };
 
-const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
+const ALL_STATUSES: (
+  | "ALL"
+  | ReportStatus
+  | SterilityReportStatus
+  | ChemistryReportStatus
+)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
@@ -98,11 +107,35 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
   "LOCKED",
-   "VOID",
+  "VOID",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  "APPROVED",
 ];
 
 // A status filter can be micro OR chemistry OR "ALL"
-type DashboardStatus = "ALL" | ReportStatus | ChemistryReportStatus;
+type DashboardStatus =
+  | "ALL"
+  | ReportStatus
+  | SterilityReportStatus
+  | ChemistryReportStatus;
 
 const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
@@ -133,7 +166,34 @@ const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
   "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
-   "VOID",
+  "VOID",
+];
+
+const ADMIN_STERILITY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
+  "ALL",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  "APPROVED",
+  "LOCKED",
+  "VOID",
 ];
 
 // ---------------------------------
@@ -265,6 +325,25 @@ function BulkPrintArea({
   );
 }
 
+type ReportFamily = "MICRO" | "STERILITY" | "CHEMISTRY";
+
+function getReportFamily(r: Report): ReportFamily {
+  if (r.formType === "STERILITY") return "STERILITY";
+  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
+    return "CHEMISTRY";
+  return "MICRO";
+}
+
+function getStatusesForReportFamily(family: ReportFamily): string[] {
+  if (family === "CHEMISTRY") {
+    return ADMIN_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
+  }
+  if (family === "STERILITY") {
+    return ADMIN_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
+  }
+  return ADMIN_MICRO_STATUSES.filter((s) => s !== "ALL").map(String);
+}
+
 // ---------------------------------
 // Component
 // ---------------------------------
@@ -349,7 +428,9 @@ export default function AdminDashboard() {
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
       ? ADMIN_CHEM_STATUSES
-      : ADMIN_MICRO_STATUSES;
+      : formFilter === "STERILITY"
+        ? ADMIN_STERILITY_STATUSES
+        : ADMIN_MICRO_STATUSES;
 
   // ✅ UX guards
   const [refreshing, setRefreshing] = useState(false);
@@ -369,26 +450,35 @@ export default function AdminDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+
+  const [bulkChangeReports, setBulkChangeReports] = useState<Report[]>([]);
+  const [bulkNewStatus, setBulkNewStatus] = useState<string>("");
+  const [bulkReason, setBulkReason] = useState<string>("");
+  const [bulkESignPassword, setBulkESignPassword] = useState<string>("");
+  const [bulkESignError, setBulkESignError] = useState<string>("");
+  const [bulkSaving, setBulkSaving] = useState<boolean>(false);
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
-    type StatusActionModalState = {
-      open: boolean;
-      action: "VOID_SELECTED" | null;
-      reason: string;
-      password: string;
-      submitting: boolean;
-      error: string | null;
-    };
-  
-    const [statusModal, setStatusModal] = useState<StatusActionModalState>({
-      open: false,
-      action: null,
-      reason: "",
-      password: "",
-      submitting: false,
-      error: null,
-    });
+  type StatusActionModalState = {
+    open: boolean;
+    action: "VOID_SELECTED" | null;
+    reason: string;
+    password: string;
+    submitting: boolean;
+    error: string | null;
+  };
+
+  const [statusModal, setStatusModal] = useState<StatusActionModalState>({
+    open: false,
+    action: null,
+    reason: "",
+    password: "",
+    submitting: false,
+    error: null,
+  });
 
   // async function setStatus(
   //   r: Report,
@@ -488,7 +578,9 @@ export default function AdminDashboard() {
     const opts =
       formFilter === "CHEMISTRY" || formFilter === "COA"
         ? ADMIN_CHEM_STATUSES.map(String)
-        : ADMIN_MICRO_STATUSES.map(String);
+        : formFilter === "STERILITY"
+          ? ADMIN_STERILITY_STATUSES.map(String)
+          : ADMIN_MICRO_STATUSES.map(String);
 
     if (statusFilter !== "ALL" && !opts.includes(String(statusFilter))) {
       setStatusFilter("ALL");
@@ -548,9 +640,6 @@ export default function AdminDashboard() {
     dateFrom,
     dateTo,
   ]);
-
-
-  
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -758,12 +847,15 @@ export default function AdminDashboard() {
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-    return (
-      (isChem
-        ? CHEMISTRY_STATUS_COLORS[r.status as ChemistryReportStatus]
-        : STATUS_COLORS[r.status as ReportStatus]) ||
-      "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
-    );
+    const isSterility = r.formType === "STERILITY";
+
+    const cls = isChem
+      ? CHEMISTRY_STATUS_COLORS[r.status as ChemistryReportStatus]
+      : isSterility
+        ? STERILITY_STATUS_COLORS[r.status as SterilityReportStatus]
+        : STATUS_COLORS[r.status as ReportStatus];
+
+    return cls || "bg-slate-100 text-slate-800 ring-1 ring-slate-200";
   };
 
   useEffect(() => {
@@ -861,7 +953,7 @@ export default function AdminDashboard() {
     setPage(1);
   };
 
-    function niceFormType(ft?: string) {
+  function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
         return "MICRO";
@@ -876,32 +968,134 @@ export default function AdminDashboard() {
 
   useLiveReportStatus(setReports);
 
- const handleVoidSelected = async (reason: string, password: string) => {
-  if (!voidableSelected.length) return;
+  const handleVoidSelected = async (reason: string, password: string) => {
+    if (!voidableSelected.length) return;
 
-  logUiEvent({
-    action: "UI_VOID_SELECTED",
-    entity: "Report",
-    details: `Voided selected reports (${voidableSelected.length})`,
-    entityId: voidableSelected.map((r) => r.id).join(","),
-    meta: { reportIds: voidableSelected.map((r) => r.id), count: voidableSelected.length, reason },
-  });
+    logUiEvent({
+      action: "UI_VOID_SELECTED",
+      entity: "Report",
+      details: `Voided selected reports (${voidableSelected.length})`,
+      entityId: voidableSelected.map((r) => r.id).join(","),
+      meta: {
+        reportIds: voidableSelected.map((r) => r.id),
+        count: voidableSelected.length,
+        reason,
+      },
+    });
 
-  await Promise.all(
-    voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
-  );
+    await Promise.all(
+      voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
+    );
 
-  toast.success(`Voided ${voidableSelected.length} report(s)`);
-  setSelectedIds([]);
-};
+    toast.success(`Voided ${voidableSelected.length} report(s)`);
+    setSelectedIds([]);
+  };
 
   const voidableSelected = selectedReportObjects.filter(
-  (r) => String(r.status) !== "VOID",
-);
+    (r) => String(r.status) !== "VOID",
+  );
 
-const voidableCount = voidableSelected.length;
-const allSelectedAreVoid =
-  selectedReportObjects.length > 0 && voidableCount === 0;
+  const voidableCount = voidableSelected.length;
+  const allSelectedAreVoid =
+    selectedReportObjects.length > 0 && voidableCount === 0;
+
+  const selectedFamilies = Array.from(
+    new Set(selectedReportObjects.map(getReportFamily)),
+  );
+
+  const selectedSameFamily = selectedFamilies.length === 1;
+  const selectedFamily = selectedSameFamily ? selectedFamilies[0] : null;
+
+  const bulkStatusOptions = selectedFamily
+    ? getStatusesForReportFamily(selectedFamily)
+    : [];
+
+  async function handleBulkChangeStatus(
+    reportsToChange: Report[],
+    nextStatus: string,
+  ) {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Missing auth token");
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkESignError("");
+
+    try {
+      if (!bulkReason.trim()) {
+        setBulkSaving(false);
+        alert("Reason for change is required.");
+        return;
+      }
+
+      if (needsESign(nextStatus) && !bulkESignPassword) {
+        setBulkSaving(false);
+        setBulkESignError("E-signature password is required.");
+        return;
+      }
+
+      await Promise.all(
+        reportsToChange.map(async (report) => {
+          const endpoint =
+            report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
+              ? `/chemistry-reports/${report.id}/change-status`
+              : `/reports/${report.id}/change-status`;
+
+          await api(endpoint, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: nextStatus,
+              reason: bulkReason,
+              eSignPassword: bulkESignPassword,
+            }),
+          });
+        }),
+      );
+
+      setReports((prev) =>
+        prev.map((r) =>
+          reportsToChange.some((x) => x.id === r.id)
+            ? { ...r, status: nextStatus }
+            : r,
+        ),
+      );
+
+      setBulkChangeReports([]);
+      setBulkNewStatus("");
+      setBulkReason("");
+      setBulkESignPassword("");
+      setBulkESignError("");
+      setSelectedIds([]);
+
+      toast.success("Bulk status updated successfully");
+    } catch (err: any) {
+      const backendMsg =
+        err?.message ||
+        err?.response?.data?.message ||
+        err?.error ||
+        err?.toString() ||
+        "";
+
+      if (backendMsg.toLowerCase().includes("electronic")) {
+        setBulkESignError("❌ Invalid e-signature password. Please try again.");
+      } else if (backendMsg.toLowerCase().includes("reason")) {
+        setBulkESignError("⚠️ Please provide a valid reason for this change.");
+      } else {
+        setBulkESignError("⚠️ Something went wrong while changing status.");
+        console.error("Bulk status change error:", err);
+      }
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -917,35 +1111,46 @@ const allSelectedAreVoid =
           <>
             <style>
               {`
-                @media print {
-                  body > *:not(#bulk-print-root) { display: none !important; }
-                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
 
-                  #bulk-print-root .sheet {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    box-shadow: none !important;
-                    border: none !important;
-                    padding: 0 !important;
-                  }
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
 
-                  #bulk-print-root .report-page {
-                    break-inside: avoid-page;
-                    page-break-inside: avoid;
-                  }
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
 
-                  #bulk-print-root .report-page + .report-page {
-                    break-before: page;
-                    page-break-before: always;
-                  }
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
 
-                  @supports (margin-trim: block) {
-                    @page { margin-trim: block; }
-                  }
-                }
-              `}
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -973,34 +1178,85 @@ const allSelectedAreVoid =
         </div>
 
         <div className="flex items-center gap-2">
-        <button
-  type="button"
-  onClick={() => {
-    if (!voidableCount) return; // ✅ nothing to void
-    setStatusModal({
-      open: true,
-      action: "VOID_SELECTED",
-      reason: "",
-      password: "",
-      submitting: false,
-      error: null,
-    });
-  }}
-  disabled={!voidableCount || printingBulk}
-  className={classNames(
-    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
-    voidableCount
-      ? "bg-rose-600 text-white hover:bg-rose-700"
-      : "bg-slate-200 text-slate-500", // ✅ not red anymore
-  )}
-  title={
-    allSelectedAreVoid
-      ? "All selected reports are already VOID"
-      : "Void selected reports"
-  }
->
-  ⛔ Void ({voidableCount})
-</button>
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length || !selectedSameFamily || bulkSaving
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && selectedSameFamily
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
+              title={
+                !selectedIds.length
+                  ? "Select reports first"
+                  : !selectedSameFamily
+                    ? "Select same report type family only"
+                    : "Bulk status change"
+              }
+            >
+              ⚡ Bulk Status ({selectedIds.length})
+            </button>
+
+            {bulkMenuOpen && bulkStatusOptions.length > 0 && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="max-h-80 overflow-auto py-1 text-sm">
+                  {bulkStatusOptions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
+                      onClick={() => {
+                        setBulkMenuOpen(false);
+                        setBulkChangeReports(selectedReportObjects);
+                        setBulkNewStatus(s);
+                        setBulkReason("");
+                        setBulkESignPassword("");
+                        setBulkESignError("");
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!voidableCount) return; // ✅ nothing to void
+              setStatusModal({
+                open: true,
+                action: "VOID_SELECTED",
+                reason: "",
+                password: "",
+                submitting: false,
+                error: null,
+              });
+            }}
+            disabled={!voidableCount || printingBulk}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+              voidableCount
+                ? "bg-rose-600 text-white hover:bg-rose-700"
+                : "bg-slate-200 text-slate-500", // ✅ not red anymore
+            )}
+            title={
+              allSelectedAreVoid
+                ? "All selected reports are already VOID"
+                : "Void selected reports"
+            }
+          >
+            ⛔ Void ({voidableCount})
+          </button>
           {/* ✅ Print selected */}
           <button
             type="button"
@@ -1404,7 +1660,9 @@ const allSelectedAreVoid =
                                 r.formType === "CHEMISTRY_MIX" ||
                                 r.formType === "COA"
                                   ? ADMIN_CHEM_STATUSES
-                                  : ADMIN_MICRO_STATUSES;
+                                  : r.formType === "STERILITY"
+                                    ? ADMIN_STERILITY_STATUSES
+                                    : ADMIN_MICRO_STATUSES;
 
                               const current = String(r.status);
                               setNewStatus(
@@ -1701,9 +1959,12 @@ const allSelectedAreVoid =
                 }}
                 className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
               >
-                {(changeStatusReport.formType === "CHEMISTRY_MIX"
+                {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
+                changeStatusReport.formType === "COA"
                   ? ADMIN_CHEM_STATUSES
-                  : ADMIN_MICRO_STATUSES
+                  : changeStatusReport.formType === "STERILITY"
+                    ? ADMIN_STERILITY_STATUSES
+                    : ADMIN_MICRO_STATUSES
                 )
                   .filter((s) => s !== "ALL")
                   .map((s) => (
@@ -2031,6 +2292,112 @@ const allSelectedAreVoid =
           </div>,
           document.body,
         )}
+
+      {bulkChangeReports.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bulk change status"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-2">Bulk Change Status</h2>
+
+            <p className="mb-3 text-sm text-slate-600">
+              <strong>Selected reports:</strong> {bulkChangeReports.length}
+            </p>
+
+            <form
+              autoComplete="off"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleBulkChangeStatus(bulkChangeReports, bulkNewStatus);
+              }}
+            >
+              <select
+                value={bulkNewStatus}
+                onChange={(e) => {
+                  setBulkNewStatus(e.target.value);
+                  setBulkESignError("");
+                }}
+                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {bulkStatusOptions.map((s) => (
+                  <option key={String(s)} value={String(s)}>
+                    {niceStatus(String(s))}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Reason for change"
+                value={bulkReason}
+                onChange={(e) => setBulkReason(e.target.value)}
+                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              />
+
+              {needsESign(bulkNewStatus) && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>E-signature password</span>
+                  </div>
+
+                  <input
+                    type="password"
+                    placeholder="Enter e-signature password"
+                    value={bulkESignPassword}
+                    onChange={(e) => {
+                      setBulkESignPassword(e.target.value);
+                      setBulkESignError("");
+                    }}
+                    className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    aria-invalid={!!bulkESignError}
+                    autoComplete="off"
+                    name="bulk_esign_pwd_manual_only"
+                  />
+
+                  {bulkESignError && (
+                    <p className="mb-2 mt-2 text-xs text-rose-600">
+                      {bulkESignError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => {
+                    setBulkChangeReports([]);
+                    setBulkNewStatus("");
+                    setBulkReason("");
+                    setBulkESignPassword("");
+                    setBulkESignError("");
+                  }}
+                  disabled={bulkSaving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  disabled={
+                    bulkSaving ||
+                    !bulkReason.trim() ||
+                    (needsESign(bulkNewStatus) && !bulkESignPassword)
+                  }
+                >
+                  {bulkSaving ? <Spinner /> : null}
+                  {bulkSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

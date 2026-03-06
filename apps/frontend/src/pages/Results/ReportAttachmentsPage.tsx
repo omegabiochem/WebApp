@@ -630,8 +630,8 @@ export default function ReportAttachmentsPage() {
 
   const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
     if (!role) return "ALL";
-    if (role === "CHEMISTRY") return ["CHEMISTRY","COA"];
-    if (role === "MICRO") return ["MICRO", "MICRO_WATER","STERILITY"];
+    if (role === "CHEMISTRY") return ["CHEMISTRY", "COA"];
+    if (role === "MICRO") return ["MICRO", "MICRO_WATER", "STERILITY"];
     return "ALL";
   }, [role]);
 
@@ -874,6 +874,69 @@ export default function ReportAttachmentsPage() {
   });
 
   // (Printing) UI_ATTACHMENTS_PRINT_SELECTED / PREPARED / FAILED
+  // const handlePrintSelected = async () => {
+  //   if (printingBulk) return;
+  //   if (!selectedIds.length) return;
+
+  //   const selectedObjectsNow = selectedIds
+  //     .map((id) => items.find((x) => x.id === id))
+  //     .filter(Boolean) as AttachmentItem[];
+
+  //   const selectedImages = selectedObjectsNow.filter(
+  //     (a) => fileTypeFromExt(fileExt(a.filename)) === "image",
+  //   );
+
+  //   const selectedPdfs = selectedObjectsNow.filter(
+  //     (a) => fileTypeFromExt(fileExt(a.filename)) === "pdf",
+  //   );
+
+  //   logAttachEvent({
+  //     action: "UI_ATTACHMENTS_PRINT_SELECTED",
+  //     details: "Print selected attachments",
+  //     meta: {
+  //       selectedCount: selectedIds.length,
+  //       selectedIds,
+  //       imageCount: selectedImages.length,
+  //       pdfCount: selectedPdfs.length,
+  //     },
+  //   });
+
+  //   setPrintingBulk(true);
+
+  //   try {
+  //     // images -> portal print
+  //     if (selectedImages.length) {
+  //       setIsBulkPrinting(true);
+  //       // PREPARED is fired when portal finished building URLs (see portal below)
+  //     }
+
+  //     // pdfs -> merge print once
+  //     if (selectedPdfs.length) {
+  //       await mergeAndPrintSelectedPdfs(selectedPdfs.map((p) => p.id));
+  //       // optional: you can also consider this "prepared" for PDFs, but you asked optional
+  //       logAttachEvent({
+  //         action: "UI_ATTACHMENTS_PRINT_PREPARED",
+  //         details: "Prepared PDF print (merged)",
+  //         meta: {
+  //           ids: selectedPdfs.map((p) => p.id),
+  //           count: selectedPdfs.length,
+  //         },
+  //       });
+  //     }
+
+  //     // if no images, stop spinner now
+  //     if (!selectedImages.length) setPrintingBulk(false);
+  //   } catch (e: any) {
+  //     logAttachEvent({
+  //       action: "UI_ATTACHMENTS_PRINT_FAILED",
+  //       details: "Print selected failed",
+  //       meta: { error: e?.message || String(e) },
+  //     });
+  //     setPrintingBulk(false);
+  //     throw e;
+  //   }
+  // };
+
   const handlePrintSelected = async () => {
     if (printingBulk) return;
     if (!selectedIds.length) return;
@@ -904,16 +967,15 @@ export default function ReportAttachmentsPage() {
     setPrintingBulk(true);
 
     try {
-      // images -> portal print
-      if (selectedImages.length) {
-        setIsBulkPrinting(true);
-        // PREPARED is fired when portal finished building URLs (see portal below)
+      // If both are selected, stop and tell user for now
+      if (selectedImages.length && selectedPdfs.length) {
+        throw new Error(
+          "Please print only one file type at a time for now: either PDFs or Images.",
+        );
       }
 
-      // pdfs -> merge print once
       if (selectedPdfs.length) {
         await mergeAndPrintSelectedPdfs(selectedPdfs.map((p) => p.id));
-        // optional: you can also consider this "prepared" for PDFs, but you asked optional
         logAttachEvent({
           action: "UI_ATTACHMENTS_PRINT_PREPARED",
           details: "Prepared PDF print (merged)",
@@ -922,10 +984,16 @@ export default function ReportAttachmentsPage() {
             count: selectedPdfs.length,
           },
         });
+        setPrintingBulk(false);
+        return;
       }
 
-      // if no images, stop spinner now
-      if (!selectedImages.length) setPrintingBulk(false);
+      if (selectedImages.length) {
+        setIsBulkPrinting(true);
+        return;
+      }
+
+      setPrintingBulk(false);
     } catch (e: any) {
       logAttachEvent({
         action: "UI_ATTACHMENTS_PRINT_FAILED",
@@ -933,7 +1001,7 @@ export default function ReportAttachmentsPage() {
         meta: { error: e?.message || String(e) },
       });
       setPrintingBulk(false);
-      throw e;
+      alert(e?.message || "Print failed");
     }
   };
 
@@ -961,7 +1029,7 @@ export default function ReportAttachmentsPage() {
       "MICRO_WATER",
       "CHEMISTRY",
       "STERILITY",
-      "COA"
+      "COA",
     ];
     if (allowedTypes === "ALL") return all;
 
@@ -1024,7 +1092,7 @@ export default function ReportAttachmentsPage() {
       {(isBulkPrinting || !!singlePrintItem) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
               @media print {
                 body > *:not(#bulk-print-root) { display: none !important; }
@@ -1044,6 +1112,50 @@ export default function ReportAttachmentsPage() {
                 #bulk-print-root iframe { border: none !important; }
               }
             `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintAttachmentsArea
