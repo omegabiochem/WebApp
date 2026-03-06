@@ -193,7 +193,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["QA"],
   },
   QA_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ["QA"],
+    canSet: ["QA","MICRO", "MC"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
@@ -251,7 +251,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["QA"],
   },
   QA_NEEDS_FINAL_CORRECTION: {
-    canSet: ["QA"],
+    canSet: ["QA","MICRO", "MC"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC"],
     canEdit: [],
