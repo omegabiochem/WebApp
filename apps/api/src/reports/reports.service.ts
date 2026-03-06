@@ -55,6 +55,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
+    'dateCompleted',
     'comments',
 
     'ftm_turbidity',
@@ -90,6 +91,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
+    'dateCompleted',
     'comments',
 
     'ftm_turbidity',
@@ -112,7 +114,6 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResults',
     'preliminaryResultsDate',
     'comments',
-    'dateCompleted',
   ],
   CLIENT: [
     'client',
@@ -558,7 +559,6 @@ function getDepartmentLetter(role: string): string {
 
 // Critical fields that require reason
 const CRITICAL_FIELDS = new Set<string>([
-  'dateCompleted',
   'reviewedBy',
   'reviewedDate',
   'testedBy',

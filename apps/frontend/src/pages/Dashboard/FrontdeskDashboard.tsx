@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import type {
-  Role,
-  ReportStatus,
+import {
+  STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
+  type Role,
+  type ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
 import {
   canShowUpdateButton,
@@ -15,6 +16,7 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  STATUS_TRANSITIONS as CHEM_STATUS_TRANSITIONS,
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
@@ -30,6 +32,10 @@ import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import {
+  STERILITY_STATUS_TRANSITIONS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -42,6 +48,8 @@ type Report = {
   status: ReportStatus | string;
   reportNumber: string;
   version: number;
+
+  attachmentsCount?: number;
 };
 
 const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
@@ -206,6 +214,50 @@ function BulkPrintArea({
   );
 }
 
+type ReportKind = "MICRO" | "STERILITY" | "CHEMISTRY";
+
+function getReportKind(r: Report): ReportKind {
+  if (r.formType === "STERILITY") return "STERILITY";
+  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
+    return "CHEMISTRY";
+  return "MICRO"; // MICRO_MIX + MICRO_MIX_WATER
+}
+
+function getNextStatusesForReport(r: Report): string[] {
+  const s = String(r.status);
+
+  const kind = getReportKind(r);
+
+  if (kind === "MICRO") {
+    return MICRO_STATUS_TRANSITIONS?.[s as ReportStatus]?.next ?? [];
+  }
+
+  if (kind === "STERILITY") {
+    return (
+      STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ?? []
+    );
+  }
+
+  // CHEMISTRY
+  return CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus]?.next ?? [];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+  for (let i = 1; i < lists.length; i++) {
+    const s = new Set(lists[i]);
+    for (const v of Array.from(set)) {
+      if (!s.has(v)) set.delete(v);
+    }
+  }
+  return Array.from(set);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -272,6 +324,10 @@ export default function FrontDeskDashboard() {
 
   // one hidden input per row (keyed by report id)
   // const fileInputs = React.useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [bulkNextStatus, setBulkNextStatus] = useState<string>("");
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const fileInputs = React.useRef<Record<string, HTMLInputElement>>({});
 
@@ -436,6 +492,7 @@ export default function FrontDeskDashboard() {
     r: Report,
     newStatus: string,
     reason = "Status Change",
+    opts?: { eSignPassword?: string },
   ) {
     const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
@@ -448,9 +505,42 @@ export default function FrontDeskDashboard() {
       body: JSON.stringify({
         status: newStatus,
         reason,
+        // ✅ IMPORTANT: align field name with backend
+        // If your backend expects `password` or `eSignPassword`, keep it here.
+        eSignPassword: opts?.eSignPassword,
         expectedVersion: r.version,
       }),
     });
+  }
+
+  async function applyBulkStatusChange(
+    toStatus: string,
+    reason: string,
+    eSignPassword?: string,
+  ) {
+    setBulkUpdating(true);
+    try {
+      for (const r of selected) {
+        await setStatus(r, toStatus, reason, { eSignPassword });
+      }
+
+      const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+
+      setReports((prev) => {
+        const next = prev.map((x) =>
+          selectedIds.includes(x.id)
+            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
+            : x,
+        );
+
+        // ✅ IMPORTANT: keep dashboard list consistent with initial fetch behavior
+        return next.filter((r) => keep.has(r.status as any));
+      });
+
+      setSelectedIds([]);
+    } finally {
+      setBulkUpdating(false);
+    }
   }
 
   async function uploadAttachmentForReport(r: Report, file: File) {
@@ -553,6 +643,37 @@ export default function FrontDeskDashboard() {
   const selectedReportObjects = selectedIds
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
+
+  const selected = selectedReportObjects;
+
+  const selectedSameKindAndStatus = useMemo(() => {
+    if (selected.length === 0) return false;
+    const kind0 = getReportKind(selected[0]);
+    const status0 = String(selected[0].status);
+    return selected.every(
+      (r) => getReportKind(r) === kind0 && String(r.status) === status0,
+    );
+  }, [selected]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selected.length) return [];
+    if (!selectedSameKindAndStatus) return [];
+    return intersectAll(selected.map(getNextStatusesForReport));
+  }, [selected, selectedSameKindAndStatus]);
+
+  useEffect(() => {
+    // reset dropdown if selection changes
+    if (!commonNextStatuses.length) setBulkNextStatus("");
+    else if (bulkNextStatus && !commonNextStatuses.includes(bulkNextStatus)) {
+      setBulkNextStatus("");
+    }
+  }, [commonNextStatuses, bulkNextStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   useEffect(() => {
     const now = new Date();
@@ -666,7 +787,57 @@ export default function FrontDeskDashboard() {
     setStatusFilter("ALL");
   }, [formFilter]);
 
-  useLiveReportStatus(setReports);
+  useLiveReportStatus(setReports, {
+    shouldKeep: (r) =>
+      r.status === "RECEIVED_BY_FRONTDESK" ||
+      r.status === "FRONTDESK_ON_HOLD" ||
+      r.status === "FRONTDESK_NEEDS_CORRECTION",
+  });
+
+  // ---------------- E-VERIFY (Bulk) ----------------
+  const [bulkESignOpen, setBulkESignOpen] = useState(false);
+  const [bulkESignReason, setBulkESignReason] = useState("");
+  const [bulkESignPassword, setBulkESignPassword] = useState("");
+  const [bulkPendingStatus, setBulkPendingStatus] = useState<string>("");
+
+  const BULK_FORCE_EVERIFY_STATUSES = new Set([
+    "UNDER_CLIENT_REVIEW",
+    "UNDER_CLIENT_FINAL_REVIEW",
+  ]);
+
+  // Decide if bulk transition needs e-verify (hook into your workflow maps)
+  function bulkRequiresESign(args: { report: Report; toStatus: string }) {
+    const { report, toStatus } = args;
+
+    // ✅ Always require password+reason for these two bulk actions
+    if (BULK_FORCE_EVERIFY_STATUSES.has(toStatus)) return true;
+
+    // (optional) keep your existing workflow-map-based logic too
+    const from = String(report.status);
+    const kind = getReportKind(report);
+
+    if (kind === "MICRO") {
+      const t = MICRO_STATUS_TRANSITIONS?.[from as ReportStatus];
+      return Boolean(
+        (t as any)?.requireESign?.includes?.(toStatus) ||
+        (t as any)?.eSignNext?.includes?.(toStatus),
+      );
+    }
+
+    if (kind === "STERILITY") {
+      const t = STERILITY_STATUS_TRANSITIONS?.[from as SterilityReportStatus];
+      return Boolean(
+        (t as any)?.requireESign?.includes?.(toStatus) ||
+        (t as any)?.eSignNext?.includes?.(toStatus),
+      );
+    }
+
+    const t = CHEM_STATUS_TRANSITIONS?.[from as ChemistryReportStatus];
+    return Boolean(
+      (t as any)?.requireESign?.includes?.(toStatus) ||
+      (t as any)?.eSignNext?.includes?.(toStatus),
+    );
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -677,7 +848,7 @@ export default function FrontDeskDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
                 @media print {
                   body > *:not(#bulk-print-root) { display: none !important; }
@@ -709,6 +880,50 @@ export default function FrontDeskDashboard() {
                   }
                 }
               `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -738,6 +953,88 @@ export default function FrontDeskDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ✅ Bulk status update */}
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length ||
+                !selectedSameKindAndStatus ||
+                bulkUpdating ||
+                printingBulk
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                selectedIds.length && selectedSameKindAndStatus
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+              )}
+            >
+              {bulkUpdating ? <Spinner /> : "⚡"}
+              {bulkUpdating
+                ? "Applying..."
+                : `Bulk Status (${selectedIds.length})`}
+            </button>
+
+            {bulkMenuOpen && commonNextStatuses.length > 0 && (
+              <div className="absolute right-0 mt-2 w-52 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="py-1 text-sm">
+                  {commonNextStatuses.map((s) => (
+                    <button
+                      key={s}
+                      className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
+                      onClick={async () => {
+                        if (bulkUpdating) return;
+
+                        setBulkMenuOpen(false);
+
+                        logUiEvent({
+                          action: "UI_BULK_STATUS_CHANGE",
+                          entity: "Report",
+                          entityId: selectedIds.join(","),
+                          details: `Bulk status → ${s} (${selectedIds.length})`,
+                          meta: {
+                            reportIds: selectedIds,
+                            fromStatus: String(selected[0].status),
+                            toStatus: s,
+                            kind: getReportKind(selected[0]),
+                          },
+                        });
+
+                        const needsESign = bulkRequiresESign({
+                          report: selected[0],
+                          toStatus: s,
+                        });
+
+                        if (needsESign) {
+                          setBulkPendingStatus(s);
+                          setBulkESignReason(""); // or default like "Bulk Status Change"
+                          setBulkESignPassword("");
+                          setBulkESignOpen(true);
+                          setBulkESignReason(
+                            `Bulk status change to ${niceStatus(s)}`,
+                          );
+                          return;
+                        }
+
+                        try {
+                          await applyBulkStatusChange(s, "Bulk Status Change");
+                        } catch (e: any) {
+                          alert(e?.message || "❌ Bulk status update failed");
+                        }
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={handlePrintSelected}
@@ -1456,6 +1753,106 @@ export default function FrontDeskDashboard() {
           </div>
         </div>
       )}
+
+      {bulkESignOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !bulkUpdating)
+                setBulkESignOpen(false);
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
+              <div className="border-b px-5 py-4">
+                <div className="text-lg font-semibold">E-Verify required</div>
+                <div className="text-sm text-slate-500 mt-1">
+                  You’re changing status for{" "}
+                  <span className="font-medium">{selectedIds.length}</span>{" "}
+                  reports to{" "}
+                  <span className="font-medium">
+                    {niceStatus(bulkPendingStatus)}
+                  </span>
+                  .
+                </div>
+              </div>
+
+              <div className="px-5 py-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Reason
+                  </label>
+                  <input
+                    value={bulkESignReason}
+                    onChange={(e) => setBulkESignReason(e.target.value)}
+                    placeholder="Enter change reason (21 CFR Part 11)"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    disabled={bulkUpdating}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={bulkESignPassword}
+                    onChange={(e) => setBulkESignPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    disabled={bulkUpdating}
+                  />
+                </div>
+
+                <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  This will be recorded in the audit trail as an electronically
+                  signed status change.
+                </div>
+              </div>
+
+              <div className="border-t px-5 py-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
+                  onClick={() => setBulkESignOpen(false)}
+                  disabled={bulkUpdating}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-2"
+                  disabled={
+                    bulkUpdating ||
+                    !bulkPendingStatus ||
+                    bulkESignReason.trim().length < 3 ||
+                    bulkESignPassword.trim().length < 3
+                  }
+                  onClick={async () => {
+                    try {
+                      await applyBulkStatusChange(
+                        bulkPendingStatus,
+                        bulkESignReason.trim(),
+                        bulkESignPassword,
+                      );
+                      setBulkESignOpen(false);
+                    } catch (e: any) {
+                      alert(e?.message || "❌ Bulk status update failed");
+                    }
+                  }}
+                >
+                  {bulkUpdating ? <Spinner /> : null}
+                  {bulkUpdating ? "Signing..." : "E-Verify & Apply"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

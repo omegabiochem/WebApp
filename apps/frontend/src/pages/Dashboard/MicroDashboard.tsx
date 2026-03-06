@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import {
+  STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
   STATUS_COLORS,
   canShowUpdateButton,
   type ReportStatus,
@@ -25,6 +26,7 @@ import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import {
   canShowSterilityUpdateButton,
   STERILITY_STATUS_COLORS,
+  STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 
@@ -52,6 +54,7 @@ const MICRO_ONLY_STATUSES = [
   "SUBMITTED_BY_CLIENT",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_APPROVED",
+  "PRELIMINARY_TESTING_ON_HOLD",
   "UNDER_FINAL_TESTING_REVIEW",
   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
   "PRELIMINARY_RESUBMISSION_BY_CLIENT",
@@ -60,6 +63,8 @@ const MICRO_ONLY_STATUSES = [
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "QA_NEEDS_FINAL_CORRECTION",
 ] as const;
 
 // Sterility (chemistry-like workflow)
@@ -73,6 +78,40 @@ const STERILITY_ONLY_STATUSES = [
   "UNDER_RESUBMISSION_TESTING_REVIEW",
   "APPROVED",
 ] as const;
+
+type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY";
+
+function getReportKind(r: Report): ReportKind {
+  if (r.formType === "MICRO_MIX") return "MICRO";
+  if (r.formType === "MICRO_MIX_WATER") return "MICRO_WATER";
+  return "STERILITY";
+}
+
+function getNextStatusesForReport(r: Report): string[] {
+  const s = String(r.status);
+
+  if (r.formType === "STERILITY") {
+    return (
+      STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ?? []
+    );
+  }
+
+  return MICRO_STATUS_TRANSITIONS?.[s as ReportStatus]?.next ?? [];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+
+  for (let i = 1; i < lists.length; i++) {
+    const current = new Set(lists[i]);
+    for (const v of Array.from(set)) {
+      if (!current.has(v)) set.delete(v);
+    }
+  }
+
+  return Array.from(set);
+}
 
 // -----------------------------
 // Utilities
@@ -277,6 +316,9 @@ export default function MicroDashboard() {
 
   const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
   const [toDate, setToDate] = useState(searchParams.get("to") || "");
+
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -542,6 +584,32 @@ export default function MicroDashboard() {
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
+  const selected = selectedReportObjects;
+
+  const selectedSameKindAndStatus = useMemo(() => {
+    if (!selected.length) return false;
+
+    const kind0 = getReportKind(selected[0]);
+    const status0 = String(selected[0].status);
+
+    return selected.every(
+      (r) => getReportKind(r) === kind0 && String(r.status) === status0,
+    );
+  }, [selected]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selected.length) return [];
+    if (!selectedSameKindAndStatus) return [];
+
+    return intersectAll(selected.map(getNextStatusesForReport));
+  }, [selected, selectedSameKindAndStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
   async function autoAdvanceAndOpen(r: Report, actor: string) {
     let nextStatus: string | null = null;
 
@@ -806,6 +874,55 @@ export default function MicroDashboard() {
     if (nextTo !== toDate) setToDate(nextTo);
   }, [searchParams]); // ✅ important
 
+  async function applyBulkStatusChange(toStatus: string) {
+    setBulkUpdating(true);
+
+    try {
+      await Promise.all(
+        selected.map((r) => setStatus(r, toStatus, "Bulk Status Change")),
+      );
+
+      const KEEP_STATUSES = new Set<string>([
+        ...MICRO_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
+        ...STERILITY_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
+      ]);
+
+      setReports((prev) => {
+        const updated = prev.map((x) =>
+          selectedIds.includes(x.id)
+            ? {
+                ...x,
+                status: toStatus,
+                version: (x.version ?? 0) + 1,
+              }
+            : x,
+        );
+
+        return updated.filter((r) => KEEP_STATUSES.has(String(r.status)));
+      });
+
+      logUiEvent({
+        action: "UI_BULK_STATUS_CHANGE",
+        entity: "Report",
+        entityId: selectedIds.join(","),
+        details: `Bulk status → ${toStatus} (${selectedIds.length})`,
+        meta: {
+          reportIds: selectedIds,
+          count: selectedIds.length,
+          fromStatus: String(selected[0]?.status ?? ""),
+          toStatus,
+          kind: getReportKind(selected[0]),
+        },
+      });
+
+      setSelectedIds([]);
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
+  const ENABLE_BULK_STATUS = false;
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -815,7 +932,7 @@ export default function MicroDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
                 @media print {
                   body > *:not(#bulk-print-root) { display: none !important; }
@@ -846,6 +963,50 @@ export default function MicroDashboard() {
                   }
                 }
               `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -874,6 +1035,62 @@ export default function MicroDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+{ENABLE_BULK_STATUS && (
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length ||
+                !selectedSameKindAndStatus ||
+                bulkUpdating ||
+                printingBulk
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                selectedIds.length && selectedSameKindAndStatus
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+              )}
+            >
+              {bulkUpdating ? <Spinner /> : "⚡"}
+              {bulkUpdating
+                ? "Applying..."
+                : `Bulk Status (${selectedIds.length})`}
+            </button>
+
+            {bulkMenuOpen && commonNextStatuses.length > 0 && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="py-1 text-sm">
+                  {commonNextStatuses.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-100"
+                      onClick={async () => {
+                        if (bulkUpdating) return;
+                        setBulkMenuOpen(false);
+
+                        try {
+                          await applyBulkStatusChange(s);
+                        } catch (e: any) {
+                          toast.error(
+                            e?.message || "Bulk status update failed",
+                          );
+                        }
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          )}
           <button
             type="button"
             onClick={handlePrintSelected}

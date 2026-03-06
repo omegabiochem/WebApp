@@ -13,12 +13,56 @@ type ReportCreated = {
   client?: string;
 };
 
+// export function useLiveReportStatus<T extends { id: string; status?: string }>(
+//   setReports: React.Dispatch<React.SetStateAction<T[]>>,
+//   opts?: {
+//     acceptCreated?: (r: any) => boolean; // filter for this dashboard
+//     createdEvent?: string; // default "report.created"
+//     statusEvent?: string; // default "report.statusChanged"
+//   },
+// ) {
+//   useEffect(() => {
+//     const statusEvent = opts?.statusEvent ?? "report.statusChanged";
+//     const createdEvent = opts?.createdEvent ?? "report.created";
+
+//     const onStatus = (p: StatusChanged) => {
+//       const id = p.reportId ?? p.id;
+//       const status = p.status;
+//       if (!id || !status) return;
+
+//       setReports((prev) =>
+//         prev.map((r) => (r.id === id ? { ...r, status } : r)),
+//       );
+//     };
+
+//     const onCreated = (r: ReportCreated) => {
+//       if (!r?.id) return;
+//       if (opts?.acceptCreated && !opts.acceptCreated(r)) return;
+
+//       setReports((prev) => {
+//         if (prev.some((x) => x.id === r.id)) return prev; // avoid duplicates
+//         return [r as any, ...prev]; // add to top
+//       });
+//     };
+
+//     socket.on(statusEvent, onStatus);
+//     socket.on(createdEvent, onCreated);
+
+//     return () => {
+//       socket.off(statusEvent, onStatus);
+//       socket.off(createdEvent, onCreated);
+//     };
+//   }, [setReports, opts?.acceptCreated, opts?.createdEvent, opts?.statusEvent]);
+// }
+
+
 export function useLiveReportStatus<T extends { id: string; status?: string }>(
   setReports: React.Dispatch<React.SetStateAction<T[]>>,
   opts?: {
-    acceptCreated?: (r: any) => boolean; // filter for this dashboard
-    createdEvent?: string; // default "report.created"
-    statusEvent?: string; // default "report.statusChanged"
+    acceptCreated?: (r: any) => boolean;
+    shouldKeep?: (r: T) => boolean;           // ✅ NEW
+    createdEvent?: string;
+    statusEvent?: string;
   },
 ) {
   useEffect(() => {
@@ -30,9 +74,10 @@ export function useLiveReportStatus<T extends { id: string; status?: string }>(
       const status = p.status;
       if (!id || !status) return;
 
-      setReports((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status } : r)),
-      );
+      setReports((prev) => {
+        const next = prev.map((r) => (r.id === id ? ({ ...r, status } as T) : r));
+        return opts?.shouldKeep ? next.filter(opts.shouldKeep) : next; // ✅ DROP rows
+      });
     };
 
     const onCreated = (r: ReportCreated) => {
@@ -40,8 +85,8 @@ export function useLiveReportStatus<T extends { id: string; status?: string }>(
       if (opts?.acceptCreated && !opts.acceptCreated(r)) return;
 
       setReports((prev) => {
-        if (prev.some((x) => x.id === r.id)) return prev; // avoid duplicates
-        return [r as any, ...prev]; // add to top
+        if (prev.some((x) => x.id === r.id)) return prev;
+        return [r as any, ...prev];
       });
     };
 
@@ -52,5 +97,5 @@ export function useLiveReportStatus<T extends { id: string; status?: string }>(
       socket.off(statusEvent, onStatus);
       socket.off(createdEvent, onCreated);
     };
-  }, [setReports, opts?.acceptCreated, opts?.createdEvent, opts?.statusEvent]);
+  }, [setReports, opts?.acceptCreated, opts?.shouldKeep, opts?.createdEvent, opts?.statusEvent]);
 }
