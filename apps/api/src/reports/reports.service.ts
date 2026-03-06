@@ -263,7 +263,7 @@ const STATUS_TRANSITIONS = {
     canEdit: ['QA'],
   },
   QA_NEEDS_PRELIMINARY_CORRECTION: {
-       canSet: ["QA","MICRO", "MC"],
+    canSet: ['QA', 'MICRO', 'MC'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC'],
     canEdit: [],
@@ -321,7 +321,7 @@ const STATUS_TRANSITIONS = {
     canEdit: ['QA'],
   },
   QA_NEEDS_FINAL_CORRECTION: {
-        canSet: ["QA","MICRO", "MC"],
+    canSet: ['QA', 'MICRO', 'MC'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC'],
     canEdit: [],
@@ -980,8 +980,23 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
+
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: {
+            name: true,
+            userId: true,
+            email: true,
+          },
+        });
         const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+        base.ReportnumberAssignedAt = new Date();
+        base.ReportnumberAssignedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
       }
 
       // e-sign requirements
@@ -1434,7 +1449,22 @@ export class ReportsService {
         update: { lastNumber: { increment: 1 } },
         create: { department: deptLetter, lastNumber: 1 },
       });
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
       patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
+      patch.ReportnumberAssignedAt = new Date();
+      patch.ReportnumberAssignedBy =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
     }
 
     // ✅ apply lock timestamp

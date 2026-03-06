@@ -235,7 +235,7 @@ const STATUS_TRANSITIONS: Record<
   VOID: {
     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
     next: [],
-    nextEditableBy: [ "SYSTEMADMIN"],
+    nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
 };
@@ -693,8 +693,23 @@ export class ChemistryReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
+
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: {
+            name: true,
+            userId: true,
+            email: true,
+          },
+        });
         const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+        base.ReportnumberAssignedAt = new Date();
+        base.ReportnumberAssignedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
       }
 
       // e-sign requirements
@@ -831,19 +846,6 @@ export class ChemistryReportsService {
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
-
-      // await this.chemistryNotifications.onStatusChanged({
-      //   formType: current.formType,
-      //   reportId: current.id,
-      //   formNumber: current.formNumber,
-      //   clientName: clientUser?.name ?? '-',
-      //   clientCode: clientUser?.clientCode ?? null,
-      //   clientEmail: clientUser?.email ?? null,
-      //   oldStatus: prevStatus,
-      //   newStatus: String(patchIn.status),
-      //   reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
-      //   actorUserId: user.userId,
-      // });
 
       await this.chemistryNotifications.onStatusChanged({
         formType: current.formType,
@@ -1154,7 +1156,22 @@ export class ChemistryReportsService {
         update: { lastNumber: { increment: 1 } },
         create: { department: deptLetter, lastNumber: 1 },
       });
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
       patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
+      patch.ReportnumberAssignedAt = new Date();
+      patch.ReportnumberAssignedBy =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
     }
 
     if (target === 'LOCKED') patch.lockedAt = new Date();

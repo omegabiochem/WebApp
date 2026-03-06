@@ -23,6 +23,10 @@ model Report {
   formType      FormType
   clientCode    String?
   version       Int                   @default(1)
+
+  ReportnumberAssignedAt DateTime?
+  ReportnumberAssignedBy String?
+
   attachments   Attachment[]
   microMix      MicroMixDetails?
   microMixWater MicroMixWaterDetails?
@@ -313,6 +317,11 @@ model ChemistryReport {
   status        ChemistryReportStatus          @default(DRAFT)
   clientCode    String?
   version       Int                            @default(1)
+
+  ReportnumberAssignedAt DateTime?
+  ReportnumberAssignedBy String?
+
+  
   attachments   ChemistryAttachment[]
   chemistryMix  ChemistryMixDetails?
   coa          COADetails?
