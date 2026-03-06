@@ -648,6 +648,12 @@ export default function MicroDashboard() {
       } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
         nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
         await setStatus(r, nextStatus, `Set by ${actor}`);
+      } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
+        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+        await setStatus(r, nextStatus, `Set by ${actor}`);
+      } else if (r.status === "QA_NEEDS_FINAL_CORRECTION") {
+        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
+        await setStatus(r, nextStatus, `Set by ${actor}`);
       }
     }
 
