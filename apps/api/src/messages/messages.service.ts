@@ -30,6 +30,12 @@ type InboxThreadDto = {
 };
 
 const PRIVILEGED: UserRole[] = ['ADMIN', 'QA', 'SYSTEMADMIN'];
+function getVisibleRoles(viewerRole: UserRole): UserRole[] {
+  if (viewerRole === 'MC') {
+    return ['MC', 'MICRO', 'CHEMISTRY'];
+  }
+  return [viewerRole];
+}
 
 @Injectable()
 export class MessagesService {
@@ -139,6 +145,7 @@ export class MessagesService {
     if (!args.clientCode) throw new ForbiddenException('clientCode required');
 
     const viewerRole = args.viewerRole;
+    const visibleRoles = getVisibleRoles(viewerRole);
 
     const canSeeAll =
       viewerRole === 'CLIENT' || PRIVILEGED.includes(viewerRole);
@@ -147,14 +154,13 @@ export class MessagesService {
       ? undefined
       : {
           OR: [
-            // anything explicitly tagged to this role
-            { mentions: { has: viewerRole } },
+            // anything explicitly tagged to this role set
+            { mentions: { hasSome: visibleRoles } },
 
-            // messages sent by me (so I can see what I sent)
-            { senderRole: viewerRole },
+            // messages sent by any visible lab role
+            { senderRole: { in: visibleRoles } },
 
-            // allow ADMIN/QA broadcasts to be visible to all lab roles (optional)
-            // if you DON'T want this, remove this block
+            // allow ADMIN/QA broadcasts to be visible to all lab roles
             { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
           ],
         };
@@ -213,16 +219,17 @@ export class MessagesService {
 
   async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
     const canSeeAll = PRIVILEGED.includes(viewerRole);
+const visibleRoles = getVisibleRoles(viewerRole);
 
-    const visibleMessageFilter = canSeeAll
-      ? undefined
-      : {
-          OR: [
-            { mentions: { has: viewerRole } },
-            { senderRole: viewerRole },
-            { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
-          ],
-        };
+const visibleMessageFilter = canSeeAll
+  ? undefined
+  : {
+      OR: [
+        { mentions: { hasSome: visibleRoles } },
+        { senderRole: { in: visibleRoles } },
+        { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
+      ],
+    };
 
     // 1) get ALL clients (one row per clientCode)
     // If you can have multiple client users per clientCode, pick “primary” name/email or first one.

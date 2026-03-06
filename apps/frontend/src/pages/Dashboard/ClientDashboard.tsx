@@ -7,6 +7,7 @@ import type {
   ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
 import {
+  STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
@@ -17,6 +18,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  STATUS_TRANSITIONS as CHEM_STATUS_TRANSITIONS,
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
@@ -36,6 +38,10 @@ import {
   type ColKey,
 } from "../../utils/clientDashboardutils";
 import COAReportFormView from "../Reports/COAReportFormView";
+import {
+  STERILITY_STATUS_TRANSITIONS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
 
 // -----------------------------
 // Types
@@ -89,6 +95,7 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "APPROVED",
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
+  "UNDER_CLIENT_REVIEW",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -96,6 +103,45 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "LOCKED",
   "VOID",
 ];
+type BulkWorkflowGroup = "MICRO" | "STERILITY" | "CHEMISTRY" | "COA";
+
+function getBulkWorkflowGroup(r: Report): BulkWorkflowGroup {
+  if (r.formType === "STERILITY") return "STERILITY";
+  if (r.formType === "COA") return "COA";
+  if (r.formType === "CHEMISTRY_MIX") return "CHEMISTRY";
+  return "MICRO";
+}
+
+function getNextStatusesForReport(r: Report): string[] {
+  const s = String(r.status);
+
+  if (r.formType === "STERILITY") {
+    return (STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ??
+      []) as string[];
+  }
+
+  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+    return (CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus]?.next ??
+      []) as string[];
+  }
+
+  return (MICRO_STATUS_TRANSITIONS?.[s as ReportStatus]?.next ??
+    []) as string[];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+
+  for (let i = 1; i < lists.length; i++) {
+    const current = new Set(lists[i]);
+    for (const value of Array.from(set)) {
+      if (!current.has(value)) set.delete(value);
+    }
+  }
+
+  return Array.from(set);
+}
 
 // -----------------------------
 // Utilities
@@ -482,8 +528,8 @@ export default function ClientDashboard() {
     error: null,
   });
 
-
-  
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   useEffect(() => {
     // ✅ IMPORTANT: don't get stuck if key isn't ready yet
@@ -778,6 +824,32 @@ export default function ClientDashboard() {
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
+  const selectedBulkReports = selectedReportObjects;
+
+  const selectedSameGroupAndStatus = useMemo(() => {
+    if (!selectedBulkReports.length) return false;
+
+    const group0 = getBulkWorkflowGroup(selectedBulkReports[0]);
+    const status0 = String(selectedBulkReports[0].status);
+
+    return selectedBulkReports.every(
+      (r) => getBulkWorkflowGroup(r) === group0 && String(r.status) === status0,
+    );
+  }, [selectedBulkReports]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selectedBulkReports.length) return [];
+    if (!selectedSameGroupAndStatus) return [];
+
+    return intersectAll(selectedBulkReports.map(getNextStatusesForReport));
+  }, [selectedBulkReports, selectedSameGroupAndStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
   useEffect(() => {
     const now = new Date();
 
@@ -969,32 +1041,86 @@ export default function ClientDashboard() {
 
   const location = useLocation();
 
-const handleVoidSelected = async (reason: string, password: string) => {
-  if (!voidableSelected.length) return;
+  const handleVoidSelected = async (reason: string, password: string) => {
+    if (!voidableSelected.length) return;
 
-  logUiEvent({
-    action: "UI_VOID_SELECTED",
-    entity: "Report",
-    details: `Voided selected reports (${voidableSelected.length})`,
-    entityId: voidableSelected.map((r) => r.id).join(","),
-    meta: { reportIds: voidableSelected.map((r) => r.id), count: voidableSelected.length, reason },
-  });
+    logUiEvent({
+      action: "UI_VOID_SELECTED",
+      entity: "Report",
+      details: `Voided selected reports (${voidableSelected.length})`,
+      entityId: voidableSelected.map((r) => r.id).join(","),
+      meta: {
+        reportIds: voidableSelected.map((r) => r.id),
+        count: voidableSelected.length,
+        reason,
+      },
+    });
 
-  await Promise.all(
-    voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
-  );
+    await Promise.all(
+      voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
+    );
 
-  toast.success(`Voided ${voidableSelected.length} report(s)`);
-  setSelectedIds([]);
-};
+    toast.success(`Voided ${voidableSelected.length} report(s)`);
+    setSelectedIds([]);
+  };
 
   const voidableSelected = selectedReportObjects.filter(
-  (r) => String(r.status) !== "VOID",
-);
+    (r) => String(r.status) !== "VOID",
+  );
 
-const voidableCount = voidableSelected.length;
-const allSelectedAreVoid =
-  selectedReportObjects.length > 0 && voidableCount === 0;
+  const voidableCount = voidableSelected.length;
+  const allSelectedAreVoid =
+    selectedReportObjects.length > 0 && voidableCount === 0;
+
+  const handleBulkStatusChange = async (toStatus: string) => {
+    if (!selectedBulkReports.length) return;
+
+    setBulkUpdating(true);
+    try {
+      await Promise.all(
+        selectedBulkReports.map((r) =>
+          setStatus(r, toStatus, "Bulk Status Change"),
+        ),
+      );
+
+      setReports((prev) =>
+        prev.map((r) =>
+          selectedIds.includes(r.id)
+            ? {
+                ...r,
+                status: toStatus,
+                version: (r.version ?? 0) + 1,
+              }
+            : r,
+        ),
+      );
+
+      logUiEvent({
+        action: "UI_BULK_STATUS_CHANGE",
+        entity: "Report",
+        entityId: selectedIds.join(","),
+        details: `Bulk status → ${toStatus} (${selectedBulkReports.length})`,
+        meta: {
+          reportIds: selectedIds,
+          count: selectedBulkReports.length,
+          fromStatus: String(selectedBulkReports[0]?.status ?? ""),
+          toStatus,
+          workflowGroup: selectedBulkReports[0]
+            ? getBulkWorkflowGroup(selectedBulkReports[0])
+            : "",
+        },
+      });
+
+      toast.success(`Updated ${selectedBulkReports.length} report(s)`);
+      setSelectedIds([]);
+    } catch (e: any) {
+      toast.error(e?.message || "Bulk update failed");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const ENABLE_BULK_STATUS = false;
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1007,41 +1133,46 @@ const allSelectedAreVoid =
           <>
             <style>
               {`
-              @media print {
-              /* Hide everything in the document body except our print root */
-              body > *:not(#bulk-print-root) { display: none !important; }
-             #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
 
-              /* Page sizing & margins */
-              @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
 
-              /* Make all report "sheets" fill the width without shadow/padding */
-              #bulk-print-root .sheet {
-                width: 100% !important;
-                max-width: 100% !important;
-                margin: 0 !important;
-                box-shadow: none !important;
-                border: none !important;
-                padding: 0 !important;
-              }
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
 
-              /* Keep each report together */
-              #bulk-print-root .report-page {
-                break-inside: avoid-page;
-                page-break-inside: avoid;
-              }
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
 
-              /* Start every report AFTER the first on a new page */
-              #bulk-print-root .report-page + .report-page {
-                break-before: page;
-                page-break-before: always;
-              }
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
 
-              @supports (margin-trim: block) {
-                @page { margin-trim: block; }
-              }
-            }
-        `}
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -1070,34 +1201,90 @@ const allSelectedAreVoid =
           </p>
         </div>
         <div className="flex items-center gap-2">
-      <button
-  type="button"
-  onClick={() => {
-    if (!voidableCount) return; // ✅ nothing to void
-    setStatusModal({
-      open: true,
-      action: "VOID_SELECTED",
-      reason: "",
-      password: "",
-      submitting: false,
-      error: null,
-    });
-  }}
-  disabled={!voidableCount || printingBulk}
-  className={classNames(
-    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
-    voidableCount
-      ? "bg-rose-600 text-white hover:bg-rose-700"
-      : "bg-slate-200 text-slate-500", // ✅ not red anymore
-  )}
-  title={
-    allSelectedAreVoid
-      ? "All selected reports are already VOID"
-      : "Void selected reports"
-  }
->
-  ⛔ Void ({voidableCount})
-</button>
+          {ENABLE_BULK_STATUS && (
+            <div className="relative">
+              <button
+                type="button"
+                disabled={
+                  !selectedIds.length ||
+                  !selectedSameGroupAndStatus ||
+                  bulkUpdating ||
+                  printingBulk
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBulkMenuOpen((o) => !o);
+                }}
+                className={classNames(
+                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                  selectedIds.length && selectedSameGroupAndStatus
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-slate-200 text-slate-500 cursor-not-allowed",
+                )}
+                title={
+                  !selectedIds.length
+                    ? "Select reports first"
+                    : !selectedSameGroupAndStatus
+                      ? "Select reports with same workflow and same status"
+                      : "Bulk status change"
+                }
+              >
+                {bulkUpdating ? <Spinner /> : "⚡"}
+                {bulkUpdating
+                  ? "Applying..."
+                  : `Bulk Status (${selectedIds.length})`}
+              </button>
+
+              {bulkMenuOpen && commonNextStatuses.length > 0 && (
+                <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                  <div className="py-1 text-sm">
+                    {commonNextStatuses.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-100"
+                        onClick={async () => {
+                          if (bulkUpdating) return;
+                          setBulkMenuOpen(false);
+                          await handleBulkStatusChange(s);
+                        }}
+                      >
+                        {niceStatus(s)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (!voidableCount) return; // ✅ nothing to void
+              setStatusModal({
+                open: true,
+                action: "VOID_SELECTED",
+                reason: "",
+                password: "",
+                submitting: false,
+                error: null,
+              });
+            }}
+            disabled={!voidableCount || printingBulk}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+              voidableCount
+                ? "bg-rose-600 text-white hover:bg-rose-700"
+                : "bg-slate-200 text-slate-500", // ✅ not red anymore
+            )}
+            title={
+              allSelectedAreVoid
+                ? "All selected reports are already VOID"
+                : "Void selected reports"
+            }
+          >
+            ⛔ Void ({voidableCount})
+          </button>
           <button
             type="button"
             onClick={handlePrintSelected}

@@ -113,6 +113,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   MICRO: [
     "testSopNo",
     "dateTested",
+    "dateCompleted",
     "ftm_turbidity",
     "ftm_observation",
     "ftm_result",
@@ -123,6 +124,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   MC: [
     "testSopNo",
     "dateTested",
+    "dateCompleted",
     "ftm_turbidity",
     "ftm_observation",
     "ftm_result",
@@ -130,7 +132,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "scdb_observation",
     "scdb_result",
   ],
-  QA: ["dateCompleted"],
+  QA: [],
   CLIENT: [
     "dateSent",
     "typeOfTest",

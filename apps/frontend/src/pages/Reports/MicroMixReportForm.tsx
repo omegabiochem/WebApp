@@ -122,7 +122,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA" && field === "dateCompleted") {
+  if (role === "QA" ) {
     return p === "FINAL";
   }
 
@@ -177,6 +177,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateTested",
       "preliminaryResults",
       "preliminaryResultsDate",
+      "dateCompleted",
       // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
@@ -200,11 +201,12 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "tmy_gram",
       "tmy_result",
       "pathogens",
+      "dateCompleted",
       "comments",
       // "testedBy",
       // "testedDate",
     ],
-    QA: ["dateCompleted"],
+    QA: [],
     CLIENT: [
       "client",
       "dateSent",
@@ -1174,12 +1176,12 @@ export default function MicroMixReportForm({
             }
           }
 
-          // ✅ QA: only allow dateCompleted in FINAL
-          if (role === "QA") {
-            if (phase === "PRELIM") {
-              return fields.filter((f) => f !== "dateCompleted");
-            }
-          }
+          // // ✅ QA: only allow dateCompleted in FINAL
+          // if (role === "MICRO" || role === "MC" || role === "QA" || role === "ADMIN") {
+          //   if (phase === "PRELIM") {
+          //     return fields.filter((f) => f !== "dateCompleted");
+          //   }
+          // }
           return fields;
         };
 
@@ -1208,6 +1210,7 @@ export default function MicroMixReportForm({
             "dateTested",
             "preliminaryResults",
             "preliminaryResultsDate",
+            "dateCompleted",
             // "testedBy",
             // "testedDate",
             "comments",
@@ -1224,11 +1227,12 @@ export default function MicroMixReportForm({
             "dateTested",
             "preliminaryResults",
             "preliminaryResultsDate",
+            "dateCompleted",
             // "testedBy",
             // "testedDate",
             "comments",
           ],
-          QA: ["dateCompleted"],
+          QA: [],
           CLIENT: [
             "client",
             "dateSent",
@@ -1360,8 +1364,6 @@ export default function MicroMixReportForm({
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-    
-
       const values = makeValues();
       const okFields = validateAndSetErrors(values);
       const okRows = validatePathogenRows(values.pathogens, role, phase);

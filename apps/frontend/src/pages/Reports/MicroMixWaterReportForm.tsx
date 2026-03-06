@@ -118,7 +118,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA" && field === "dateCompleted") {
+  if (role === "QA") {
     return p === "FINAL";
   }
 
@@ -173,6 +173,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateTested",
       "preliminaryResults",
       "preliminaryResultsDate",
+      "dateCompleted",
       // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
@@ -189,6 +190,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "dateTested",
       "preliminaryResults",
       "preliminaryResultsDate",
+      "dateCompleted",
       // "tbc_dilution",
       "tbc_gram",
       "tbc_result",
@@ -200,7 +202,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "testedBy",
       "testedDate",
     ],
-    QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+    QA: [ "reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
       "dateSent",
@@ -1142,12 +1144,12 @@ const backToDashboard = () => {
             }
           }
 
-          // ✅ QA: only allow dateCompleted in FINAL
-          if (role === "QA") {
-            if (phase === "PRELIM") {
-              return fields.filter((f) => f !== "dateCompleted");
-            }
-          }
+          // // ✅ QA: only allow dateCompleted in FINAL
+          // if (role === "QA") {
+          //   if (phase === "PRELIM") {
+          //     return fields.filter((f) => f !== "dateCompleted");
+          //   }
+          // }
           return fields;
         };
 
@@ -1176,6 +1178,7 @@ const backToDashboard = () => {
             "dateTested",
             "preliminaryResults",
             "preliminaryResultsDate",
+            "dateCompleted",
             // "testedBy",
             // "testedDate",
             "comments",
@@ -1192,11 +1195,12 @@ const backToDashboard = () => {
             "dateTested",
             "preliminaryResults",
             "preliminaryResultsDate",
+            "dateCompleted",
             // "testedBy",
             // "testedDate",
             "comments",
           ],
-          QA: ["dateCompleted"],
+          QA: [],
           CLIENT: [
             "client",
             "dateSent",
