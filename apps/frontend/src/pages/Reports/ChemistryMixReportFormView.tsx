@@ -254,25 +254,7 @@ function formatDateForInput(value: string | null) {
   return new Date(value).toISOString().split("T")[0];
 }
 
-// sample type checkboxes
-type SampleTypeKey =
-  | "BULK"
-  | "FINISHED_GOOD"
-  | "RAW_MATERIAL"
-  | "PROCESS_VALIDATION"
-  | "COMPOSITE"
-  | "DI_WATER_SAMPLE"
-  | "STABILITY";
 
-const sampleTypeItems: [SampleTypeKey, string][] = [
-  ["BULK", "BULK"],
-  ["FINISHED_GOOD", "FINISHED GOOD"],
-  ["RAW_MATERIAL", "RAW MATERIAL"],
-  ["COMPOSITE", "COMPOSITE"],
-  ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-  ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
-  ["STABILITY", "STABILITY"],
-];
 
 // const PrintStyles = () => (
 //   <style>{`
@@ -648,7 +630,7 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* TYPE OF TEST / SAMPLE COLLECTED */}
-            <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px] min-h-[20px]">
+            <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] min-h-[20px]">
               {/* LEFT */}
               <div className="px-2 border-r border-black grid items-center">
                 <div className="flex items-center gap-2 whitespace-nowrap">
@@ -690,12 +672,23 @@ export default function ChemistryMixReportFormView(
                     />
                     <span>Content Uniformity</span>
                   </label>
+
+                  <label className="inline-flex items-center gap-1 shrink-0">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={report?.testTypes?.includes("OTHER")}
+                      readOnly
+                      disabled
+                    />
+                    <span>Other</span>
+                  </label>
                 </div>
               </div>
 
               {/* RIGHT */}
               <div className="px-2 grid items-center">
-                <div className="flex items-center gap-3 whitespace-nowrap">
+                <div className="flex items-center gap-1 whitespace-nowrap">
                   <span className="font-medium mr-1 shrink-0">
                     SAMPLE COLLECTED :
                   </span>
@@ -802,42 +795,128 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE TYPE checkboxes */}
-            <div className="px-2 text-[12px] grid grid-cols-[auto_1fr] items-stretch">
-              {/* LEFT: Sample type */}
-              <div className="flex max-w-[600px]   self-stretch border-r border-black">
-                <span className="font-medium mr-1 whitespace-nowrap">
-                  SAMPLE TYPE :
-                </span>
+            <div className="px-2 text-[12px] grid grid-cols-[1fr_auto] items-stretch">
+              {/* LEFT: sample type section */}
+              <div className="flex flex-col border-r border-black pr-2">
+                {/* Row 1 */}
+                <div className="flex items-center gap-4 whitespace-nowrap">
+                  <span className="font-medium">SAMPLE TYPE :</span>
 
-                <div className="inline-flex border border-transparent">
-                  <div className="grid grid-cols-4 grid-rows-2 gap-x-7 gap-y-1">
-                    {sampleTypeItems.map(([key, label]) => (
-                      <label
-                        key={key}
-                        className="flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <input
-                          type="checkbox"
-                          className="thick-box2"
-                          checked={report?.sampleTypes?.includes(key) ?? false}
-                          readOnly
-                          disabled
-                        />
-                        <span className="text-[10px]">{label}</span>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={report?.sampleTypes?.includes("BULK") ?? false}
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">BULK</span>
+                  </label>
 
-                        {/* ✅ STABILITY writing line (view mode) */}
-                        {key === "STABILITY" && (
-                          <input
-                            type="text"
-                            value={report?.stabilityNote ?? ""} // <-- use your field name here
-                            readOnly
-                            disabled
-                            className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
-                          />
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("FINISHED_GOOD") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">FINISHED GOOD</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("RAW_MATERIAL") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">RAW MATERIAL</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("CLEANING_VALIDATION") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">CLEANING VALIDATION</span>
+                  </label>
+                </div>
+
+                {/* Row 2 */}
+                <div className="mt-1 flex items-center gap-6 whitespace-nowrap">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("COMPOSITE") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">COMPOSITE</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("DI_WATER_SAMPLE") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">DI WATER SAMPLE</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("PROCESS_VALIDATION") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">PROCESS VALIDATION</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("STABILITY") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">STABILITY</span>
+
+                    <input
+                      type="text"
+                      value={report?.stabilityNote ?? ""}
+                      readOnly
+                      disabled
+                      className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -846,7 +925,6 @@ export default function ChemistryMixReportFormView(
                 <span className="whitespace-nowrap font-medium">
                   DATE RECEIVED :
                 </span>
-
                 <input
                   type="date"
                   className="w-[80px] border-0 border-b border-black/60 outline-none text-[11px]"

@@ -251,7 +251,7 @@ export default function ChemistryMixSubmissionForm({
   );
 
   // type of test: ID / Percent Assay / Content Uniformity
-  type TestType = "ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY";
+  type TestType = "ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY" | "OTHER";
   const [testTypes, setTestTypes] = useState<TestType[]>(
     report?.testTypes || [],
   );
@@ -285,9 +285,9 @@ export default function ChemistryMixSubmissionForm({
     | "BULK"
     | "FINISHED_GOOD"
     | "RAW_MATERIAL"
-    | "PROCESS_VALIDATION"
     | "CLEANING_VALIDATION"
     | "COMPOSITE"
+    | "PROCESS_VALIDATION"
     | "DI_WATER_SAMPLE"
     | "STABILITY";
 
@@ -350,10 +350,10 @@ export default function ChemistryMixSubmissionForm({
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const returnTo = params.get("returnTo");
-const backToDashboard = () => {
-  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  else navigate("/clientDashboard", { replace: true });
-};
+  const backToDashboard = () => {
+    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+    else navigate("/clientDashboard", { replace: true });
+  };
 
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1097,11 +1097,11 @@ const backToDashboard = () => {
         }
       }
 
-    // if (newStatus === "SUBMITTED_BY_CLIENT") {
-    //     const sent = todayISO();
-    //     setDateSent(sent);
-    //     markDirty(); // ✅ IMPORTANT so handleSave runs
-    //   }
+      // if (newStatus === "SUBMITTED_BY_CLIENT") {
+      //     const sent = todayISO();
+      //     setDateSent(sent);
+      //     markDirty(); // ✅ IMPORTANT so handleSave runs
+      //   }
 
       // 3) Ensure latest edits are saved
       if (!reportId || isDirty) {
@@ -1155,13 +1155,13 @@ const backToDashboard = () => {
     return "/";
   }, [role]);
 
-
   const handleClose = () => {
-  if (onClose) return onClose();
-  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
-  if (window.history.length > 1) navigate(-1);
-  else navigate(fallbackRoute, { replace: true });
-};
+    if (onClose) return onClose();
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
+  };
 
   // const handleClose = () => {
   //   if (onClose) return onClose();
@@ -1181,8 +1181,9 @@ const backToDashboard = () => {
     ["BULK", "BULK"],
     ["FINISHED_GOOD", "FINISHED GOOD"],
     ["RAW_MATERIAL", "RAW MATERIAL"],
-    ["COMPOSITE", "COMPOSITE"],
     ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
+    ["COMPOSITE", "COMPOSITE"],
+    ["CLEANING_VALIDATION", "CLEANING VALIDATION"],
     ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
     ["STABILITY", "STABILITY"],
   ];
@@ -1486,7 +1487,7 @@ const backToDashboard = () => {
           </div>
 
           {/* TYPE OF TEST / SAMPLE COLLECTED */}
-          <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
+          <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px]">
             <div className="px-2 border-r border-black flex items-center gap-2 text-[12px]">
               <span
                 className={`font-medium whitespace-nowrap ${
@@ -1566,12 +1567,29 @@ const backToDashboard = () => {
                   />
                   Content Uniformity
                 </label>
+
+                <label className="flex items-center gap-1 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={testTypes.includes("OTHER")}
+                    onChange={() => {
+                      if (selectingCorrections) return;
+                      if (lock("testTypes")) return;
+                      toggleTestType("OTHER");
+                      clearError("testTypes");
+                    }}
+                    className={
+                      lock("testTypes") ? "accent-black" : "accent-blue-600"
+                    }
+                  />
+                  Other
+                </label>
               </div>
 
               <FieldErrorBadge name="testTypes" errors={errors} />
             </div>
 
-            <div className="px-2 flex items-center gap-3 text-[12px]">
+            <div className="px-1 flex items-center gap-1 text-[12px]">
               <span
                 className={`font-medium mr-1 whitespace-nowrap ${corrCursor} relative ${dashClass(
                   "sampleCollected",
