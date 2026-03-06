@@ -321,7 +321,7 @@ export type ChemistryMixReportFormValues = {
 
   sampleDescription?: string;
 
-  testTypes?: Array<"ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY">;
+  testTypes?: Array<"ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY" | "OTHER">;
   sampleCollected?: Array<"TOP_BEG" | "MID" | "BOTTOM_END" | "">;
 
   lotBatchNo?: string;

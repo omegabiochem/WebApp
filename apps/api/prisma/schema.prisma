@@ -620,6 +620,7 @@ enum TestType {
   ID
   PERCENT_ASSAY
   CONTENT_UNIFORMITY
+  OTHER
 }
 
 enum SampleCollected {
