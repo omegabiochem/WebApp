@@ -68,6 +68,39 @@ const inputBase =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 " +
   "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300";
 
+type CommonRole =
+  | "SYSTEMADMIN"
+  | "ADMIN"
+  | "FRONTDESK"
+  | "MICRO"
+  | "MC"
+  | "CHEMISTRY"
+  | "QA"
+  | "CLIENT";
+
+type CommonAccountRow = {
+  id: string;
+  userId: string;
+  label: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  membersCount?: number;
+};
+
+type CommonAccountMemberRow = {
+  id: string;
+  userId: string;
+  active: boolean;
+  allowedRoles: CommonRole[];
+  user: {
+    id: string;
+    name?: string | null;
+    email: string;
+    role: CommonRole;
+    active: boolean;
+  };
+};
 /* -------------------- roles -------------------- */
 
 const roleOptions: (Role | "ALL")[] = [
@@ -233,7 +266,7 @@ export default function UsersAdmin() {
   const isAdmin = user?.role === "ADMIN" || user?.role === "SYSTEMADMIN";
 
   const [tab, setTab] = useState<
-    "USERS" | "NOTIFICATIONS" | "REPORTS" | "CLIENTS"
+    "USERS" | "NOTIFICATIONS" | "REPORTS" | "CLIENTS" | "COMMON_ACCOUNTS"
   >("USERS");
 
   /* -------------------- create user state -------------------- */
@@ -526,6 +559,20 @@ export default function UsersAdmin() {
           >
             <Settings2 size={16} />
             Clients
+          </button>
+
+          <button
+            onClick={() => setTab("COMMON_ACCOUNTS")}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
+              tab === "COMMON_ACCOUNTS"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+            )}
+            type="button"
+          >
+            <Users size={16} />
+            Common Accounts
           </button>
         </div>
       </div>
@@ -1067,6 +1114,7 @@ export default function UsersAdmin() {
       {tab === "NOTIFICATIONS" && <NotificationsAllClients />}
       {tab === "REPORTS" && <ReportsAdminTab />}
       {tab === "CLIENTS" && <ClientsAdminTab />}
+      {tab === "COMMON_ACCOUNTS" && <CommonAccountsAdminTab />}
 
       {/* Create result modal */}
       <Modal
@@ -2019,6 +2067,514 @@ function ClientsAdminTab() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== COMMON ACCOUNTS ==================== */
+
+
+function CommonAccountsAdminTab() {
+  const [loading, setLoading] = useState(false);
+  const [accounts, setAccounts] = useState<CommonAccountRow[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [members, setMembers] = useState<CommonAccountMemberRow[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<UserRow[]>([]);
+
+  const [createLabel, setCreateLabel] = useState("");
+  const [createUserId, setCreateUserId] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+
+  const [memberUserId, setMemberUserId] = useState("");
+  const [memberRoles, setMemberRoles] = useState<CommonRole[]>([]);
+  const [memberActive, setMemberActive] = useState(true);
+
+  const selectedAccount = useMemo(
+    () => accounts.find((a) => a.id === selectedAccountId) ?? null,
+    [accounts, selectedAccountId],
+  );
+
+  const commonRoleOptions: CommonRole[] = [
+    "SYSTEMADMIN",
+    "ADMIN",
+    "FRONTDESK",
+    "MICRO",
+    "CHEMISTRY",
+    "MC",
+    "QA",
+    "CLIENT",
+  ];
+
+  async function loadAccounts() {
+    setLoading(true);
+    try {
+      const res = await api<CommonAccountRow[]>("/common-accounts");
+      setAccounts(res);
+
+      setSelectedAccountId((prev) => {
+        if (prev && res.some((x) => x.id === prev)) return prev;
+        return res[0]?.id ?? null;
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load common accounts");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadMembers(accountId: string) {
+    setMembersLoading(true);
+    try {
+      const res = await api<CommonAccountMemberRow[]>(
+        `/common-accounts/${accountId}/members`,
+      );
+      setMembers(res);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load members");
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
+  async function loadAvailableUsers() {
+    try {
+      const res = await fetchUsers({
+        q: "",
+        role: "ALL",
+        active: "TRUE",
+        page: 1,
+        pageSize: 500,
+      });
+      setAvailableUsers(res.items);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load users");
+    }
+  }
+
+  useEffect(() => {
+    loadAccounts();
+    loadAvailableUsers();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAccountId) {
+      setMembers([]);
+      return;
+    }
+    loadMembers(selectedAccountId);
+  }, [selectedAccountId]);
+
+  async function createCommonAccount() {
+    const label = createLabel.trim();
+    const userId = createUserId.trim().toLowerCase();
+    const password = createPassword.trim();
+
+    if (!label || !userId || !password) {
+      toast.error("Please enter label, user ID, and password");
+      return;
+    }
+
+    try {
+      await api("/common-accounts", {
+        method: "POST",
+        body: JSON.stringify({ label, userId, password }),
+      });
+
+      toast.success("Common account created");
+      setCreateLabel("");
+      setCreateUserId("");
+      setCreatePassword("");
+      await loadAccounts();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create common account");
+    }
+  }
+
+  async function toggleCommonAccountActive(row: CommonAccountRow) {
+    try {
+      await api(`/common-accounts/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: !row.active }),
+      });
+      toast.success(row.active ? "Common account disabled" : "Common account enabled");
+      await loadAccounts();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update common account");
+    }
+  }
+
+  function toggleRole(role: CommonRole) {
+    setMemberRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
+  }
+
+  async function addMember() {
+    if (!selectedAccountId) {
+      toast.error("Select a common account first");
+      return;
+    }
+    if (!memberUserId) {
+      toast.error("Select a user");
+      return;
+    }
+    if (memberRoles.length === 0) {
+      toast.error("Select at least one allowed role");
+      return;
+    }
+
+    try {
+      await api(`/common-accounts/${selectedAccountId}/members`, {
+        method: "POST",
+        body: JSON.stringify({
+          userId: memberUserId,
+          allowedRoles: memberRoles,
+          active: memberActive,
+        }),
+      });
+
+      toast.success("Member added");
+      setMemberUserId("");
+      setMemberRoles([]);
+      setMemberActive(true);
+      await loadMembers(selectedAccountId);
+      await loadAccounts();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to add member");
+    }
+  }
+
+  async function updateMember(member: CommonAccountMemberRow, patch: Partial<CommonAccountMemberRow>) {
+    if (!selectedAccountId) return;
+
+    try {
+      await api(`/common-accounts/${selectedAccountId}/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          active: patch.active ?? member.active,
+          allowedRoles: patch.allowedRoles ?? member.allowedRoles,
+        }),
+      });
+
+      toast.success("Member updated");
+      await loadMembers(selectedAccountId);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update member");
+    }
+  }
+
+  async function removeMember(member: CommonAccountMemberRow) {
+    if (!selectedAccountId) return;
+    if (!confirm(`Remove ${member.user.email} from this common account?`)) return;
+
+    try {
+      await api(`/common-accounts/${selectedAccountId}/members/${member.id}`, {
+        method: "DELETE",
+      });
+      toast.success("Member removed");
+      await loadMembers(selectedAccountId);
+      await loadAccounts();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to remove member");
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      {/* LEFT */}
+      <div className="lg:col-span-4 space-y-4">
+        <div className={cx(card, "overflow-hidden")}>
+          <div className={cx(cardHeader, "flex items-center justify-between")}>
+            <div className="font-semibold text-slate-900">Create Common Account</div>
+            <button onClick={loadAccounts} className={btn.outline} type="button">
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">Label</label>
+              <input
+                className={inputBase}
+                value={createLabel}
+                onChange={(e) => setCreateLabel(e.target.value)}
+                placeholder="Omega Lab Common Account"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">User ID</label>
+              <input
+                className={inputBase}
+                value={createUserId}
+                onChange={(e) => setCreateUserId(e.target.value)}
+                placeholder="lab.common"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-600 mb-1">Password</label>
+              <input
+                className={inputBase}
+                type="password"
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+                placeholder="Enter common password"
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <button className={btn.primary} onClick={createCommonAccount} type="button">
+                Create common account
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className={cx(card, "overflow-hidden")}>
+          <div className={cx(cardHeader, "font-semibold text-slate-900")}>
+            Common Accounts
+          </div>
+
+          <div className="divide-y divide-slate-200">
+            {loading ? (
+              <div className="p-4 text-sm text-slate-500">Loading...</div>
+            ) : accounts.length === 0 ? (
+              <div className="p-4 text-sm text-slate-500">No common accounts found.</div>
+            ) : (
+              accounts.map((row) => {
+                const selected = row.id === selectedAccountId;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => setSelectedAccountId(row.id)}
+                    className={cx(
+                      "w-full text-left px-4 py-3 hover:bg-slate-50 transition",
+                      selected && "bg-indigo-50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">{row.label}</div>
+                        <div className="text-sm text-slate-600">{row.userId}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Members: {row.membersCount ?? 0}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <span
+                          className={cx(
+                            "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                            row.active
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : "bg-rose-50 text-rose-700 ring-rose-200",
+                          )}
+                        >
+                          {row.active ? "ACTIVE" : "DISABLED"}
+                        </span>
+
+                        <button
+                          type="button"
+                          className={row.active ? btn.warning : btn.success}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCommonAccountActive(row);
+                          }}
+                        >
+                          {row.active ? "Disable" : "Enable"}
+                        </button>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT */}
+      <div className="lg:col-span-8 space-y-4">
+        {!selectedAccount ? (
+          <div className={cx(card, "p-6 text-sm text-slate-500")}>
+            Select a common account to manage members.
+          </div>
+        ) : (
+          <>
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cx(cardHeader, "font-semibold text-slate-900")}>
+                Add Member — {selectedAccount.label}
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">User</label>
+                  <select
+                    className={cx(inputBase, "cursor-pointer")}
+                    value={memberUserId}
+                    onChange={(e) => setMemberUserId(e.target.value)}
+                  >
+                    <option value="">Select user</option>
+                    {availableUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {(u.name ?? "—") + " • " + u.email + " • " + (u.userId ?? "no-userId")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-2">Allowed Roles</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {commonRoleOptions.map((r) => {
+                      const checked = memberRoles.includes(r);
+                      return (
+                        <label
+                          key={r}
+                          className={cx(
+                            "rounded-lg border px-3 py-2 text-sm cursor-pointer transition",
+                            checked
+                              ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={checked}
+                            onChange={() => toggleRole(r)}
+                          />
+                          {r}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={memberActive}
+                    onChange={(e) => setMemberActive(e.target.checked)}
+                    className="accent-indigo-600"
+                  />
+                  Active
+                </label>
+
+                <div className="flex justify-end">
+                  <button className={btn.primary} onClick={addMember} type="button">
+                    Add member
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cx(cardHeader, "font-semibold text-slate-900")}>
+                Members
+              </div>
+
+              <div className="p-3">
+                {membersLoading ? (
+                  <div className="p-4 text-sm text-slate-500">Loading...</div>
+                ) : members.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500">No members added yet.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {members.map((m) => (
+                      <div
+                        key={m.id}
+                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-900">
+                              {m.user.name ?? "—"}
+                            </div>
+                            <div className="text-sm text-slate-700">{m.user.email}</div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              Default role: {m.user.role}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                m.active
+                                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                  : "bg-rose-50 text-rose-700 ring-rose-200",
+                              )}
+                            >
+                              {m.active ? "ACTIVE" : "DISABLED"}
+                            </span>
+
+                            <button
+                              className={m.active ? btn.warning : btn.success}
+                              type="button"
+                              onClick={() =>
+                                updateMember(m, { active: !m.active })
+                              }
+                            >
+                              {m.active ? "Disable" : "Enable"}
+                            </button>
+
+                            <button
+                              className={btn.danger}
+                              type="button"
+                              onClick={() => removeMember(m)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-slate-600 mb-2">Allowed Roles</div>
+                          <div className="flex flex-wrap gap-2">
+                            {commonRoleOptions.map((r) => {
+                              const checked = m.allowedRoles.includes(r);
+                              return (
+                                <label
+                                  key={r}
+                                  className={cx(
+                                    "rounded-lg border px-3 py-2 text-sm cursor-pointer transition",
+                                    checked
+                                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50",
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="sr-only"
+                                    checked={checked}
+                                    onChange={() => {
+                                      const next = checked
+                                        ? m.allowedRoles.filter((x) => x !== r)
+                                        : [...m.allowedRoles, r];
+                                      updateMember(m, { allowedRoles: next });
+                                    }}
+                                  />
+                                  {r}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
