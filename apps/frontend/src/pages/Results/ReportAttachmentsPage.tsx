@@ -101,6 +101,34 @@ async function mergeAndPrintSelectedPdfs(ids: string[]) {
   }
 }
 
+async function mergeSelectedPdfsToUrl(ids: string[]) {
+  const res = await fetch(`${API_URL}/attachments/merge-pdf`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ ids }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Merge failed ${res.status}: ${text || "Unknown error"}`);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+
+  return {
+    blob,
+    url,
+    filename:
+      ids.length === 1
+        ? "attachment.pdf"
+        : `merged-${ids.length}-attachments.pdf`,
+  };
+}
+
 function fileExt(filename: string) {
   return (filename.split(".").pop() || "").toLowerCase();
 }
@@ -556,6 +584,91 @@ function getParamEnum<T extends string>(
 //   return v === "1" || v === "true";
 // }
 
+function BulkPdfPreviewModal({
+  url,
+  filename,
+  onClose,
+  onPrint,
+}: {
+  url: string;
+  filename: string;
+  onClose: () => void;
+  onPrint: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl max-w-6xl w-full h-[85vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate" title={filename}>
+              {filename}
+            </div>
+            <div className="text-xs text-slate-500">Merged PDF preview</div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onPrint}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-200"
+            >
+              🖨️ Print
+            </button>
+
+            <a
+              href={url}
+              download={filename}
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+            >
+              Download
+            </a>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="w-full h-[calc(85vh-72px)] bg-white">
+          <iframe src={url} title={filename} className="w-full h-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function printPdfFromUrl(url: string) {
+  const w = window.open("", "_blank");
+
+  if (!w) {
+    throw new Error("Popup blocked. Please allow popups to print PDFs.");
+  }
+
+  w.document.write(`
+    <html>
+      <head><title>Preparing PDF...</title></head>
+      <body style="margin:0">
+        <iframe
+          src="${url}"
+          style="border:none;width:100vw;height:100vh;"
+          onload="setTimeout(() => { window.focus(); window.print(); }, 800)"
+        ></iframe>
+      </body>
+    </html>
+  `);
+  w.document.close();
+}
+
 export default function ReportAttachmentsPage() {
   const [items, setItems] = useState<AttachmentItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -661,6 +774,12 @@ export default function ReportAttachmentsPage() {
     if (role === "MICRO") return ["MICRO", "MICRO_WATER", "STERILITY"];
     return "ALL";
   }, [role]);
+
+  const [bulkPdfPreview, setBulkPdfPreview] = useState<{
+    url: string;
+    filename: string;
+    ids: string[];
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -1002,15 +1121,24 @@ export default function ReportAttachmentsPage() {
       }
 
       if (selectedPdfs.length) {
-        await mergeAndPrintSelectedPdfs(selectedPdfs.map((p) => p.id));
+        const ids = selectedPdfs.map((p) => p.id);
+        const { url, filename } = await mergeSelectedPdfsToUrl(ids);
+
+        setBulkPdfPreview({
+          url,
+          filename,
+          ids,
+        });
+
         logAttachEvent({
           action: "UI_ATTACHMENTS_PRINT_PREPARED",
-          details: "Prepared PDF print (merged)",
+          details: "Prepared merged PDF preview",
           meta: {
-            ids: selectedPdfs.map((p) => p.id),
-            count: selectedPdfs.length,
+            ids,
+            count: ids.length,
           },
         });
+
         setPrintingBulk(false);
         return;
       }
@@ -1971,6 +2099,28 @@ export default function ReportAttachmentsPage() {
               meta: { filename: open.filename },
             });
             setOpen(null);
+          }}
+        />
+      )}
+      {bulkPdfPreview && (
+        <BulkPdfPreviewModal
+          url={bulkPdfPreview.url}
+          filename={bulkPdfPreview.filename}
+          onPrint={() => {
+            try {
+              printPdfFromUrl(bulkPdfPreview.url);
+            } catch (err: any) {
+              logAttachEvent({
+                action: "UI_ATTACHMENTS_PRINT_FAILED",
+                details: "Bulk PDF print failed",
+                meta: { error: err?.message || String(err) },
+              });
+              alert(err?.message || "Print failed");
+            }
+          }}
+          onClose={() => {
+            URL.revokeObjectURL(bulkPdfPreview.url);
+            setBulkPdfPreview(null);
           }}
         />
       )}
