@@ -302,13 +302,8 @@ export default function ChemistryDashboard() {
         setError(null);
         const all = await api<Report[]>("/chemistry-reports");
         if (abort) return;
-
-        const keep = new Set<string>([
-          ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
-          ...Object.keys(CHEMISTRY_STATUS_COLORS),
-        ]);
-
-        setReports(all.filter((r) => keep.has(String(r.status))));
+        const keep = new Set(CHEMISTRY_STATUSES.filter((s) => s !== "ALL"));
+        setReports(all.filter((r) => keep.has(r.status as any)));
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
@@ -836,8 +831,6 @@ export default function ChemistryDashboard() {
     return () => window.removeEventListener("click", close);
   }, []);
 
-  const ENABLE_BULK_STATUS = false;
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -847,39 +840,6 @@ export default function ChemistryDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            {/* <style>
-              {`
-                @media print {
-                  body > *:not(#bulk-print-root) { display: none !important; }
-                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
-
-                  #bulk-print-root .sheet {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    box-shadow: none !important;
-                    border: none !important;
-                    padding: 0 !important;
-                  }
-
-                  #bulk-print-root .report-page {
-                    break-inside: avoid-page;
-                    page-break-inside: avoid;
-                  }
-
-                  #bulk-print-root .report-page + .report-page {
-                    break-before: page;
-                    page-break-before: always;
-                  }
-
-                  @supports (margin-trim: block) {
-                    @page { margin-trim: block; }
-                  }
-                }
-              `}
-            </style> */}
-
             <style>
               {`
     @media print {
@@ -951,90 +911,88 @@ export default function ChemistryDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
-          {ENABLE_BULK_STATUS && (
-            <div className="relative">
-              <button
-                type="button"
-                disabled={
-                  !selectedIds.length || !selectedSameStatus || bulkUpdating
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setBulkMenuOpen((o) => !o);
-                }}
-                className={classNames(
-                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                  selectedIds.length && selectedSameStatus
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-slate-200 text-slate-500 cursor-not-allowed",
-                )}
-              >
-                {bulkUpdating ? <Spinner /> : "⚡"}
-                {bulkUpdating
-                  ? "Applying..."
-                  : `Bulk Status (${selectedIds.length})`}
-              </button>
-
-              {bulkMenuOpen && commonNextStatuses.length > 0 && (
-                <div className="absolute right-0 mt-2 w-52 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
-                  <div className="py-1 text-sm">
-                    {commonNextStatuses.map((s) => (
-                      <button
-                        key={s}
-                        className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
-                        onClick={async () => {
-                          if (bulkUpdating) return;
-
-                          setBulkMenuOpen(false);
-                          setBulkUpdating(true);
-
-                          try {
-                            await Promise.all(
-                              selected.map((r) =>
-                                setStatus({
-                                  report: r,
-                                  newStatus: s,
-                                  reason: "Bulk Status Change",
-                                }),
-                              ),
-                            );
-
-                            const keep = new Set(
-                              CHEMISTRY_STATUSES.filter((x) => x !== "ALL"),
-                            );
-
-                            setReports((prev) => {
-                              const updated = prev.map((x) =>
-                                selectedIds.includes(x.id)
-                                  ? {
-                                      ...x,
-                                      status: s,
-                                      version: (x.version ?? 0) + 1,
-                                    }
-                                  : x,
-                              );
-
-                              return updated.filter((r) =>
-                                keep.has(r.status as any),
-                              );
-                            });
-
-                            setSelectedIds([]);
-                          } catch (e: any) {
-                            alert(e?.message || "Bulk update failed");
-                          } finally {
-                            setBulkUpdating(false);
-                          }
-                        }}
-                      >
-                        {niceStatus(s)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length || !selectedSameStatus || bulkUpdating
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                selectedIds.length && selectedSameStatus
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
               )}
-            </div>
-          )}
+            >
+              {bulkUpdating ? <Spinner /> : "⚡"}
+              {bulkUpdating
+                ? "Applying..."
+                : `Bulk Status (${selectedIds.length})`}
+            </button>
+
+            {bulkMenuOpen && commonNextStatuses.length > 0 && (
+              <div className="absolute right-0 mt-2 w-52 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="py-1 text-sm">
+                  {commonNextStatuses.map((s) => (
+                    <button
+                      key={s}
+                      className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
+                      onClick={async () => {
+                        if (bulkUpdating) return;
+
+                        setBulkMenuOpen(false);
+                        setBulkUpdating(true);
+
+                        try {
+                          await Promise.all(
+                            selected.map((r) =>
+                              setStatus({
+                                report: r,
+                                newStatus: s,
+                                reason: "Bulk Status Change",
+                              }),
+                            ),
+                          );
+
+                          const keep = new Set(
+                            CHEMISTRY_STATUSES.filter((x) => x !== "ALL"),
+                          );
+
+                          setReports((prev) => {
+                            const updated = prev.map((x) =>
+                              selectedIds.includes(x.id)
+                                ? {
+                                    ...x,
+                                    status: s,
+                                    version: (x.version ?? 0) + 1,
+                                  }
+                                : x,
+                            );
+
+                            return updated.filter((r) =>
+                              keep.has(r.status as any),
+                            );
+                          });
+
+                          setSelectedIds([]);
+                        } catch (e: any) {
+                          alert(e?.message || "Bulk update failed");
+                        } finally {
+                          setBulkUpdating(false);
+                        }
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
