@@ -30,8 +30,8 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
-
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+
 import {
   COLS,
   parseIntSafe,

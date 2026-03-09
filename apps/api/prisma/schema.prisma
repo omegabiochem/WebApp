@@ -172,6 +172,8 @@ model User {
   passwordHash       String
   mustChangePassword Boolean  @default(false)
 
+  isCommonAccount    Boolean  @default(false)
+
   // ✅ add these
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
@@ -214,8 +216,76 @@ model User {
 
   resultsLastSeenAt  DateTime?  @db.Timestamp(6)
 
+  commonAccountMemberships CommonAccountMember[]
+
   @@index([clientCode, role])
 }
+model CommonAccount {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  label             String
+  passwordHash      String
+  active            Boolean  @default(true)
+
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  lastFailedLoginAt DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  members           CommonAccountMember[]
+  challenges        CommonAuthChallenge[]
+}
+
+model CommonAccountMember {
+  id              String        @id @default(cuid())
+  commonAccountId String
+  userId          String
+  active          Boolean       @default(true)
+  allowedRoles    UserRole[]    @default([])
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  commonAccount   CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commonAccountId, userId])
+  @@index([commonAccountId, active])
+  @@index([userId])
+}
+
+model CommonAuthChallenge {
+  id                 String    @id @default(cuid())
+  challengeToken     String    @unique
+  commonAccountId    String
+
+  stage              String
+  selectedUserId     String?
+  selectedRole       UserRole?
+
+  twoFactorCodeHash  String?
+  twoFactorExpiresAt DateTime?
+  twoFactorAttempts  Int       @default(0)
+
+  expiresAt          DateTime
+  usedAt             DateTime?
+
+  ipAddress          String?
+  userAgent          String?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  commonAccount      CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+
+  @@index([commonAccountId, expiresAt])
+  @@index([selectedUserId])
+}
+
+
+
 
 model ClientSequence {
   clientCode String @id

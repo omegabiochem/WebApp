@@ -79,11 +79,22 @@ function getCooldownFromStorage() {
   return secondsUntil(until);
 }
 
+function clearAllPendingAuth() {
+  sessionStorage.removeItem("pendingUserId");
+  sessionStorage.removeItem("pendingCommonToken");
+  sessionStorage.removeItem("commonChallengeToken");
+  sessionStorage.removeItem("commonPeople");
+  sessionStorage.removeItem("commonAccountLabel");
+  clearOtpStorage();
+}
+
 export default function Verify2FA() {
   const nav = useNavigate();
   const { login } = useAuth();
 
   const pendingUserId = sessionStorage.getItem("pendingUserId");
+  const pendingCommonToken = sessionStorage.getItem("pendingCommonToken");
+  const hasPendingSession = !!pendingUserId || !!pendingCommonToken;
 
   const [code, setCode] = useState("");
   const [banner, setBanner] = useState<{
@@ -94,7 +105,9 @@ export default function Verify2FA() {
 
   // Persisted cooldown + persisted OTP expiry
   const [cooldown, setCooldown] = useState(() => getCooldownFromStorage());
-  const [secondsLeft, setSecondsLeft] = useState(() => getSecondsLeftFromStorage());
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    getSecondsLeftFromStorage(),
+  );
 
   const codeDigits = useMemo(() => code.trim(), [code]);
   const isComplete = codeDigits.length === 6;
@@ -104,7 +117,7 @@ export default function Verify2FA() {
 
   // If missing pendingUserId, leave immediately (avoid weird state)
   useEffect(() => {
-    if (pendingUserId) return;
+    if (hasPendingSession) return;
 
     setBanner({
       type: "error",
@@ -116,20 +129,20 @@ export default function Verify2FA() {
     const t = setTimeout(() => nav("/home", { replace: true }), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasPendingSession, nav]);
 
   // Start OTP window only when we have a pending session
   useEffect(() => {
-    if (!pendingUserId) return;
+    if (!hasPendingSession) return;
     initOtpWindow();
     setSecondsLeft(getSecondsLeftFromStorage());
     setCooldown(getCooldownFromStorage());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingUserId]);
+  }, [hasPendingSession]);
 
   // Tick timers (reads from storage so refresh keeps them correct)
   useEffect(() => {
-    if (!pendingUserId) return;
+    if (!hasPendingSession) return;
 
     const t = setInterval(() => {
       setSecondsLeft(getSecondsLeftFromStorage());
@@ -137,11 +150,11 @@ export default function Verify2FA() {
     }, 500);
 
     return () => clearInterval(t);
-  }, [pendingUserId]);
+  }, [hasPendingSession]);
 
   // When OTP window reaches 0 => expire session and go home
   useEffect(() => {
-    if (!pendingUserId) return;
+    if (!hasPendingSession) return;
     if (secondsLeft !== 0) return;
 
     setBanner({
@@ -149,12 +162,11 @@ export default function Verify2FA() {
       text: "Verification session expired. Please sign in again.",
     });
 
-    sessionStorage.removeItem("pendingUserId");
-    clearOtpStorage();
+    clearAllPendingAuth();
 
     const t = setTimeout(() => nav("/home", { replace: true }), 400);
     return () => clearTimeout(t);
-  }, [secondsLeft, nav, pendingUserId]);
+  }, [secondsLeft, nav, hasPendingSession]);
 
   const resetOtpWindow = () => {
     const nextExpiresAt = Date.now() + OTP_WINDOW_SECONDS * 1000;
@@ -168,12 +180,12 @@ export default function Verify2FA() {
   const onVerify = async () => {
     setBanner(null);
 
-    if (!pendingUserId) {
+    if (!hasPendingSession) {
       setBanner({
         type: "error",
         text: "No verification session found. Please sign in again.",
       });
-      clearOtpStorage();
+      clearAllPendingAuth();
       nav("/home", { replace: true });
       return;
     }
@@ -201,15 +213,15 @@ export default function Verify2FA() {
         };
       }>("/auth/verify-2fa", {
         method: "POST",
-        body: JSON.stringify({
-          userId: pendingUserId,
-          code: codeDigits,
-        }),
+        body: JSON.stringify(
+          pendingCommonToken
+            ? { pendingToken: pendingCommonToken, code: codeDigits }
+            : { userId: pendingUserId, code: codeDigits },
+        ),
       });
 
       // ✅ Success: clear pending + timers
-      sessionStorage.removeItem("pendingUserId");
-      clearOtpStorage();
+      clearAllPendingAuth();
 
       login(res.accessToken, res.user);
 
@@ -240,8 +252,7 @@ export default function Verify2FA() {
 
       // If expired/locked, force restart sign-in and clear storage
       if (codeErr === "OTP_EXPIRED" || codeErr === "OTP_LOCKED") {
-        sessionStorage.removeItem("pendingUserId");
-        clearOtpStorage();
+        clearAllPendingAuth();
         nav("/home", { replace: true });
       }
     } finally {
@@ -252,12 +263,12 @@ export default function Verify2FA() {
   const onResend = async () => {
     setBanner(null);
 
-    if (!pendingUserId) {
+    if (!hasPendingSession) {
       setBanner({
         type: "error",
         text: "Please sign in again to resend a code.",
       });
-      clearOtpStorage();
+      clearAllPendingAuth();
       nav("/home", { replace: true });
       return;
     }
@@ -269,7 +280,11 @@ export default function Verify2FA() {
 
       await api("/auth/resend-2fa", {
         method: "POST",
-        body: JSON.stringify({ userId: pendingUserId }),
+        body: JSON.stringify(
+          pendingCommonToken
+            ? { pendingToken: pendingCommonToken }
+            : { userId: pendingUserId },
+        ),
       });
 
       setBanner({
@@ -300,14 +315,12 @@ export default function Verify2FA() {
   const ss = secondsLeft % 60;
 
   const onBackToSignIn = () => {
-    sessionStorage.removeItem("pendingUserId");
-    clearOtpStorage();
+    clearAllPendingAuth();
     nav("/home", { replace: true });
   };
 
   const onCancel = () => {
-    sessionStorage.removeItem("pendingUserId");
-    clearOtpStorage();
+    clearAllPendingAuth();
     nav("/home", { replace: true });
   };
 

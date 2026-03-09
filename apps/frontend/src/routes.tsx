@@ -43,6 +43,7 @@ import SterilityReportForm from "./pages/Reports/SterilityReportForm";
 import TemplatePage from "./pages/Templates/TemplatesPage";
 import TemplatesDropdown from "./pages/Templates/TemplatesDropdown";
 import COAReportForm from "./pages/Reports/COAReportForm";
+import CommonSelect from "./pages/Auth/CommonSelect";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
       // Public
       { path: "login", element: <Login /> },
       { path: "auth/verify-2fa", element: <Verify2FA /> },
+      { path: "auth/common-select", element: <CommonSelect /> },
 
       // Auth-only utility routes
       {
@@ -329,7 +331,7 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <COAReportForm/>
+              <COAReportForm />
             </RequireRole>
           </RequireAuth>
         ),
