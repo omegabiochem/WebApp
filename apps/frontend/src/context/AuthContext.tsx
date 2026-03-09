@@ -22,6 +22,7 @@ import { socket } from "../lib/socket";
 // } | null;
 
 type User = {
+  id?: string;
   userId?: string;
   sub?: string;
   uid?: string;
@@ -30,6 +31,12 @@ type User = {
   name?: string;
   mustChangePassword?: boolean;
   clientCode?: string;
+
+  authMode?: "NORMAL" | "COMMON";
+  commonAccountId?: string;
+  commonAccountUserId?: string;
+  actingAsUserId?: string;
+  actingAsName?: string;
 } | null;
 
 type AuthContextType = {
