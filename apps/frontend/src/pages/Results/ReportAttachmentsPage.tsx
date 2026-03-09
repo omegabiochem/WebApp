@@ -41,37 +41,64 @@ async function apiBlob(path: string): Promise<Blob> {
 
 /** Merges PDFs and triggers browser print in new tab */
 async function mergeAndPrintSelectedPdfs(ids: string[]) {
-  const res = await fetch(`${API_URL}/attachments/merge-pdf`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ ids }),
-  });
+  // Open tab immediately from the user click
+  const printWindow = window.open("", "_blank");
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Merge failed ${res.status}: ${text || "Unknown error"}`);
-  }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-
-  const w = window.open(url, "_blank", "noopener,noreferrer");
-  if (!w) {
-    URL.revokeObjectURL(url);
+  if (!printWindow) {
     throw new Error("Popup blocked. Please allow popups to print PDFs.");
   }
 
-  setTimeout(() => {
-    try {
-      w.focus();
-      w.print();
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  // Optional loading text
+  printWindow.document.write(`
+    <html>
+      <head><title>Preparing PDF...</title></head>
+      <body style="font-family: Arial, sans-serif; padding: 24px;">
+        Preparing PDF for print...
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
+  try {
+    const res = await fetch(`${API_URL}/attachments/merge-pdf`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ ids }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      try {
+        printWindow.close();
+      } catch {}
+      throw new Error(`Merge failed ${res.status}: ${text || "Unknown error"}`);
     }
-  }, 800);
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    // Reuse the already-opened tab
+    printWindow.location.href = url;
+
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } finally {
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 30000);
+      }
+    }, 1000);
+  } catch (err) {
+    try {
+      printWindow.close();
+    } catch {}
+    throw err;
+  }
 }
 
 function fileExt(filename: string) {
