@@ -1120,7 +1120,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
             className="font-bold tracking-wide text-[22px]"
             style={{ color: "blue" }}
           >
-            OMEGA BIOLOGICAL LABORATORY, INC.
+            OMEGA / BIOCHEM LABORATORIES, INC.
           </div>
           <div className="text-[16px]" style={{ color: "blue" }}>
             (FDA REG.)
