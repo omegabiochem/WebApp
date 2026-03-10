@@ -457,7 +457,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
+  const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
 
   const BLUR_SIGNATURE_STATUSES = new Set([
     "DRAFT",
@@ -548,7 +548,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               className="font-bold tracking-wide text-[22px]"
               style={{ color: "blue" }}
             >
-              OMEGA BIOLOGICAL LABORATORY, INC.
+              OMEGA / BIOCHEM LABORATORIES, INC.
             </div>
             <div className="text-[16px]" style={{ color: "blue" }}>
               (FDA REG. | ISO 17025 ACC)

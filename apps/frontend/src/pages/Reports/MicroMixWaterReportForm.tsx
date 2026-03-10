@@ -124,7 +124,10 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // Block FINAL fields during PRELIM for MICRO & ADMIN
   if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
+    (role === "MICRO" ||
+      role === "MC" ||
+      role === "ADMIN" ||
+      role === "SYSTEMADMIN") &&
     p === "PRELIM"
   ) {
     if (MICRO_PHASE_FIELDS.FINAL.includes(field)) return false;
@@ -132,13 +135,16 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // (Optional) Once in FINAL, freeze PRELIM fields too:
   if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
+    (role === "MICRO" ||
+      role === "MC" ||
+      role === "ADMIN" ||
+      role === "SYSTEMADMIN") &&
     p === "FINAL"
   ) {
     if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
   }
   const map: Record<Role, string[]> = {
-    SYSTEMADMIN: [],
+    SYSTEMADMIN: ["*"],
     ADMIN: [
       "testSopNo",
       "dateTested",
@@ -202,7 +208,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "testedBy",
       "testedDate",
     ],
-    QA: [ "reviewedBy", "reviewedDate"],
+    QA: ["reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
       "dateSent",
@@ -560,12 +566,11 @@ export default function MicroMixReportForm({
   const { search } = useLocation();
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
-
   const returnTo = params.get("returnTo");
-const backToDashboard = () => {
-  if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  else navigate("/clientDashboard", { replace: true });
-};
+  const backToDashboard = () => {
+    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+    else navigate("/clientDashboard", { replace: true });
+  };
 
   const mode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -762,8 +767,8 @@ const backToDashboard = () => {
       return phase !== "FINAL";
     }
 
-    if (role === "ADMIN") {
-      // ADMIN can always edit
+    if (role === "ADMIN" || role === "SYSTEMADMIN") {
+      // ADMIN and SYSTEMADMIN can always edit
       return false;
     }
 
@@ -873,7 +878,10 @@ const backToDashboard = () => {
     }
 
     if (
-      (who === "MICRO" || who === "MC" || who === "ADMIN") &&
+      (who === "MICRO" ||
+        who === "MC" ||
+        who === "ADMIN" ||
+        who === "SYSTEMADMIN") &&
       phase === "FINAL"
     ) {
       rows.forEach((r, i) => {
@@ -1129,7 +1137,12 @@ const backToDashboard = () => {
         // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
 
         const PHASE_WRITE_GUARD = (fields: string[]) => {
-          if (role === "MICRO" || role === "MC" || role === "ADMIN") {
+          if (
+            role === "MICRO" ||
+            role === "MC" ||
+            role === "ADMIN" ||
+            role === "SYSTEMADMIN"
+          ) {
             if (phase === "PRELIM") {
               // drop FINAL-only fields during PRELIM
               return fields.filter(
@@ -1155,7 +1168,7 @@ const backToDashboard = () => {
 
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
-          SYSTEMADMIN: [],
+          SYSTEMADMIN: ["*"],
           FRONTDESK: [
             "client",
             "dateSent",
@@ -1323,7 +1336,7 @@ const backToDashboard = () => {
             return false;
           }
           alert(
-            "❌ Error saving chemistry report: " +
+            "❌ Error saving micro mix water report: " +
               (err.message || "Unknown error"),
           );
           return false;
@@ -1491,13 +1504,13 @@ const backToDashboard = () => {
     return "/";
   }, [role]);
 
-
   const handleClose = () => {
-  if (onClose) return onClose();
-  if (returnTo) return navigate(decodeURIComponent(returnTo), { replace: true });
-  if (window.history.length > 1) navigate(-1);
-  else navigate(fallbackRoute, { replace: true });
-};
+    if (onClose) return onClose();
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+    if (window.history.length > 1) navigate(-1);
+    else navigate(fallbackRoute, { replace: true });
+  };
 
   // const handleClose = () => {
   //   if (onClose) return onClose();
@@ -1693,7 +1706,6 @@ const backToDashboard = () => {
                 className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 onClick={handleSave}
                 disabled={
-                  role === "SYSTEMADMIN" ||
                   role === "FRONTDESK" ||
                   isBusy ||
                   status === "UNDER_CLIENT_FINAL_REVIEW" ||
@@ -1719,7 +1731,7 @@ const backToDashboard = () => {
             className="font-bold tracking-wide text-[22px]"
             style={{ color: "blue" }}
           >
-            OMEGA BIOLOGICAL LABORATORY, INC.
+            OMEGA / BIOCHEM LABORATORIES, INC.
           </div>
           <div className="text-[16px]" style={{ color: "blue" }}>
             (FDA REG.)
@@ -1808,7 +1820,7 @@ const backToDashboard = () => {
                       : ""
                   }`}
                   type="date"
-                  min={todayISO()}
+                  min={role === "SYSTEMADMIN" ? undefined : todayISO()}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
@@ -3017,7 +3029,6 @@ const backToDashboard = () => {
                     approveNeedsAttachment && !hasAttachment;
 
                   const disabled =
-                    role === "SYSTEMADMIN" ||
                     isBusy ||
                     attachmentsLoading ||
                     disableApproveForNoAttachment;
