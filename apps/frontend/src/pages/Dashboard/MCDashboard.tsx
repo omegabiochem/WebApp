@@ -149,6 +149,8 @@ const MICRO_STATUSES = [
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "QA_NEEDS_FINAL_CORRECTION",
 
   //STERILITY
   "UNDER_TESTING_REVIEW",
@@ -156,6 +158,7 @@ const MICRO_STATUSES = [
   "RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "QA_NEEDS_CORRECTION",
   "APPROVED",
 ] as const;
 
@@ -1170,6 +1173,9 @@ export default function MCDashboard() {
         } else if (r.status === "RESUBMISSION_BY_CLIENT") {
           nextStatus = "UNDER_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Resubmitted by client");
+        } else if (r.status === "QA_NEEDS_CORRECTION") {
+          nextStatus = "UNDER_TESTING_REVIEW";
+          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
         }
       } else {
         // ✅ Micro Mix / Water uses PRELIM + FINAL statuses
@@ -1187,6 +1193,12 @@ export default function MCDashboard() {
           await setMicroStatus(r, nextStatus, "Resubmitted by client");
         } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
           nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+        } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
+          nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
+          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+        } else if (r.status === "QA_NEEDS_FINAL_CORRECTION") {
+          nextStatus = "UNDER_FINAL_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, `Set by ${actor}`);
         }
       }
@@ -1218,6 +1230,13 @@ export default function MCDashboard() {
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, "COA resubmitted by client");
+      } else if (r.status === "QA_NEEDS_CORRECTION") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(
+          r,
+          nextStatus,
+          `COA correction requested by QA (${actor})`,
+        );
       }
     } else {
       // CHEMISTRY_MIX
@@ -1230,6 +1249,9 @@ export default function MCDashboard() {
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, "Resubmitted by client");
+      } else if (r.status === "QA_NEEDS_CORRECTION") {
+        nextStatus = "UNDER_TESTING_REVIEW";
+        await setChemStatus(r, nextStatus, `Set by ${actor}`);
       }
     }
 
@@ -1499,59 +1521,58 @@ export default function MCDashboard() {
 
         <div className="flex items-center gap-2">
           {ENABLE_BULK_STATUS && (
-          <div className="relative">
-            <button
-              type="button"
-              disabled={
-                !selectedIds.length ||
-                !selectedSameGroupAndStatus ||
-                bulkUpdating ||
-                printingBulk
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                setBulkMenuOpen((o) => !o);
-              }}
-              className={classNames(
-                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                selectedIds.length && selectedSameGroupAndStatus
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
-              )}
-            >
-              {bulkUpdating ? <Spinner /> : "⚡"}
-              {bulkUpdating
-                ? "Applying..."
-                : `Bulk Status (${selectedIds.length})`}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                disabled={
+                  !selectedIds.length ||
+                  !selectedSameGroupAndStatus ||
+                  bulkUpdating ||
+                  printingBulk
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBulkMenuOpen((o) => !o);
+                }}
+                className={classNames(
+                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                  selectedIds.length && selectedSameGroupAndStatus
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-slate-200 text-slate-500 cursor-not-allowed",
+                )}
+              >
+                {bulkUpdating ? <Spinner /> : "⚡"}
+                {bulkUpdating
+                  ? "Applying..."
+                  : `Bulk Status (${selectedIds.length})`}
+              </button>
 
-            {bulkMenuOpen && commonNextStatuses.length > 0 && (
-              <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
-                <div className="py-1 text-sm">
-                  {commonNextStatuses.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-100"
-                      onClick={async () => {
-                        if (bulkUpdating) return;
-                        setBulkMenuOpen(false);
+              {bulkMenuOpen && commonNextStatuses.length > 0 && (
+                <div className="absolute right-0 mt-2 w-64 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                  <div className="py-1 text-sm">
+                    {commonNextStatuses.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-100"
+                        onClick={async () => {
+                          if (bulkUpdating) return;
+                          setBulkMenuOpen(false);
 
-                        try {
-                          await applyBulkStatusChange(s);
-                        } catch (e: any) {
-                          toast.error(e?.message || "Bulk update failed");
-                        }
-                      }}
-                    >
-                      {niceStatus(s)}
-                    </button>
-                  ))}
+                          try {
+                            await applyBulkStatusChange(s);
+                          } catch (e: any) {
+                            toast.error(e?.message || "Bulk update failed");
+                          }
+                        }}
+                      >
+                        {niceStatus(s)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-
+              )}
+            </div>
           )}
           <button
             type="button"
