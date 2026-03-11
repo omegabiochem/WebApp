@@ -10,6 +10,9 @@ export default function Header() {
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
 
+  const [loginBooksOpen, setLoginBooksOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+
   const isReportRoute =
     pathname.startsWith("/reports/") ||
     pathname.startsWith("/chemistry-reports/");
@@ -43,10 +46,10 @@ export default function Header() {
     SYSTEMADMIN: [
       { label: "Home", path: "/systemAdminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
-      { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
       { label: "Support Tickets", path: "/supportTickets" },
+      { label: "More", path: "/more" },
     ],
     MICRO: [
       { label: "Home", path: "/microDashboard" },
@@ -205,6 +208,101 @@ export default function Header() {
                   <FormsDropdown key="forms" align="right" />
                 ) : item.label === "Templates" ? (
                   <TemplatesDropdown key="templates" align="right" />
+                ) : item.label === "Login Books" ? (
+                  <div key="loginbooks" className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginBooksOpen((v) => !v);
+                        setMoreOpen(false);
+                      }}
+                      className="hover:underline"
+                    >
+                      Login Books ▾
+                    </button>
+
+                    {loginBooksOpen && (
+                      <div className="absolute right-0 mt-2 w-48 rounded-md border bg-white shadow-lg z-50">
+                        <button
+                          onClick={() => {
+                            setLoginBooksOpen(false);
+                            navigate("/microLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Micro Login Book
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setLoginBooksOpen(false);
+                            navigate("/chemistryLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Chemistry Login Book
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : item.label === "More" ? (
+                  <div key="more" className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreOpen((v) => !v);
+                        setLoginBooksOpen(false);
+                      }}
+                      className="hover:underline"
+                    >
+                      More ▾
+                    </button>
+
+                    {moreOpen && (
+                      <div className="absolute right-0 mt-2 w-56 rounded-md border bg-white shadow-lg z-50">
+                        <div className="px-4 py-2">
+                          <TemplatesDropdown align="right" />
+                        </div>
+
+                        <div className="px-4 py-2">
+                          <FormsDropdown align="right" />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMoreOpen(false);
+                            navigate("/microLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Micro Login Book
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMoreOpen(false);
+                            navigate("/chemistryLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Chemistry Login Book
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMoreOpen(false);
+                            navigate(toRemembered("/balancer"));
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Balancer
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : item.label === "Results" ? (
                   <Link
                     key={item.path}
