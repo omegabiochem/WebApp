@@ -159,7 +159,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["QA", "SYSTEMADMIN"],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ["QA", "SYSTEMADMIN"],
+    canSet: ["QA", "SYSTEMADMIN", "CHEMISTRY", "MC"], // added CHEMISTRY and MC as they often need to make corrections based on QA feedback
     next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["CHEMISTRY", "MC", "SYSTEMADMIN"],
     canEdit: [],

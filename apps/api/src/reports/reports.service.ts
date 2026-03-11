@@ -476,7 +476,7 @@ const STERILITY_STATUS_TRANSITIONS = {
     canEdit: ['QA' ,'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA' ,'SYSTEMADMIN','MC','MICRO'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     canEdit: [],

@@ -90,103 +90,103 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT' , 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
   UNDER_DRAFT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT' , 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC','SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC','SYSTEMADMIN' ],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
-    nextEditableBy: ['ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CHEMISTRY', 'MC','SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA','SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA','SYSTEMADMIN'],
-    canEdit: ['CLIENT' , 'SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK' ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['CHEMISTRY', 'MC','SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK' ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK' ,'SYSTEMADMIN'],
+    nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   TESTING_ON_HOLD: {
-    canSet: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   RESUBMISSION_BY_TESTING: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
-    canEdit: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN','CHEMISTRY','MC'] , 
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
 
@@ -194,31 +194,31 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
-    canEdit: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN' ,'SYSTEMADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   APPROVED: {
     canSet: [],
@@ -708,6 +708,7 @@ export class ChemistryReportsService {
             email: true,
           },
         });
+        const now = new Date();
         const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
         base.ReportnumberAssignedAt = new Date();
@@ -716,6 +717,15 @@ export class ChemistryReportsService {
           actor?.userId?.trim() ||
           actor?.email?.trim() ||
           'Unknown';
+
+        // ✅ Auto-fill dateReceived at the same time as BC number assignment
+        const currentDetails = pickDetails(current);
+        const alreadyHasDateReceived = !!currentDetails?.dateReceived;
+        const incomingDateReceived = details.dateReceived;
+
+        if (!alreadyHasDateReceived && !incomingDateReceived) {
+          details.dateReceived = now;
+        }
       }
 
       // e-sign requirements
@@ -889,108 +899,6 @@ export class ChemistryReportsService {
   ) {
     return this.update(user, id, body);
   }
-
-  // async get(id: string) {
-  //   const r = await this.prisma.chemistryReport.findUnique({
-  //     where: { id },
-  //     include: {
-  //       chemistryMix: true,
-  //       coa:true
-  //     },
-  //   });
-  //   if (!r) throw new NotFoundException('Report not found');
-  //   return flattenReport(r);
-  // }
-
-  // TO CHANGE STATUS
-
-  // async changeStatus(
-  //   user: { userId: string; role: UserRole },
-  //   id: string,
-  //   input: ChangeStatusInput,
-  // ) {
-  //   const current = await this.get(id);
-
-  //   if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
-  //     throw new ForbiddenException(
-  //       'Only ADMIN/SYSTEMADMIN/QA can Change Status this directly',
-  //     );
-  //   }
-
-  //   const target: ChemistryReportStatus =
-  //     typeof input === 'string' ? input : input.status;
-  //   if (!target) {
-  //     throw new BadRequestException('Status is required');
-  //   }
-
-  //   const ctx = getRequestContext() || {};
-
-  //   const reason =
-  //     typeof input === 'string'
-  //       ? undefined
-  //       : (input.reason ?? (ctx as any)?.reason);
-  //   const eSignPassword =
-  //     typeof input === 'string'
-  //       ? undefined
-  //       : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
-
-  //   if (!reason) {
-  //     throw new BadRequestException(
-  //       'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
-  //     );
-  //   }
-
-  //   if (!eSignPassword) {
-  //     throw new BadRequestException(
-  //       'Electronic Signature (password) is required for status changes',
-  //     );
-  //   }
-
-  //   await this.esign.verifyPassword(user.userId, String(eSignPassword));
-
-  //   const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
-  //   if (!trans) {
-  //     throw new BadRequestException(
-  //       `Invalid current status: ${current.status}`,
-  //     );
-  //   }
-
-  //   const patch: any = { status: target };
-
-  //   function yyyy(d: Date = new Date()): string {
-  //     const yyyy = String(d.getFullYear());
-  //     return yyyy; // e.g. "2410"
-  //   }
-
-  //   // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
-  //   function seqPad(num: number): string {
-  //     const width = Math.max(4, String(num).length);
-  //     return String(num).padStart(width, '0');
-  //   }
-
-  //   if (target === 'UNDER_TESTING_REVIEW' && !current.reportNumber) {
-  //     const deptLetter =
-  //       getDeptLetterForForm((current as any).formType) ||
-  //       getDepartmentLetter(user.role);
-  //     if (deptLetter) {
-  //       const seq = await this.prisma.labReportSequence.upsert({
-  //         where: { department: deptLetter },
-  //         update: { lastNumber: { increment: 1 } },
-  //         create: { department: deptLetter, lastNumber: 1 },
-  //       });
-  //       const n = seqPad(seq.lastNumber);
-  //       patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
-  //     }
-  //   }
-
-  //   const updated = await this.prisma.chemistryReport.update({
-  //     where: { id },
-  //     data: { ...patch, updatedBy: user.userId },
-  //   });
-
-  //   this.reportsGateway.notifyStatusChange(id, target);
-  //   return updated;
-  // }
 
   private async logChemStatusChange(args: {
     chemistryReportId: string;
@@ -1171,6 +1079,7 @@ export class ChemistryReportsService {
           email: true,
         },
       });
+      const now = new Date();
       patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
       patch.ReportnumberAssignedAt = new Date();
       patch.ReportnumberAssignedBy =
@@ -1178,6 +1087,13 @@ export class ChemistryReportsService {
         actor?.userId?.trim() ||
         actor?.email?.trim() ||
         'Unknown';
+
+      const currentDetails = pickDetails(current);
+      if (!currentDetails?.dateReceived) {
+        await updateDetailsByType(this.prisma, current.formType, id, {
+          dateReceived: now,
+        });
+      }
     }
 
     if (target === 'LOCKED') patch.lockedAt = new Date();

@@ -53,6 +53,7 @@ const CHEMISTRY_STATUSES = [
   "RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "QA_NEEDS_CORRECTION",
   "APPROVED",
 ] as const;
 
@@ -544,6 +545,13 @@ export default function ChemistryDashboard() {
       });
     } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
       nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+      await setStatus({
+        report: r,
+        newStatus: nextStatus,
+        reason: `Set by ${actor}`,
+      });
+    } else if (r.status === "QA_NEEDS_CORRECTION") {
+      nextStatus = "UNDER_TESTING_REVIEW";
       await setStatus({
         report: r,
         newStatus: nextStatus,

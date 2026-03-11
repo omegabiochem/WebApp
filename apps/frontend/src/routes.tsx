@@ -409,7 +409,7 @@ export const router = createBrowserRouter([
         path: "clientAudit",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "ADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <ClientAuditTrailPage />
             </RequireRole>
           </RequireAuth>
@@ -484,7 +484,7 @@ export const router = createBrowserRouter([
         path: "chemistryLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CHEMISTRY", "MC"]}>
+            <RequireRole roles={["CHEMISTRY", "MC", "SYSTEMADMIN"]}>
               <ChemistryLoginBook />
             </RequireRole>
           </RequireAuth>
@@ -495,7 +495,7 @@ export const router = createBrowserRouter([
         path: "microLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["MICRO", "MC"]}>
+            <RequireRole roles={["MICRO", "MC", "SYSTEMADMIN"]}>
               <MicroLoginBook />
             </RequireRole>
           </RequireAuth>
