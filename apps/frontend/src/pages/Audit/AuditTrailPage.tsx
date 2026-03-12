@@ -10,6 +10,10 @@ type AuditRecord = {
   action: string;
   entity: string;
   entityId: string | null;
+  formNumber?: string | null;
+  reportNumber?: string | null;
+  formType?: string | null;
+  clientCode?: string | null;
   details: string;
   changes?: any | null;
   role: string | null;
@@ -363,6 +367,90 @@ function useUserNameMap(records: AuditRecord[]) {
   return map;
 }
 
+const DEFAULT_AUDIT_FILTERS = {
+  filterEntity: "",
+  filterUserId: "",
+  filterEntityId: "",
+  filterAction: "",
+  filterFormNumber: "",
+  filterReportNumber: "",
+  dateFrom: "",
+  dateTo: "",
+  sortOrder: "desc" as "desc" | "asc",
+  page: 1,
+  pageSize: 20 as (typeof PAGE_SIZES)[number],
+};
+
+function parsePageSize(value: string | null): (typeof PAGE_SIZES)[number] {
+  const n = Number(value);
+  return PAGE_SIZES.includes(n as any)
+    ? (n as (typeof PAGE_SIZES)[number])
+    : DEFAULT_AUDIT_FILTERS.pageSize;
+}
+
+function getInitialAuditFilters(
+  searchParams: URLSearchParams,
+  storageKey: string,
+) {
+  try {
+    const spEntity = searchParams.get("entity");
+    const spUserId = searchParams.get("userId");
+    const spEntityId = searchParams.get("entityId");
+    const spAction = searchParams.get("action");
+    const spFormNumber = searchParams.get("formNumber");
+    const spReportNumber = searchParams.get("reportNumber");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+    const spOrder = searchParams.get("order");
+    const spPage = searchParams.get("page");
+    const spPageSize = searchParams.get("pageSize");
+
+    const hasUrlFilters =
+      spEntity ||
+      spUserId ||
+      spEntityId ||
+      spAction ||
+      spFormNumber ||
+      spReportNumber ||
+      spFrom ||
+      spTo ||
+      spOrder ||
+      spPage ||
+      spPageSize;
+
+    if (hasUrlFilters) {
+      return {
+        filterEntity: spEntity || DEFAULT_AUDIT_FILTERS.filterEntity,
+        filterUserId: spUserId || DEFAULT_AUDIT_FILTERS.filterUserId,
+        filterEntityId: spEntityId || DEFAULT_AUDIT_FILTERS.filterEntityId,
+        filterAction: spAction || DEFAULT_AUDIT_FILTERS.filterAction,
+        filterFormNumber:
+          spFormNumber || DEFAULT_AUDIT_FILTERS.filterFormNumber,
+        filterReportNumber:
+          spReportNumber || DEFAULT_AUDIT_FILTERS.filterReportNumber,
+        dateFrom: spFrom || DEFAULT_AUDIT_FILTERS.dateFrom,
+        dateTo: spTo || DEFAULT_AUDIT_FILTERS.dateTo,
+        sortOrder:
+          (spOrder as "desc" | "asc") || DEFAULT_AUDIT_FILTERS.sortOrder,
+        page: Number(spPage || DEFAULT_AUDIT_FILTERS.page),
+        pageSize: parsePageSize(spPageSize),
+      };
+    }
+
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      return {
+        ...DEFAULT_AUDIT_FILTERS,
+        ...JSON.parse(raw),
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_AUDIT_FILTERS;
+}
+
 export default function AuditTrailPage() {
   const [records, setRecords] = useState<AuditRecord[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -370,30 +458,6 @@ export default function AuditTrailPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-
-  const [filterEntity, setFilterEntity] = useState(
-    searchParams.get("entity") || "",
-  );
-  const [filterUserId, setFilterUserId] = useState(
-    searchParams.get("userId") || "",
-  );
-  const [filterEntityId, setFilterEntityId] = useState(
-    searchParams.get("entityId") || "",
-  );
-  const [filterAction, setFilterAction] = useState(
-    searchParams.get("action") || "",
-  );
-  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
-  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
-
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">(
-    (searchParams.get("order") as any) || "desc",
-  );
-
-  const [page, setPage] = useState(Number(searchParams.get("page") || 1));
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(
-    (Number(searchParams.get("pageSize")) as any) || 20,
-  );
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -405,6 +469,33 @@ export default function AuditTrailPage() {
     return u?.name || u?.email || id;
   };
 
+  const FILTER_STORAGE_KEY = "auditTrailFilters";
+  const initialFilters = getInitialAuditFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+  const [filterEntity, setFilterEntity] = useState(initialFilters.filterEntity);
+  const [filterUserId, setFilterUserId] = useState(initialFilters.filterUserId);
+  const [filterEntityId, setFilterEntityId] = useState(
+    initialFilters.filterEntityId,
+  );
+  const [filterAction, setFilterAction] = useState(initialFilters.filterAction);
+  const [filterFormNumber, setFilterFormNumber] = useState(
+    initialFilters.filterFormNumber,
+  );
+  const [filterReportNumber, setFilterReportNumber] = useState(
+    initialFilters.filterReportNumber,
+  );
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo);
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">(
+    initialFilters.sortOrder,
+  );
+  const [page, setPage] = useState(initialFilters.page);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(
+    initialFilters.pageSize,
+  );
+
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
@@ -413,6 +504,8 @@ export default function AuditTrailPage() {
     filterUserId,
     filterEntityId,
     filterAction,
+    filterFormNumber,
+    filterReportNumber,
     dateFrom,
     dateTo,
     sortOrder,
@@ -429,38 +522,13 @@ export default function AuditTrailPage() {
       action: "UI_VIEW_AUDIT_PAGE",
       entity: "AuditTrail",
       details: "Viewed Audit Trail page",
+      entityId: null,
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
     });
   }, []);
-
-  // Build query string
-  // const queryString = useMemo(() => {
-  //   const params = new URLSearchParams();
-  //   if (filterEntity) params.append("entity", filterEntity);
-  //   if (filterUserId) params.append("userId", filterUserId);
-  //   if (filterEntityId) params.append("entityId", filterEntityId);
-  //   if (filterAction) params.append("action", filterAction);
-  //   if (dateFrom) params.append("from", dateFrom);
-  //   if (dateTo) params.append("to", dateTo);
-
-  //   // pagination + sort
-  //   params.append("page", String(page));
-  //   params.append("pageSize", String(pageSize));
-  //   params.append("sort", "createdAt");
-  //   params.append("order", sortOrder);
-
-  //   const qs = params.toString();
-  //   return qs ? `?${qs}` : "";
-  // }, [
-  //   filterEntity,
-  //   filterUserId,
-  //   filterEntityId,
-  //   filterAction,
-  //   dateFrom,
-  //   dateTo,
-  //   page,
-  //   pageSize,
-  //   sortOrder,
-  // ]);
 
   const queryString = useMemo(() => {
     const qs = searchParams.toString();
@@ -518,12 +586,22 @@ export default function AuditTrailPage() {
     if (filterUserId) sp.set("userId", filterUserId);
     if (filterEntityId) sp.set("entityId", filterEntityId);
     if (filterAction) sp.set("action", filterAction);
+    if (filterFormNumber) sp.set("formNumber", filterFormNumber);
+    if (filterReportNumber) sp.set("reportNumber", filterReportNumber);
     if (dateFrom) sp.set("from", dateFrom);
     if (dateTo) sp.set("to", dateTo);
 
-    sp.set("order", sortOrder);
-    sp.set("page", String(page));
-    sp.set("pageSize", String(pageSize));
+    if (sortOrder !== DEFAULT_AUDIT_FILTERS.sortOrder) {
+      sp.set("order", sortOrder);
+    }
+
+    if (page !== DEFAULT_AUDIT_FILTERS.page) {
+      sp.set("page", String(page));
+    }
+
+    if (pageSize !== DEFAULT_AUDIT_FILTERS.pageSize) {
+      sp.set("pageSize", String(pageSize));
+    }
 
     setSearchParams(sp, { replace: true });
   }, [
@@ -531,6 +609,8 @@ export default function AuditTrailPage() {
     filterUserId,
     filterEntityId,
     filterAction,
+    filterFormNumber,
+    filterReportNumber,
     dateFrom,
     dateTo,
     sortOrder,
@@ -555,20 +635,6 @@ export default function AuditTrailPage() {
     [records],
   );
 
-  const clearFilters = () => {
-    setFilterEntity("");
-    setFilterUserId("");
-    setFilterEntityId("");
-    setFilterAction("");
-    setDateFrom("");
-    setDateTo("");
-    setSortOrder("desc");
-    setPage(1);
-    setPageSize(20);
-
-    setSearchParams(new URLSearchParams(), { replace: true });
-  };
-
   const downloadCSV = async () => {
     const token = localStorage.getItem("token");
     // ✅ AUDIT: bulk print
@@ -576,6 +642,11 @@ export default function AuditTrailPage() {
       action: "UI_DOWNLOAD_AUDIT_CSV",
       entity: "AuditTrail",
       details: "Downloaded audit trail CSV",
+      clientCode: null,
+      entityId: null,
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
       meta: {
         filters: {
           entity: filterEntity || null,
@@ -584,6 +655,8 @@ export default function AuditTrailPage() {
           entityId: filterEntityId || null,
           from: dateFrom || null,
           to: dateTo || null,
+          formNumber: filterFormNumber || null,
+          reportNumber: filterReportNumber || null,
           order: sortOrder,
         },
       },
@@ -602,6 +675,8 @@ export default function AuditTrailPage() {
     if (filterAction) params.append("action", filterAction);
     if (dateFrom) params.append("from", dateFrom);
     if (dateTo) params.append("to", dateTo);
+    if (filterFormNumber) params.append("formNumber", filterFormNumber);
+    if (filterReportNumber) params.append("reportNumber", filterReportNumber);
     params.append("order", sortOrder);
 
     const qs = params.toString();
@@ -640,6 +715,130 @@ export default function AuditTrailPage() {
   const showingFrom = total ? (page - 1) * pageSize + 1 : 0;
   const showingTo = total ? Math.min(page * pageSize, total) : records.length;
 
+  const hasActiveFilters = useMemo(() => {
+    return (
+      filterEntity !== DEFAULT_AUDIT_FILTERS.filterEntity ||
+      filterUserId !== DEFAULT_AUDIT_FILTERS.filterUserId ||
+      filterEntityId !== DEFAULT_AUDIT_FILTERS.filterEntityId ||
+      filterAction !== DEFAULT_AUDIT_FILTERS.filterAction ||
+      filterFormNumber !== DEFAULT_AUDIT_FILTERS.filterFormNumber ||
+      filterReportNumber !== DEFAULT_AUDIT_FILTERS.filterReportNumber ||
+      dateFrom !== DEFAULT_AUDIT_FILTERS.dateFrom ||
+      dateTo !== DEFAULT_AUDIT_FILTERS.dateTo ||
+      sortOrder !== DEFAULT_AUDIT_FILTERS.sortOrder ||
+      pageSize !== DEFAULT_AUDIT_FILTERS.pageSize
+    );
+  }, [
+    filterEntity,
+    filterUserId,
+    filterEntityId,
+    filterAction,
+    filterFormNumber,
+    filterReportNumber,
+    dateFrom,
+    dateTo,
+    sortOrder,
+    pageSize,
+  ]);
+
+  const clearAllFilters = () => {
+    setFilterEntity(DEFAULT_AUDIT_FILTERS.filterEntity);
+    setFilterUserId(DEFAULT_AUDIT_FILTERS.filterUserId);
+    setFilterEntityId(DEFAULT_AUDIT_FILTERS.filterEntityId);
+    setFilterAction(DEFAULT_AUDIT_FILTERS.filterAction);
+    setFilterFormNumber(DEFAULT_AUDIT_FILTERS.filterFormNumber);
+    setFilterReportNumber(DEFAULT_AUDIT_FILTERS.filterReportNumber);
+    setDateFrom(DEFAULT_AUDIT_FILTERS.dateFrom);
+    setDateTo(DEFAULT_AUDIT_FILTERS.dateTo);
+    setSortOrder(DEFAULT_AUDIT_FILTERS.sortOrder);
+    setPage(DEFAULT_AUDIT_FILTERS.page);
+    setPageSize(DEFAULT_AUDIT_FILTERS.pageSize);
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify(DEFAULT_AUDIT_FILTERS),
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          filterEntity,
+          filterUserId,
+          filterEntityId,
+          filterAction,
+          filterFormNumber,
+          filterReportNumber,
+          dateFrom,
+          dateTo,
+          sortOrder,
+          page,
+          pageSize,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    filterEntity,
+    filterUserId,
+    filterEntityId,
+    filterAction,
+    filterFormNumber,
+    filterReportNumber,
+    dateFrom,
+    dateTo,
+    sortOrder,
+    page,
+    pageSize,
+  ]);
+
+  useEffect(() => {
+    const nextEntity =
+      searchParams.get("entity") || DEFAULT_AUDIT_FILTERS.filterEntity;
+    const nextUserId =
+      searchParams.get("userId") || DEFAULT_AUDIT_FILTERS.filterUserId;
+    const nextEntityId =
+      searchParams.get("entityId") || DEFAULT_AUDIT_FILTERS.filterEntityId;
+    const nextAction =
+      searchParams.get("action") || DEFAULT_AUDIT_FILTERS.filterAction;
+    const nextFormNumber =
+      searchParams.get("formNumber") || DEFAULT_AUDIT_FILTERS.filterFormNumber;
+    const nextReportNumber =
+      searchParams.get("reportNumber") ||
+      DEFAULT_AUDIT_FILTERS.filterReportNumber;
+    const nextFrom = searchParams.get("from") || DEFAULT_AUDIT_FILTERS.dateFrom;
+    const nextTo = searchParams.get("to") || DEFAULT_AUDIT_FILTERS.dateTo;
+    const nextOrder =
+      (searchParams.get("order") as "desc" | "asc") ||
+      DEFAULT_AUDIT_FILTERS.sortOrder;
+    const nextPage = Number(
+      searchParams.get("page") || DEFAULT_AUDIT_FILTERS.page,
+    );
+    const nextPageSize = parsePageSize(searchParams.get("pageSize"));
+
+    if (nextEntity !== filterEntity) setFilterEntity(nextEntity);
+    if (nextUserId !== filterUserId) setFilterUserId(nextUserId);
+    if (nextEntityId !== filterEntityId) setFilterEntityId(nextEntityId);
+    if (nextAction !== filterAction) setFilterAction(nextAction);
+    if (nextFormNumber !== filterFormNumber)
+      setFilterFormNumber(nextFormNumber);
+    if (nextReportNumber !== filterReportNumber)
+      setFilterReportNumber(nextReportNumber);
+    if (nextFrom !== dateFrom) setDateFrom(nextFrom);
+    if (nextTo !== dateTo) setDateTo(nextTo);
+    if (nextOrder !== sortOrder) setSortOrder(nextOrder);
+    if (nextPage !== page) setPage(nextPage);
+    if (nextPageSize !== pageSize) setPageSize(nextPageSize);
+  }, [searchParams]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -673,16 +872,16 @@ export default function AuditTrailPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border rounded-xl p-4 mb-5">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <div className="md:col-span-1">
+      <div className="bg-white border rounded-2xl p-4 mb-5 shadow-sm">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Entity
             </label>
             <select
               value={filterEntity}
               onChange={(e) => setFilterEntity(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
               {entityOptions.map((e) => (
@@ -693,14 +892,14 @@ export default function AuditTrailPage() {
             </select>
           </div>
 
-          <div className="md:col-span-1">
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Action
             </label>
             <select
               value={filterAction}
               onChange={(e) => setFilterAction(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
               {actionOptions.map((a) => (
@@ -711,39 +910,63 @@ export default function AuditTrailPage() {
             </select>
           </div>
 
-          <div className="md:col-span-1">
+          <div className="relative lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               User ID
             </label>
-            <div className="relative">
-              <Search
-                size={16}
-                className="absolute left-3 top-3 text-gray-400"
-              />
-              <input
-                type="text"
-                placeholder="e.g. usr_..."
-                value={filterUserId}
-                onChange={(e) => setFilterUserId(e.target.value)}
-                className="w-full border rounded-lg pl-9 pr-3 py-2"
-              />
-            </div>
+            <Search
+              size={16}
+              className="absolute left-3 top-[38px] text-gray-400"
+            />
+            <input
+              type="text"
+              placeholder="e.g. usr_..."
+              value={filterUserId}
+              onChange={(e) => setFilterUserId(e.target.value)}
+              className="w-full rounded-lg border bg-white pl-9 pr-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
-          <div className="md:col-span-1">
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Report ID (Entity ID)
+              Entity ID
             </label>
             <input
               type="text"
               placeholder="e.g. cmjt4..."
               value={filterEntityId}
               onChange={(e) => setFilterEntityId(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <div className="md:col-span-1">
+          <div className="lg:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Form Number
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. JJL-20260012"
+              value={filterFormNumber}
+              onChange={(e) => setFilterFormNumber(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="lg:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Report Number
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. OM-20260045"
+              value={filterReportNumber}
+              onChange={(e) => setFilterReportNumber(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               From
             </label>
@@ -751,11 +974,11 @@ export default function AuditTrailPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <div className="md:col-span-1">
+          <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               To
             </label>
@@ -763,76 +986,56 @@ export default function AuditTrailPage() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
-        </div>
 
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-3">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-gray-600">Sort</label>
+          <div className="lg:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Sort
+            </label>
             <select
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              <option value="desc">Newest first</option>
-              <option value="asc">Oldest first</option>
+              <option value="desc">Newest</option>
+              <option value="asc">Oldest</option>
             </select>
+          </div>
 
-            <label className="text-xs font-medium text-gray-600 ml-2">
+          <div className="lg:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               Rows
             </label>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value) as any)}
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               {PAGE_SIZES.map((s) => (
                 <option key={s} value={s}>
-                  {s} / page
+                  {s}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            {filterEntity ||
-            filterUserId ||
-            filterEntityId ||
-            filterAction ||
-            dateFrom ||
-            dateTo ? (
-              <button
-                className={[
-                  "text-sm rounded-lg px-3 py-2 transition font-medium",
-                  filterEntity ||
-                  filterUserId ||
-                  filterEntityId ||
-                  filterAction ||
-                  dateFrom ||
-                  dateTo
-                    ? "bg-red-600 text-white hover:bg-red-700 shadow-sm"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed",
-                ].join(" ")}
-                onClick={clearFilters}
-                disabled={
-                  !(
-                    filterEntity ||
-                    filterUserId ||
-                    filterEntityId ||
-                    filterAction ||
-                    dateFrom ||
-                    dateTo
-                  )
-                }
-                title="Clear all filters"
-              >
-                ✕ Clear
-              </button>
-            ) : (
-              <div />
-            )}
+          <div className="lg:col-span-12 flex justify-end">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={[
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                hasActiveFilters
+                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+              ].join(" ")}
+              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+            >
+              ✕ Clear
+            </button>
           </div>
         </div>
       </div>
@@ -849,6 +1052,8 @@ export default function AuditTrailPage() {
             <tr className="bg-gray-50 border-b">
               <th className="p-3 text-left whitespace-nowrap">Time</th>
               <th className="p-3 text-left whitespace-nowrap">Entity</th>
+              <th className="p-3 text-left whitespace-nowrap">Form No</th>
+              <th className="p-3 text-left whitespace-nowrap">Report No</th>
               <th className="p-3 text-left whitespace-nowrap">Entity ID</th>
               <th className="p-3 text-left whitespace-nowrap">Action</th>
               <th className="p-3 text-left whitespace-nowrap">User</th>
@@ -864,16 +1069,29 @@ export default function AuditTrailPage() {
                 <td className="p-3 whitespace-pre-wrap font-mono text-xs">
                   {formatAuditTime(r.createdAt)}
                 </td>
+
                 <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
+
+                <td className="p-3 whitespace-nowrap text-xs">
+                  <div className="font-semibold text-gray-900">
+                    {safeText(r.formNumber)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    {safeText(r.formType)}
+                  </div>
+                </td>
+
+                <td className="p-3 whitespace-nowrap text-xs font-medium">
+                  {safeText(r.reportNumber)}
+                </td>
+
                 <td className="p-3 whitespace-nowrap text-xs">
                   <div className="font-medium">{safeText(r.entityId)}</div>
                   <div className="font-mono text-[10px] text-gray-500">
                     {safeText(r.entityId)}
                   </div>
                 </td>
-                {/* <td className="p-3 font-mono text-xs whitespace-pre-wrap break-words">
-                  {formatEntityIds(r.entityId)}
-                </td> */}
+
                 <td className="p-3 whitespace-nowrap">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${badgeColor(
@@ -883,9 +1101,6 @@ export default function AuditTrailPage() {
                     {r.action}
                   </span>
                 </td>
-                {/* <td className="p-3 whitespace-nowrap font-mono text-xs">
-                  {safeText(r.userId)}
-                </td> */}
 
                 <td className="p-3 whitespace-nowrap text-xs">
                   <div className="font-medium">{userNameFor(r.userId)}</div>
@@ -893,10 +1108,13 @@ export default function AuditTrailPage() {
                     {safeText(r.userId)}
                   </div>
                 </td>
+
                 <td className="p-3 whitespace-nowrap">{safeText(r.role)}</td>
+
                 <td className="p-3 whitespace-nowrap font-mono text-xs">
                   {safeText(r.ipAddress)}
                 </td>
+
                 <td className="p-3">
                   <DetailsCell
                     details={r.details || ""}
@@ -909,7 +1127,7 @@ export default function AuditTrailPage() {
             {!loading && records.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={10}
                   className="text-center py-10 text-gray-500 italic"
                 >
                   No audit records match filters.
@@ -946,7 +1164,7 @@ export default function AuditTrailPage() {
           </button>
           <button
             className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage((p: number) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
           >
             Prev
@@ -959,7 +1177,7 @@ export default function AuditTrailPage() {
 
           <button
             className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || loading}
           >
             Next

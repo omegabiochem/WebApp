@@ -905,6 +905,10 @@ export default function QaDashboard() {
       details: `QA printed selected reports (${selectedIds.length})`,
       entityId: selectedIds.join(","),
       meta: { reportIds: selectedIds, count: selectedIds.length },
+      formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
+      reportNumber: selectedReportObjects.map((r) => r.reportNumber).join(","),
+      formType: selectedReportObjects.map((r) => r.formType).join(","),
+      clientCode: selectedReportObjects.map((r) => r.client || null).join(","),
     });
 
     setPrintingBulk(true);
@@ -1193,6 +1197,10 @@ export default function QaDashboard() {
         count: voidableSelected.length,
         reason,
       },
+      formNumber: voidableSelected.map((r) => r.formNumber).join(","),
+      reportNumber: voidableSelected.map((r) => r.reportNumber).join(","),
+      formType: voidableSelected.map((r) => r.formType).join(","),
+      clientCode: voidableSelected.map((r) => r.client || null).join(","),
     });
 
     await Promise.all(
@@ -1886,6 +1894,10 @@ export default function QaDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: String(r.reportNumber),
+                                formType: r.formType,
+                                clientCode: r.client || null,
                               });
 
                               setSelectedReport(r);
@@ -2178,6 +2190,10 @@ export default function QaDashboard() {
                         formType: selectedReport.formType,
                         status: selectedReport.status,
                       },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: String(selectedReport.reportNumber),
+                      formType: selectedReport.formType,
+                      clientCode: selectedReport.client || null,
                     });
 
                     setPrintingSingle(true);

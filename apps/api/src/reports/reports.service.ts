@@ -1198,6 +1198,9 @@ export class ReportsService {
             formNumber: args.formNumber,
             reportNumber: args.reportNumber ?? null,
           },
+          formNumber: args.formNumber,
+          reportNumber: args.reportNumber ?? null,
+          formType: args.formType,
         },
       }),
     ]);

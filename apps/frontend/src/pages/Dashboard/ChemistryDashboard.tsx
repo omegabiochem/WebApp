@@ -839,6 +839,10 @@ export default function ChemistryDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
     });
 
     setPrintingBulk(true);
@@ -1826,6 +1830,10 @@ export default function ChemistryDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: null,
+                                reportNumber: null,
+                                formType: null,
+                                clientCode: null,
                               });
 
                               setSelectedReport(r);
@@ -1952,6 +1960,10 @@ export default function ChemistryDashboard() {
                             : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      formNumber: null,
+                      reportNumber: null,
+                      formType: null,
+                      clientCode: null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

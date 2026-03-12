@@ -906,6 +906,10 @@ export default function FrontDeskDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: selectedReportObjects[0]?.formNumber || null,
+      reportNumber: selectedReportObjects[0]?.reportNumber || null,
+      formType: selectedReportObjects[0]?.formType || null,
+      clientCode: user?.clientCode || null,
     });
 
     setPrintingBulk(true);
@@ -1075,13 +1079,13 @@ export default function FrontDeskDashboard() {
     setReportNoTo(DEFAULT_FRONTDESK_FILTERS.reportNoTo);
     setPage(DEFAULT_FRONTDESK_FILTERS.page);
   };
- useEffect(() => {
-  const validStatuses = FRONTDESK_STATUSES.map(String);
+  useEffect(() => {
+    const validStatuses = FRONTDESK_STATUSES.map(String);
 
-  if (!validStatuses.includes(String(statusFilter))) {
-    setStatusFilter("ALL");
-  }
-}, [formFilter, statusFilter]);
+    if (!validStatuses.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+  }, [formFilter, statusFilter]);
 
   useLiveReportStatus(setReports, {
     shouldKeep: (r) =>
@@ -1299,6 +1303,10 @@ export default function FrontDeskDashboard() {
                             toStatus: s,
                             kind: getReportKind(selected[0]),
                           },
+                          formNumber: selected[0]?.formNumber || null,
+                          reportNumber: selected[0]?.reportNumber || null,
+                          formType: selected[0]?.formType || null,
+                          clientCode: user?.clientCode || null,
                         });
 
                         const needsESign = bulkRequiresESign({
@@ -1703,6 +1711,10 @@ export default function FrontDeskDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: r.reportNumber,
+                                formType: r.formType,
+                                clientCode: user?.clientCode || null,
                               });
 
                               setSelectedReport(r);
@@ -1790,6 +1802,10 @@ export default function FrontDeskDashboard() {
                                     size: file.size,
                                     type: file.type,
                                   },
+                                  formNumber: r.formNumber,
+                                  reportNumber: r.reportNumber,
+                                  formType: r.formType,
+                                  clientCode: user?.clientCode || null,
                                 });
 
                                 try {
@@ -1993,6 +2009,15 @@ export default function FrontDeskDashboard() {
                             : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

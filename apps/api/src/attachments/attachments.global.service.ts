@@ -120,7 +120,14 @@ export class AttachmentsGlobalService {
               source: true,
               createdAt: true,
               createdBy: true,
-              report: { select: { formType: true, clientCode: true } },
+              report: {
+                select: {
+                  formType: true,
+                  clientCode: true,
+                  formNumber: true,
+                  reportNumber: true,
+                },
+              },
             },
             take: 5000,
           })
@@ -139,7 +146,14 @@ export class AttachmentsGlobalService {
               source: true,
               createdAt: true,
               createdBy: true,
-              report: { select: { formType: true, clientCode: true } },
+              report: {
+                select: {
+                  formType: true,
+                  clientCode: true,
+                  formNumber: true,
+                  reportNumber: true,
+                },
+              },
             },
             take: 5000,
           })
@@ -157,6 +171,9 @@ export class AttachmentsGlobalService {
       pages: number | null;
       source: string | null;
       clientCode: string | null;
+      formType: string | null;
+      formNumber: string | null;
+      reportNumber: string | null;
     }> = [
       ...microItems.map((a) => ({
         id: a.id,
@@ -174,6 +191,9 @@ export class AttachmentsGlobalService {
         pages: a.pages ?? null,
         source: a.source ?? null,
         clientCode: a.report?.clientCode ?? null,
+        formType: a.report?.formType ?? null,
+        formNumber: a.report?.formNumber ?? null,
+        reportNumber: a.report?.reportNumber ?? null,
       })),
 
       ...chemItems.map((a) => ({
@@ -190,6 +210,9 @@ export class AttachmentsGlobalService {
         pages: a.pages ?? null,
         source: a.source ?? null,
         clientCode: a.report?.clientCode ?? null,
+        formType: a.report?.formType ?? null,
+        formNumber: a.report?.formNumber ?? null,
+        reportNumber: a.report?.reportNumber ?? null,
       })),
     ];
 
@@ -292,23 +315,23 @@ export class AttachmentsGlobalService {
       return this.micro.stream(id);
     }
     // ✅ CHEM
-  const chem = await this.prisma.chemistryAttachment.findUnique({
-  where: { id },
-  select: {
-    id: true,
-    report: { select: { clientCode: true, formType: true } },
-  },
-});
+    const chem = await this.prisma.chemistryAttachment.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        report: { select: { clientCode: true, formType: true } },
+      },
+    });
 
     if (chem) {
       if (userRole === 'CLIENT' && chem.report?.clientCode !== userClientCode)
         return null;
 
       // ✅ role-based type check
-     const rt: ReportType =
-  chem.report?.formType === 'COA' ? 'COA' : 'CHEMISTRY';
+      const rt: ReportType =
+        chem.report?.formType === 'COA' ? 'COA' : 'CHEMISTRY';
 
-if (!allowed.includes(rt)) return null;
+      if (!allowed.includes(rt)) return null;
 
       return this.chem.stream(id);
     }

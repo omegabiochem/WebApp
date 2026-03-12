@@ -1398,6 +1398,10 @@ export default function MCDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: selected[0]?.formNumber || null,
+      reportNumber: selected[0]?.reportNumber || null,
+      formType: selected[0]?.formType || null,
+      clientCode: selected[0]?.client || null,
     });
 
     setPrintingBulk(true);
@@ -1676,6 +1680,10 @@ export default function MCDashboard() {
           toStatus,
           group: selected[0] ? getBulkWorkflowGroup(selected[0]) : "",
         },
+        formNumber: selected[0]?.formNumber || null,
+        reportNumber: selected[0]?.reportNumber || null,
+        formType: selected[0]?.formType || null,
+        clientCode: selected[0]?.client || null,
       });
 
       setSelectedIds([]);
@@ -2341,6 +2349,10 @@ export default function MCDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: r.reportNumber,
+                                formType: r.formType,
+                                clientCode: r.client || null,
                               });
 
                               setSelectedReport(r);
@@ -2508,6 +2520,15 @@ export default function MCDashboard() {
                             : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                      formNumber: selectedReport.formNumber,  
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: selectedReport.client || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

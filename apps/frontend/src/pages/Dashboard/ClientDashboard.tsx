@@ -54,6 +54,7 @@ type Report = {
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
+  reportNumber: string;
   version: number;
 
   // ✅ optional extra columns (if backend returns them)
@@ -1028,6 +1029,10 @@ export default function ClientDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: user?.clientCode || null,
     });
 
     setPrintingBulk(true);
@@ -1283,6 +1288,10 @@ export default function ClientDashboard() {
         count: voidableSelected.length,
         reason,
       },
+      formNumber: voidableSelected[0]?.formNumber || null,
+      reportNumber: null,
+      formType: voidableSelected[0]?.formType || null,
+      clientCode: user?.clientCode || null,
     });
 
     await Promise.all(
@@ -1338,6 +1347,10 @@ export default function ClientDashboard() {
             ? getBulkWorkflowGroup(selectedBulkReports[0])
             : "",
         },
+        formNumber: selectedBulkReports[0]?.formNumber || null,
+        reportNumber: null,
+        formType: selectedBulkReports[0]?.formType || null,
+        clientCode: user?.clientCode || null,
       });
 
       toast.success(`Updated ${selectedBulkReports.length} report(s)`);
@@ -1993,6 +2006,10 @@ export default function ClientDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber || null,
+                                reportNumber: r.reportNumber || null,
+                                formType: r.formType || null,
+                                clientCode: user?.clientCode || null,
                               });
 
                               setSelectedReport(r);
@@ -2179,6 +2196,16 @@ export default function ClientDashboard() {
                           : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        reportNumber: selectedReport.reportNumber,
+                        formType: selectedReport.formType,
+                        clientCode: user?.clientCode || null,
+                      },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

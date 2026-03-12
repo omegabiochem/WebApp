@@ -34,7 +34,7 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { getInt} from "../../utils/globalUtils";
+import { getInt } from "../../utils/globalUtils";
 import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
@@ -1022,6 +1022,10 @@ export default function AdminDashboard() {
       details: `Printed selected reports (${selectedIds.length})`,
       entityId: selectedIds.join(","),
       meta: { reportIds: selectedIds, count: selectedIds.length },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
     });
 
     setPrintingBulk(true);
@@ -1286,6 +1290,10 @@ export default function AdminDashboard() {
         count: voidableSelected.length,
         reason,
       },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
     });
 
     await Promise.all(
@@ -1921,6 +1929,10 @@ export default function AdminDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: null,
+                                reportNumber: null,
+                                formType: null,
+                                clientCode: null,
                               });
                               setSelectedReport(r);
                             }}
@@ -2201,6 +2213,10 @@ export default function AdminDashboard() {
                         formType: selectedReport.formType,
                         status: selectedReport.status,
                       },
+                      formNumber: null,
+                      reportNumber: null,
+                      formType: null,
+                      clientCode: null,
                     });
 
                     setPrintingSingle(true);
