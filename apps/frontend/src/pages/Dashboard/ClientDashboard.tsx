@@ -621,27 +621,6 @@ export default function ClientDashboard() {
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
-  // const ALL_PRESETS: DatePreset[] = [
-  //   "ALL",
-  //   "TODAY",
-  //   "YESTERDAY",
-  //   "LAST_7_DAYS",
-  //   "LAST_30_DAYS",
-  //   "THIS_MONTH",
-  //   "LAST_MONTH",
-  //   "THIS_YEAR",
-  //   "LAST_YEAR",
-  //   "CUSTOM",
-  // ];
-
-  // const dpParam = searchParams.get("dp");
-  // const initialDp: DatePreset =
-  //   dpParam &&
-  //   (ALL_PRESETS as readonly string[]).includes(dpParam) &&
-  //   dpParam !== "ALL"
-  //     ? (dpParam as DatePreset)
-  //     : "TODAY";
-
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
     null,
