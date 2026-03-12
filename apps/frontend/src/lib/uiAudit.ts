@@ -1,12 +1,18 @@
 import { api } from "./api";
 
-export async function logUiEvent(event: {
+type UiAuditEvent = {
   action: string;
   entity?: string;
-  entityId?: string;
+  entityId?: string | null;
   details?: string;
   meta?: any;
-}) {
+  formNumber?: string | null;
+  reportNumber?: string | null;
+  formType?: string | null;
+  clientCode?: string | null;
+};
+
+export async function logUiEvent(event: UiAuditEvent) {
   try {
     await api("/audit/ui", {
       method: "POST",

@@ -254,6 +254,160 @@ function intersectAll(lists: string[][]): string[] {
   return Array.from(set);
 }
 
+const DEFAULT_FRONTDESK_FILTERS = {
+  formFilter: "ALL" as
+    | "ALL"
+    | "MICRO"
+    | "MICROWATER"
+    | "STERILITY"
+    | "CHEMISTRY"
+    | "COA",
+  statusFilter: "ALL" as "ALL" | ReportStatus,
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  datePreset: "ALL" as DatePreset,
+  fromDate: "",
+  toDate: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "dateSent" as "dateSent" | "reportNumber",
+  sortDir: "desc" as "asc" | "desc",
+  perPage: 10,
+  page: 1,
+  modalPane: "FORM" as "FORM" | "ATTACHMENTS",
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
+function getInitialFrontDeskFilters(searchParams: URLSearchParams) {
+  try {
+    const spForm = searchParams.get("form");
+    const spStatus = searchParams.get("status");
+    const spClient = searchParams.get("client");
+    const spReport = searchParams.get("report");
+    const spQ = searchParams.get("q");
+
+    const spDp = searchParams.get("dp");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+
+    const spRangeType = searchParams.get("rangeType");
+    const spFormFrom = searchParams.get("formFrom");
+    const spFormTo = searchParams.get("formTo");
+    const spReportFrom = searchParams.get("reportFrom");
+    const spReportTo = searchParams.get("reportTo");
+
+    const spSortBy = searchParams.get("sb");
+    const spSortDir = searchParams.get("sd");
+    const spPp = searchParams.get("pp");
+    const spP = searchParams.get("p");
+    const spPane = searchParams.get("pane");
+
+    const hasUrlFilters =
+      spForm ||
+      spStatus ||
+      spClient ||
+      spReport ||
+      spQ ||
+      spDp ||
+      spFrom ||
+      spTo ||
+      spRangeType ||
+      spFormFrom ||
+      spFormTo ||
+      spReportFrom ||
+      spReportTo ||
+      spSortBy ||
+      spSortDir ||
+      spPp ||
+      spP ||
+      spPane;
+
+    if (hasUrlFilters) {
+      return {
+        formFilter:
+          (spForm as typeof DEFAULT_FRONTDESK_FILTERS.formFilter) ||
+          DEFAULT_FRONTDESK_FILTERS.formFilter,
+        statusFilter:
+          (spStatus as "ALL" | ReportStatus) ||
+          DEFAULT_FRONTDESK_FILTERS.statusFilter,
+        searchClient: spClient || DEFAULT_FRONTDESK_FILTERS.searchClient,
+        searchReport: spReport || DEFAULT_FRONTDESK_FILTERS.searchReport,
+        searchText: spQ || DEFAULT_FRONTDESK_FILTERS.searchText,
+        datePreset:
+          (spDp as DatePreset) || DEFAULT_FRONTDESK_FILTERS.datePreset,
+        fromDate: spFrom || DEFAULT_FRONTDESK_FILTERS.fromDate,
+        toDate: spTo || DEFAULT_FRONTDESK_FILTERS.toDate,
+        numberRangeType:
+          (spRangeType as "FORM" | "REPORT") ||
+          DEFAULT_FRONTDESK_FILTERS.numberRangeType,
+        formNoFrom: spFormFrom || DEFAULT_FRONTDESK_FILTERS.formNoFrom,
+        formNoTo: spFormTo || DEFAULT_FRONTDESK_FILTERS.formNoTo,
+        reportNoFrom: spReportFrom || DEFAULT_FRONTDESK_FILTERS.reportNoFrom,
+        reportNoTo: spReportTo || DEFAULT_FRONTDESK_FILTERS.reportNoTo,
+        sortBy:
+          (spSortBy as "dateSent" | "reportNumber") ||
+          DEFAULT_FRONTDESK_FILTERS.sortBy,
+        sortDir:
+          (spSortDir as "asc" | "desc") || DEFAULT_FRONTDESK_FILTERS.sortDir,
+        perPage: parseIntSafe(spPp, DEFAULT_FRONTDESK_FILTERS.perPage),
+        page: parseIntSafe(spP, DEFAULT_FRONTDESK_FILTERS.page),
+        modalPane:
+          (spPane as "FORM" | "ATTACHMENTS") ||
+          DEFAULT_FRONTDESK_FILTERS.modalPane,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_FRONTDESK_FILTERS;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -267,42 +421,91 @@ export default function FrontDeskDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const initialFilters = getInitialFrontDeskFilters(searchParams);
+
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >((searchParams.get("form") as any) || "ALL");
+  >(initialFilters.formFilter);
 
   const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
-    (searchParams.get("status") as any) || "ALL",
+    initialFilters.statusFilter,
   );
 
-  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+
+  const [search, setSearch] = useState(initialFilters.searchText);
 
   const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    ((searchParams.get("sb") as any) || "dateSent") as any,
+    initialFilters.sortBy,
   );
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
-    ((searchParams.get("sd") as any) || "desc") as any,
+    initialFilters.sortDir,
   );
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
+    initialFilters.datePreset,
   );
 
-  const [fromDate, setFromDate] = useState<string>(
-    searchParams.get("from") || "",
-  );
-  const [toDate, setToDate] = useState<string>(searchParams.get("to") || "");
+  const [fromDate, setFromDate] = useState<string>(initialFilters.fromDate);
+  const [toDate, setToDate] = useState<string>(initialFilters.toDate);
 
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
   );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
-    (searchParams.get("pane") as any) || "FORM",
+    initialFilters.modalPane,
   );
+
+  // const [formFilter, setFormFilter] = useState<
+  //   "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  // >((searchParams.get("form") as any) || "ALL");
+
+  // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
+  //   (searchParams.get("status") as any) || "ALL",
+  // );
+
+  // const [search, setSearch] = useState(searchParams.get("q") || "");
+
+  // const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+  //   ((searchParams.get("sb") as any) || "dateSent") as any,
+  // );
+
+  // const [sortDir, setSortDir] = useState<"asc" | "desc">(
+  //   ((searchParams.get("sd") as any) || "desc") as any,
+  // );
+
+  // const [datePreset, setDatePreset] = useState<DatePreset>(
+  //   (searchParams.get("dp") as any) || "ALL",
+  // );
+
+  // const [fromDate, setFromDate] = useState<string>(
+  //   searchParams.get("from") || "",
+  // );
+  // const [toDate, setToDate] = useState<string>(searchParams.get("to") || "");
+
+  // const [perPage, setPerPage] = useState(
+  //   parseIntSafe(searchParams.get("pp"), 10),
+  // );
+  // const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+
+  // const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  // const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
+  //   (searchParams.get("pane") as any) || "FORM",
+  // );
 
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -382,21 +585,73 @@ export default function FrontDeskDashboard() {
     const byStatus =
       statusFilter === "ALL"
         ? byForm
-        : byForm.filter((r) => r.status === statusFilter);
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-    const bySearch = search.trim()
+    const byClient = searchClient.trim()
       ? byStatus.filter((r) => {
-          const q = search.toLowerCase();
-          return (
-            r.reportNumber.toLowerCase().includes(q) ||
-            r.formNumber.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
-          );
+          const q = searchClient.toLowerCase();
+          return String(r.formNumber || "")
+            .toLowerCase()
+            .includes(q);
         })
       : byStatus;
 
-    // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const byReport = searchReport.trim()
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(r.reportNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byClient;
+
+    const bySearch = search.trim()
+      ? byReport.filter((r) => {
+          const q = search.toLowerCase();
+          return (
+            String(r.reportNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.status || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formType || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byReport;
+
+    const byNumberRange =
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                formNoFrom,
+                formNoTo,
+              ),
+            )
+          : bySearch
+        : reportNoFrom.trim() || reportNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.reportNumber).sequence,
+                reportNoFrom,
+                reportNoTo,
+              ),
+            )
+          : bySearch;
+
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
@@ -422,6 +677,13 @@ export default function FrontDeskDashboard() {
     fromDate,
     toDate,
     datePreset,
+    searchClient,
+    searchReport,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   // Pagination
@@ -450,25 +712,28 @@ export default function FrontDeskDashboard() {
   useEffect(() => {
     const sp = new URLSearchParams();
 
-    // filters
     if (formFilter !== "ALL") sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
 
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
     if (search.trim()) sp.set("q", search.trim());
 
-    // sort
     if (sortBy !== "dateSent") sp.set("sb", sortBy);
     if (sortDir !== "desc") sp.set("sd", sortDir);
 
-    // date
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
     if (toDate) sp.set("to", toDate);
 
-    // modal pane
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
     if (modalPane !== "FORM") sp.set("pane", modalPane);
 
-    // paging
     if (perPage !== 10) sp.set("pp", String(perPage));
     if (pageClamped !== 1) sp.set("p", String(pageClamped));
 
@@ -476,12 +741,19 @@ export default function FrontDeskDashboard() {
   }, [
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
     datePreset,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     modalPane,
     perPage,
     pageClamped,
@@ -634,6 +906,10 @@ export default function FrontDeskDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: selectedReportObjects[0]?.formNumber || null,
+      reportNumber: selectedReportObjects[0]?.reportNumber || null,
+      formType: selectedReportObjects[0]?.formType || null,
+      clientCode: user?.clientCode || null,
     });
 
     setPrintingBulk(true);
@@ -750,17 +1026,26 @@ export default function FrontDeskDashboard() {
     return (
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
       search.trim() !== "" ||
       sortBy !== "dateSent" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== ""
     );
   }, [
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
@@ -768,24 +1053,39 @@ export default function FrontDeskDashboard() {
     datePreset,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   const clearAllFilters = () => {
-    setFormFilter("ALL");
-    setStatusFilter("ALL");
-    setSearch("");
-    setSortBy("dateSent");
-    setSortDir("desc");
-    setPerPage(10);
-    setDatePreset("ALL");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
+    setFormFilter(DEFAULT_FRONTDESK_FILTERS.formFilter);
+    setStatusFilter(DEFAULT_FRONTDESK_FILTERS.statusFilter);
+    setSearchClient(DEFAULT_FRONTDESK_FILTERS.searchClient);
+    setSearchReport(DEFAULT_FRONTDESK_FILTERS.searchReport);
+    setSearch(DEFAULT_FRONTDESK_FILTERS.searchText);
+    setSortBy(DEFAULT_FRONTDESK_FILTERS.sortBy);
+    setSortDir(DEFAULT_FRONTDESK_FILTERS.sortDir);
+    setPerPage(DEFAULT_FRONTDESK_FILTERS.perPage);
+    setDatePreset(DEFAULT_FRONTDESK_FILTERS.datePreset);
+    setFromDate(DEFAULT_FRONTDESK_FILTERS.fromDate);
+    setToDate(DEFAULT_FRONTDESK_FILTERS.toDate);
+    setNumberRangeType(DEFAULT_FRONTDESK_FILTERS.numberRangeType);
+    setFormNoFrom(DEFAULT_FRONTDESK_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_FRONTDESK_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_FRONTDESK_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_FRONTDESK_FILTERS.reportNoTo);
+    setPage(DEFAULT_FRONTDESK_FILTERS.page);
   };
-
   useEffect(() => {
-    setStatusFilter("ALL");
-  }, [formFilter]);
+    const validStatuses = FRONTDESK_STATUSES.map(String);
+
+    if (!validStatuses.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+  }, [formFilter, statusFilter]);
 
   useLiveReportStatus(setReports, {
     shouldKeep: (r) =>
@@ -1003,6 +1303,10 @@ export default function FrontDeskDashboard() {
                             toStatus: s,
                             kind: getReportKind(selected[0]),
                           },
+                          formNumber: selected[0]?.formNumber || null,
+                          reportNumber: selected[0]?.reportNumber || null,
+                          formType: selected[0]?.formType || null,
+                          clientCode: user?.clientCode || null,
                         });
 
                         const needsESign = bulkRequiresESign({
@@ -1113,7 +1417,8 @@ export default function FrontDeskDashboard() {
       </div>
 
       {/* Controls Card */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+      {/* Controls Card */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {FRONTDESK_STATUSES.map((s) => (
             <button
@@ -1132,47 +1437,37 @@ export default function FrontDeskDashboard() {
           ))}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search form #, formNumber, or status…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            placeholder="Search form #, report #, status..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
 
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              onChange={(e) =>
+                setSortBy(e.target.value as "dateSent" | "reportNumber")
+              }
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
-              <option value="reportNumber">Form #</option>
+              <option value="reportNumber">Report #</option>
             </select>
 
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
               aria-label="Toggle sort direction"
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          <div className="flex items-center gap-2">
             <label htmlFor="perPage" className="text-sm text-slate-600">
               Rows:
             </label>
@@ -1189,14 +1484,12 @@ export default function FrontDeskDashboard() {
               ))}
             </select>
           </div>
-        </div>
-        {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+
+          <div className="flex gap-3 flex-wrap">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1209,10 +1502,7 @@ export default function FrontDeskDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
-          </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
             <input
               type="date"
               value={fromDate}
@@ -1222,10 +1512,11 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+
             <input
               type="date"
               value={toDate}
@@ -1235,28 +1526,65 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              disabled={!hasActiveFilters}
-              className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                hasActiveFilters
-                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}
-              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              ✕ Clear
-            </button>
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
+                else setReportNoFrom(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoTo(e.target.value);
+                else setReportNoTo(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 
@@ -1383,6 +1711,10 @@ export default function FrontDeskDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: r.reportNumber,
+                                formType: r.formType,
+                                clientCode: user?.clientCode || null,
                               });
 
                               setSelectedReport(r);
@@ -1470,6 +1802,10 @@ export default function FrontDeskDashboard() {
                                     size: file.size,
                                     type: file.type,
                                   },
+                                  formNumber: r.formNumber,
+                                  reportNumber: r.reportNumber,
+                                  formType: r.formType,
+                                  clientCode: user?.clientCode || null,
                                 });
 
                                 try {
@@ -1673,6 +2009,15 @@ export default function FrontDeskDashboard() {
                             : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

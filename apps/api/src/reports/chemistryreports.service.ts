@@ -184,7 +184,7 @@ const STATUS_TRANSITIONS: Record<
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA', 'SYSTEMADMIN','CHEMISTRY','MC'] , 
+    canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
@@ -944,6 +944,9 @@ export class ChemistryReportsService {
             formNumber: args.formNumber,
             reportNumber: args.reportNumber ?? null,
           },
+          formNumber: args.formNumber,
+          reportNumber: args.reportNumber ?? null,
+          formType: args.formType,
         },
       }),
     ]);

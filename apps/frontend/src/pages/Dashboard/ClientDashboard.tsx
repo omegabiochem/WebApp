@@ -54,6 +54,7 @@ type Report = {
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | string; // Some backends may still send raw string
   formNumber: string;
+  reportNumber: string;
   version: number;
 
   // ✅ optional extra columns (if backend returns them)
@@ -384,6 +385,158 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+const DEFAULT_CLIENT_FILTERS = {
+  formFilter: "ALL" as
+    | "ALL"
+    | "MICRO"
+    | "MICROWATER"
+    | "STERILITY"
+    | "CHEMISTRY"
+    | "COA",
+  statusFilter: "ALL" as DashboardStatus,
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "formNumber" as "dateSent" | "formNumber",
+  sortDir: "desc" as "asc" | "desc",
+  perPage: 10,
+  page: 1,
+  datePreset: "TODAY" as DatePreset,
+  fromDate: "",
+  toDate: "",
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
+function getInitialClientFilters(searchParams: URLSearchParams) {
+  try {
+    const spForm = searchParams.get("form");
+    const spStatus = searchParams.get("status");
+    const spClient = searchParams.get("client");
+    const spReport = searchParams.get("report");
+    const spQ = searchParams.get("q");
+
+    const spSortBy = searchParams.get("sortBy");
+    const spSortDir = searchParams.get("sortDir");
+
+    const spP = searchParams.get("p");
+    const spPp = searchParams.get("pp");
+
+    const spDp = searchParams.get("dp");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+
+    const spRangeType = searchParams.get("rangeType");
+    const spFormFrom = searchParams.get("formFrom");
+    const spFormTo = searchParams.get("formTo");
+    const spReportFrom = searchParams.get("reportFrom");
+    const spReportTo = searchParams.get("reportTo");
+
+    const hasUrlFilters =
+      spForm ||
+      spStatus ||
+      spClient ||
+      spReport ||
+      spQ ||
+      spSortBy ||
+      spSortDir ||
+      spP ||
+      spPp ||
+      spDp ||
+      spFrom ||
+      spRangeType ||
+      spFormFrom ||
+      spFormTo ||
+      spReportFrom ||
+      spReportTo ||
+      spTo;
+
+    if (hasUrlFilters) {
+      return {
+        formFilter:
+          (spForm as typeof DEFAULT_CLIENT_FILTERS.formFilter) ||
+          DEFAULT_CLIENT_FILTERS.formFilter,
+        statusFilter:
+          (spStatus as DashboardStatus) || DEFAULT_CLIENT_FILTERS.statusFilter,
+        searchClient: spClient || DEFAULT_CLIENT_FILTERS.searchClient,
+        searchReport: spReport || DEFAULT_CLIENT_FILTERS.searchReport,
+        searchText: spQ || DEFAULT_CLIENT_FILTERS.searchText,
+        sortBy:
+          (spSortBy as "dateSent" | "formNumber") ||
+          DEFAULT_CLIENT_FILTERS.sortBy,
+        sortDir:
+          (spSortDir as "asc" | "desc") || DEFAULT_CLIENT_FILTERS.sortDir,
+        perPage: parseIntSafe(spPp, DEFAULT_CLIENT_FILTERS.perPage),
+        page: parseIntSafe(spP, DEFAULT_CLIENT_FILTERS.page),
+        datePreset: (spDp as DatePreset) || DEFAULT_CLIENT_FILTERS.datePreset,
+        fromDate:
+          (spDp as DatePreset) === "CUSTOM"
+            ? spFrom || DEFAULT_CLIENT_FILTERS.fromDate
+            : DEFAULT_CLIENT_FILTERS.fromDate,
+        toDate:
+          (spDp as DatePreset) === "CUSTOM"
+            ? spTo || DEFAULT_CLIENT_FILTERS.toDate
+            : DEFAULT_CLIENT_FILTERS.toDate,
+        numberRangeType:
+          (spRangeType as "FORM" | "REPORT") ||
+          DEFAULT_CLIENT_FILTERS.numberRangeType,
+        formNoFrom: spFormFrom || DEFAULT_CLIENT_FILTERS.formNoFrom,
+        formNoTo: spFormTo || DEFAULT_CLIENT_FILTERS.formNoTo,
+        reportNoFrom: spReportFrom || DEFAULT_CLIENT_FILTERS.reportNoFrom,
+        reportNoTo: spReportTo || DEFAULT_CLIENT_FILTERS.reportNoTo,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_CLIENT_FILTERS;
+}
 // -----------------------------
 // Component
 // -----------------------------
@@ -394,21 +547,48 @@ export default function ClientDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const initialFilters = getInitialClientFilters(searchParams);
+
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+
+  const [search, setSearch] = useState(initialFilters.searchText);
 
   const [sortBy, setSortBy] = useState<"dateSent" | "formNumber">(
-    (searchParams.get("sortBy") as any) || "formNumber",
+    initialFilters.sortBy,
   );
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
-    (searchParams.get("sortDir") as any) || "desc",
+    initialFilters.sortDir,
   );
 
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
+  const [page, setPage] = useState(initialFilters.page);
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >(initialFilters.formFilter);
+
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    initialFilters.statusFilter,
   );
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    initialFilters.datePreset,
+  );
+
+  const [fromDate, setFromDate] = useState(initialFilters.fromDate);
+  const [toDate, setToDate] = useState(initialFilters.toDate);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
+  );
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -419,14 +599,6 @@ export default function ClientDashboard() {
   // ✅ NEW: single-report print from modal
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
-  );
-
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >((searchParams.get("form") as any) || "ALL");
-
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
-    (searchParams.get("status") as any) || "ALL",
   );
 
   const statusOptions =
@@ -449,37 +621,6 @@ export default function ClientDashboard() {
 
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
-
-  const ALL_PRESETS: DatePreset[] = [
-    "ALL",
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_30_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_YEAR",
-    "LAST_YEAR",
-    "CUSTOM",
-  ];
-
-  const dpParam = searchParams.get("dp");
-  const initialDp: DatePreset =
-    dpParam &&
-    (ALL_PRESETS as readonly string[]).includes(dpParam) &&
-    dpParam !== "ALL"
-      ? (dpParam as DatePreset)
-      : "TODAY";
-
-  const [datePreset, setDatePreset] = useState<DatePreset>(initialDp);
-
-  const [fromDate, setFromDate] = useState(
-    initialDp === "CUSTOM" ? searchParams.get("from") || "" : "",
-  );
-
-  const [toDate, setToDate] = useState(
-    initialDp === "CUSTOM" ? searchParams.get("to") || "" : "",
-  );
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
@@ -614,19 +755,59 @@ export default function ClientDashboard() {
         : byForm.filter((r) => String(r.status) === String(statusFilter));
 
     // 3) search
-    const bySearch = search.trim()
+    const bySearchClient = searchClient.trim()
       ? byStatus.filter((r) => {
-          const q = search.toLowerCase();
-          return (
-            r.formNumber.toLowerCase().includes(q) ||
-            r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
-          );
+          const q = searchClient.toLowerCase();
+          return (r.client || "").toLowerCase().includes(q);
         })
       : byStatus;
 
-    // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const bySearchReport = searchReport.trim()
+      ? bySearchClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return String(r.formNumber || "")
+            .toLowerCase()
+            .includes(q);
+        })
+      : bySearchClient;
+
+    const bySearch = search.trim()
+      ? bySearchReport.filter((r) => {
+          const q = search.toLowerCase();
+          return (
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            (r.client || "").toLowerCase().includes(q) ||
+            String(r.status || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : bySearchReport;
+
+    const byNumberRange =
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                formNoFrom,
+                formNoTo,
+              ),
+            )
+          : bySearch
+        : reportNoFrom.trim() || reportNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                reportNoFrom,
+                reportNoTo,
+              ),
+            )
+          : bySearch;
+
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
@@ -647,11 +828,18 @@ export default function ClientDashboard() {
     reports,
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   // Pagination
@@ -665,7 +853,19 @@ export default function ClientDashboard() {
   // Reset to page 1 when the core filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
 
   useEffect(() => {
     if (!colOpen) return;
@@ -686,6 +886,8 @@ export default function ClientDashboard() {
     sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
 
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
     if (search.trim()) sp.set("q", search.trim());
 
     sp.set("sortBy", sortBy);
@@ -699,11 +901,18 @@ export default function ClientDashboard() {
       if (fromDate) sp.set("from", fromDate);
       if (toDate) sp.set("to", toDate);
     }
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
     setSearchParams(sp, { replace: true });
   }, [
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
@@ -712,6 +921,11 @@ export default function ClientDashboard() {
     datePreset,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     setSearchParams,
   ]);
 
@@ -815,6 +1029,10 @@ export default function ClientDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: user?.clientCode || null,
     });
 
     setPrintingBulk(true);
@@ -933,15 +1151,24 @@ export default function ClientDashboard() {
     return (
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
       search.trim() !== "" ||
       sortBy !== "formNumber" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
       dateActive
     );
   }, [
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
@@ -952,16 +1179,23 @@ export default function ClientDashboard() {
   ]);
 
   const clearAllFilters = () => {
-    setFormFilter("ALL");
-    setStatusFilter("ALL");
-    setSearch("");
-    setSortBy("formNumber");
-    setSortDir("desc");
-    setPerPage(10);
-    setDatePreset("TODAY");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
+    setFormFilter(DEFAULT_CLIENT_FILTERS.formFilter);
+    setStatusFilter(DEFAULT_CLIENT_FILTERS.statusFilter);
+    setSearchClient(DEFAULT_CLIENT_FILTERS.searchClient);
+    setSearchReport(DEFAULT_CLIENT_FILTERS.searchReport);
+    setSearch(DEFAULT_CLIENT_FILTERS.searchText);
+    setSortBy(DEFAULT_CLIENT_FILTERS.sortBy);
+    setSortDir(DEFAULT_CLIENT_FILTERS.sortDir);
+    setPerPage(DEFAULT_CLIENT_FILTERS.perPage);
+    setDatePreset(DEFAULT_CLIENT_FILTERS.datePreset);
+    setFromDate(DEFAULT_CLIENT_FILTERS.fromDate);
+    setToDate(DEFAULT_CLIENT_FILTERS.toDate);
+    setPage(DEFAULT_CLIENT_FILTERS.page);
+    setNumberRangeType(DEFAULT_CLIENT_FILTERS.numberRangeType);
+    setFormNoFrom(DEFAULT_CLIENT_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_CLIENT_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_CLIENT_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_CLIENT_FILTERS.reportNoTo);
   };
 
   useEffect(() => {
@@ -1054,6 +1288,10 @@ export default function ClientDashboard() {
         count: voidableSelected.length,
         reason,
       },
+      formNumber: voidableSelected[0]?.formNumber || null,
+      reportNumber: null,
+      formType: voidableSelected[0]?.formType || null,
+      clientCode: user?.clientCode || null,
     });
 
     await Promise.all(
@@ -1109,6 +1347,10 @@ export default function ClientDashboard() {
             ? getBulkWorkflowGroup(selectedBulkReports[0])
             : "",
         },
+        formNumber: selectedBulkReports[0]?.formNumber || null,
+        reportNumber: null,
+        formType: selectedBulkReports[0]?.formType || null,
+        clientCode: user?.clientCode || null,
       });
 
       toast.success(`Updated ${selectedBulkReports.length} report(s)`);
@@ -1362,9 +1604,9 @@ export default function ClientDashboard() {
       </div>
 
       {/* Controls Card */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
-        {/* Status filter chips (scrollable) */}
-        {/* Status filter chips (scrollable) */}
+      {/* Controls Card */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
+        {/* Status filter chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {statusOptions.map((s) => (
             <button
@@ -1383,26 +1625,13 @@ export default function ClientDashboard() {
           ))}
         </div>
 
-        {/* Search & Sort row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search form #, client, or status…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            placeholder="Search form #, client, or status…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
 
           <div className="flex items-center gap-2">
             <label className="sr-only" htmlFor="sortBy">
@@ -1412,7 +1641,7 @@ export default function ClientDashboard() {
               id="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
               <option value="formNumber">Form #</option>
@@ -1421,7 +1650,7 @@ export default function ClientDashboard() {
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
               aria-label="Toggle sort direction"
               title="Toggle sort direction"
             >
@@ -1429,7 +1658,7 @@ export default function ClientDashboard() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          <div className="flex items-center gap-2">
             <label htmlFor="perPage" className="text-sm text-slate-600">
               Rows:
             </label>
@@ -1446,15 +1675,12 @@ export default function ClientDashboard() {
               ))}
             </select>
           </div>
-        </div>
 
-        {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+          <div className="flex gap-3 flex-wrap">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1467,10 +1693,7 @@ export default function ClientDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
-          </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
             <input
               type="date"
               value={fromDate}
@@ -1480,10 +1703,11 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+
             <input
               type="date"
               value={toDate}
@@ -1493,28 +1717,65 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              disabled={!hasActiveFilters}
-              className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                hasActiveFilters
-                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}
-              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              ✕ Clear
-            </button>
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
+                else setReportNoFrom(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoTo(e.target.value);
+                else setReportNoTo(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 
@@ -1745,6 +2006,10 @@ export default function ClientDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber || null,
+                                reportNumber: r.reportNumber || null,
+                                formType: r.formType || null,
+                                clientCode: user?.clientCode || null,
                               });
 
                               setSelectedReport(r);
@@ -1931,6 +2196,16 @@ export default function ClientDashboard() {
                           : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        reportNumber: selectedReport.reportNumber,
+                        formType: selectedReport.formType,
+                        clientCode: user?.clientCode || null,
+                      },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);

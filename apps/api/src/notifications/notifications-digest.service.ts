@@ -25,7 +25,7 @@ export class NotificationsDigestService {
     private readonly mail: MailService,
   ) {}
 
-  // every 10 minutes
+  // every 30 minutes
   @Cron('*/30 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
