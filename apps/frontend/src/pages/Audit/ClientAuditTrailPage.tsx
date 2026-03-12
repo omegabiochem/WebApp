@@ -399,6 +399,12 @@ useEffect(() => {
       action: "UI_VIEW_AUDIT_PAGE",
       entity: "AuditTrail",
       details: "Viewed Audit Trail page",
+      entityId: null,
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
+      meta: undefined,
     });
   }, []);
 
@@ -537,6 +543,10 @@ const clearFilters = () => {
           order: sortOrder,
         },
       },
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
     });
     if (!token) {
       alert("Please log in first.");

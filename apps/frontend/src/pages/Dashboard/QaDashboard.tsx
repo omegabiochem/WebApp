@@ -45,6 +45,7 @@ import { parseIntSafe } from "../../utils/commonDashboardUtil";
 type Report = {
   id: string;
   client: string;
+  clientCode?: string | null;
   formType: string;
   dateSent: string | null;
   status: ReportStatus | ChemistryReportStatus | SterilityReportStatus | string;
@@ -334,6 +335,78 @@ function getStatusesForFamily(family: ReportFamily): string[] {
   return QA_MICRO_STATUSES.filter((s) => s !== "ALL").map(String);
 }
 
+const DEFAULT_QA_FILTERS = {
+  formFilter: "ALL" as
+    | "ALL"
+    | "MICRO"
+    | "MICROWATER"
+    | "STERILITY"
+    | "CHEMISTRY"
+    | "COA",
+  statusFilter: "ALL" as DashboardStatus,
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  datePreset: "ALL" as DatePreset,
+  dateFrom: "",
+  dateTo: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  perPage: 10,
+  page: 1,
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+
+  // take the last continuous digit block, e.g. ABC-20260001 -> 20260001
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+
+  // expect YYYY + sequence
+  if (digits.length < 5) {
+    return { year: null, sequence: null };
+  }
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
 // ---------------------------------
 // Component
 // ---------------------------------
@@ -343,16 +416,117 @@ export default function QaDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "qa";
+
+  const FILTER_STORAGE_KEY = `qaDashboardFilters:user:${userKey}`;
+
+  function getInitialQaFilters() {
+    try {
+      const spForm = searchParams.get("form");
+      const spStatus = searchParams.get("status");
+      const spClient = searchParams.get("client");
+      const spReport = searchParams.get("report");
+      const spDp = searchParams.get("dp");
+      const spFrom = searchParams.get("from");
+      const spTo = searchParams.get("to");
+      const spPp = searchParams.get("pp");
+      const spP = searchParams.get("p");
+      const spQ = searchParams.get("q");
+      const spFormFrom = searchParams.get("formFrom");
+      const spFormTo = searchParams.get("formTo");
+      const spReportFrom = searchParams.get("reportFrom");
+      const spReportTo = searchParams.get("reportTo");
+      const spRangeType = searchParams.get("rangeType");
+
+      const hasUrlFilters =
+        spForm ||
+        spStatus ||
+        spClient ||
+        spReport ||
+        spDp ||
+        spFrom ||
+        spTo ||
+        spPp ||
+        spP ||
+        spQ ||
+        spFormFrom ||
+        spFormTo ||
+        spReportFrom ||
+        spReportTo ||
+        spRangeType;
+
+      if (hasUrlFilters) {
+        return {
+          formFilter: (spForm as any) || DEFAULT_QA_FILTERS.formFilter,
+          statusFilter: (spStatus as any) || DEFAULT_QA_FILTERS.statusFilter,
+          searchClient: spClient || DEFAULT_QA_FILTERS.searchClient,
+          searchReport: spReport || DEFAULT_QA_FILTERS.searchReport,
+          datePreset: (spDp as DatePreset) || DEFAULT_QA_FILTERS.datePreset,
+          dateFrom: spFrom || DEFAULT_QA_FILTERS.dateFrom,
+          dateTo: spTo || DEFAULT_QA_FILTERS.dateTo,
+          perPage: parseIntSafe(spPp, DEFAULT_QA_FILTERS.perPage),
+          page: parseIntSafe(spP, DEFAULT_QA_FILTERS.page),
+          searchText: spQ || DEFAULT_QA_FILTERS.searchText,
+          formNoFrom: spFormFrom || DEFAULT_QA_FILTERS.formNoFrom,
+          formNoTo: spFormTo || DEFAULT_QA_FILTERS.formNoTo,
+          reportNoFrom: spReportFrom || DEFAULT_QA_FILTERS.reportNoFrom,
+          reportNoTo: spReportTo || DEFAULT_QA_FILTERS.reportNoTo,
+          numberRangeType:
+            (spRangeType as "FORM" | "REPORT") ||
+            DEFAULT_QA_FILTERS.numberRangeType,
+        };
+      }
+
+      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (raw) {
+        return {
+          ...DEFAULT_QA_FILTERS,
+          ...JSON.parse(raw),
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    return DEFAULT_QA_FILTERS;
+  }
+
   // Filters
-  const [searchClient, setSearchClient] = useState(
-    searchParams.get("client") || "",
-  );
-  const [searchReport, setSearchReport] = useState(
-    searchParams.get("report") || "",
+  const initialFilters = getInitialQaFilters();
+
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo);
+
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >(initialFilters.formFilter);
+
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    initialFilters.statusFilter,
   );
 
-  const [dateFrom, setDateFrom] = useState(searchParams.get("from") || "");
-  const [dateTo, setDateTo] = useState(searchParams.get("to") || "");
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    initialFilters.datePreset,
+  );
+
+  const [searchText, setSearchText] = useState(initialFilters.searchText);
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -366,14 +540,6 @@ export default function QaDashboard() {
   const [saving, setSaving] = useState<boolean>(false);
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  >((searchParams.get("form") as any) || "ALL");
-
-  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
-    (searchParams.get("status") as any) || "ALL",
-  );
-
   const statusOptions =
     formFilter === "CHEMISTRY"
       ? QA_CHEM_STATUSES
@@ -381,22 +547,13 @@ export default function QaDashboard() {
         ? QA_STERILITY_STATUSES
         : QA_MICRO_STATUSES;
 
-  // Pagination
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    (initialFilters as any).numberRangeType || "FORM",
   );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
 
   // UX guards
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
-  );
-
-  const navigate = useNavigate();
-  const { user } = useAuth();
 
   // -----------------------------
   // Selection + Printing (QA)
@@ -548,21 +705,77 @@ export default function QaDashboard() {
         : byForm.filter((r) => String(r.status) === String(statusFilter));
 
     const byClient = searchClient.trim()
-      ? byStatus.filter((r) =>
-          r.client.toLowerCase().includes(searchClient.toLowerCase()),
-        )
+      ? byStatus.filter((r) => {
+          const q = searchClient.toLowerCase();
+          return (
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q)
+          );
+        })
       : byStatus;
 
     const byReport = searchReport.trim()
-      ? byClient.filter((r) =>
-          String(displayReportNo(r))
-            .toLowerCase()
-            .includes(searchReport.toLowerCase()),
-        )
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(displayReportNo(r)).toLowerCase().includes(q) ||
+            (r.formNumber || "").toLowerCase().includes(q)
+          );
+        })
       : byClient;
 
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.toLowerCase();
+
+          return (
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q) ||
+            (r.formNumber || "").toLowerCase().includes(q) ||
+            String(r.reportNumber ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.status ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formType ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.id ?? "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byReport;
+
+    const byNumberRange = (
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+        : reportNoFrom.trim() || reportNoTo.trim()
+    )
+      ? bySearchText.filter((r) => {
+          if (numberRangeType === "FORM") {
+            return inRange(
+              extractYearAndSequence(r.formNumber).sequence,
+              formNoFrom,
+              formNoTo,
+            );
+          }
+
+          return inRange(
+            extractYearAndSequence(
+              typeof r.reportNumber === "number" && r.formNumber
+                ? r.formNumber.replace(/\d+$/, String(r.reportNumber))
+                : r.reportNumber,
+            ).sequence,
+            reportNoFrom,
+            reportNoTo,
+          );
+        })
+      : bySearchText;
+
     // keep your behavior: filter/sort using dateSent
-    const byDate = byReport.filter((r) =>
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.dateSent, dateFrom || undefined, dateTo || undefined),
     );
 
@@ -577,6 +790,12 @@ export default function QaDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    numberRangeType,
+    reportNoFrom,
+    reportNoTo,
     dateFrom,
     dateTo,
   ]);
@@ -591,13 +810,20 @@ export default function QaDashboard() {
   useEffect(() => {
     setPage(1);
   }, [
+    formFilter,
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    numberRangeType,
+    datePreset,
     dateFrom,
     dateTo,
     perPage,
-    formFilter,
   ]);
 
   useEffect(() => {
@@ -620,6 +846,15 @@ export default function QaDashboard() {
     sp.set("pp", String(perPage));
     sp.set("p", String(pageClamped));
 
+    if (searchText.trim()) sp.set("q", searchText.trim());
+
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+    sp.set("rangeType", numberRangeType);
+
     setSearchParams(sp, { replace: true });
   }, [
     formFilter,
@@ -631,6 +866,11 @@ export default function QaDashboard() {
     dateTo,
     perPage,
     pageClamped,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     setSearchParams,
   ]);
 
@@ -665,6 +905,10 @@ export default function QaDashboard() {
       details: `QA printed selected reports (${selectedIds.length})`,
       entityId: selectedIds.join(","),
       meta: { reportIds: selectedIds, count: selectedIds.length },
+      formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
+      reportNumber: selectedReportObjects.map((r) => r.reportNumber).join(","),
+      formType: selectedReportObjects.map((r) => r.formType).join(","),
+      clientCode: selectedReportObjects.map((r) => r.client || null).join(","),
     });
 
     setPrintingBulk(true);
@@ -680,10 +924,16 @@ export default function QaDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    datePreset,
     dateFrom,
     dateTo,
     perPage,
-    datePreset,
+    pageClamped,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   // Permissions
@@ -869,6 +1119,11 @@ export default function QaDashboard() {
       datePreset !== "ALL" ||
       dateFrom !== "" ||
       dateTo !== "" ||
+      searchText.trim() !== "" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
       perPage !== 10
     );
   }, [
@@ -876,36 +1131,43 @@ export default function QaDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
     datePreset,
     dateFrom,
     dateTo,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     perPage,
   ]);
 
   const clearFilters = () => {
-    setSearchClient("");
-    setSearchReport("");
-    setDatePreset("ALL");
-    setDateFrom("");
-    setDateTo("");
-    setStatusFilter("ALL");
-    setFormFilter("ALL");
-    setPerPage(10);
-    setPage(1);
-  };
+    setSearchClient(DEFAULT_QA_FILTERS.searchClient);
+    setSearchReport(DEFAULT_QA_FILTERS.searchReport);
+    setDatePreset(DEFAULT_QA_FILTERS.datePreset);
+    setDateFrom(DEFAULT_QA_FILTERS.dateFrom);
+    setDateTo(DEFAULT_QA_FILTERS.dateTo);
+    setStatusFilter(DEFAULT_QA_FILTERS.statusFilter);
+    setFormFilter(DEFAULT_QA_FILTERS.formFilter);
+    setPerPage(DEFAULT_QA_FILTERS.perPage);
+    setPage(DEFAULT_QA_FILTERS.page);
+    setSearchText("");
+    setFormNoFrom("");
+    setFormNoTo("");
+    setReportNoFrom("");
+    setReportNoTo("");
+    setNumberRangeType("FORM");
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    statusFilter,
-    searchClient,
-    searchReport,
-    dateFrom,
-    dateTo,
-    perPage,
-    formFilter,
-    datePreset,
-  ]);
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify(DEFAULT_QA_FILTERS),
+      );
+    } catch {
+      // ignore
+    }
+  };
 
   function niceFormType(ft?: string) {
     switch (ft) {
@@ -935,6 +1197,10 @@ export default function QaDashboard() {
         count: voidableSelected.length,
         reason,
       },
+      formNumber: voidableSelected.map((r) => r.formNumber).join(","),
+      reportNumber: voidableSelected.map((r) => r.reportNumber).join(","),
+      formType: voidableSelected.map((r) => r.formType).join(","),
+      clientCode: voidableSelected.map((r) => r.client || null).join(","),
     });
 
     await Promise.all(
@@ -1054,6 +1320,49 @@ export default function QaDashboard() {
 
   const ENABLE_BULK_STATUS = false;
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText,
+          datePreset,
+          dateFrom,
+          dateTo,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          perPage,
+          page,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    datePreset,
+    dateFrom,
+    dateTo,
+    perPage,
+    page,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1066,39 +1375,6 @@ export default function QaDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            {/* <style>
-              {`
-                @media print {
-                  body > *:not(#bulk-print-root) { display: none !important; }
-                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
-
-                  #bulk-print-root .sheet {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    box-shadow: none !important;
-                    border: none !important;
-                    padding: 0 !important;
-                  }
-
-                  #bulk-print-root .report-page {
-                    break-inside: avoid-page;
-                    page-break-inside: avoid;
-                  }
-
-                  #bulk-print-root .report-page + .report-page {
-                    break-before: page;
-                    page-break-before: always;
-                  }
-
-                  @supports (margin-trim: block) {
-                    @page { margin-trim: block; }
-                  }
-                }
-              `}
-            </style> */}
-
             <style>
               {`
     @media print {
@@ -1369,22 +1645,30 @@ export default function QaDashboard() {
           </select>
 
           {/* Search client */}
-          <input
+          {/* <input
             placeholder="Search by client"
             value={searchClient}
             onChange={(e) => setSearchClient(e.target.value)}
             className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm
               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          /> */}
+          {/* Global text search */}
+          <input
+            placeholder="Search client, client code, form #, report #, status..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm
+    ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
           {/* Search report */}
-          <input
+          {/* <input
             placeholder="Search by report #"
             value={searchReport}
             onChange={(e) => setSearchReport(e.target.value)}
             className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
               ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          />
+          /> */}
 
           {/* Date preset + custom */}
           <div className="flex gap-5">
@@ -1431,6 +1715,46 @@ export default function QaDashboard() {
                 "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+
+            <input
+              type="number"
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoFrom(e.target.value);
+                } else {
+                  setReportNoFrom(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoTo(e.target.value);
+                } else {
+                  setReportNoTo(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -1570,6 +1894,10 @@ export default function QaDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: String(r.reportNumber),
+                                formType: r.formType,
+                                clientCode: r.client || null,
                               });
 
                               setSelectedReport(r);
@@ -1769,7 +2097,7 @@ export default function QaDashboard() {
 
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -1781,7 +2109,9 @@ export default function QaDashboard() {
 
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next
@@ -1860,6 +2190,10 @@ export default function QaDashboard() {
                         formType: selectedReport.formType,
                         status: selectedReport.status,
                       },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: String(selectedReport.reportNumber),
+                      formType: selectedReport.formType,
+                      clientCode: selectedReport.client || null,
                     });
 
                     setPrintingSingle(true);

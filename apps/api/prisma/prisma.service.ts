@@ -67,6 +67,244 @@ function computeDiff(before: AnyObj, afterPatch: AnyObj) {
   return Object.keys(diff.after).length ? diff : null;
 }
 
+type AuditRef = {
+  entityId: string | null;
+  formNumber: string | null;
+  reportNumber: string | null;
+  formType: any | null;
+  clientCode: string | null;
+};
+
+async function resolveAuditRef(
+  prisma: PrismaClient,
+  entity: string,
+  row: any,
+): Promise<AuditRef> {
+  if (!row) {
+    return {
+      entityId: null,
+      formNumber: null,
+      reportNumber: null,
+      formType: null,
+      clientCode: null,
+    };
+  }
+
+  // --------------------------------------------------
+  // Base MICRO/WATER/STERILITY Report
+  // --------------------------------------------------
+  if (entity === 'Report') {
+    return {
+      entityId: row.id ?? null,
+      formNumber: row.formNumber ?? null,
+      reportNumber: row.reportNumber ?? null,
+      formType: row.formType ?? null,
+      clientCode: row.clientCode ?? null,
+    };
+  }
+
+  // --------------------------------------------------
+  // Base CHEMISTRY/COA report
+  // --------------------------------------------------
+  if (entity === 'ChemistryReport') {
+    return {
+      entityId: row.id ?? null,
+      formNumber: row.formNumber ?? null,
+      reportNumber: row.reportNumber ?? null,
+      formType: row.formType ?? null,
+      clientCode: row.clientCode ?? null,
+    };
+  }
+
+  // --------------------------------------------------
+  // MICRO detail models -> Report
+  // --------------------------------------------------
+  if (
+    entity === 'MicroMixDetails' ||
+    entity === 'MicroMixWaterDetails' ||
+    entity === 'sterilityDetails'
+  ) {
+    const reportId = row.reportId ?? null;
+    if (!reportId) {
+      return {
+        entityId: null,
+        formNumber: null,
+        reportNumber: null,
+        formType: null,
+        clientCode: null,
+      };
+    }
+
+    const report = await prisma.report.findUnique({
+      where: { id: reportId },
+      select: {
+        id: true,
+        formNumber: true,
+        reportNumber: true,
+        formType: true,
+        clientCode: true,
+      },
+    });
+
+    return {
+      entityId: report?.id ?? reportId,
+      formNumber: report?.formNumber ?? null,
+      reportNumber: report?.reportNumber ?? null,
+      formType: report?.formType ?? null,
+      clientCode: report?.clientCode ?? null,
+    };
+  }
+
+  // --------------------------------------------------
+  // CHEM detail models -> ChemistryReport
+  // --------------------------------------------------
+  if (entity === 'ChemistryMixDetails' || entity === 'COADetails') {
+    const chemistryId = row.chemistryId ?? null;
+    if (!chemistryId) {
+      return {
+        entityId: null,
+        formNumber: null,
+        reportNumber: null,
+        formType: null,
+        clientCode: null,
+      };
+    }
+
+    const chem = await prisma.chemistryReport.findUnique({
+      where: { id: chemistryId },
+      select: {
+        id: true,
+        formNumber: true,
+        reportNumber: true,
+        formType: true,
+        clientCode: true,
+      },
+    });
+
+    return {
+      entityId: chem?.id ?? chemistryId,
+      formNumber: chem?.formNumber ?? null,
+      reportNumber: chem?.reportNumber ?? null,
+      formType: chem?.formType ?? null,
+      clientCode: chem?.clientCode ?? null,
+    };
+  }
+
+  // --------------------------------------------------
+  // Attachments
+  // --------------------------------------------------
+  if (entity === 'Attachment') {
+    const reportId = row.reportId ?? null;
+    if (reportId) {
+      const report = await prisma.report.findUnique({
+        where: { id: reportId },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
+      });
+
+      return {
+        entityId: report?.id ?? reportId,
+        formNumber: report?.formNumber ?? null,
+        reportNumber: report?.reportNumber ?? null,
+        formType: report?.formType ?? null,
+        clientCode: report?.clientCode ?? null,
+      };
+    }
+  }
+
+  if (entity === 'ChemistryAttachment') {
+    const chemistryId = row.chemistryId ?? null;
+    if (chemistryId) {
+      const chem = await prisma.chemistryReport.findUnique({
+        where: { id: chemistryId },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
+      });
+
+      return {
+        entityId: chem?.id ?? chemistryId,
+        formNumber: chem?.formNumber ?? null,
+        reportNumber: chem?.reportNumber ?? null,
+        formType: chem?.formType ?? null,
+        clientCode: chem?.clientCode ?? null,
+      };
+    }
+  }
+
+  // --------------------------------------------------
+  // Status history models
+  // --------------------------------------------------
+  if (entity === 'StatusHistory') {
+    const reportId = row.reportId ?? null;
+    if (reportId) {
+      const report = await prisma.report.findUnique({
+        where: { id: reportId },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
+      });
+
+      return {
+        entityId: report?.id ?? reportId,
+        formNumber: report?.formNumber ?? null,
+        reportNumber: report?.reportNumber ?? null,
+        formType: report?.formType ?? null,
+        clientCode: report?.clientCode ?? null,
+      };
+    }
+  }
+
+  if (entity === 'ChemistryReportStatusHistory') {
+    const chemistryId = row.chemistryId ?? null;
+    if (chemistryId) {
+      const chem = await prisma.chemistryReport.findUnique({
+        where: { id: chemistryId },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
+      });
+
+      return {
+        entityId: chem?.id ?? chemistryId,
+        formNumber: chem?.formNumber ?? null,
+        reportNumber: chem?.reportNumber ?? null,
+        formType: chem?.formType ?? null,
+        clientCode: chem?.clientCode ?? null,
+      };
+    }
+  }
+
+  // --------------------------------------------------
+  // Fallback
+  // --------------------------------------------------
+  return {
+    entityId:
+      row.id ?? row.reportId ?? row.chemistryId ?? row.clientCode ?? null,
+    formNumber: null,
+    reportNumber: null,
+    formType: null,
+    clientCode: row.clientCode ?? null,
+  };
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   async onModuleInit() {
@@ -111,12 +349,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       }
 
       const where = params.args?.where || {};
-      let entityId: string | null =
-        where?.id ??
-        where?.reportId ?? // ✅ for MicroMixDetails / MicroMixWaterDetails
-        where?.chemistryId ?? // ✅ for ChemistryReportStatusHistory, etc (if used)
-        where?.clientCode ?? // ✅ for ClientSequence
-        null;
+      let entityId: string | null = null;
+      let formNumber: string | null = null;
+      let reportNumber: string | null = null;
+      let formType: any | null = null;
+      let clientCode: string | null = null;
 
       // -------- FETCH BEFORE (ONLY FOR OPS THAT MODIFY EXISTING) --------
       let before: any = null;
@@ -133,10 +370,39 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       // -------- DO MAIN OP --------
       const result = await next(params);
 
-      if (!entityId && result?.id) entityId = result.id;
-      if (!entityId && result?.reportId) entityId = result.reportId;
-      if (!entityId && result?.chemistryId) entityId = result.chemistryId;
-      if (!entityId && result?.clientCode) entityId = result.clientCode;
+      try {
+        const refSource = result ??
+          before ?? {
+            id: where?.id,
+            reportId: where?.reportId,
+            chemistryId: where?.chemistryId,
+            clientCode: where?.clientCode,
+          };
+
+        const ref = await resolveAuditRef(this as any, entity, refSource);
+
+        entityId = ref.entityId;
+        formNumber = ref.formNumber;
+        reportNumber = ref.reportNumber;
+        formType = ref.formType;
+        clientCode = ref.clientCode;
+      } catch {
+        entityId =
+          result?.id ??
+          result?.reportId ??
+          result?.chemistryId ??
+          where?.id ??
+          where?.reportId ??
+          where?.chemistryId ??
+          where?.clientCode ??
+          null;
+
+        formNumber = null;
+        reportNumber = null;
+        formType = null;
+        clientCode =
+          result?.clientCode ?? before?.clientCode ?? where?.clientCode ?? null;
+      }
 
       // -------- BUILD AUDIT ROW --------
       let changes: any = null;
@@ -202,6 +468,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             entityId,
             changes,
             details,
+
+            formNumber,
+            reportNumber,
+            formType,
+            clientCode,
+
             role: (ctx as any).role ?? null,
             userId: (ctx as any).userId ?? null,
             ipAddress: (ctx as any).ip ?? null,

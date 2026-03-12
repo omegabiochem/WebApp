@@ -18,6 +18,12 @@ type AttachmentItem = {
   createdBy?: string | null;
   pages?: number | null;
   source?: string | null;
+
+  // ✅ add these
+  formNumber?: string | null;
+  reportNumber?: string | null;
+  clientCode?: string | null;
+  formType?: string | null;
 };
 
 type ViewMode = "GRID" | "TABLE";
@@ -240,8 +246,12 @@ function logAttachEvent(args: {
     | "UI_ATTACHMENTS_PRINT_FAILED"
     | "UI_ATTACHMENTS_DOWNLOAD_SINGLE";
   details: string;
-  entityId?: string | null; // attachment id
+  entityId?: string | null;
   meta?: any;
+  formNumber?: string | null;
+  reportNumber?: string | null;
+  formType?: string | null;
+  clientCode?: string | null;
 }) {
   logUiEvent({
     action: args.action,
@@ -249,6 +259,10 @@ function logAttachEvent(args: {
     entityId: args.entityId ?? undefined,
     details: args.details,
     meta: args.meta ?? undefined,
+    formNumber: args.formNumber ?? null,
+    reportNumber: args.reportNumber ?? null,
+    formType: args.formType ?? null,
+    clientCode: args.clientCode ?? null,
   });
 }
 
@@ -564,26 +578,6 @@ function BulkPrintAttachmentsArea({
   );
 }
 
-function getParam(sp: URLSearchParams, key: string, fallback = "") {
-  return sp.get(key) ?? fallback;
-}
-
-function getParamEnum<T extends string>(
-  sp: URLSearchParams,
-  key: string,
-  allowed: readonly T[],
-  fallback: T,
-): T {
-  const v = sp.get(key);
-  return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
-}
-
-// function getParamBool(sp: URLSearchParams, key: string, fallback = false) {
-//   const v = sp.get(key);
-//   if (v === null) return fallback;
-//   return v === "1" || v === "true";
-// }
-
 function BulkPdfPreviewModal({
   url,
   filename,
@@ -669,81 +663,152 @@ function printPdfFromUrl(url: string) {
   w.document.close();
 }
 
+type DatePreset =
+  | ""
+  | "TODAY"
+  | "YESTERDAY"
+  | "LAST_7"
+  | "LAST_30"
+  | "THIS_MONTH"
+  | "LAST_MONTH";
+
+const DEFAULT_ATTACHMENT_FILTERS = {
+  view: "GRID" as ViewMode,
+  q: "",
+  kind: "ALL",
+  fileType: "ALL" as "ALL" | "image" | "pdf" | "other",
+  createdBy: "ALL",
+  source: "ALL",
+  fromDate: "",
+  toDate: "",
+  reportType: "ALL" as ReportTypeFilter,
+  sort: "NEWEST" as
+    | "NEWEST"
+    | "OLDEST"
+    | "FILENAME_AZ"
+    | "FILENAME_ZA"
+    | "KIND",
+  datePreset: "" as DatePreset,
+};
+
+function getInitialAttachmentFilters(
+  searchParams: URLSearchParams,
+  storageKey: string,
+) {
+  try {
+    const spView = searchParams.get("view");
+    const spQ = searchParams.get("q");
+    const spKind = searchParams.get("kind");
+    const spFileType = searchParams.get("fileType");
+    const spCreatedBy = searchParams.get("createdBy");
+    const spSource = searchParams.get("source");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+    const spReportType = searchParams.get("reportType");
+    const spSort = searchParams.get("sort");
+    const spDatePreset = searchParams.get("datePreset");
+
+    const hasUrlFilters =
+      spView ||
+      spQ ||
+      spKind ||
+      spFileType ||
+      spCreatedBy ||
+      spSource ||
+      spFrom ||
+      spTo ||
+      spReportType ||
+      spSort ||
+      spDatePreset;
+
+    if (hasUrlFilters) {
+      return {
+        view: (spView as ViewMode) || DEFAULT_ATTACHMENT_FILTERS.view,
+        q: spQ || DEFAULT_ATTACHMENT_FILTERS.q,
+        kind: spKind || DEFAULT_ATTACHMENT_FILTERS.kind,
+        fileType:
+          (spFileType as "ALL" | "image" | "pdf" | "other") ||
+          DEFAULT_ATTACHMENT_FILTERS.fileType,
+        createdBy: spCreatedBy || DEFAULT_ATTACHMENT_FILTERS.createdBy,
+        source: spSource || DEFAULT_ATTACHMENT_FILTERS.source,
+        fromDate: spFrom || DEFAULT_ATTACHMENT_FILTERS.fromDate,
+        toDate: spTo || DEFAULT_ATTACHMENT_FILTERS.toDate,
+        reportType:
+          (spReportType as ReportTypeFilter) ||
+          DEFAULT_ATTACHMENT_FILTERS.reportType,
+        sort:
+          (spSort as
+            | "NEWEST"
+            | "OLDEST"
+            | "FILENAME_AZ"
+            | "FILENAME_ZA"
+            | "KIND") || DEFAULT_ATTACHMENT_FILTERS.sort,
+        datePreset:
+          (spDatePreset as DatePreset) || DEFAULT_ATTACHMENT_FILTERS.datePreset,
+      };
+    }
+
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      return {
+        ...DEFAULT_ATTACHMENT_FILTERS,
+        ...JSON.parse(raw),
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_ATTACHMENT_FILTERS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 export default function ReportAttachmentsPage() {
   const [items, setItems] = useState<AttachmentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // URL-backed initial values
-  const [view, setView] = useState<ViewMode>(
-    getParamEnum(searchParams, "view", ["GRID", "TABLE"] as const, "GRID"),
+  const { user } = useAuth();
+
+  const role = (user?.role || "").toUpperCase();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "attachments";
+
+  const FILTER_STORAGE_KEY = `reportAttachmentsFilters:user:${userKey}`;
+  const initialFilters = getInitialAttachmentFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
   );
 
-  const [q, setQ] = useState(getParam(searchParams, "q", ""));
-  const [kind, setKind] = useState(getParam(searchParams, "kind", "ALL"));
-
+  const [view, setView] = useState<ViewMode>(initialFilters.view);
+  const [q, setQ] = useState(initialFilters.q);
+  const [kind, setKind] = useState(initialFilters.kind);
   const [fileType, setFileType] = useState<"ALL" | "image" | "pdf" | "other">(
-    getParamEnum(
-      searchParams,
-      "fileType",
-      ["ALL", "image", "pdf", "other"] as const,
-      "ALL",
-    ),
+    initialFilters.fileType,
   );
-
-  const [createdBy, setCreatedBy] = useState(
-    getParam(searchParams, "createdBy", "ALL"),
-  );
-  const [source, setSource] = useState(getParam(searchParams, "source", "ALL"));
-
-  const [fromDate, setFromDate] = useState(getParam(searchParams, "from", ""));
-  const [toDate, setToDate] = useState(getParam(searchParams, "to", ""));
-
+  const [createdBy, setCreatedBy] = useState(initialFilters.createdBy);
+  const [source, setSource] = useState(initialFilters.source);
+  const [fromDate, setFromDate] = useState(initialFilters.fromDate);
+  const [toDate, setToDate] = useState(initialFilters.toDate);
   const [reportType, setReportType] = useState<ReportTypeFilter>(
-    getParamEnum(
-      searchParams,
-      "reportType",
-      ["ALL", "MICRO", "MICRO_WATER", "CHEMISTRY", "STERILITY", "COA"] as const,
-      "ALL",
-    ),
+    initialFilters.reportType,
   );
-
   const [sort, setSort] = useState<
     "NEWEST" | "OLDEST" | "FILENAME_AZ" | "FILENAME_ZA" | "KIND"
-  >(
-    getParamEnum(
-      searchParams,
-      "sort",
-      ["NEWEST", "OLDEST", "FILENAME_AZ", "FILENAME_ZA", "KIND"] as const,
-      "NEWEST",
-    ),
-  );
-
-  type DatePreset =
-    | ""
-    | "TODAY"
-    | "YESTERDAY"
-    | "LAST_7"
-    | "LAST_30"
-    | "THIS_MONTH"
-    | "LAST_MONTH";
-
+  >(initialFilters.sort);
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    getParamEnum(
-      searchParams,
-      "datePreset",
-      [
-        "",
-        "TODAY",
-        "YESTERDAY",
-        "LAST_7",
-        "LAST_30",
-        "THIS_MONTH",
-        "LAST_MONTH",
-      ] as const,
-      "",
-    ),
+    initialFilters.datePreset,
   );
 
   const [open, setOpen] = useState<{ id: string; filename: string } | null>(
@@ -764,9 +829,6 @@ export default function ReportAttachmentsPage() {
   const [singlePrintItem, setSinglePrintItem] = useState<AttachmentItem | null>(
     null,
   );
-
-  const { user } = useAuth();
-  const role = (user?.role || "").toUpperCase();
 
   const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
     if (!role) return "ALL";
@@ -790,17 +852,6 @@ export default function ReportAttachmentsPage() {
       }
     })();
   }, []);
-
-  // useEffect(() => {
-  //   if (role === "CHEMISTRY") {
-  //     setReportType((prev) => (prev === "ALL" ? "CHEMISTRY" : prev));
-  //     return;
-  //   }
-  //   if (role === "MICRO") {
-  //     setReportType((prev) => (prev === "ALL" ? "MICRO" : prev));
-  //     return;
-  //   }
-  // }, [role]);
 
   const isRowSelected = (id: string) => selectedIds.includes(id);
   const toggleRow = (id: string) => {
@@ -857,6 +908,53 @@ export default function ReportAttachmentsPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    const now = new Date();
+
+    const setRange = (from: Date, to: Date) => {
+      setFromDate(toDateOnlyISO_UTC(from));
+      setToDate(toDateOnlyISO_UTC(to));
+    };
+
+    if (datePreset === "") {
+      setFromDate("");
+      setToDate("");
+      return;
+    }
+
+    if (datePreset === "TODAY") {
+      setRange(now, now);
+      return;
+    }
+
+    if (datePreset === "YESTERDAY") {
+      const y = addDays(now, -1);
+      setRange(y, y);
+      return;
+    }
+
+    if (datePreset === "LAST_7") {
+      setRange(addDays(now, -6), now);
+      return;
+    }
+
+    if (datePreset === "LAST_30") {
+      setRange(addDays(now, -29), now);
+      return;
+    }
+
+    if (datePreset === "THIS_MONTH") {
+      setRange(startOfMonth(now), endOfMonth(now));
+      return;
+    }
+
+    if (datePreset === "LAST_MONTH") {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      setRange(startOfMonth(lastMonth), endOfMonth(lastMonth));
+      return;
+    }
+  }, [datePreset]);
+
   const kinds = useMemo(() => {
     const s = new Set(items.map((i) => i.kind).filter(Boolean));
     return ["ALL", ...Array.from(s).sort()];
@@ -905,6 +1003,10 @@ export default function ReportAttachmentsPage() {
           a.id,
           a.reportType,
           a.reportId,
+          a.formNumber || "",
+          a.reportNumber || "",
+          a.clientCode || "",
+          a.formType || "",
         ]
           .join(" ")
           .toLowerCase();
@@ -960,42 +1062,23 @@ export default function ReportAttachmentsPage() {
     return { total, shown, images, pdfs };
   }, [items, filtered, allowedTypes]);
 
-  const clearFilters = () => {
-    setQ("");
-    setKind("ALL");
-    setFileType("ALL");
-    setCreatedBy("ALL");
-    setSource("ALL");
-    setFromDate("");
-    setToDate("");
-    setSort("NEWEST");
-    setSelectedIds([]); // optional
-    setDatePreset("");
-
-    // if (role === "CHEMISTRY") setReportType("CHEMISTRY");
-    // else if (role === "MICRO") setReportType("MICRO");
-    // else setReportType("ALL");
-
-    setReportType("ALL");
-
-    setView("GRID"); // optional default
-  };
-
   const hasActiveFilters = useMemo(() => {
-    return !!(
-      q.trim() ||
-      kind !== "ALL" ||
-      fileType !== "ALL" ||
-      createdBy !== "ALL" ||
-      source !== "ALL" ||
-      fromDate ||
-      toDate ||
-      sort !== "NEWEST" ||
-      reportType !== "ALL" ||
-      view !== "GRID" || // include if you want Clear to reset view too
-      selectedIds.length > 0 // include if you consider selection a “filter”
+    return (
+      view !== DEFAULT_ATTACHMENT_FILTERS.view ||
+      q.trim() !== DEFAULT_ATTACHMENT_FILTERS.q ||
+      kind !== DEFAULT_ATTACHMENT_FILTERS.kind ||
+      fileType !== DEFAULT_ATTACHMENT_FILTERS.fileType ||
+      createdBy !== DEFAULT_ATTACHMENT_FILTERS.createdBy ||
+      source !== DEFAULT_ATTACHMENT_FILTERS.source ||
+      fromDate !== DEFAULT_ATTACHMENT_FILTERS.fromDate ||
+      toDate !== DEFAULT_ATTACHMENT_FILTERS.toDate ||
+      reportType !== DEFAULT_ATTACHMENT_FILTERS.reportType ||
+      sort !== DEFAULT_ATTACHMENT_FILTERS.sort ||
+      datePreset !== DEFAULT_ATTACHMENT_FILTERS.datePreset ||
+      selectedIds.length > 0
     );
   }, [
+    view,
     q,
     kind,
     fileType,
@@ -1003,12 +1086,153 @@ export default function ReportAttachmentsPage() {
     source,
     fromDate,
     toDate,
-    sort,
     reportType,
-    view,
+    sort,
+    datePreset,
     selectedIds.length,
   ]);
 
+  const clearAllFilters = () => {
+    setView(DEFAULT_ATTACHMENT_FILTERS.view);
+    setQ(DEFAULT_ATTACHMENT_FILTERS.q);
+    setKind(DEFAULT_ATTACHMENT_FILTERS.kind);
+    setFileType(DEFAULT_ATTACHMENT_FILTERS.fileType);
+    setCreatedBy(DEFAULT_ATTACHMENT_FILTERS.createdBy);
+    setSource(DEFAULT_ATTACHMENT_FILTERS.source);
+    setFromDate(DEFAULT_ATTACHMENT_FILTERS.fromDate);
+    setToDate(DEFAULT_ATTACHMENT_FILTERS.toDate);
+    setReportType(DEFAULT_ATTACHMENT_FILTERS.reportType);
+    setSort(DEFAULT_ATTACHMENT_FILTERS.sort);
+    setDatePreset(DEFAULT_ATTACHMENT_FILTERS.datePreset);
+    setSelectedIds([]);
+
+    useEffect(() => {
+      try {
+        localStorage.setItem(
+          FILTER_STORAGE_KEY,
+          JSON.stringify({
+            view,
+            q,
+            kind,
+            fileType,
+            createdBy,
+            source,
+            fromDate,
+            toDate,
+            reportType,
+            sort,
+            datePreset,
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    }, [
+      FILTER_STORAGE_KEY,
+      view,
+      q,
+      kind,
+      fileType,
+      createdBy,
+      source,
+      fromDate,
+      toDate,
+      reportType,
+      sort,
+      datePreset,
+    ]);
+
+    useEffect(() => {
+      const sp = new URLSearchParams();
+
+      if (view !== DEFAULT_ATTACHMENT_FILTERS.view) sp.set("view", view);
+      if (q.trim()) sp.set("q", q.trim());
+      if (kind !== DEFAULT_ATTACHMENT_FILTERS.kind) sp.set("kind", kind);
+      if (fileType !== DEFAULT_ATTACHMENT_FILTERS.fileType)
+        sp.set("fileType", fileType);
+      if (createdBy !== DEFAULT_ATTACHMENT_FILTERS.createdBy)
+        sp.set("createdBy", createdBy);
+      if (source !== DEFAULT_ATTACHMENT_FILTERS.source)
+        sp.set("source", source);
+      if (fromDate) sp.set("from", fromDate);
+      if (toDate) sp.set("to", toDate);
+      if (reportType !== DEFAULT_ATTACHMENT_FILTERS.reportType)
+        sp.set("reportType", reportType);
+      if (sort !== DEFAULT_ATTACHMENT_FILTERS.sort) sp.set("sort", sort);
+      if (datePreset) sp.set("datePreset", datePreset);
+      if (selectedIds.length) sp.set("selected", selectedIds.join(","));
+
+      setSearchParams(sp, { replace: true });
+    }, [
+      view,
+      q,
+      kind,
+      fileType,
+      createdBy,
+      source,
+      fromDate,
+      toDate,
+      reportType,
+      sort,
+      datePreset,
+      selectedIds,
+      setSearchParams,
+    ]);
+
+    useEffect(() => {
+      const nextView =
+        (searchParams.get("view") as ViewMode) ||
+        DEFAULT_ATTACHMENT_FILTERS.view;
+      const nextQ = searchParams.get("q") || DEFAULT_ATTACHMENT_FILTERS.q;
+      const nextKind =
+        searchParams.get("kind") || DEFAULT_ATTACHMENT_FILTERS.kind;
+      const nextFileType =
+        (searchParams.get("fileType") as "ALL" | "image" | "pdf" | "other") ||
+        DEFAULT_ATTACHMENT_FILTERS.fileType;
+      const nextCreatedBy =
+        searchParams.get("createdBy") || DEFAULT_ATTACHMENT_FILTERS.createdBy;
+      const nextSource =
+        searchParams.get("source") || DEFAULT_ATTACHMENT_FILTERS.source;
+      const nextFrom =
+        searchParams.get("from") || DEFAULT_ATTACHMENT_FILTERS.fromDate;
+      const nextTo =
+        searchParams.get("to") || DEFAULT_ATTACHMENT_FILTERS.toDate;
+      const nextReportType =
+        (searchParams.get("reportType") as ReportTypeFilter) ||
+        DEFAULT_ATTACHMENT_FILTERS.reportType;
+      const nextSort =
+        (searchParams.get("sort") as
+          | "NEWEST"
+          | "OLDEST"
+          | "FILENAME_AZ"
+          | "FILENAME_ZA"
+          | "KIND") || DEFAULT_ATTACHMENT_FILTERS.sort;
+      const nextDatePreset =
+        (searchParams.get("datePreset") as DatePreset) ||
+        DEFAULT_ATTACHMENT_FILTERS.datePreset;
+
+      if (nextView !== view) setView(nextView);
+      if (nextQ !== q) setQ(nextQ);
+      if (nextKind !== kind) setKind(nextKind);
+      if (nextFileType !== fileType) setFileType(nextFileType);
+      if (nextCreatedBy !== createdBy) setCreatedBy(nextCreatedBy);
+      if (nextSource !== source) setSource(nextSource);
+      if (nextFrom !== fromDate) setFromDate(nextFrom);
+      if (nextTo !== toDate) setToDate(nextTo);
+      if (nextReportType !== reportType) setReportType(nextReportType);
+      if (nextSort !== sort) setSort(nextSort);
+      if (nextDatePreset !== datePreset) setDatePreset(nextDatePreset);
+    }, [searchParams]);
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify(DEFAULT_ATTACHMENT_FILTERS),
+      );
+    } catch {
+      // ignore
+    }
+  };
   // Selected objects (printable only)
   const selectedObjects = selectedIds
     .map((id) => items.find((x) => x.id === id))
@@ -1018,70 +1242,6 @@ export default function ReportAttachmentsPage() {
     const ft = fileTypeFromExt(fileExt(a.filename));
     return ft === "image";
   });
-
-  // (Printing) UI_ATTACHMENTS_PRINT_SELECTED / PREPARED / FAILED
-  // const handlePrintSelected = async () => {
-  //   if (printingBulk) return;
-  //   if (!selectedIds.length) return;
-
-  //   const selectedObjectsNow = selectedIds
-  //     .map((id) => items.find((x) => x.id === id))
-  //     .filter(Boolean) as AttachmentItem[];
-
-  //   const selectedImages = selectedObjectsNow.filter(
-  //     (a) => fileTypeFromExt(fileExt(a.filename)) === "image",
-  //   );
-
-  //   const selectedPdfs = selectedObjectsNow.filter(
-  //     (a) => fileTypeFromExt(fileExt(a.filename)) === "pdf",
-  //   );
-
-  //   logAttachEvent({
-  //     action: "UI_ATTACHMENTS_PRINT_SELECTED",
-  //     details: "Print selected attachments",
-  //     meta: {
-  //       selectedCount: selectedIds.length,
-  //       selectedIds,
-  //       imageCount: selectedImages.length,
-  //       pdfCount: selectedPdfs.length,
-  //     },
-  //   });
-
-  //   setPrintingBulk(true);
-
-  //   try {
-  //     // images -> portal print
-  //     if (selectedImages.length) {
-  //       setIsBulkPrinting(true);
-  //       // PREPARED is fired when portal finished building URLs (see portal below)
-  //     }
-
-  //     // pdfs -> merge print once
-  //     if (selectedPdfs.length) {
-  //       await mergeAndPrintSelectedPdfs(selectedPdfs.map((p) => p.id));
-  //       // optional: you can also consider this "prepared" for PDFs, but you asked optional
-  //       logAttachEvent({
-  //         action: "UI_ATTACHMENTS_PRINT_PREPARED",
-  //         details: "Prepared PDF print (merged)",
-  //         meta: {
-  //           ids: selectedPdfs.map((p) => p.id),
-  //           count: selectedPdfs.length,
-  //         },
-  //       });
-  //     }
-
-  //     // if no images, stop spinner now
-  //     if (!selectedImages.length) setPrintingBulk(false);
-  //   } catch (e: any) {
-  //     logAttachEvent({
-  //       action: "UI_ATTACHMENTS_PRINT_FAILED",
-  //       details: "Print selected failed",
-  //       meta: { error: e?.message || String(e) },
-  //     });
-  //     setPrintingBulk(false);
-  //     throw e;
-  //   }
-  // };
 
   const handlePrintSelected = async () => {
     if (printingBulk) return;
@@ -1239,6 +1399,7 @@ export default function ReportAttachmentsPage() {
     reportType,
     sort,
     selectedIds,
+    datePreset,
     setSearchParams,
   ]);
 
@@ -1247,28 +1408,6 @@ export default function ReportAttachmentsPage() {
       {(isBulkPrinting || !!singlePrintItem) &&
         createPortal(
           <>
-            {/* <style>
-              {`
-              @media print {
-                body > *:not(#bulk-print-root) { display: none !important; }
-                #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-
-                @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
-
-                #bulk-print-root .report-page {
-                  break-inside: avoid-page;
-                  page-break-inside: avoid;
-                }
-                #bulk-print-root .report-page + .report-page {
-                  break-before: page;
-                  page-break-before: always;
-                }
-
-                #bulk-print-root iframe { border: none !important; }
-              }
-            `}
-            </style> */}
-
             <style>
               {`
     @media print {
@@ -1380,7 +1519,7 @@ export default function ReportAttachmentsPage() {
           </button>
           <button
             type="button"
-            onClick={clearFilters}
+            onClick={clearAllFilters}
             disabled={!hasActiveFilters}
             className={classNames(
               "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
@@ -1420,27 +1559,26 @@ export default function ReportAttachmentsPage() {
 
       {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
-        <div className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="relative lg:col-span-5">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search filename, kind, createdBy, source, id…"
+              placeholder="Search filename, form/report no, client, kind, source, id..."
               className={inputCls}
             />
             {q && (
               <button
                 type="button"
                 onClick={() => setQ("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:col-span-4">
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value)}
@@ -1458,14 +1596,14 @@ export default function ReportAttachmentsPage() {
               onChange={(e) => setFileType(e.target.value as any)}
               className={inputCls}
             >
-              <option value="ALL">ALL</option>
+              <option value="ALL">All file types</option>
               <option value="image">Images</option>
               <option value="pdf">PDF</option>
               <option value="other">Other</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          <div className="flex items-center gap-2 lg:col-span-3 lg:justify-end">
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as any)}
@@ -1479,60 +1617,71 @@ export default function ReportAttachmentsPage() {
             </select>
           </div>
 
-          <div className="md:col-span-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+          <div className="lg:col-span-3">
+            <select
+              value={reportType}
+              onChange={(e) =>
+                setReportType(e.target.value as ReportTypeFilter)
+              }
               className={inputCls}
-            />
+            >
+              {visibleTabs.map((t) => (
+                <option key={t} value={t}>
+                  {reportTypeLabel(t)}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+          <div className="lg:col-span-3">
+            <select
+              value={createdBy}
+              onChange={(e) => setCreatedBy(e.target.value)}
               className={inputCls}
-            />
+            >
+              <option value="ALL">All creators</option>
+              {Array.from(
+                new Set(
+                  items.map((x) => (x.createdBy || "").trim()).filter(Boolean),
+                ),
+              )
+                .sort()
+                .map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+            </select>
+          </div>
 
+          <div className="lg:col-span-3">
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className={inputCls}
+            >
+              <option value="ALL">All sources</option>
+              {Array.from(
+                new Set(
+                  items.map((x) => (x.source || "").trim()).filter(Boolean),
+                ),
+              )
+                .sort()
+                .map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="lg:col-span-3">
             <select
               value={datePreset}
-              onChange={(e) => {
-                const v = e.target.value as DatePreset;
-
-                const now = new Date();
-                const apply = (from: Date, to: Date) => {
-                  setFromDate(toDateOnlyISO_UTC(from));
-                  setToDate(toDateOnlyISO_UTC(to));
-                };
-
-                if (v === "TODAY") apply(now, now);
-                else if (v === "YESTERDAY") {
-                  const y = addDays(now, -1);
-                  apply(y, y);
-                } else if (v === "LAST_7") apply(addDays(now, -6), now);
-                else if (v === "LAST_30") apply(addDays(now, -29), now);
-                else if (v === "THIS_MONTH")
-                  apply(startOfMonth(now), endOfMonth(now));
-                else if (v === "LAST_MONTH") {
-                  const lastMonth = new Date(
-                    now.getFullYear(),
-                    now.getMonth() - 1,
-                    1,
-                  );
-                  apply(startOfMonth(lastMonth), endOfMonth(lastMonth));
-                } else if (v === "") {
-                  // user picked placeholder again
-                  return;
-                }
-
-                setDatePreset(v);
-              }}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
               className={inputCls}
-              title="Quick date ranges"
             >
-              <option value="" disabled>
-                Quick dates…
-              </option>
+              <option value="">All dates</option>
               <option value="TODAY">Today</option>
               <option value="YESTERDAY">Yesterday</option>
               <option value="LAST_7">Last 7 days</option>
@@ -1542,7 +1691,31 @@ export default function ReportAttachmentsPage() {
             </select>
           </div>
 
-          <div className="md:col-span-3 flex items-center justify-between gap-3 pt-1">
+          <div className="lg:col-span-3">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setDatePreset("");
+              }}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="lg:col-span-3">
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setDatePreset("");
+              }}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="lg:col-span-6 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={toggleSelectFiltered}
@@ -1554,13 +1727,20 @@ export default function ReportAttachmentsPage() {
                 : "Select filtered"}
             </button>
 
-            <div className="text-sm text-slate-500">
-              Selected:{" "}
-              <span className="font-medium">{selectedIds.length}</span>{" "}
-              <span className="text-slate-400">
-                (Images: {printableSelectedImages.length})
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                hasActiveFilters
+                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+              )}
+              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+            >
+              ✕ Clear
+            </button>
           </div>
         </div>
       </div>
@@ -1601,6 +1781,10 @@ export default function ReportAttachmentsPage() {
                           details: "Opened attachment file",
                           entityId: a.id,
                           meta: { filename: a.filename, fileType: ft },
+                          formNumber: a.formNumber,
+                          reportNumber: a.reportNumber,
+                          formType: a.formType,
+                          clientCode: a.clientCode,
                         });
                         window.open(`${API_URL}${filePath}`, "_blank");
                       } else {
@@ -1616,6 +1800,10 @@ export default function ReportAttachmentsPage() {
                             reportId: a.reportId,
                             kind: a.kind,
                           },
+                          formNumber: a.formNumber,
+                          reportNumber: a.reportNumber,
+                          formType: a.formType,
+                          clientCode: a.clientCode,
                         });
                         setOpen({ id: a.id, filename: a.filename });
                       }
@@ -1629,6 +1817,10 @@ export default function ReportAttachmentsPage() {
                             details: "Opened attachment file",
                             entityId: a.id,
                             meta: { filename: a.filename, fileType: ft },
+                            formNumber: a.formNumber,
+                            reportNumber: a.reportNumber,
+                            formType: a.formType,
+                            clientCode: a.clientCode,
                           });
                           window.open(`${API_URL}${filePath}`, "_blank");
                         } else {
@@ -1643,6 +1835,10 @@ export default function ReportAttachmentsPage() {
                               reportId: a.reportId,
                               kind: a.kind,
                             },
+                            formNumber: a.formNumber,
+                            reportNumber: a.reportNumber,
+                            formType: a.formType,
+                            clientCode: a.clientCode,
                           });
                           setOpen({ id: a.id, filename: a.filename });
                         }
@@ -1715,6 +1911,10 @@ export default function ReportAttachmentsPage() {
                               reportType: a.reportType,
                               reportLink,
                             },
+                            formNumber: a.formNumber,
+                            reportNumber: a.reportNumber,
+                            formType: a.formType,
+                            clientCode: a.clientCode,
                           });
                         }}
                       >
@@ -1735,6 +1935,10 @@ export default function ReportAttachmentsPage() {
                                 details: "Print single attachment",
                                 entityId: a.id,
                                 meta: { filename: a.filename, fileType: ft },
+                                formNumber: a.formNumber,
+                                reportNumber: a.reportNumber,
+                                formType: a.formType,
+                                clientCode: a.clientCode,
                               });
 
                               const ftNow = fileTypeFromExt(
@@ -1749,6 +1953,10 @@ export default function ReportAttachmentsPage() {
                                     details: "Prepared PDF print (merged)",
                                     entityId: a.id,
                                     meta: { ids: [a.id], count: 1 },
+                                    formNumber: a.formNumber,
+                                    reportNumber: a.reportNumber,
+                                    formType: a.formType,
+                                    clientCode: a.clientCode,
                                   });
                                 } catch (err: any) {
                                   logAttachEvent({
@@ -1758,6 +1966,10 @@ export default function ReportAttachmentsPage() {
                                     meta: {
                                       error: err?.message || String(err),
                                     },
+                                    formNumber: a.formNumber,
+                                    reportNumber: a.reportNumber,
+                                    formType: a.formType,
+                                    clientCode: a.clientCode,
                                   });
                                   throw err;
                                 } finally {
@@ -1880,6 +2092,10 @@ export default function ReportAttachmentsPage() {
                                     reportType: a.reportType,
                                     reportLink,
                                   },
+                                  formNumber: a.formNumber,
+                                  reportNumber: a.reportNumber,
+                                  formType: a.formType,
+                                  clientCode: a.clientCode,
                                 });
                               }}
                             >
@@ -1915,6 +2131,10 @@ export default function ReportAttachmentsPage() {
                                       filename: a.filename,
                                       fileType: ft,
                                     },
+                                    formNumber: a.formNumber,
+                                    reportNumber: a.reportNumber,
+                                    formType: a.formType,
+                                    clientCode: a.clientCode,
                                   });
                                   setOpen({ id: a.id, filename: a.filename });
                                 }}
@@ -1935,6 +2155,10 @@ export default function ReportAttachmentsPage() {
                                   details: "Print single attachment",
                                   entityId: a.id,
                                   meta: { filename: a.filename, fileType: ft },
+                                  formNumber: a.formNumber,
+                                  reportNumber: a.reportNumber,
+                                  formType: a.formType,
+                                  clientCode: a.clientCode,
                                 });
 
                                 const ftNow = fileTypeFromExt(
@@ -1950,6 +2174,10 @@ export default function ReportAttachmentsPage() {
                                       details: "Prepared PDF print (merged)",
                                       entityId: a.id,
                                       meta: { ids: [a.id], count: 1 },
+                                      formNumber: a.formNumber,
+                                      reportNumber: a.reportNumber,
+                                      formType: a.formType,
+                                      clientCode: a.clientCode,
                                     });
                                   } catch (err: any) {
                                     logAttachEvent({
@@ -1959,6 +2187,10 @@ export default function ReportAttachmentsPage() {
                                       meta: {
                                         error: err?.message || String(err),
                                       },
+                                      formNumber: a.formNumber,
+                                      reportNumber: a.reportNumber,
+                                      formType: a.formType,
+                                      clientCode: a.clientCode,
                                     });
                                     throw err;
                                   } finally {
@@ -1997,6 +2229,10 @@ export default function ReportAttachmentsPage() {
                                       filename: a.filename,
                                       fileType: ft,
                                     },
+                                    formNumber: a.formNumber,
+                                    reportNumber: a.reportNumber,
+                                    formType: a.formType,
+                                    clientCode: a.clientCode,
                                   });
 
                                   window.open(
@@ -2048,6 +2284,10 @@ export default function ReportAttachmentsPage() {
               details: "Print single attachment (from preview)",
               entityId: att.id,
               meta: { filename: att.filename, fileType: ft },
+              formNumber: att.formNumber,
+              reportNumber: att.reportNumber,
+              formType: att.formType,
+              clientCode: att.clientCode,
             });
 
             if (ft === "pdf") {
@@ -2059,6 +2299,10 @@ export default function ReportAttachmentsPage() {
                   details: "Prepared PDF print (merged)",
                   entityId: att.id,
                   meta: { ids: [att.id], count: 1 },
+                  formNumber: att.formNumber,
+                  reportNumber: att.reportNumber,
+                  formType: att.formType,
+                  clientCode: att.clientCode,
                 });
               } catch (err: any) {
                 logAttachEvent({
@@ -2066,6 +2310,10 @@ export default function ReportAttachmentsPage() {
                   details: "Print single failed",
                   entityId: att.id,
                   meta: { error: err?.message || String(err) },
+                  formNumber: att.formNumber,
+                  reportNumber: att.reportNumber,
+                  formType: att.formType,
+                  clientCode: att.clientCode,
                 });
                 throw err;
               } finally {
@@ -2089,6 +2337,10 @@ export default function ReportAttachmentsPage() {
                 filename: att.filename,
                 fileType: fileTypeFromExt(fileExt(att.filename)),
               },
+              formNumber: att.formNumber,
+              reportNumber: att.reportNumber,
+              formType: att.formType,
+              clientCode: att.clientCode,
             });
           }}
           onClose={() => {
@@ -2097,6 +2349,10 @@ export default function ReportAttachmentsPage() {
               details: "Closed attachment preview",
               entityId: open.id,
               meta: { filename: open.filename },
+              formNumber: items.find((x) => x.id === open.id)?.formNumber,
+              reportNumber: items.find((x) => x.id === open.id)?.reportNumber,
+              formType: items.find((x) => x.id === open.id)?.formType,
+              clientCode: items.find((x) => x.id === open.id)?.clientCode,
             });
             setOpen(null);
           }}
