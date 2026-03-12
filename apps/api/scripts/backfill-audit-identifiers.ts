@@ -19,7 +19,7 @@ async function main() {
       entity: true,
       entityId: true,
     },
-    take: 10000,
+    take: 100000,
   });
 
   console.log(`Found ${audits.length} audit rows to inspect`);
