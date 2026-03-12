@@ -520,6 +520,173 @@ function parseIntSafe(v: string | null, fallback: number) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+const DEFAULT_MC_FILTERS = {
+  category: "ALL" as "ALL" | "MICRO" | "CHEMISTRY",
+  statusFilter: "ALL",
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  allTypeFilter: "ALL" as
+    | "ALL"
+    | "MICRO_MIX"
+    | "MICRO_MIX_WATER"
+    | "STERILITY"
+    | "CHEMISTRY_MIX"
+    | "COA",
+  microFormFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY",
+  chemFormFilter: "ALL" as "ALL" | "CHEMISTRY_MIX" | "COA",
+  activeFilter: "ALL",
+  datePreset: "ALL" as DatePreset,
+  fromDate: "",
+  toDate: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "dateSent" as "dateSent" | "reportNumber",
+  sortDir: "desc" as "asc" | "desc",
+  perPage: 10,
+  page: 1,
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
+function getInitialMCFilters(searchParams: URLSearchParams) {
+  try {
+    const spCategory = searchParams.get("cat");
+    const spStatus = searchParams.get("status");
+    const spClient = searchParams.get("client");
+    const spReport = searchParams.get("report");
+    const spQ = searchParams.get("q");
+
+    const spType = searchParams.get("type");
+    const spMType = searchParams.get("mtype");
+    const spCType = searchParams.get("ctype");
+    const spActive = searchParams.get("active");
+
+    const spDp = searchParams.get("dp");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+
+    const spRangeType = searchParams.get("rangeType");
+    const spFormFrom = searchParams.get("formFrom");
+    const spFormTo = searchParams.get("formTo");
+    const spReportFrom = searchParams.get("reportFrom");
+    const spReportTo = searchParams.get("reportTo");
+
+    const spSortBy = searchParams.get("sortBy");
+    const spSortDir = searchParams.get("sortDir");
+    const spPp = searchParams.get("pp");
+    const spP = searchParams.get("p");
+
+    const hasUrlFilters =
+      spCategory ||
+      spStatus ||
+      spClient ||
+      spReport ||
+      spQ ||
+      spType ||
+      spMType ||
+      spCType ||
+      spActive ||
+      spDp ||
+      spFrom ||
+      spTo ||
+      spRangeType ||
+      spFormFrom ||
+      spFormTo ||
+      spReportFrom ||
+      spReportTo ||
+      spSortBy ||
+      spSortDir ||
+      spPp ||
+      spP;
+
+    if (hasUrlFilters) {
+      return {
+        category:
+          (spCategory as "ALL" | "MICRO" | "CHEMISTRY") ||
+          DEFAULT_MC_FILTERS.category,
+        statusFilter: spStatus || DEFAULT_MC_FILTERS.statusFilter,
+        searchClient: spClient || DEFAULT_MC_FILTERS.searchClient,
+        searchReport: spReport || DEFAULT_MC_FILTERS.searchReport,
+        searchText: spQ || DEFAULT_MC_FILTERS.searchText,
+        allTypeFilter:
+          (spType as typeof DEFAULT_MC_FILTERS.allTypeFilter) ||
+          DEFAULT_MC_FILTERS.allTypeFilter,
+        microFormFilter:
+          (spMType as typeof DEFAULT_MC_FILTERS.microFormFilter) ||
+          DEFAULT_MC_FILTERS.microFormFilter,
+        chemFormFilter:
+          (spCType as typeof DEFAULT_MC_FILTERS.chemFormFilter) ||
+          DEFAULT_MC_FILTERS.chemFormFilter,
+        activeFilter: spActive || DEFAULT_MC_FILTERS.activeFilter,
+        datePreset: (spDp as DatePreset) || DEFAULT_MC_FILTERS.datePreset,
+        fromDate: spFrom || DEFAULT_MC_FILTERS.fromDate,
+        toDate: spTo || DEFAULT_MC_FILTERS.toDate,
+        numberRangeType:
+          (spRangeType as "FORM" | "REPORT") ||
+          DEFAULT_MC_FILTERS.numberRangeType,
+        formNoFrom: spFormFrom || DEFAULT_MC_FILTERS.formNoFrom,
+        formNoTo: spFormTo || DEFAULT_MC_FILTERS.formNoTo,
+        reportNoFrom: spReportFrom || DEFAULT_MC_FILTERS.reportNoFrom,
+        reportNoTo: spReportTo || DEFAULT_MC_FILTERS.reportNoTo,
+        sortBy:
+          (spSortBy as "dateSent" | "reportNumber") ||
+          DEFAULT_MC_FILTERS.sortBy,
+        sortDir: (spSortDir as "asc" | "desc") || DEFAULT_MC_FILTERS.sortDir,
+        perPage: parseIntSafe(spPp, DEFAULT_MC_FILTERS.perPage),
+        page: parseIntSafe(spP, DEFAULT_MC_FILTERS.page),
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_MC_FILTERS;
+}
+
 // ----------------------------------
 // Component: Combined dashboard
 // ----------------------------------
@@ -552,51 +719,58 @@ export default function MCDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [category, setCategory] = useState<Category>(
-    (searchParams.get("cat") as Category) || "ALL",
-  );
+  const initialFilters = getInitialMCFilters(searchParams);
 
-  const [statusFilter, setStatusFilter] = useState(
-    searchParams.get("status") || "ALL",
-  );
+  const [category, setCategory] = useState<Category>(initialFilters.category);
 
-  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [statusFilter, setStatusFilter] = useState(initialFilters.statusFilter);
+
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+
+  const [search, setSearch] = useState(initialFilters.searchText);
 
   const [allTypeFilter, setAllTypeFilter] = useState<AllTypeFilter>(
-    (searchParams.get("type") as AllTypeFilter) || "ALL",
+    initialFilters.allTypeFilter,
   );
 
   const [microFormFilter, setMicroFormFilter] = useState<MicroFormFilter>(
-    (searchParams.get("mtype") as MicroFormFilter) || "ALL",
+    initialFilters.microFormFilter,
   );
 
   const [chemFormFilter, setChemFormFilter] = useState<ChemFormFilter>(
-    (searchParams.get("ctype") as ChemFormFilter) || "ALL",
+    initialFilters.chemFormFilter,
   );
 
-  const [activeFilter, setActiveFilter] = useState(
-    searchParams.get("active") || "ALL",
-  );
+  const [activeFilter, setActiveFilter] = useState(initialFilters.activeFilter);
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as DatePreset) || "ALL",
+    initialFilters.datePreset,
   );
 
-  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
-  const [toDate, setToDate] = useState(searchParams.get("to") || "");
+  const [fromDate, setFromDate] = useState(initialFilters.fromDate);
+  const [toDate, setToDate] = useState(initialFilters.toDate);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
+  );
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
   const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    (searchParams.get("sortBy") as any) || "dateSent",
+    initialFilters.sortBy,
   );
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
-    (searchParams.get("sortDir") as any) || "desc",
+    initialFilters.sortDir,
   );
 
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
-  );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
 
   // Selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -823,24 +997,49 @@ export default function MCDashboard() {
     }
 
     // 1) status
-    if (statusFilter !== "ALL")
-      rows = rows.filter((r) => r.status === statusFilter);
+    if (statusFilter !== "ALL") {
+      rows = rows.filter((r) => String(r.status) === String(statusFilter));
+    }
 
-    // 2) search
-    const q = search.trim().toLowerCase();
-    if (q) {
+    // 2) search client
+    if (searchClient.trim()) {
+      const q = searchClient.toLowerCase();
+      rows = rows.filter((r) => r.client.toLowerCase().includes(q));
+    }
+
+    // 3) search report
+    if (searchReport.trim()) {
+      const q = searchReport.toLowerCase();
       rows = rows.filter((r) => {
-        const combinedNo = displayReportNo(r).toLowerCase();
+        return (
+          String(displayReportNo(r)).toLowerCase().includes(q) ||
+          String(r.formNumber || "")
+            .toLowerCase()
+            .includes(q)
+        );
+      });
+    }
+
+    // 4) global search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+
+      rows = rows.filter((r) => {
         const base =
-          combinedNo.includes(q) ||
-          r.client.toLowerCase().includes(q) ||
-          String(r.status).toLowerCase().includes(q) ||
-          r.formNumber.toLowerCase().includes(q) ||
-          r.formType.toLowerCase().includes(q);
+          String(displayReportNo(r)).toLowerCase().includes(q) ||
+          (r.client || "").toLowerCase().includes(q) ||
+          String(r.status || "")
+            .toLowerCase()
+            .includes(q) ||
+          String(r.formNumber || "")
+            .toLowerCase()
+            .includes(q) ||
+          String(r.formType || "")
+            .toLowerCase()
+            .includes(q);
 
         if (base) return true;
 
-        // chemistry actives search
         if (r.kind === "CHEMISTRY") {
           const activesStr = (
             r.selectedActivesText ||
@@ -853,18 +1052,43 @@ export default function MCDashboard() {
       });
     }
 
-    // 2.5) chemistry actives filter (ONLY when category === "CHEMISTRY")
+    // 5) number range
+    if (numberRangeType === "FORM") {
+      if (formNoFrom.trim() || formNoTo.trim()) {
+        rows = rows.filter((r) =>
+          inRange(
+            extractYearAndSequence(r.formNumber).sequence,
+            formNoFrom,
+            formNoTo,
+          ),
+        );
+      }
+    } else {
+      if (reportNoFrom.trim() || reportNoTo.trim()) {
+        rows = rows.filter((r) =>
+          inRange(
+            extractYearAndSequence(r.reportNumber).sequence,
+            reportNoFrom,
+            reportNoTo,
+          ),
+        );
+      }
+    }
+
+    // 6) chemistry actives filter
     if (category === "CHEMISTRY" && activeFilter !== "ALL") {
       rows = rows.filter((r) => {
         if (r.kind !== "CHEMISTRY") return false;
+
         const list = r.selectedActivesText?.trim()
           ? r.selectedActivesText.split(",").map((s) => s.trim())
           : (r.selectedActives ?? []).map((s) => String(s).trim());
+
         return list.includes(activeFilter);
       });
     }
 
-    // 3) date range
+    // 7) date range
     rows = rows.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
@@ -895,6 +1119,13 @@ export default function MCDashboard() {
     toDate,
     sortBy,
     sortDir,
+    searchClient,
+    searchReport,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   // Pagination
@@ -951,23 +1182,37 @@ export default function MCDashboard() {
 
     sp.set("cat", category);
     sp.set("status", statusFilter);
+
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
     if (search.trim()) sp.set("q", search.trim());
+
     sp.set("type", allTypeFilter);
     sp.set("mtype", microFormFilter);
     sp.set("ctype", chemFormFilter);
     sp.set("active", activeFilter);
+
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
     if (toDate) sp.set("to", toDate);
+
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
     sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped)); // keep valid
+    sp.set("p", String(pageClamped));
 
-    setSearchParams(sp, { replace: true }); // no history spam
+    setSearchParams(sp, { replace: true });
   }, [
     category,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     allTypeFilter,
     microFormFilter,
@@ -976,6 +1221,11 @@ export default function MCDashboard() {
     datePreset,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     perPage,
@@ -1286,6 +1536,8 @@ export default function MCDashboard() {
       microFormFilter !== "ALL" ||
       chemFormFilter !== "ALL" ||
       statusFilter !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
       search.trim() !== "" ||
       sortBy !== "dateSent" ||
       sortDir !== "desc" ||
@@ -1293,7 +1545,12 @@ export default function MCDashboard() {
       datePreset !== "ALL" ||
       fromDate !== "" ||
       toDate !== "" ||
-      activeFilter !== "ALL"
+      activeFilter !== "ALL" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== ""
     );
   }, [
     category,
@@ -1301,6 +1558,8 @@ export default function MCDashboard() {
     microFormFilter,
     chemFormFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
@@ -1309,6 +1568,11 @@ export default function MCDashboard() {
     fromDate,
     toDate,
     activeFilter,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   const clearAllFilters = () => {
@@ -1317,13 +1581,25 @@ export default function MCDashboard() {
     setMicroFormFilter("ALL");
     setChemFormFilter("ALL");
     setStatusFilter("ALL");
+
+    setSearchClient("");
+    setSearchReport("");
     setSearch("");
+
+    setNumberRangeType("FORM");
+    setFormNoFrom("");
+    setFormNoTo("");
+    setReportNoFrom("");
+    setReportNoTo("");
+
     setSortBy("dateSent");
     setSortDir("desc");
     setPerPage(10);
+
     setDatePreset("ALL");
     setFromDate("");
     setToDate("");
+
     setActiveFilter("ALL");
     setPage(1);
   };
@@ -1418,39 +1694,6 @@ export default function MCDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            {/* <style>
-              {`
-                @media print {
-                  body > *:not(#bulk-print-root) { display: none !important; }
-                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
-
-                  #bulk-print-root .sheet {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    box-shadow: none !important;
-                    border: none !important;
-                    padding: 0 !important;
-                  }
-
-                  #bulk-print-root .report-page {
-                    break-inside: avoid-page;
-                    page-break-inside: avoid;
-                  }
-
-                  #bulk-print-root .report-page + .report-page {
-                    break-before: page;
-                    page-break-before: always;
-                  }
-
-                  @supports (margin-trim: block) {
-                    @page { margin-trim: block; }
-                  }
-                }
-              `}
-            </style> */}
-
             <style>
               {`
     @media print {
@@ -1737,7 +1980,8 @@ export default function MCDashboard() {
       )}
 
       {/* Controls */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+      {/* Controls */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {statusOptions.map((s) => (
@@ -1756,45 +2000,40 @@ export default function MCDashboard() {
           ))}
         </div>
 
-        {/* Search + sort + rows */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search report #, client, status, form #, type, actives…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {/* Global search */}
+          <input
+            placeholder="Search client, form #, report #, status, type, actives..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
 
+          {/* Sort */}
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              onChange={(e) =>
+                setSortBy(e.target.value as "dateSent" | "reportNumber")
+              }
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
               <option value="reportNumber">Report #</option>
             </select>
+
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          {/* Rows */}
+          <div className="flex items-center gap-2">
             <label htmlFor="perPage" className="text-sm text-slate-600">
               Rows:
             </label>
@@ -1811,18 +2050,13 @@ export default function MCDashboard() {
               ))}
             </select>
           </div>
-        </div>
 
-        {/* Date + Actives + Clear */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              Date preset
-            </label>
+          {/* Date preset + custom */}
+          <div className="flex gap-3 flex-wrap">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1835,12 +2069,7 @@ export default function MCDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
-          </div>
 
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              From
-            </label>
             <input
               type="date"
               value={fromDate}
@@ -1850,16 +2079,11 @@ export default function MCDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
-          </div>
 
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              To
-            </label>
             <input
               type="date"
               value={toDate}
@@ -1869,52 +2093,92 @@ export default function MCDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          {/* Chemistry active filter only really useful when ALL or CHEMISTRY */}
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              Active
-            </label>
+          {/* Number range */}
+          <div className="flex items-center gap-3 flex-wrap">
             <select
-              value={activeFilter}
-              onChange={(e) => setActiveFilter(e.target.value)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              disabled={category === "MICRO"}
-              title={
-                category === "MICRO"
-                  ? "Actives filter applies to chemistry only"
-                  : undefined
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              {allActives.map((a) => (
-                <option key={a} value={a}>
-                  {a === "ALL" ? "All actives" : a}
-                </option>
-              ))}
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
             </select>
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoFrom(e.target.value);
+                } else {
+                  setReportNoFrom(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoTo(e.target.value);
+                } else {
+                  setReportNoTo(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
-          <div className="md:col-span-2 md:flex md:justify-end">
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              disabled={!hasActiveFilters}
-              className={classNames(
-                "w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                hasActiveFilters
-                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}
-              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
-            >
-              ✕ Clear
-            </button>
-          </div>
+          {/* Actives */}
+          <select
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value)}
+            className="w-52 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            disabled={category === "MICRO"}
+            title={
+              category === "MICRO"
+                ? "Actives filter applies to chemistry only"
+                : undefined
+            }
+          >
+            {allActives.map((a) => (
+              <option key={a} value={a}>
+                {a === "ALL" ? "All actives" : a}
+              </option>
+            ))}
+          </select>
+
+          {/* Clear */}
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 

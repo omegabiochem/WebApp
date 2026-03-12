@@ -34,7 +34,7 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { getEnum, getInt, getParam } from "../../utils/globalUtils";
+import { getInt} from "../../utils/globalUtils";
 import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
@@ -46,13 +46,14 @@ import {
 type Report = {
   id: string;
   client: string;
+  clientCode?: string | null;
   formType: string;
   dateSent: string | null;
-  status: ReportStatus | ChemistryReportStatus | string;
+  status: ReportStatus | ChemistryReportStatus | SterilityReportStatus | string;
   reportNumber: string | number | null;
   formNumber: string | null;
   createdAt: string;
-  version: number; // optional; not required for printing
+  version: number;
 };
 
 // ---------------------------------
@@ -265,12 +266,7 @@ function BulkPrintArea({
   }, [reports, onAfterPrint]);
 
   return (
-    <div
-      id="bulk-print-root"
-      className={
-        isSingle ? "hidden print:block" : "hidden print:block multi-print"
-      }
-    >
+    <div id="bulk-print-root" className="hidden print:block">
       {reports.map((r) => {
         if (r.formType === "MICRO_MIX") {
           return (
@@ -300,10 +296,38 @@ function BulkPrintArea({
           );
         }
 
+        if (r.formType === "STERILITY") {
+          return (
+            <div key={r.id} className="report-page">
+              <SterilityReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
               <ChemistryMixReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
                 report={r as any}
                 onClose={() => {}}
                 showSwitcher={false}
@@ -344,6 +368,76 @@ function getStatusesForReportFamily(family: ReportFamily): string[] {
   return ADMIN_MICRO_STATUSES.filter((s) => s !== "ALL").map(String);
 }
 
+const DEFAULT_ADMIN_FILTERS = {
+  formFilter: "ALL" as
+    | "ALL"
+    | "MICRO"
+    | "MICROWATER"
+    | "STERILITY"
+    | "CHEMISTRY"
+    | "COA",
+  statusFilter: "ALL" as DashboardStatus,
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  datePreset: "ALL" as DatePreset,
+  dateFrom: "",
+  dateTo: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  perPage: 10,
+  page: 1,
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+
+  // Example:
+  // ABC-20260001  => year=2026, sequence=1
+  // XYZ20260025   => year=2026, sequence=25
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
 // ---------------------------------
 // Component
 // ---------------------------------
@@ -352,60 +446,123 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  function getInitialAdminFilters() {
+    return {
+      formFilter:
+        (searchParams.get("form") as any) || DEFAULT_ADMIN_FILTERS.formFilter,
+      statusFilter:
+        (searchParams.get("status") as DashboardStatus) ||
+        DEFAULT_ADMIN_FILTERS.statusFilter,
+      searchClient:
+        searchParams.get("client") || DEFAULT_ADMIN_FILTERS.searchClient,
+      searchReport:
+        searchParams.get("report") || DEFAULT_ADMIN_FILTERS.searchReport,
+      searchText: searchParams.get("q") || DEFAULT_ADMIN_FILTERS.searchText,
+      datePreset:
+        (searchParams.get("dp") as DatePreset) ||
+        DEFAULT_ADMIN_FILTERS.datePreset,
+      dateFrom: searchParams.get("from") || DEFAULT_ADMIN_FILTERS.dateFrom,
+      dateTo: searchParams.get("to") || DEFAULT_ADMIN_FILTERS.dateTo,
+      numberRangeType:
+        (searchParams.get("rangeType") as "FORM" | "REPORT") ||
+        DEFAULT_ADMIN_FILTERS.numberRangeType,
+      formNoFrom:
+        searchParams.get("formFrom") || DEFAULT_ADMIN_FILTERS.formNoFrom,
+      formNoTo: searchParams.get("formTo") || DEFAULT_ADMIN_FILTERS.formNoTo,
+      reportNoFrom:
+        searchParams.get("reportFrom") || DEFAULT_ADMIN_FILTERS.reportNoFrom,
+      reportNoTo:
+        searchParams.get("reportTo") || DEFAULT_ADMIN_FILTERS.reportNoTo,
+      perPage: getInt(searchParams, "pp", DEFAULT_ADMIN_FILTERS.perPage),
+      page: getInt(searchParams, "p", DEFAULT_ADMIN_FILTERS.page),
+    };
+  }
 
-  // Filters (init from URL)
-  // const [formFilter, setFormFilter] = useState<
-  //   "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  // >((searchParams.get("form") as any) || "ALL");
+  const initialFilters = getInitialAdminFilters();
 
-  const FORM_TABS = [
-    "ALL",
-    "MICRO",
-    "MICROWATER",
-    "STERILITY",
-    "CHEMISTRY",
-    "COA",
-  ] as const;
-  type FormFilter = (typeof FORM_TABS)[number];
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >(initialFilters.formFilter);
 
-  const [formFilter, setFormFilter] = useState<FormFilter>(
-    getEnum(searchParams, "form", FORM_TABS, "ALL"),
-  );
-
-  const [searchClient, setSearchClient] = useState(
-    getParam(searchParams, "client", ""),
-  );
-  const [searchReport, setSearchReport] = useState(
-    getParam(searchParams, "report", ""),
-  );
-
-  const DATE_PRESETS = [
-    "ALL",
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_30_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_YEAR",
-    "LAST_YEAR",
-    "CUSTOM",
-  ] as const;
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+  const [searchText, setSearchText] = useState(initialFilters.searchText);
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    getEnum(searchParams, "dp", DATE_PRESETS as any, "ALL"),
+    initialFilters.datePreset,
+  );
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
   );
 
-  const [dateFrom, setDateFrom] = useState(getParam(searchParams, "from", ""));
-  const [dateTo, setDateTo] = useState(getParam(searchParams, "to", ""));
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
-  // paging (clamp pp to allowed)
   const allowedPP = [10, 20, 50] as const;
-  const initPP = getInt(searchParams, "pp", 10);
   const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
-    (allowedPP as readonly number[]).includes(initPP) ? (initPP as any) : 10,
+    (allowedPP as readonly number[]).includes(initialFilters.perPage)
+      ? (initialFilters.perPage as any)
+      : 10,
   );
-  const [page, setPage] = useState(getInt(searchParams, "p", 1));
+  const [page, setPage] = useState(initialFilters.page);
+
+  // const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+  //   initialFilters.statusFilter,
+  // );
+
+  // const FORM_TABS = [
+  //   "ALL",
+  //   "MICRO",
+  //   "MICROWATER",
+  //   "STERILITY",
+  //   "CHEMISTRY",
+  //   "COA",
+  // ] as const;
+  // type FormFilter = (typeof FORM_TABS)[number];
+
+  // // const [formFilter, setFormFilter] = useState<FormFilter>(
+  // //   getEnum(searchParams, "form", FORM_TABS, "ALL"),
+  // // );
+
+  // // const [searchClient, setSearchClient] = useState(
+  // //   getParam(searchParams, "client", ""),
+  // // );
+  // // const [searchReport, setSearchReport] = useState(
+  // //   getParam(searchParams, "report", ""),
+  // // );
+
+  // const DATE_PRESETS = [
+  //   "ALL",
+  //   "TODAY",
+  //   "YESTERDAY",
+  //   "LAST_7_DAYS",
+  //   "LAST_30_DAYS",
+  //   "THIS_MONTH",
+  //   "LAST_MONTH",
+  //   "THIS_YEAR",
+  //   "LAST_YEAR",
+  //   "CUSTOM",
+  // ] as const;
+
+  // const [datePreset, setDatePreset] = useState<DatePreset>(
+  //   getEnum(searchParams, "dp", DATE_PRESETS as any, "ALL"),
+  // );
+
+  // const [dateFrom, setDateFrom] = useState(getParam(searchParams, "from", ""));
+  // const [dateTo, setDateTo] = useState(getParam(searchParams, "to", ""));
+
+  // // paging (clamp pp to allowed)
+  // const allowedPP = [10, 20, 50] as const;
+  // const initPP = getInt(searchParams, "pp", 10);
+  // const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
+  //   (allowedPP as readonly number[]).includes(initPP) ? (initPP as any) : 10,
+  // );
+  // const [page, setPage] = useState(getInt(searchParams, "p", 1));
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -587,7 +744,60 @@ export default function AdminDashboard() {
     }
   }, [formFilter, statusFilter]);
 
-  // Derived rows
+  // // Derived rows
+  // const processed = useMemo(() => {
+  //   const byForm =
+  //     formFilter === "ALL"
+  //       ? reports
+  //       : reports.filter((r) => {
+  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+  //           if (formFilter === "MICROWATER")
+  //             return r.formType === "MICRO_MIX_WATER";
+  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
+  //           if (formFilter === "CHEMISTRY")
+  //             return r.formType === "CHEMISTRY_MIX";
+  //           if (formFilter === "COA") return r.formType === "COA";
+  //           return true;
+  //         });
+
+  //   const byStatus =
+  //     statusFilter === "ALL"
+  //       ? byForm
+  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
+
+  //   const byClient = searchClient.trim()
+  //     ? byStatus.filter((r) =>
+  //         r.client.toLowerCase().includes(searchClient.toLowerCase()),
+  //       )
+  //     : byStatus;
+
+  //   const byReport = searchReport.trim()
+  //     ? byClient.filter((r) =>
+  //         String(displayReportNo(r))
+  //           .toLowerCase()
+  //           .includes(searchReport.toLowerCase()),
+  //       )
+  //     : byClient;
+
+  //   const byDate = byReport.filter((r) =>
+  //     matchesDateRange(r.createdAt, dateFrom || undefined, dateTo || undefined),
+  //   );
+
+  //   return [...byDate].sort((a, b) => {
+  //     const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  //     const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  //     return bT - aT;
+  //   });
+  // }, [
+  //   reports,
+  //   formFilter,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   dateFrom,
+  //   dateTo,
+  // ]);
+
   const processed = useMemo(() => {
     const byForm =
       formFilter === "ALL"
@@ -609,20 +819,72 @@ export default function AdminDashboard() {
         : byForm.filter((r) => String(r.status) === String(statusFilter));
 
     const byClient = searchClient.trim()
-      ? byStatus.filter((r) =>
-          r.client.toLowerCase().includes(searchClient.toLowerCase()),
-        )
+      ? byStatus.filter((r) => {
+          const q = searchClient.toLowerCase();
+          return (
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q)
+          );
+        })
       : byStatus;
 
     const byReport = searchReport.trim()
-      ? byClient.filter((r) =>
-          String(displayReportNo(r))
-            .toLowerCase()
-            .includes(searchReport.toLowerCase()),
-        )
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(displayReportNo(r)).toLowerCase().includes(q) ||
+            (r.formNumber || "").toLowerCase().includes(q)
+          );
+        })
       : byClient;
 
-    const byDate = byReport.filter((r) =>
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.toLowerCase();
+
+          return (
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q) ||
+            (r.formNumber || "").toLowerCase().includes(q) ||
+            String(r.reportNumber ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.status ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formType ?? "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.id ?? "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byReport;
+
+    const byNumberRange = (
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+        : reportNoFrom.trim() || reportNoTo.trim()
+    )
+      ? bySearchText.filter((r) => {
+          if (numberRangeType === "FORM") {
+            return inRange(
+              extractYearAndSequence(r.formNumber).sequence,
+              formNoFrom,
+              formNoTo,
+            );
+          }
+
+          return inRange(
+            extractYearAndSequence(r.reportNumber).sequence,
+            reportNoFrom,
+            reportNoTo,
+          );
+        })
+      : bySearchText;
+
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.createdAt, dateFrom || undefined, dateTo || undefined),
     );
 
@@ -637,6 +899,12 @@ export default function AdminDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     dateFrom,
     dateTo,
   ]);
@@ -655,6 +923,12 @@ export default function AdminDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     datePreset,
     dateFrom,
     dateTo,
@@ -664,20 +938,23 @@ export default function AdminDashboard() {
   useEffect(() => {
     const sp = new URLSearchParams();
 
-    // form/status
     if (formFilter !== "ALL") sp.set("form", formFilter);
-    sp.set("status", String(statusFilter)); // keep "ALL" explicitly
+    sp.set("status", String(statusFilter));
 
-    // search
     if (searchClient.trim()) sp.set("client", searchClient.trim());
     if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (searchText.trim()) sp.set("q", searchText.trim());
 
-    // dates
     sp.set("dp", datePreset);
     if (dateFrom) sp.set("from", dateFrom);
     if (dateTo) sp.set("to", dateTo);
 
-    // paging
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
     if (perPage !== 10) sp.set("pp", String(perPage));
     if (pageClamped !== 1) sp.set("p", String(pageClamped));
     if (selectedIds.length) sp.set("sel", selectedIds.join(","));
@@ -688,9 +965,15 @@ export default function AdminDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
     datePreset,
     dateFrom,
     dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     perPage,
     pageClamped,
     selectedIds,
@@ -752,6 +1035,14 @@ export default function AdminDashboard() {
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
+    return canShowUpdateButton(
+      userObj?.role as Role,
+      r.status as ReportStatus,
+      ADMIN_FIELDS_ON_FORM,
+    );
+  }
+
+  function canUpdateThisSterility(r: Report, userObj?: any) {
     return canShowUpdateButton(
       userObj?.role as Role,
       r.status as ReportStatus,
@@ -925,9 +1216,14 @@ export default function AdminDashboard() {
       String(statusFilter) !== "ALL" ||
       searchClient.trim() !== "" ||
       searchReport.trim() !== "" ||
+      searchText.trim() !== "" ||
       datePreset !== "ALL" ||
       dateFrom !== "" ||
       dateTo !== "" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
       perPage !== 10
     );
   }, [
@@ -935,24 +1231,33 @@ export default function AdminDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
     datePreset,
     dateFrom,
     dateTo,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     perPage,
   ]);
-
   const clearFilters = () => {
     setSearchClient("");
     setSearchReport("");
+    setSearchText("");
     setDatePreset("ALL");
     setDateFrom("");
     setDateTo("");
     setStatusFilter("ALL");
     setFormFilter("ALL");
+    setNumberRangeType("FORM");
+    setFormNoFrom("");
+    setFormNoTo("");
+    setReportNoFrom("");
+    setReportNoTo("");
     setPerPage(10);
     setPage(1);
   };
-
   function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
@@ -1360,12 +1665,11 @@ export default function AdminDashboard() {
       {/* Filters */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Status */}
           <select
             value={String(statusFilter)}
             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
             className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
-              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
             {statusOptions.map((s) => (
               <option key={String(s)} value={String(s)}>
@@ -1374,31 +1678,36 @@ export default function AdminDashboard() {
             ))}
           </select>
 
-          {/* Search client */}
-          <input
-            placeholder="Search by client"
+          {/* <input
+            placeholder="Search by client / client code"
             value={searchClient}
             onChange={(e) => setSearchClient(e.target.value)}
-            className="flex-1 min-w-[160px] rounded-lg border px-3 py-2 text-sm
-              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
+      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
-          {/* Search report */}
           <input
-            placeholder="Search by report #"
+            placeholder="Search by report # / form #"
             value={searchReport}
             onChange={(e) => setSearchReport(e.target.value)}
             className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
-              ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          /> */}
+
+          <input
+            placeholder="Search client, client code, form #, report #, status..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm
+      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
-          {/* Custom range */}
           <div className="flex gap-5">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
               className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
-                ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+        ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1440,7 +1749,48 @@ export default function AdminDashboard() {
             />
           </div>
 
-          {/* Clear */}
+          {/* after date filters, same line */}
+          <div className="flex items-center gap-3">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+
+            <input
+              type="number"
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoFrom(e.target.value);
+                } else {
+                  setReportNoFrom(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") {
+                  setFormNoTo(e.target.value);
+                } else {
+                  setReportNoTo(e.target.value);
+                }
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
           <button
             type="button"
             onClick={clearFilters}
@@ -1518,7 +1868,8 @@ export default function AdminDashboard() {
                 pageRows.map((r) => {
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER";
+                    r.formType === "MICRO_MIX_WATER" ||
+                    r.formType === "STERILITY";
                   const isChemistry =
                     r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
@@ -1592,6 +1943,42 @@ export default function AdminDashboard() {
                                     const next =
                                       "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
                                     await setStatus(r, next, "set by admin");
+                                    setReports((prev) =>
+                                      prev.map((x) =>
+                                        x.id === r.id
+                                          ? { ...x, status: next }
+                                          : x,
+                                      ),
+                                    );
+                                    toast.success("Report Status Updated");
+                                  }
+                                  goToReportEditor(r);
+                                } catch (e: any) {
+                                  toast.error(
+                                    e?.message || "Failed to update status",
+                                  );
+                                } finally {
+                                  setUpdatingId(null);
+                                }
+                              }}
+                            >
+                              {rowBusy ? <Spinner /> : null}
+                              {rowBusy ? "Updating..." : "Update"}
+                            </button>
+                          )}
+
+                          {isMicro && canUpdateThisSterility(r, user) && (
+                            <button
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              disabled={rowBusy}
+                              onClick={async () => {
+                                if (rowBusy) return;
+                                setUpdatingId(r.id);
+                                try {
+                                  if (r.status === "CLIENT_NEEDS_CORRECTION") {
+                                    const next =
+                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                    await setStatus(r, next, "set by qa");
                                     setReports((prev) =>
                                       prev.map((x) =>
                                         x.id === r.id

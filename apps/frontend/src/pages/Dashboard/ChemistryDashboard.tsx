@@ -223,6 +223,162 @@ function intersectAll(lists: string[][]): string[] {
   return Array.from(set);
 }
 
+const DEFAULT_CHEM_FILTERS = {
+  formFilter: "ALL" as "ALL" | "CHEMISTRY" | "COA",
+  statusFilter: "ALL" as (typeof CHEMISTRY_STATUSES)[number],
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "createdAt" as "createdAt" | "reportNumber",
+  sortDir: "desc" as "asc" | "desc",
+  perPage: 10,
+  page: 1,
+  activeFilter: "ALL",
+  datePreset: "ALL" as DatePreset,
+  fromDate: "",
+  toDate: "",
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
+function getInitialChemistryFilters(
+  searchParams: URLSearchParams,
+  storageKey: string,
+) {
+  try {
+    const spForm = searchParams.get("form");
+    const spStatus = searchParams.get("status");
+    const spClient = searchParams.get("client");
+    const spReport = searchParams.get("report");
+    const spQ = searchParams.get("q");
+
+    const spRangeType = searchParams.get("rangeType");
+    const spFormFrom = searchParams.get("formFrom");
+    const spFormTo = searchParams.get("formTo");
+    const spReportFrom = searchParams.get("reportFrom");
+    const spReportTo = searchParams.get("reportTo");
+
+    const spSortBy = searchParams.get("sortBy");
+    const spSortDir = searchParams.get("sortDir");
+    const spPp = searchParams.get("pp");
+    const spP = searchParams.get("p");
+
+    const spActive = searchParams.get("active");
+
+    const spDp = searchParams.get("dp");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+
+    const hasUrlFilters =
+      spForm ||
+      spStatus ||
+      spClient ||
+      spReport ||
+      spQ ||
+      spRangeType ||
+      spFormFrom ||
+      spFormTo ||
+      spReportFrom ||
+      spReportTo ||
+      spSortBy ||
+      spSortDir ||
+      spPp ||
+      spP ||
+      spActive ||
+      spDp ||
+      spFrom ||
+      spTo;
+
+    if (hasUrlFilters) {
+      return {
+        formFilter:
+          (spForm as "ALL" | "CHEMISTRY" | "COA") ||
+          DEFAULT_CHEM_FILTERS.formFilter,
+        statusFilter:
+          (spStatus as (typeof CHEMISTRY_STATUSES)[number]) ||
+          DEFAULT_CHEM_FILTERS.statusFilter,
+        searchClient: spClient || DEFAULT_CHEM_FILTERS.searchClient,
+        searchReport: spReport || DEFAULT_CHEM_FILTERS.searchReport,
+        searchText: spQ || DEFAULT_CHEM_FILTERS.searchText,
+        numberRangeType:
+          (spRangeType as "FORM" | "REPORT") ||
+          DEFAULT_CHEM_FILTERS.numberRangeType,
+        formNoFrom: spFormFrom || DEFAULT_CHEM_FILTERS.formNoFrom,
+        formNoTo: spFormTo || DEFAULT_CHEM_FILTERS.formNoTo,
+        reportNoFrom: spReportFrom || DEFAULT_CHEM_FILTERS.reportNoFrom,
+        reportNoTo: spReportTo || DEFAULT_CHEM_FILTERS.reportNoTo,
+        sortBy:
+          (spSortBy as "createdAt" | "reportNumber") ||
+          DEFAULT_CHEM_FILTERS.sortBy,
+        sortDir: (spSortDir as "asc" | "desc") || DEFAULT_CHEM_FILTERS.sortDir,
+        perPage: parseIntSafe(spPp, DEFAULT_CHEM_FILTERS.perPage),
+        page: parseIntSafe(spP, DEFAULT_CHEM_FILTERS.page),
+        activeFilter: spActive || DEFAULT_CHEM_FILTERS.activeFilter,
+        datePreset: (spDp as DatePreset) || DEFAULT_CHEM_FILTERS.datePreset,
+        fromDate: spFrom || DEFAULT_CHEM_FILTERS.fromDate,
+        toDate: spTo || DEFAULT_CHEM_FILTERS.toDate,
+      };
+    }
+
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      return {
+        ...DEFAULT_CHEM_FILTERS,
+        ...JSON.parse(raw),
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_CHEM_FILTERS;
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -235,32 +391,55 @@ export default function ChemistryDashboard() {
 
   type FormFilter = "ALL" | "CHEMISTRY" | "COA";
 
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "chemistry";
+
+  const FILTER_STORAGE_KEY = `chemistryDashboardFilters:user:${userKey}`;
+
+  const initialFilters = getInitialChemistryFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+
   const [formFilter, setFormFilter] = useState<FormFilter>(
-    (searchParams.get("form") as FormFilter) || "ALL",
+    initialFilters.formFilter,
   );
 
   const [statusFilter, setStatusFilter] = useState<
     (typeof CHEMISTRY_STATUSES)[number]
-  >((searchParams.get("status") as any) || "ALL");
+  >(initialFilters.statusFilter);
 
-  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+  const [searchText, setSearchText] = useState(initialFilters.searchText);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
+  );
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
   const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">(
-    (searchParams.get("sortBy") as any) || "createdAt",
+    initialFilters.sortBy,
   );
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
-    (searchParams.get("sortDir") as any) || "desc",
+    initialFilters.sortDir,
   );
 
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
-  );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
 
-  const [activeFilter, setActiveFilter] = useState(
-    searchParams.get("active") || "ALL",
-  );
+  const [activeFilter, setActiveFilter] = useState(initialFilters.activeFilter);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -292,7 +471,6 @@ export default function ChemistryDashboard() {
   const [toDate, setToDate] = useState(searchParams.get("to") || "");
 
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   // fetch
   useEffect(() => {
@@ -317,9 +495,12 @@ export default function ChemistryDashboard() {
     };
   }, []);
 
+  const statusOptions = useMemo(() => {
+    return CHEMISTRY_STATUSES;
+  }, [formFilter]);
+
   // derived
   const processed = useMemo(() => {
-    // ✅ 0) form filter
     const byForm =
       formFilter === "ALL"
         ? reports
@@ -330,20 +511,37 @@ export default function ChemistryDashboard() {
             return true;
           });
 
-    // ✅ 1) status filter
     const byStatus =
       statusFilter === "ALL"
         ? byForm
         : byForm.filter((r) => r.status === statusFilter);
 
-    const q = search.trim().toLowerCase();
-    const bySearch = q
+    const byClient = searchClient.trim()
       ? byStatus.filter((r) => {
-          const combinedNo = displayReportNo(r).toLowerCase();
+          const q = searchClient.toLowerCase();
+          return r.client.toLowerCase().includes(q);
+        })
+      : byStatus;
 
+    const byReport = searchReport.trim()
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(displayReportNo(r)).toLowerCase().includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byClient;
+
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.toLowerCase();
+
+          const combinedNo = displayReportNo(r).toLowerCase();
           const formNo = (r.formNumber || "").toLowerCase();
           const formType = (r.formType || "").toLowerCase();
-
           const activesStr = (
             r.selectedActivesText ||
             (r.selectedActives?.join(", ") ?? "")
@@ -353,17 +551,38 @@ export default function ChemistryDashboard() {
             combinedNo.includes(q) ||
             r.client.toLowerCase().includes(q) ||
             String(r.status).toLowerCase().includes(q) ||
-            formNo.includes(q) || // ✅ added
-            formType.includes(q) || // ✅ added (optional but useful)
-            activesStr.includes(q) // ✅ added (optional)
+            formNo.includes(q) ||
+            formType.includes(q) ||
+            activesStr.includes(q)
           );
         })
-      : byStatus;
+      : byReport;
+
+    const byNumberRange =
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+          ? bySearchText.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                formNoFrom,
+                formNoTo,
+              ),
+            )
+          : bySearchText
+        : reportNoFrom.trim() || reportNoTo.trim()
+          ? bySearchText.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.reportNumber).sequence,
+                reportNoFrom,
+                reportNoTo,
+              ),
+            )
+          : bySearchText;
 
     const byActive =
       activeFilter === "ALL"
-        ? bySearch
-        : bySearch.filter((r) => {
+        ? byNumberRange
+        : byNumberRange.filter((r) => {
             const list = r.selectedActivesText?.trim()
               ? r.selectedActivesText.split(",").map((s) => s.trim())
               : (r.selectedActives ?? []).map((s) => String(s).trim());
@@ -371,35 +590,45 @@ export default function ChemistryDashboard() {
             return list.includes(activeFilter);
           });
 
-    // 3.5) date range filter (by dateSent)
     const byDate = byActive.filter((r) =>
       matchesDateRange(r.createdAt, fromDate || undefined, toDate || undefined),
     );
 
-    const sorted = [...byDate].sort((a, b) => {
+    return [...byDate].sort((a, b) => {
       if (sortBy === "reportNumber") {
-        const aK = (a.reportNumber || "").toLowerCase();
-        const bK = (b.reportNumber || "").toLowerCase();
+        const aK = String(a.reportNumber || "").toLowerCase();
+        const bK = String(b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
+
       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
-
-    return sorted;
   }, [
     reports,
     formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     fromDate,
     toDate,
     activeFilter,
-    datePreset,
   ]);
+
+  useEffect(() => {
+    if (!statusOptions.includes(statusFilter as any)) {
+      setStatusFilter("ALL");
+    }
+  }, [statusOptions, statusFilter]);
 
   // pagination
   const total = processed.length;
@@ -410,7 +639,27 @@ export default function ChemistryDashboard() {
   const pageRows = processed.slice(start, end);
   useEffect(() => {
     setSelectedIds([]);
-  }, [statusFilter, formFilter]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+    perPage,
+    pageClamped,
+  ]);
+
   useEffect(() => {
     const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
     if (nextForm !== formFilter) setFormFilter(nextForm);
@@ -419,40 +668,114 @@ export default function ChemistryDashboard() {
   useEffect(() => {
     const sp = new URLSearchParams();
 
+    if (formFilter !== "ALL") sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
-    if (search.trim()) sp.set("q", search.trim());
+
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (searchText.trim()) sp.set("q", searchText.trim());
 
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
-
     sp.set("pp", String(perPage));
     sp.set("p", String(pageClamped));
 
     sp.set("dp", datePreset);
-    sp.set("form", formFilter);
     if (fromDate) sp.set("from", fromDate);
     if (toDate) sp.set("to", toDate);
 
-    if (activeFilter && activeFilter !== "ALL") sp.set("active", activeFilter);
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
-    // selection
+    if (activeFilter && activeFilter !== "ALL") {
+      sp.set("active", activeFilter);
+    }
+
     if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
     setSearchParams(sp, { replace: true });
   }, [
+    formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     perPage,
     pageClamped,
+    activeFilter,
     datePreset,
     fromDate,
     toDate,
-    activeFilter,
     selectedIds,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
+    const nextStatus =
+      (searchParams.get("status") as (typeof CHEMISTRY_STATUSES)[number]) ||
+      "ALL";
+
+    const nextClient = searchParams.get("client") || "";
+    const nextReport = searchParams.get("report") || "";
+    const nextQ = searchParams.get("q") || "";
+
+    const nextRangeType =
+      (searchParams.get("rangeType") as "FORM" | "REPORT") || "FORM";
+    const nextFormFrom = searchParams.get("formFrom") || "";
+    const nextFormTo = searchParams.get("formTo") || "";
+    const nextReportFrom = searchParams.get("reportFrom") || "";
+    const nextReportTo = searchParams.get("reportTo") || "";
+
+    const nextSortBy = ((searchParams.get("sortBy") as any) || "createdAt") as
+      | "createdAt"
+      | "reportNumber";
+    const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
+      | "asc"
+      | "desc";
+
+    const nextPp = parseIntSafe(searchParams.get("pp"), 10);
+    const nextP = parseIntSafe(searchParams.get("p"), 1);
+
+    const nextActive = searchParams.get("active") || "ALL";
+    const nextDp = ((searchParams.get("dp") as any) || "ALL") as DatePreset;
+    const nextFrom = searchParams.get("from") || "";
+    const nextTo = searchParams.get("to") || "";
+
+    if (nextForm !== formFilter) setFormFilter(nextForm);
+    if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
+
+    if (nextClient !== searchClient) setSearchClient(nextClient);
+    if (nextReport !== searchReport) setSearchReport(nextReport);
+    if (nextQ !== searchText) setSearchText(nextQ);
+
+    if (nextRangeType !== numberRangeType) setNumberRangeType(nextRangeType);
+    if (nextFormFrom !== formNoFrom) setFormNoFrom(nextFormFrom);
+    if (nextFormTo !== formNoTo) setFormNoTo(nextFormTo);
+    if (nextReportFrom !== reportNoFrom) setReportNoFrom(nextReportFrom);
+    if (nextReportTo !== reportNoTo) setReportNoTo(nextReportTo);
+
+    if (nextSortBy !== sortBy) setSortBy(nextSortBy);
+    if (nextSortDir !== sortDir) setSortDir(nextSortDir);
+
+    if (nextPp !== perPage) setPerPage(nextPp);
+    if (nextP !== page) setPage(nextP);
+
+    if (nextActive !== activeFilter) setActiveFilter(nextActive);
+    if (nextDp !== datePreset) setDatePreset(nextDp);
+    if (nextFrom !== fromDate) setFromDate(nextFrom);
+    if (nextTo !== toDate) setToDate(nextTo);
+  }, [searchParams]);
 
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [
@@ -577,6 +900,28 @@ export default function ChemistryDashboard() {
   }
 
   useEffect(() => {
+    setPage(1);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+  useEffect(() => {
     const now = new Date();
 
     const setRange = (from: Date, to: Date) => {
@@ -649,39 +994,122 @@ export default function ChemistryDashboard() {
 
   const hasActiveFilters = useMemo(() => {
     return (
+      formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
-      search.trim() !== "" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
+      searchText.trim() !== "" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
       sortBy !== "createdAt" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
+      activeFilter !== "ALL" ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== "" ||
-      activeFilter !== "ALL" // ✅ add
+      toDate !== ""
     );
   }, [
+    formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     perPage,
+    activeFilter,
     datePreset,
     fromDate,
     toDate,
+  ]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          sortBy,
+          sortDir,
+          perPage,
+          page,
+          activeFilter,
+          datePreset,
+          fromDate,
+          toDate,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    page,
     activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
   ]);
 
   const clearAllFilters = () => {
-    setStatusFilter("ALL");
-    setSearch("");
-    setSortBy("createdAt");
-    setSortDir("desc");
-    setPerPage(10);
-    setDatePreset("ALL");
-    setFromDate("");
-    setToDate("");
-    setActiveFilter("ALL");
-    setPage(1);
+    setFormFilter(DEFAULT_CHEM_FILTERS.formFilter);
+    setStatusFilter(DEFAULT_CHEM_FILTERS.statusFilter);
+    setSearchClient(DEFAULT_CHEM_FILTERS.searchClient);
+    setSearchReport(DEFAULT_CHEM_FILTERS.searchReport);
+    setSearchText(DEFAULT_CHEM_FILTERS.searchText);
+    setNumberRangeType(DEFAULT_CHEM_FILTERS.numberRangeType);
+    setFormNoFrom(DEFAULT_CHEM_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_CHEM_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_CHEM_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_CHEM_FILTERS.reportNoTo);
+    setSortBy(DEFAULT_CHEM_FILTERS.sortBy);
+    setSortDir(DEFAULT_CHEM_FILTERS.sortDir);
+    setPerPage(DEFAULT_CHEM_FILTERS.perPage);
+    setPage(DEFAULT_CHEM_FILTERS.page);
+    setActiveFilter(DEFAULT_CHEM_FILTERS.activeFilter);
+    setDatePreset(DEFAULT_CHEM_FILTERS.datePreset);
+    setFromDate(DEFAULT_CHEM_FILTERS.fromDate);
+    setToDate(DEFAULT_CHEM_FILTERS.toDate);
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify(DEFAULT_CHEM_FILTERS),
+      );
+    } catch {
+      // ignore
+    }
   };
 
   useLiveReportStatus(setReports);
@@ -1066,13 +1494,14 @@ export default function ChemistryDashboard() {
 
       {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        {/* Status chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {CHEMISTRY_STATUSES.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={classNames(
-                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition",
                 statusFilter === s
                   ? "bg-blue-600 text-white ring-blue-600"
                   : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
@@ -1083,46 +1512,54 @@ export default function ChemistryDashboard() {
           ))}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
+        {/* Row 1: Search Client | Sort | Rows */}
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="relative lg:col-span-5">
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search report #, client, or status…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search client, form #, report #, status, actives..."
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
-            {search && (
+            {searchText && (
               <button
                 type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+                onClick={() => setSearchText("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:col-span-4">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) =>
+                setSortBy(e.target.value as "createdAt" | "reportNumber")
+              }
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              <option value="createdAt">Date Sent</option>
-              <option value="reportNumber">Report #</option>
+              <option value="createdAt">Sort: Date Sent</option>
+              <option value="reportNumber">Sort: Report #</option>
             </select>
+
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <label htmlFor="perPage" className="text-sm text-slate-600">
-              Rows:
+          <div className="flex items-center gap-2 lg:col-span-3 lg:justify-end">
+            <label
+              htmlFor="perPage"
+              className="text-sm text-slate-600 whitespace-nowrap"
+            >
+              Rows
             </label>
             <select
               id="perPage"
@@ -1138,18 +1575,14 @@ export default function ChemistryDashboard() {
             </select>
           </div>
         </div>
-        {/* Date + Clear row */}
-        {/* Date + Actives + Clear */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12 md:items-end">
-          {/* Date preset */}
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              Date preset
-            </label>
+
+        {/* Row 2: Date preset | From | To | Forms/Reports | From | To */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-2">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-40 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1164,11 +1597,7 @@ export default function ChemistryDashboard() {
             </select>
           </div>
 
-          {/* From */}
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              From
-            </label>
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={fromDate}
@@ -1184,11 +1613,7 @@ export default function ChemistryDashboard() {
             />
           </div>
 
-          {/* To */}
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              To
-            </label>
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={toDate}
@@ -1204,11 +1629,50 @@ export default function ChemistryDashboard() {
             />
           </div>
 
-          {/* Actives */}
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-xs font-medium text-slate-600">
-              Active
-            </label>
+          <div className="lg:col-span-2">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+          </div>
+
+          <div className="lg:col-span-2">
+            <input
+              type="number"
+              placeholder="From"
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
+                else setReportNoFrom(e.target.value);
+              }}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="lg:col-span-2">
+            <input
+              type="number"
+              placeholder="To"
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoTo(e.target.value);
+                else setReportNoTo(e.target.value);
+              }}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Active */}
+        {/* Row 3: Active + Clear */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-4">
             <select
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value)}
@@ -1222,14 +1686,13 @@ export default function ChemistryDashboard() {
             </select>
           </div>
 
-          {/* Clear */}
-          <div className="md:col-span-2 md:flex md:justify-end">
+          <div className="lg:col-span-8 flex justify-end">
             <button
               type="button"
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
               className={classNames(
-                "w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
                 hasActiveFilters
                   ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                   : "border bg-slate-100 text-slate-400 cursor-not-allowed",
@@ -1410,11 +1873,11 @@ export default function ChemistryDashboard() {
                     <span className="font-medium">
                       {niceStatus(String(statusFilter))}
                     </span>
-                    {search ? (
+                    {searchText ? (
                       <>
                         {" "}
-                        matching <span className="font-medium">“{search}”</span>
-                        .
+                        matching{" "}
+                        <span className="font-medium">“{searchText}”</span>.
                       </>
                     ) : (
                       "."
@@ -1437,7 +1900,7 @@ export default function ChemistryDashboard() {
             <div className="flex items-center gap-2">
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -1447,7 +1910,9 @@ export default function ChemistryDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next

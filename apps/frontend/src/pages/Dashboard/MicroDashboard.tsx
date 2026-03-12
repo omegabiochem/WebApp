@@ -36,6 +36,7 @@ import {
 type Report = {
   id: string;
   client: string;
+  clientCode?: string | null;
   formType: string;
   dateSent: string | null;
   status: string;
@@ -255,6 +256,51 @@ function BulkPrintArea({
   );
 }
 
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+
+  // Example:
+  // ABC-20260001 => year: 2026, sequence: 1
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -263,6 +309,166 @@ export default function MicroDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const DEFAULT_MICRO_FILTERS = {
+    formFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY",
+    statusFilter: "ALL",
+    searchClient: "",
+    searchReport: "",
+    searchText: "",
+    numberRangeType: "FORM" as "FORM" | "REPORT",
+    formNoFrom: "",
+    formNoTo: "",
+    reportNoFrom: "",
+    reportNoTo: "",
+    sortBy: "dateSent" as "dateSent" | "reportNumber",
+    sortDir: "desc" as "asc" | "desc",
+    perPage: 10,
+    page: 1,
+    datePreset: "ALL" as DatePreset,
+    fromDate: "",
+    toDate: "",
+  };
+
+  function getInitialMicroFilters(
+    searchParams: URLSearchParams,
+    storageKey: string,
+  ) {
+    try {
+      const spForm = searchParams.get("form");
+      const spStatus = searchParams.get("status");
+      const spClient = searchParams.get("client");
+      const spReport = searchParams.get("report");
+      const spQ = searchParams.get("q");
+      const spRangeType = searchParams.get("rangeType");
+      const spFormFrom = searchParams.get("formFrom");
+      const spFormTo = searchParams.get("formTo");
+      const spReportFrom = searchParams.get("reportFrom");
+      const spReportTo = searchParams.get("reportTo");
+      const spSortBy = searchParams.get("sortBy");
+      const spSortDir = searchParams.get("sortDir");
+      const spPp = searchParams.get("pp");
+      const spP = searchParams.get("p");
+      const spDp = searchParams.get("dp");
+      const spFrom = searchParams.get("from");
+      const spTo = searchParams.get("to");
+
+      const hasUrlFilters =
+        spForm ||
+        spStatus ||
+        spClient ||
+        spReport ||
+        spQ ||
+        spRangeType ||
+        spFormFrom ||
+        spFormTo ||
+        spReportFrom ||
+        spReportTo ||
+        spSortBy ||
+        spSortDir ||
+        spPp ||
+        spP ||
+        spDp ||
+        spFrom ||
+        spTo;
+
+      if (hasUrlFilters) {
+        return {
+          formFilter: (spForm as any) || DEFAULT_MICRO_FILTERS.formFilter,
+          statusFilter: spStatus || DEFAULT_MICRO_FILTERS.statusFilter,
+          searchClient: spClient || DEFAULT_MICRO_FILTERS.searchClient,
+          searchReport: spReport || DEFAULT_MICRO_FILTERS.searchReport,
+          searchText: spQ || DEFAULT_MICRO_FILTERS.searchText,
+          numberRangeType:
+            (spRangeType as "FORM" | "REPORT") ||
+            DEFAULT_MICRO_FILTERS.numberRangeType,
+          formNoFrom: spFormFrom || DEFAULT_MICRO_FILTERS.formNoFrom,
+          formNoTo: spFormTo || DEFAULT_MICRO_FILTERS.formNoTo,
+          reportNoFrom: spReportFrom || DEFAULT_MICRO_FILTERS.reportNoFrom,
+          reportNoTo: spReportTo || DEFAULT_MICRO_FILTERS.reportNoTo,
+          sortBy:
+            (spSortBy as "dateSent" | "reportNumber") ||
+            DEFAULT_MICRO_FILTERS.sortBy,
+          sortDir:
+            (spSortDir as "asc" | "desc") || DEFAULT_MICRO_FILTERS.sortDir,
+          perPage: parseIntSafe(spPp, DEFAULT_MICRO_FILTERS.perPage),
+          page: parseIntSafe(spP, DEFAULT_MICRO_FILTERS.page),
+          datePreset: (spDp as DatePreset) || DEFAULT_MICRO_FILTERS.datePreset,
+          fromDate: spFrom || DEFAULT_MICRO_FILTERS.fromDate,
+          toDate: spTo || DEFAULT_MICRO_FILTERS.toDate,
+        };
+      }
+
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        return {
+          ...DEFAULT_MICRO_FILTERS,
+          ...JSON.parse(raw),
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    return DEFAULT_MICRO_FILTERS;
+  }
+
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "micro";
+
+  const FILTER_STORAGE_KEY = `microDashboardFilters:user:${userKey}`;
+
+  const initialFilters = getInitialMicroFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+
+  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
+
+  const [formFilter, setFormFilter] = useState<FormFilter>(
+    initialFilters.formFilter,
+  );
+
+  const [statusFilter, setStatusFilter] = useState<string>(
+    initialFilters.statusFilter,
+  );
+
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+  const [searchText, setSearchText] = useState(initialFilters.searchText);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
+  );
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    initialFilters.sortBy,
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    initialFilters.sortDir,
+  );
+
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    initialFilters.datePreset,
+  );
+
+  const [fromDate, setFromDate] = useState(initialFilters.fromDate);
+  const [toDate, setToDate] = useState(initialFilters.toDate);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -286,43 +492,10 @@ export default function MicroDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
-  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
-
-  const [formFilter, setFormFilter] = useState<FormFilter>(
-    (searchParams.get("form") as FormFilter) || "ALL",
-  );
-
-  const [statusFilter, setStatusFilter] = useState<string>(
-    searchParams.get("status") || "ALL",
-  );
-
-  const [search, setSearch] = useState(searchParams.get("q") || "");
-
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    (searchParams.get("sortBy") as any) || "dateSent",
-  );
-
-  const [sortDir, setSortDir] = useState<"asc" | "desc">(
-    (searchParams.get("sortDir") as any) || "desc",
-  );
-
-  const [perPage, setPerPage] = useState(
-    parseIntSafe(searchParams.get("pp"), 10),
-  );
-  const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
-
-  const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
-  );
-
-  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
-  const [toDate, setToDate] = useState(searchParams.get("to") || "");
-
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   // fetch
   useEffect(() => {
@@ -359,7 +532,6 @@ export default function MicroDashboard() {
 
   // derived
   const processed = useMemo(() => {
-    // ✅ 0) form filter (MICRO vs MICRO WATER)
     const byForm =
       formFilter === "ALL"
         ? reports
@@ -371,50 +543,104 @@ export default function MicroDashboard() {
             return true;
           });
 
-    // ✅ 1) status filter
     const byStatus =
       statusFilter === "ALL"
         ? byForm
         : byForm.filter((r) => r.status === statusFilter);
 
-    // ✅ 2) search
-    const q = search.trim().toLowerCase();
-    const bySearch = q
+    const byClient = searchClient.trim()
       ? byStatus.filter((r) => {
-          const combinedNo = displayReportNo(r).toLowerCase();
+          const q = searchClient.toLowerCase();
           return (
-            combinedNo.includes(q) ||
-            r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q) ||
-            r.formNumber.toLowerCase().includes(q) ||
-            r.formType.toLowerCase().includes(q)
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q)
           );
         })
       : byStatus;
 
-    // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const byReport = searchReport.trim()
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(displayReportNo(r)).toLowerCase().includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byClient;
+
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.toLowerCase();
+          return (
+            String(displayReportNo(r)).toLowerCase().includes(q) ||
+            (r.client || "").toLowerCase().includes(q) ||
+            (r.clientCode || "").toLowerCase().includes(q) ||
+            String(r.status || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formType || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.id || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byReport;
+
+    const byNumberRange =
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+          ? bySearchText.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                formNoFrom,
+                formNoTo,
+              ),
+            )
+          : bySearchText
+        : reportNoFrom.trim() || reportNoTo.trim()
+          ? bySearchText.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.reportNumber).sequence,
+                reportNoFrom,
+                reportNoTo,
+              ),
+            )
+          : bySearchText;
+
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
-    // ✅ 3) sort
-    const sorted = [...byDate].sort((a, b) => {
+    return [...byDate].sort((a, b) => {
       if (sortBy === "reportNumber") {
-        const aK = (a.reportNumber || "").toLowerCase();
-        const bK = (b.reportNumber || "").toLowerCase();
+        const aK = String(a.reportNumber || "").toLowerCase();
+        const bK = String(b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
+
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
-
-    return sorted;
   }, [
     reports,
     formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     fromDate,
@@ -437,7 +663,22 @@ export default function MicroDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [formFilter, statusFilter, search, perPage, datePreset, fromDate, toDate]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
     const role = user?.role as Role | undefined;
@@ -486,37 +727,43 @@ export default function MicroDashboard() {
   }
 
   useEffect(() => {
-    const sp = new URLSearchParams(searchParams); // ✅ keep existing
+    const sp = new URLSearchParams();
 
-    sp.set("form", formFilter);
+    if (formFilter !== "ALL") sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
 
-    if (search.trim()) sp.set("q", search.trim());
-    else sp.delete("q");
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (searchText.trim()) sp.set("q", searchText.trim());
 
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
-
     sp.set("pp", String(perPage));
     sp.set("p", String(pageClamped));
-
     sp.set("dp", datePreset);
+
     if (fromDate) sp.set("from", fromDate);
-    else sp.delete("from");
-
     if (toDate) sp.set("to", toDate);
-    else sp.delete("to");
 
-    // ✅ if you're persisting selection too:
-    // if (selectedIds.length) sp.set("sel", selectedIds.join(","));
-    // else sp.delete("sel");
+    sp.set("rangeType", numberRangeType);
+
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
     setSearchParams(sp, { replace: true });
   }, [
-    searchParams, // ✅ add
     formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     perPage,
@@ -809,7 +1056,14 @@ export default function MicroDashboard() {
     return (
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
-      search.trim() !== "" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
+      searchText.trim() !== "" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
       sortBy !== "dateSent" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
@@ -820,7 +1074,14 @@ export default function MicroDashboard() {
   }, [
     formFilter,
     statusFilter,
-    search,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     sortBy,
     sortDir,
     perPage,
@@ -830,16 +1091,32 @@ export default function MicroDashboard() {
   ]);
 
   const clearAllFilters = () => {
-    setFormFilter("ALL");
-    setStatusFilter("ALL");
-    setSearch("");
-    setSortBy("dateSent");
-    setSortDir("desc");
-    setPerPage(10);
-    setDatePreset("ALL");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
+    setFormFilter(DEFAULT_MICRO_FILTERS.formFilter);
+    setStatusFilter(DEFAULT_MICRO_FILTERS.statusFilter);
+    setSearchClient(DEFAULT_MICRO_FILTERS.searchClient);
+    setSearchReport(DEFAULT_MICRO_FILTERS.searchReport);
+    setSearchText(DEFAULT_MICRO_FILTERS.searchText);
+    setNumberRangeType(DEFAULT_MICRO_FILTERS.numberRangeType);
+    setFormNoFrom(DEFAULT_MICRO_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_MICRO_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_MICRO_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_MICRO_FILTERS.reportNoTo);
+    setSortBy(DEFAULT_MICRO_FILTERS.sortBy);
+    setSortDir(DEFAULT_MICRO_FILTERS.sortDir);
+    setPerPage(DEFAULT_MICRO_FILTERS.perPage);
+    setPage(DEFAULT_MICRO_FILTERS.page);
+    setDatePreset(DEFAULT_MICRO_FILTERS.datePreset);
+    setFromDate(DEFAULT_MICRO_FILTERS.fromDate);
+    setToDate(DEFAULT_MICRO_FILTERS.toDate);
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify(DEFAULT_MICRO_FILTERS),
+      );
+    } catch {
+      // ignore
+    }
   };
 
   // useEffect(() => {
@@ -849,12 +1126,12 @@ export default function MicroDashboard() {
   useLiveReportStatus(setReports);
 
   useEffect(() => {
-    // URL -> State (handles back/forward and external param changes)
-
     const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
     const nextStatus = searchParams.get("status") || "ALL";
-
+    const nextClient = searchParams.get("client") || "";
+    const nextReport = searchParams.get("report") || "";
     const nextQ = searchParams.get("q") || "";
+
     const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
       | "dateSent"
       | "reportNumber";
@@ -869,20 +1146,35 @@ export default function MicroDashboard() {
     const nextFrom = searchParams.get("from") || "";
     const nextTo = searchParams.get("to") || "";
 
-    // Only update if changed (prevents loops)
+    const nextRangeType =
+      (searchParams.get("rangeType") as "FORM" | "REPORT") || "FORM";
+
+    const nextFormFrom = searchParams.get("formFrom") || "";
+    const nextFormTo = searchParams.get("formTo") || "";
+    const nextReportFrom = searchParams.get("reportFrom") || "";
+    const nextReportTo = searchParams.get("reportTo") || "";
+
     if (nextForm !== formFilter) setFormFilter(nextForm);
     if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
-    if (nextQ !== search) setSearch(nextQ);
+    if (nextClient !== searchClient) setSearchClient(nextClient);
+    if (nextReport !== searchReport) setSearchReport(nextReport);
+    if (nextQ !== searchText) setSearchText(nextQ);
+
     if (nextSortBy !== sortBy) setSortBy(nextSortBy);
     if (nextSortDir !== sortDir) setSortDir(nextSortDir);
-
     if (nextPp !== perPage) setPerPage(nextPp);
     if (nextP !== page) setPage(nextP);
 
     if (nextDp !== datePreset) setDatePreset(nextDp);
     if (nextFrom !== fromDate) setFromDate(nextFrom);
     if (nextTo !== toDate) setToDate(nextTo);
-  }, [searchParams]); // ✅ important
+
+    if (nextRangeType !== numberRangeType) setNumberRangeType(nextRangeType);
+    if (nextFormFrom !== formNoFrom) setFormNoFrom(nextFormFrom);
+    if (nextFormTo !== formNoTo) setFormNoTo(nextFormTo);
+    if (nextReportFrom !== reportNoFrom) setReportNoFrom(nextReportFrom);
+    if (nextReportTo !== reportNoTo) setReportNoTo(nextReportTo);
+  }, [searchParams]);
 
   async function applyBulkStatusChange(toStatus: string) {
     setBulkUpdating(true);
@@ -932,6 +1224,74 @@ export default function MicroDashboard() {
   }
 
   const ENABLE_BULK_STATUS = false;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          sortBy,
+          sortDir,
+          perPage,
+          page,
+          datePreset,
+          fromDate,
+          toDate,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    page,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    datePreset,
+    fromDate,
+    toDate,
+    perPage,
+    pageClamped,
+  ]);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1166,13 +1526,14 @@ export default function MicroDashboard() {
 
       {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        {/* Status chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {statusOptions.map((s) => (
             <button
               key={String(s)}
               onClick={() => setStatusFilter(String(s))}
               className={classNames(
-                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition",
                 statusFilter === String(s)
                   ? "bg-blue-600 text-white ring-blue-600"
                   : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
@@ -1183,46 +1544,54 @@ export default function MicroDashboard() {
           ))}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
+        {/* Row 1: Search Client | Sort | Rows */}
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="relative lg:col-span-5">
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search report #, client, or status…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search client, client code, form #, report #, status..."
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
-            {search && (
+            {searchText && (
               <button
                 type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+                onClick={() => setSearchText("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:col-span-4">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) =>
+                setSortBy(e.target.value as "dateSent" | "reportNumber")
+              }
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              <option value="dateSent">Date Sent</option>
-              <option value="reportNumber">Report #</option>
+              <option value="dateSent">Sort: Date Sent</option>
+              <option value="reportNumber">Sort: Report #</option>
             </select>
+
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <label htmlFor="perPage" className="text-sm text-slate-600">
-              Rows:
+          <div className="flex items-center gap-2 lg:col-span-3 lg:justify-end">
+            <label
+              htmlFor="perPage"
+              className="text-sm text-slate-600 whitespace-nowrap"
+            >
+              Rows
             </label>
             <select
               id="perPage"
@@ -1238,13 +1607,14 @@ export default function MicroDashboard() {
             </select>
           </div>
         </div>
-        {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+
+        {/* Row 2: Date preset | From | To | Forms/Reports | From | To */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-2">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-40 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1259,8 +1629,7 @@ export default function MicroDashboard() {
             </select>
           </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={fromDate}
@@ -1274,6 +1643,9 @@ export default function MicroDashboard() {
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+          </div>
+
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={toDate}
@@ -1289,22 +1661,62 @@ export default function MicroDashboard() {
             />
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              disabled={!hasActiveFilters}
-              className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                hasActiveFilters
-                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}
-              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          <div className="lg:col-span-2">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              ✕ Clear
-            </button>
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
           </div>
+
+          <div className="lg:col-span-2">
+            <input
+              type="number"
+              placeholder="From"
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
+                else setReportNoFrom(e.target.value);
+              }}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="lg:col-span-2">
+            <input
+              type="number"
+              placeholder="To"
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoTo(e.target.value);
+                else setReportNoTo(e.target.value);
+              }}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Clear */}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 
@@ -1501,11 +1913,11 @@ export default function MicroDashboard() {
                     <span className="font-medium">
                       {niceStatus(String(statusFilter))}
                     </span>
-                    {search ? (
+                    {searchText ? (
                       <>
                         {" "}
-                        matching <span className="font-medium">“{search}”</span>
-                        .
+                        matching{" "}
+                        <span className="font-medium">“{searchText}”</span>.
                       </>
                     ) : (
                       "."
@@ -1528,7 +1940,7 @@ export default function MicroDashboard() {
             <div className="flex items-center gap-2">
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -1538,7 +1950,9 @@ export default function MicroDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next
