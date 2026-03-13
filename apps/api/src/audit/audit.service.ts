@@ -30,20 +30,27 @@ type ListPagedFilters = ListFilters & {
   pageSize: number;
 };
 
+
 @Injectable()
 export class AuditService {
   constructor(private prisma: PrismaService) {}
 
-  listForEntity(entity: string, entityId: string) {
+  listForEntity(entity: string, entityId: string, clientCode?: string) {
+    const where: Prisma.AuditTrailWhereInput = { entity, entityId };
+
+    if (clientCode) {
+      where.clientCode = clientCode;
+    }
+
     return this.prisma.auditTrail.findMany({
-      where: { entity, entityId },
+      where,
       orderBy: { createdAt: 'asc' },
       include: { user: auditUserSelect },
     });
   }
 
-  async exportCSV(entity: string, entityId: string) {
-    const rows = await this.listForEntity(entity, entityId);
+  async exportCSV(entity: string, entityId: string, clientCode?: string) {
+    const rows = await this.listForEntity(entity, entityId, clientCode);
     return this.rowsToCsv(rows);
   }
 
@@ -75,10 +82,12 @@ export class AuditService {
     if (userId) where.userId = { contains: userId, mode: 'insensitive' };
     if (action) where.action = action;
     if (role) where.role = role;
-    if (clientCode)
-      where.clientCode = { contains: clientCode, mode: 'insensitive' };
 
-    // ✅ direct search in audit table
+    // exact match only
+    if (clientCode) {
+      where.clientCode = clientCode;
+    }
+
     if (formNumber) {
       where.formNumber = { contains: formNumber, mode: 'insensitive' };
     }
@@ -119,11 +128,10 @@ export class AuditService {
     }
     if (filters.action) where.action = filters.action;
     if (filters.role) where.role = filters.role;
+
+    // exact match only
     if (filters.clientCode) {
-      where.clientCode = {
-        contains: filters.clientCode,
-        mode: 'insensitive',
-      };
+      where.clientCode = filters.clientCode;
     }
 
     if (filters.formNumber) {

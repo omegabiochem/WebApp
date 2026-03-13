@@ -311,6 +311,7 @@ function formatAuditTime(iso: string) {
 
 const DEFAULT_AUDIT_FILTERS = {
   filterEntity: "",
+  filterUserId: "",
   filterEntityId: "",
   filterAction: "",
   filterFormNumber: "",
@@ -335,6 +336,7 @@ function getInitialAuditFilters(
 ) {
   try {
     const spEntity = searchParams.get("entity");
+    const spUserId = searchParams.get("userId");
     const spEntityId = searchParams.get("entityId");
     const spAction = searchParams.get("action");
     const spFormNumber = searchParams.get("formNumber");
@@ -347,6 +349,7 @@ function getInitialAuditFilters(
 
     const hasUrlFilters =
       spEntity ||
+      spUserId ||
       spEntityId ||
       spAction ||
       spFormNumber ||
@@ -360,6 +363,7 @@ function getInitialAuditFilters(
     if (hasUrlFilters) {
       return {
         filterEntity: spEntity || DEFAULT_AUDIT_FILTERS.filterEntity,
+        filterUserId: spUserId || DEFAULT_AUDIT_FILTERS.filterUserId,
         filterEntityId: spEntityId || DEFAULT_AUDIT_FILTERS.filterEntityId,
         filterAction: spAction || DEFAULT_AUDIT_FILTERS.filterAction,
         filterFormNumber:
@@ -407,6 +411,7 @@ export default function ClientAuditTrailPage() {
   );
 
   const [filterEntity, setFilterEntity] = useState(initialFilters.filterEntity);
+  const [filterUserId, setFilterUserId] = useState(initialFilters.filterUserId);
   const [filterEntityId, setFilterEntityId] = useState(
     initialFilters.filterEntityId,
   );
@@ -431,6 +436,7 @@ export default function ClientAuditTrailPage() {
     setPage(1);
   }, [
     filterEntity,
+    filterUserId,
     filterEntityId,
     filterAction,
     filterFormNumber,
@@ -509,10 +515,11 @@ export default function ClientAuditTrailPage() {
   useEffect(() => {
     const sp = new URLSearchParams();
 
-    sp.set("role", "CLIENT");
-    if (user?.userId) sp.set("userId", user.userId);
+    // sp.set("role", "CLIENT");
+    // if (user?.userId) sp.set("userId", user.userId);
 
     if (filterEntity) sp.set("entity", filterEntity);
+    if (filterUserId) sp.set("userId", filterUserId);
     if (filterEntityId) sp.set("entityId", filterEntityId);
     if (filterAction) sp.set("action", filterAction);
     if (filterFormNumber) sp.set("formNumber", filterFormNumber);
@@ -534,8 +541,8 @@ export default function ClientAuditTrailPage() {
 
     setSearchParams(sp, { replace: true });
   }, [
-    user?.userId,
     filterEntity,
+    filterUserId,
     filterEntityId,
     filterAction,
     filterFormNumber,
@@ -547,13 +554,13 @@ export default function ClientAuditTrailPage() {
     pageSize,
     setSearchParams,
   ]);
-
   useEffect(() => {
     try {
       localStorage.setItem(
         FILTER_STORAGE_KEY,
         JSON.stringify({
           filterEntity,
+          filterUserId,
           filterEntityId,
           filterAction,
           filterFormNumber,
@@ -571,6 +578,7 @@ export default function ClientAuditTrailPage() {
   }, [
     FILTER_STORAGE_KEY,
     filterEntity,
+    filterUserId,
     filterEntityId,
     filterAction,
     filterFormNumber,
@@ -585,6 +593,8 @@ export default function ClientAuditTrailPage() {
   useEffect(() => {
     const nextEntity =
       searchParams.get("entity") || DEFAULT_AUDIT_FILTERS.filterEntity;
+    const nextUserId =
+      searchParams.get("userId") || DEFAULT_AUDIT_FILTERS.filterUserId;
     const nextEntityId =
       searchParams.get("entityId") || DEFAULT_AUDIT_FILTERS.filterEntityId;
     const nextAction =
@@ -605,6 +615,7 @@ export default function ClientAuditTrailPage() {
     const nextPageSize = parsePageSize(searchParams.get("pageSize"));
 
     if (nextEntity !== filterEntity) setFilterEntity(nextEntity);
+    if (nextUserId !== filterUserId) setFilterUserId(nextUserId);
     if (nextEntityId !== filterEntityId) setFilterEntityId(nextEntityId);
     if (nextAction !== filterAction) setFilterAction(nextAction);
     if (nextFormNumber !== filterFormNumber)
@@ -636,6 +647,7 @@ export default function ClientAuditTrailPage() {
   const hasActiveFilters = useMemo(() => {
     return (
       filterEntity !== DEFAULT_AUDIT_FILTERS.filterEntity ||
+      filterUserId !== DEFAULT_AUDIT_FILTERS.filterUserId ||
       filterEntityId !== DEFAULT_AUDIT_FILTERS.filterEntityId ||
       filterAction !== DEFAULT_AUDIT_FILTERS.filterAction ||
       filterFormNumber !== DEFAULT_AUDIT_FILTERS.filterFormNumber ||
@@ -647,6 +659,7 @@ export default function ClientAuditTrailPage() {
     );
   }, [
     filterEntity,
+    filterUserId,
     filterEntityId,
     filterAction,
     filterFormNumber,
@@ -659,6 +672,7 @@ export default function ClientAuditTrailPage() {
 
   const clearAllFilters = () => {
     setFilterEntity(DEFAULT_AUDIT_FILTERS.filterEntity);
+    setFilterUserId(DEFAULT_AUDIT_FILTERS.filterUserId);
     setFilterEntityId(DEFAULT_AUDIT_FILTERS.filterEntityId);
     setFilterAction(DEFAULT_AUDIT_FILTERS.filterAction);
     setFilterFormNumber(DEFAULT_AUDIT_FILTERS.filterFormNumber);
@@ -702,7 +716,7 @@ export default function ClientAuditTrailPage() {
           to: dateTo || null,
           order: sortOrder,
           role: "CLIENT",
-          userId: user?.userId || null,
+          userId: filterUserId || null,
         },
       },
     });
@@ -713,8 +727,7 @@ export default function ClientAuditTrailPage() {
     }
 
     const params = new URLSearchParams();
-    params.append("role", "CLIENT");
-    if (user?.userId) params.append("userId", user.userId);
+    // params.append("role", "CLIENT");
 
     if (filterEntity) params.append("entity", filterEntity);
     if (filterEntityId) params.append("entityId", filterEntityId);
@@ -827,6 +840,19 @@ export default function ClientAuditTrailPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="lg:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              User ID
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. usr_..."
+              value={filterUserId}
+              onChange={(e) => setFilterUserId(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           <div className="lg:col-span-3">
@@ -976,7 +1002,9 @@ export default function ClientAuditTrailPage() {
                     {formatAuditTime(r.createdAt)}
                   </td>
 
-                  <td className="p-3 whitespace-nowrap">{safeText(r.entity)}</td>
+                  <td className="p-3 whitespace-nowrap">
+                    {safeText(r.entity)}
+                  </td>
 
                   <td className="p-3 whitespace-nowrap text-xs">
                     <div className="font-semibold text-gray-900">
