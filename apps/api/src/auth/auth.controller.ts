@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Public } from 'src/common/public.decorator';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import type { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -81,8 +82,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    const { sub, role, uid, jti } = req.user ?? {};
-    return this.auth.logout(req, { id: sub, role, userId: uid }, jti, res);
+    const { sub, role, uid, jti, clientCode } = req.user ?? {};
+    return this.auth.logout(
+      req,
+      { id: sub, role, userId: uid, clientCode },
+      jti,
+      res,
+    );
   }
 
   @Post('m2m/token')

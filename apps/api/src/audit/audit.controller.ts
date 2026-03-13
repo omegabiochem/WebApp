@@ -20,43 +20,49 @@ export class AuditController {
     @Query('action') action?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
-
     @Query('role') role?: UserRole,
     @Query('formNumber') formNumber?: string,
     @Query('reportNumber') reportNumber?: string,
     @Query('clientCode') clientCode?: string,
-
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
     @Query('order') order: 'asc' | 'desc' = 'desc',
   ) {
     const ctx = getRequestContext() || {};
     const requesterRole = (ctx as any).role as UserRole | undefined;
+    const requesterClientCode = (ctx as any).clientCode as string | undefined;
 
-    const effectiveRole = requesterRole === 'CLIENT' ? 'CLIENT' : role;
+    const isClient = requesterRole === UserRole.CLIENT;
 
     return this.audit.listAllPaged({
       entity,
       entityId,
-      userId,
+      userId: isClient ? undefined : userId,
       action,
       from,
       to,
-      role: effectiveRole,
+      role: isClient ? undefined : role,
       page: Number(page),
       pageSize: Number(pageSize),
       order,
       formNumber,
       reportNumber,
-      clientCode,
+      clientCode: isClient ? requesterClientCode : clientCode,
     });
   }
 
-  @Get(':entity/:id')
-  async list(@Param('entity') entity: string, @Param('id') id: string) {
-    return this.audit.listForEntity(entity, id);
-  }
+@Get(':entity/:id')
+async list(@Param('entity') entity: string, @Param('id') id: string) {
+  const ctx = getRequestContext() || {};
+  const requesterRole = (ctx as any).role as UserRole | undefined;
+  const requesterClientCode = (ctx as any).clientCode as string | undefined;
 
+  return this.audit.listForEntity(
+    entity,
+    id,
+    requesterRole === UserRole.CLIENT ? requesterClientCode : undefined,
+  );
+}
   @Get('export.csv')
   async exportAllCSV(
     @Res() res: Response,
@@ -67,7 +73,6 @@ export class AuditController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('order') order: 'asc' | 'desc' = 'desc',
-
     @Query('role') role?: UserRole,
     @Query('formNumber') formNumber?: string,
     @Query('reportNumber') reportNumber?: string,
@@ -75,20 +80,22 @@ export class AuditController {
   ) {
     const ctx = getRequestContext() || {};
     const requesterRole = (ctx as any).role as UserRole | undefined;
-    const effectiveRole = requesterRole === 'CLIENT' ? 'CLIENT' : role;
+    const requesterClientCode = (ctx as any).clientCode as string | undefined;
+
+    const isClient = requesterRole === UserRole.CLIENT;
 
     const csv = await this.audit.exportAllCSV({
       entity,
       entityId,
-      userId,
+      userId: isClient ? undefined : userId,
       action,
       from,
       to,
       order,
-      role: effectiveRole,
+     role: isClient ? undefined : role,
       formNumber,
       reportNumber,
-      clientCode,
+      clientCode: isClient ? requesterClientCode : clientCode,
     });
 
     res.setHeader('Content-Type', 'text/csv');
@@ -99,20 +106,29 @@ export class AuditController {
     res.send(csv);
   }
 
-  @Get(':entity/:id/export.csv')
-  async exportCSV(
-    @Param('entity') entity: string,
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
-    const csv = await this.audit.exportCSV(entity, id);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="audit_${entity}_${id}.csv"`,
-    );
-    res.send(csv);
-  }
+ @Get(':entity/:id/export.csv')
+async exportCSV(
+  @Param('entity') entity: string,
+  @Param('id') id: string,
+  @Res() res: Response,
+) {
+  const ctx = getRequestContext() || {};
+  const requesterRole = (ctx as any).role as UserRole | undefined;
+  const requesterClientCode = (ctx as any).clientCode as string | undefined;
+
+  const csv = await this.audit.exportCSV(
+    entity,
+    id,
+    requesterRole === UserRole.CLIENT ? requesterClientCode : undefined,
+  );
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="audit_${entity}_${id}.csv"`,
+  );
+  res.send(csv);
+}
 
   @Post('ui')
   async logUi(@Body() body: any) {
@@ -127,7 +143,15 @@ export class AuditController {
 
     const formNumber = body?.formNumber ? String(body.formNumber) : null;
     const reportNumber = body?.reportNumber ? String(body.reportNumber) : null;
-    const clientCode = body?.clientCode ? String(body.clientCode) : null;
+    const requesterRole = (ctx as any).role as UserRole | undefined;
+    const requesterClientCode = (ctx as any).clientCode as string | undefined;
+
+    const clientCode =
+      requesterRole === 'CLIENT'
+        ? (requesterClientCode ?? null)
+        : body?.clientCode
+          ? String(body.clientCode)
+          : null;
     const formType = body?.formType
       ? (String(body.formType) as FormType)
       : null;
