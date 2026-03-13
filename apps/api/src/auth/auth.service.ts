@@ -31,6 +31,19 @@ type AuthAction =
   | 'INVITE_ISSUED'
   | 'FIRST_CREDENTIALS_SET';
 
+type SessionContext = {
+  sub: string;
+  role: any;
+  uid?: string | null;
+  clientCode?: string | null;
+  mcp?: boolean;
+  authMode?: 'NORMAL' | 'COMMON';
+  commonAccountId?: string | null;
+  commonAccountUserId?: string | null;
+  actingAsUserId?: string | null;
+  actingAsName?: string | null;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -59,8 +72,9 @@ export class AuthService {
     action: AuthAction;
     userId?: string | null;
     role?: string | null;
+    clientCode?: string | null;
     ip?: string | null;
-    entityId?: string | null; // usually userId or attempted identifier
+    entityId?: string | null;
     details?: string;
     meta?: Record<string, any>;
   }) {
@@ -70,9 +84,10 @@ export class AuthService {
         entity: 'Auth',
         entityId: p.entityId ?? p.userId ?? null,
         details: p.details ?? '',
-        changes: p.meta ?? {}, // stored as JSON
+        changes: p.meta ?? {},
         userId: p.userId ?? null,
         role: (p.role as any) ?? null,
+        clientCode: p.clientCode ?? null,
         ipAddress: p.ip ?? null,
       },
     });
@@ -90,39 +105,59 @@ export class AuthService {
     return String(Math.floor(100000 + Math.random() * 900000));
   }
 
-  private signRefreshToken(userDbId: string) {
+  private signRefreshToken(session: SessionContext) {
     const jti = randomBytes(16).toString('base64url');
+
     const token = this.jwt.sign(
-      { sub: userDbId, typ: 'refresh', jti },
+      {
+        sub: session.sub,
+        typ: 'refresh',
+        jti,
+
+        role: session.role,
+        uid: session.uid ?? null,
+        clientCode: session.clientCode ?? null,
+        mcp: session.mcp ? true : undefined,
+
+        authMode: session.authMode ?? 'NORMAL',
+        commonAccountId: session.commonAccountId ?? null,
+        commonAccountUserId: session.commonAccountUserId ?? null,
+        actingAsUserId: session.actingAsUserId ?? null,
+        actingAsName: session.actingAsName ?? null,
+      },
       {
         secret: process.env.REFRESH_TOKEN_SECRET!,
         expiresIn: REFRESH_TOKEN_TTL,
       },
     );
+
     return { token, jti };
   }
 
   private cookieOpts() {
-    const isHttps = (process.env.COOKIE_SECURE ?? 'true') === 'true'; // set in Fly
-    const domain = process.env.COOKIE_DOMAIN || '.omegabiochemlab.com';
+    const isProd = (process.env.NODE_ENV ?? '').trim() === 'production';
+    const secure = this.envBool('COOKIE_SECURE', isProd);
+    const rawDomain = (process.env.COOKIE_DOMAIN ?? '').trim();
+    const domain = rawDomain || undefined;
 
     return {
       httpOnly: true,
-      secure: isHttps,
-      sameSite: 'none' as const,
-      domain,
+      secure,
+      sameSite: secure ? ('none' as const) : ('lax' as const),
+      ...(domain ? { domain } : {}),
       path: '/auth/refresh',
     };
   }
-
   private setRefreshCookie(res: any, token: string, expAt: Date) {
-    res.cookie('omega_rt', token, { ...this.cookieOpts(), expires: expAt });
+    res.cookie(REFRESH_COOKIE_NAME, token, {
+      ...this.cookieOpts(),
+      expires: expAt,
+    });
   }
 
   private clearRefreshCookie(res: any) {
-    res.clearCookie('omega_rt', this.cookieOpts());
+    res.clearCookie(REFRESH_COOKIE_NAME, this.cookieOpts());
   }
-
   // private setRefreshCookie(res: any, token: string, expAt: Date) {
   //   const isProd = process.env.NODE_ENV === 'production';
 
@@ -148,15 +183,15 @@ export class AuthService {
   //   });
   // }
 
-  private async issueRefreshForUser(userDbId: string, res: any) {
-    const { token, jti } = this.signRefreshToken(userDbId);
+  private async issueRefreshForUser(session: SessionContext, res: any) {
+    const { token, jti } = this.signRefreshToken(session);
     const decoded: any = this.jwt.decode(token);
     const expAt = new Date(decoded.exp * 1000);
 
     const hash = await bcrypt.hash(jti, 12);
 
     await this.prisma.user.update({
-      where: { id: userDbId },
+      where: { id: session.sub },
       data: {
         refreshTokenHash: hash,
         refreshTokenExpAt: expAt,
@@ -439,6 +474,7 @@ export class AuthService {
         action: 'LOGIN_FAILED',
         userId: null,
         role: null,
+        clientCode: null,
         ip,
         entityId: userId,
         details: 'Invalid common account credentials',
@@ -481,6 +517,7 @@ export class AuthService {
         action: 'LOGIN_FAILED',
         userId: null,
         role: null,
+        clientCode: null,
         ip,
         entityId: common.userId,
         details: shouldLock
@@ -579,6 +616,7 @@ export class AuthService {
         email: true,
         role: true,
         mustChangePassword: true,
+        clientCode: true,
         inviteToken: true,
       },
     });
@@ -587,6 +625,7 @@ export class AuthService {
       action: 'INVITE_ISSUED',
       userId: user.id,
       role: user.role as any,
+      clientCode: user.clientCode ?? null,
       entityId: user.email,
       details: 'Admin invite issued',
     });
@@ -659,13 +698,20 @@ export class AuthService {
         lockedUntil: null,
         lastFailedLoginAt: null,
       } as any,
-      select: { id: true, email: true, userId: true, role: true },
+      select: {
+        id: true,
+        email: true,
+        userId: true,
+        role: true,
+        clientCode: true,
+      },
     });
 
     await this.logAuthEvent({
       action: 'FIRST_CREDENTIALS_SET',
       userId: updated.id,
       role: updated.role as any,
+      clientCode: updated.clientCode ?? null,
       entityId: updated.userId ?? updated.email,
       details: 'User set initial credentials',
     });
@@ -717,6 +763,7 @@ export class AuthService {
         action: 'LOGIN_FAILED',
         userId: null,
         role: null,
+        clientCode: null,
         ip,
         entityId: userId,
         details: 'Invalid credentials (user missing or inactive)',
@@ -735,6 +782,7 @@ export class AuthService {
         action: 'LOGIN_FAILED',
         userId: user.id,
         role: user.role as any,
+        clientCode: user.clientCode ?? null,
         ip,
         entityId: user.userId ?? user.email,
         details: 'Account locked',
@@ -772,6 +820,7 @@ export class AuthService {
         action: 'LOGIN_FAILED',
         userId: user.id,
         role: user.role as any,
+        clientCode: user.clientCode ?? null,
         ip,
         entityId: user.userId ?? user.email,
         details: shouldLock ? 'Bad password; account locked' : 'Bad password',
@@ -798,6 +847,7 @@ export class AuthService {
           action: 'LOGIN_FAILED',
           userId: user.id,
           role: user.role as any,
+          clientCode: user.clientCode ?? null,
           ip,
           entityId: user.userId ?? user.email,
           details: 'Temporary password expired',
@@ -924,14 +974,24 @@ export class AuthService {
       action: 'LOGIN',
       userId: user.id,
       role: user.role as any,
+      clientCode: user.clientCode ?? null,
       ip,
       entityId: user.userId ?? user.email,
       details: 'User login successful',
       meta: { userAgent: ua },
     });
-
     if (res) {
-      await this.issueRefreshForUser(user.id, res);
+      await this.issueRefreshForUser(
+        {
+          sub: user.id,
+          role: user.role,
+          uid: user.userId ?? null,
+          clientCode: user.clientCode ?? null,
+          mcp: false,
+          authMode: 'NORMAL',
+        },
+        res,
+      );
     }
 
     return {
@@ -1001,6 +1061,7 @@ export class AuthService {
         userId: true,
         email: true,
         role: true,
+        clientCode: true,
         name: true,
         active: true,
         twoFactorEnabled: true,
@@ -1065,6 +1126,7 @@ export class AuthService {
       action: 'LOGIN_FAILED', // or create a new action like 'OTP_RESENT'
       userId: user.id,
       role: user.role as any,
+      clientCode: user.clientCode ?? null,
       ip: this.getIp(req),
       entityId: user.userId ?? user.email,
       details: '2FA OTP resent',
@@ -1079,7 +1141,12 @@ export class AuthService {
   // ---------------------------
   async logout(
     req: any,
-    user: { id: string; role?: string | null; userId?: string | null },
+    user: {
+      id: string;
+      role?: string | null;
+      userId?: string | null;
+      clientCode?: string | null;
+    },
     jti?: string | null,
     res?: any,
   ) {
@@ -1090,6 +1157,7 @@ export class AuthService {
       action: 'LOGOUT',
       userId: user.id,
       role: (user.role as any) ?? null,
+      clientCode: user.clientCode ?? null,
       ip,
       entityId: user.userId ?? user.id,
       details: 'User logged out',
@@ -1160,6 +1228,7 @@ export class AuthService {
       action: 'PASSWORD_CHANGE',
       userId: user.id,
       role: (user.role as any) ?? null,
+      clientCode: user.clientCode ?? null,
       ip: this.getIp(req),
       entityId: user.userId ?? user.email ?? user.id,
       details: 'Password changed',
@@ -1184,7 +1253,14 @@ export class AuthService {
       clientCode: user.clientCode ?? null,
     };
 
-    const accessToken = this.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+    const accessToken = this.signAccessTokenForSession({
+      sub: user.id,
+      role: user.role,
+      uid: user.userId ?? null,
+      clientCode: user.clientCode ?? null,
+      mcp: false,
+      authMode: 'NORMAL',
+    });
 
     return {
       accessToken,
@@ -1376,12 +1452,20 @@ export class AuthService {
       uid: user.userId ?? null,
       clientCode: user.clientCode ?? null,
     };
-    const accessToken = this.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL });
+    const accessToken = this.signAccessTokenForSession({
+      sub: user.id,
+      role: user.role,
+      uid: user.userId ?? null,
+      clientCode: user.clientCode ?? null,
+      mcp: user.mustChangePassword,
+      authMode: 'NORMAL',
+    });
 
     await this.logAuthEvent({
       action: 'LOGIN',
       userId: user.id,
       role: user.role as any,
+      clientCode: user.clientCode ?? null,
       ip: this.getIp(req),
       entityId: user.userId ?? user.email,
       details: 'User login successful (2FA)',
@@ -1389,7 +1473,17 @@ export class AuthService {
     });
 
     if (res) {
-      await this.issueRefreshForUser(user.id, res);
+      await this.issueRefreshForUser(
+        {
+          sub: user.id,
+          role: user.role,
+          uid: user.userId ?? null,
+          clientCode: user.clientCode ?? null,
+          mcp: user.mustChangePassword,
+          authMode: 'NORMAL',
+        },
+        res,
+      );
     }
 
     return {
@@ -1406,7 +1500,7 @@ export class AuthService {
   }
 
   async refresh(req: any, res: any) {
-    const token = req.cookies?.omega_rt as string | undefined;
+    const token = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
     if (!token) throw new UnauthorizedException({ code: 'NO_REFRESH' });
 
     let payload: any;
@@ -1465,30 +1559,39 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'REFRESH_REUSED' });
     }
 
-    // ✅ rotate refresh
-    await this.issueRefreshForUser(user.id, res);
-
-    const accessPayload = {
+    const session: SessionContext = {
       sub: user.id,
-      role: user.role,
-      uid: user.userId ?? null,
-      clientCode: user.clientCode ?? null,
-      mcp: user.mustChangePassword ? true : undefined,
+      role: payload.role ?? user.role,
+      uid: payload.uid ?? user.userId ?? null,
+      clientCode: payload.clientCode ?? user.clientCode ?? null,
+      mcp: user.mustChangePassword ? true : false,
+
+      authMode: payload.authMode === 'COMMON' ? 'COMMON' : 'NORMAL',
+      commonAccountId: payload.commonAccountId ?? null,
+      commonAccountUserId: payload.commonAccountUserId ?? null,
+      actingAsUserId: payload.actingAsUserId ?? null,
+      actingAsName: payload.actingAsName ?? null,
     };
 
-    const accessToken = this.jwt.sign(accessPayload, {
-      expiresIn: ACCESS_TOKEN_TTL,
-    });
+    // rotate refresh using same session context
+    await this.issueRefreshForUser(session, res);
+
+    const accessToken = this.signAccessTokenForSession(session);
 
     return {
       accessToken,
       user: {
         id: user.id,
         email: user.email,
-        role: user.role,
+        role: session.role,
         name: user.name ?? undefined,
         mustChangePassword: user.mustChangePassword,
-        clientCode: user.clientCode ?? null,
+        clientCode: session.clientCode ?? null,
+        authMode: session.authMode,
+        commonAccountId: session.commonAccountId ?? null,
+        commonAccountUserId: session.commonAccountUserId ?? null,
+        actingAsUserId: session.actingAsUserId ?? null,
+        actingAsName: session.actingAsName ?? undefined,
       },
     };
   }
@@ -1575,6 +1678,7 @@ export class AuthService {
       action: 'LOGIN',
       userId: member.user.id,
       role: role,
+      clientCode: member.user.clientCode ?? null,
       ip: this.getIp(req),
       entityId: member.user.email,
       details: 'Common account selection completed; OTP sent',
@@ -1738,6 +1842,7 @@ export class AuthService {
       action: 'LOGIN',
       userId: selectedUser.id,
       role: challenge.selectedRole as any,
+      clientCode: selectedUser.clientCode ?? null,
       ip: this.getIp(req),
       entityId: selectedUser.userId ?? selectedUser.email,
       details: 'Common account login successful (2FA)',
@@ -1753,7 +1858,21 @@ export class AuthService {
     });
 
     if (res) {
-      await this.issueRefreshForUser(selectedUser.id, res);
+      await this.issueRefreshForUser(
+        {
+          sub: selectedUser.id,
+          role: challenge.selectedRole,
+          uid: selectedUser.userId ?? null,
+          clientCode: selectedUser.clientCode ?? null,
+          mcp: selectedUser.mustChangePassword,
+          authMode: 'COMMON',
+          commonAccountId: challenge.commonAccountId,
+          commonAccountUserId: challenge.commonAccount.userId,
+          actingAsUserId: selectedUser.id,
+          actingAsName: selectedUser.name ?? null,
+        },
+        res,
+      );
     }
 
     return {
