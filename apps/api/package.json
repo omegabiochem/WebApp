@@ -19,7 +19,8 @@
     "db:local:create-only": "dotenv -e .env -- npx prisma migrate dev --create-only",
     "db:staging:deploy": "dotenv -e .env.staging -- npx prisma migrate deploy && npx prisma db seed",
     "db:production:deploy": "dotenv -e .env.production -- npx prisma migrate deploy && npx prisma db seed",
-    "start:staging": "dotenv -e .env.staging -- nest start --watch"
+    "start:staging": "dotenv -e .env.staging -- nest start --watch",
+    "backfill:report-number-assigned": "ts-node scripts/backfill-report-number-assigned.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.987.0",

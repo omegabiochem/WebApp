@@ -223,6 +223,19 @@ const DashStyles = () => (
   `}</style>
 );
 
+type SterilityReportFormProps = {
+  report?: any; // same pattern as Micro
+  onClose?: () => void;
+
+  embedded?: boolean;
+  pageMode?: "VIEW" | "UPDATE";
+  hideTopActions?: boolean;
+  hideBottomActions?: boolean;
+  forcePageReadOnly?: boolean;
+  onSaved?: (updated: any) => void;
+  onStatusChanged?: (updated: any) => void;
+};
+
 const HIDE_SAVE_FOR = new Set<SterilityReportStatus>(["APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -252,10 +265,15 @@ function SpinnerDark({ className = "" }: { className?: string }) {
 export default function SterilityReportForm({
   report,
   onClose,
-}: {
-  report?: any;
-  onClose?: () => void;
-}) {
+
+  embedded = false,
+  pageMode = "UPDATE",
+  hideTopActions = false,
+  hideBottomActions = false,
+  forcePageReadOnly = false,
+  onSaved,
+  onStatusChanged,
+}: SterilityReportFormProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
@@ -377,14 +395,15 @@ export default function SterilityReportForm({
     else navigate("/clientDashboard", { replace: true });
   };
 
-  const mode = params.get("mode");
+  const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
-  const isTemplateMode = mode === "template";
 
-  const isTemplateViewMode = mode === "templateView"; // new
+  const isTemplateMode = routeMode === "template";
+  const isTemplateViewMode = routeMode === "templateView";
   const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
 
-  const forceReadOnly = isTemplateViewMode;
+  const forceReadOnly =
+    forcePageReadOnly || isTemplateViewMode || pageMode === "VIEW";
 
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [templateVersion, setTemplateVersion] = useState<number>(0);
@@ -898,6 +917,7 @@ export default function SterilityReportForm({
           );
 
           setIsDirty(false);
+                onSaved?.(saved);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -920,6 +940,7 @@ export default function SterilityReportForm({
   type UpdatedReport = {
     status?: SterilityReportStatus;
     reportNumber?: string;
+    version?: number;
   };
 
   async function handleStatusChange(
@@ -990,9 +1011,15 @@ export default function SterilityReportForm({
         // const updated: { status?: ReportStatus; reportNumber?: string } =
         //   await res.json();
 
-        setStatus(updated.status ?? newStatus);
-        setReportNumber(updated.reportNumber || reportNumber);
+       setStatus(updated.status ?? newStatus);
+        if (updated.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+        setReportVersion((prev) =>
+          typeof updated.version === "number" ? updated.version : prev + 1,
+        );
         setIsDirty(false);
+        onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
         if (returnTo) {
@@ -1045,7 +1072,7 @@ export default function SterilityReportForm({
   }, [isDirty]);
 
   // Block in-app navigation
-  useConfirmOnLeave(isDirty);
+useConfirmOnLeave(!embedded && isDirty);
 
   // // For in-app navigation (react-router)
   // useBeforeUnload(isDirty, (event) => {
@@ -1063,6 +1090,7 @@ export default function SterilityReportForm({
 
   const handleClose = () => {
     if (onClose) return onClose();
+      if (embedded) return;
     if (returnTo)
       return navigate(decodeURIComponent(returnTo), { replace: true });
     if (window.history.length > 1) navigate(-1);
@@ -1177,8 +1205,9 @@ export default function SterilityReportForm({
         )}
 
         {/* Header + print controls */}
+            {!hideTopActions && (
         <div className="no-print mb-4 flex justify-end gap-2">
-          {isAnyTemplateMode && !isTemplateViewMode && (
+          {isTemplateMode && !isTemplateViewMode && (
             <input
               className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
                 !templateName.trim()
@@ -1227,6 +1256,7 @@ export default function SterilityReportForm({
               </button>
             )}
         </div>
+            )}
 
         {/* Letterhead */}
         <div className="mb-2 text-center">
@@ -2216,7 +2246,7 @@ export default function SterilityReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!isAnyTemplateMode && (
+      { !hideBottomActions &&!isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
