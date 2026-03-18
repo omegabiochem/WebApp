@@ -122,7 +122,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA" ) {
+  if (role === "QA") {
     return p === "FINAL";
   }
 
@@ -282,6 +282,19 @@ const DashStyles = () => (
   `}</style>
 );
 
+type MicroReportFormProps = {
+  report?: any; // same pattern as Micro
+  onClose?: () => void;
+
+  embedded?: boolean;
+  pageMode?: "VIEW" | "UPDATE";
+  hideTopActions?: boolean;
+  hideBottomActions?: boolean;
+  forcePageReadOnly?: boolean;
+  onSaved?: (updated: any) => void;
+  onStatusChanged?: (updated: any) => void;
+};
+
 const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -311,10 +324,14 @@ function SpinnerDark({ className = "" }: { className?: string }) {
 export default function MicroMixReportForm({
   report,
   onClose,
-}: {
-  report?: any;
-  onClose?: () => void;
-}) {
+  embedded = false,
+  pageMode = "UPDATE",
+  hideTopActions = false,
+  hideBottomActions = false,
+  forcePageReadOnly = false,
+  onSaved,
+  onStatusChanged,
+}: MicroReportFormProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
@@ -586,14 +603,15 @@ export default function MicroMixReportForm({
     return navigate("/", { replace: true });
   };
 
-  const mode = params.get("mode");
+  const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
-  const isTemplateMode = mode === "template";
 
-  const isTemplateViewMode = mode === "templateView"; // new
+  const isTemplateMode = routeMode === "template";
+  const isTemplateViewMode = routeMode === "templateView";
   const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
 
-  const forceReadOnly = isTemplateViewMode;
+  const forceReadOnly =
+    forcePageReadOnly || isTemplateViewMode || pageMode === "VIEW";
 
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [templateVersion, setTemplateVersion] = useState<number>(0);
@@ -1335,6 +1353,7 @@ export default function MicroMixReportForm({
           );
 
           setIsDirty(false);
+                onSaved?.(saved);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1357,6 +1376,7 @@ export default function MicroMixReportForm({
   type UpdatedReport = {
     status?: ReportStatus;
     reportNumber?: string;
+    version?: number;
   };
 
   async function handleStatusChange(
@@ -1437,9 +1457,17 @@ export default function MicroMixReportForm({
         //   await res.json();
 
         setStatus(updated.status ?? newStatus);
+        if (updated.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+        setReportVersion((prev) =>
+          typeof updated.version === "number" ? updated.version : prev + 1,
+        );
         setReportNumber(updated.reportNumber || reportNumber);
         setIsDirty(false);
+        onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
+        if (embedded) return;
         if (role === "CLIENT") {
           backToDashboard();
         } else if (role === "FRONTDESK") {
@@ -1487,7 +1515,7 @@ export default function MicroMixReportForm({
   }, [isDirty]);
 
   // Block in-app navigation
-  useConfirmOnLeave(isDirty);
+ useConfirmOnLeave(!embedded && isDirty);
 
   // // For in-app navigation (react-router)
   // useBeforeUnload(isDirty, (event) => {
@@ -1505,6 +1533,7 @@ export default function MicroMixReportForm({
 
   const handleClose = () => {
     if (onClose) return onClose();
+      if (embedded) return;
     if (returnTo)
       return navigate(decodeURIComponent(returnTo), { replace: true });
     if (window.history.length > 1) navigate(-1);
@@ -1660,6 +1689,7 @@ export default function MicroMixReportForm({
         <DashStyles />
 
         {/* Header + print controls */}
+         {!hideTopActions && (
         <div className="no-print mb-4 flex justify-end gap-2">
           {isTemplateMode && !isTemplateViewMode && (
             <input
@@ -1710,6 +1740,7 @@ export default function MicroMixReportForm({
               </button>
             )}
         </div>
+         )}
 
         {/* Letterhead */}
         <div className="mb-2 text-center">
@@ -3043,7 +3074,7 @@ export default function MicroMixReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!isAnyTemplateMode && (
+      { !hideBottomActions && !isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
@@ -3225,6 +3256,9 @@ export default function MicroMixReportForm({
                   setCorrections(fresh);
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
+
+                    if (embedded) return;
+                    
                   if (role === "CLIENT") {
                     backToDashboard();
                   } else if (role === "FRONTDESK") {
