@@ -109,6 +109,14 @@ const DashStyles = () => (
 type COAReportFormProps = {
   report?: any; // same pattern as Micro
   onClose?: () => void;
+
+  embedded?: boolean;
+  pageMode?: "VIEW" | "UPDATE";
+  hideTopActions?: boolean;
+  hideBottomActions?: boolean;
+  forcePageReadOnly?: boolean;
+  onSaved?: (updated: any) => void;
+  onStatusChanged?: (updated: any) => void;
 };
 
 const statusButtons: Record<string, { label: string; color: string }> = {
@@ -198,7 +206,17 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-export default function COAReportForm({ report, onClose }: COAReportFormProps) {
+export default function COAReportForm({
+  report,
+  onClose,
+  embedded = false,
+  pageMode = "UPDATE",
+  hideTopActions = false,
+  hideBottomActions = false,
+  forcePageReadOnly = false,
+  onSaved,
+  onStatusChanged,
+}: COAReportFormProps) {
   const { user } = useAuth();
 
   const role = user?.role as Role | undefined;
@@ -225,7 +243,9 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   );
 
   const markDirty = () => !isDirty && setIsDirty(true);
-  useConfirmOnLeave(isDirty);
+
+  
+  useConfirmOnLeave(!embedded && isDirty);
 
   // ---- core report identity ----
   const [reportId, setReportId] = useState<string | null>(report?.id ?? null);
@@ -296,14 +316,15 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
     else navigate("/clientDashboard", { replace: true });
   };
 
-  const mode = params.get("mode");
+  const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
-  const isTemplateMode = mode === "template";
 
-  const isTemplateViewMode = mode === "templateView"; // new
+  const isTemplateMode = routeMode === "template";
+  const isTemplateViewMode = routeMode === "templateView";
   const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
 
-  const forceReadOnly = isTemplateViewMode;
+  const forceReadOnly =
+    forcePageReadOnly || isTemplateViewMode || pageMode === "VIEW";
 
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [templateVersion, setTemplateVersion] = useState<number>(0);
@@ -792,6 +813,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
           );
 
           setIsDirty(false);
+          onSaved?.(saved);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -816,6 +838,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
   type UpdatedReport = {
     status?: COAReportStatus;
     reportNumber?: number | string;
+    version?: number;
   };
 
   async function handleStatusChange(
@@ -887,7 +910,14 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
         );
 
         setStatus(updated.status ?? newStatus);
+        if (updated.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+        setReportVersion((prev) =>
+          typeof updated.version === "number" ? updated.version : prev + 1,
+        );
         setIsDirty(false);
+        onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)
@@ -916,15 +946,28 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
     return "/";
   }, [role]);
 
+  // const handleClose = () => {
+  //   if (onClose) return onClose();
+  //   if (returnTo)
+  //     return navigate(decodeURIComponent(returnTo), { replace: true });
+  //   if (window.history.length > 1) navigate(-1);
+  //   else navigate(fallbackRoute, { replace: true });
+  // };
+
   const handleClose = () => {
-    if (onClose) return onClose();
+    if (onClose) {
+      onClose();
+      return;
+    }
+
+    if (embedded) return;
+
     if (returnTo)
       return navigate(decodeURIComponent(returnTo), { replace: true });
+
     if (window.history.length > 1) navigate(-1);
     else navigate(fallbackRoute, { replace: true });
   };
-
-
 
   const inputClass = (name: keyof typeof errors, extra = "") =>
     `input-editable px-1 py-[2px] text-[12px] leading-snug border ${
@@ -1063,56 +1106,58 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
 
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
         {/* Top buttons */}
-        <div className="no-print mb-4 flex justify-end gap-2">
-          {isTemplateMode && !isTemplateViewMode && (
-            <input
-              className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
-                !templateName.trim()
-                  ? "border-red-500 ring-1 ring-red-500"
-                  : "border-black/30"
-              }`}
-              placeholder="Template name"
-              value={templateName}
-              onChange={(e) => {
-                setTemplateName(e.target.value);
-                markDirty();
-              }}
-            />
-          )}
-          <button
-            type="button"
-            className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
-            onClick={handleClose}
-            disabled={isBusy}
-          >
-            {isBusy ? "Working..." : "Close"}
-          </button>
-
-          {!isTemplateViewMode &&
-            !HIDE_SAVE_FOR.has(status as COAReportStatus) && (
-              <button
-                className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                onClick={handleSave}
-                disabled={
-                  role === "SYSTEMADMIN" ||
-                  role === "FRONTDESK" ||
-                  isBusy ||
-                  status === "UNDER_CLIENT_REVIEW" ||
-                  status === "LOCKED" ||
-                  (isTemplateMode && !templateName.trim())
-                }
-              >
-                {busy === "SAVE" && <Spinner />}
-                {isTemplateMode
-                  ? templateId
-                    ? "Update Template"
-                    : "Save Template"
-                  : reportId
-                    ? "Update Report"
-                    : "Save Report"}
-              </button>
+        {!hideTopActions && (
+          <div className="no-print mb-4 flex justify-end gap-2">
+            {isTemplateMode && !isTemplateViewMode && (
+              <input
+                className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
+                  !templateName.trim()
+                    ? "border-red-500 ring-1 ring-red-500"
+                    : "border-black/30"
+                }`}
+                placeholder="Template name"
+                value={templateName}
+                onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  markDirty();
+                }}
+              />
             )}
-        </div>
+            <button
+              type="button"
+              className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
+              onClick={handleClose}
+              disabled={isBusy}
+            >
+              {isBusy ? "Working..." : "Close"}
+            </button>
+
+            {!isTemplateViewMode &&
+              !HIDE_SAVE_FOR.has(status as COAReportStatus) && (
+                <button
+                  className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={handleSave}
+                  disabled={
+                    role === "SYSTEMADMIN" ||
+                    role === "FRONTDESK" ||
+                    isBusy ||
+                    status === "UNDER_CLIENT_REVIEW" ||
+                    status === "LOCKED" ||
+                    (isTemplateMode && !templateName.trim())
+                  }
+                >
+                  {busy === "SAVE" && <Spinner />}
+                  {isTemplateMode
+                    ? templateId
+                      ? "Update Template"
+                      : "Save Template"
+                    : reportId
+                      ? "Update Report"
+                      : "Save Report"}
+                </button>
+              )}
+          </div>
+        )}
 
         {/* Letterhead – same look as Micro */}
         <div className="mb-2 text-center">
@@ -1867,7 +1912,7 @@ export default function COAReportForm({ report, onClose }: COAReportFormProps) {
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!isAnyTemplateMode && (
+      {!hideBottomActions && !isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
