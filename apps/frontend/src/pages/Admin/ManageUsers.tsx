@@ -1529,7 +1529,7 @@ function NotificationsAllClients() {
             <Search size={16} className="text-slate-400" />
             <input
               className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
-              placeholder="JJL, OME..."
+              placeholder="ABC, OME..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -1831,7 +1831,7 @@ function ReportsAdminTab() {
             <Search size={16} className="text-slate-400" />
             <input
               className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
-              placeholder="OM-2026..., JJL-2026..., clientCode..."
+              placeholder="OM-2026..., ABC-2026..., clientCode..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -1981,7 +1981,7 @@ function ClientsAdminTab() {
             <Search size={16} className="text-slate-400" />
             <input
               className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
-              placeholder="JJL, TEM..."
+              placeholder="ABC, TEM..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
