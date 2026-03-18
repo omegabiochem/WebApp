@@ -114,7 +114,7 @@ export default function ClientNotificationSettings() {
       <div className="flex gap-2 items-center">
         <input
           className="border rounded px-3 py-2 w-64"
-          placeholder="Client code (e.g. JJL)"
+          placeholder="Client code (e.g. ABC)"
           value={clientCode}
           onChange={(e) => setClientCode(e.target.value)}
         />

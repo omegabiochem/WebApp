@@ -946,7 +946,7 @@ export default function AuditTrailPage() {
             </label>
             <input
               type="text"
-              placeholder="e.g. JJL-20260012"
+              placeholder="e.g. ABC-20260012"
               value={filterFormNumber}
               onChange={(e) => setFilterFormNumber(e.target.value)}
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
