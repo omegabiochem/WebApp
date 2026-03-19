@@ -39,6 +39,7 @@ import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 // ---------------------------------
 // Types
@@ -511,59 +512,6 @@ export default function AdminDashboard() {
   );
   const [page, setPage] = useState(initialFilters.page);
 
-  // const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
-  //   initialFilters.statusFilter,
-  // );
-
-  // const FORM_TABS = [
-  //   "ALL",
-  //   "MICRO",
-  //   "MICROWATER",
-  //   "STERILITY",
-  //   "CHEMISTRY",
-  //   "COA",
-  // ] as const;
-  // type FormFilter = (typeof FORM_TABS)[number];
-
-  // // const [formFilter, setFormFilter] = useState<FormFilter>(
-  // //   getEnum(searchParams, "form", FORM_TABS, "ALL"),
-  // // );
-
-  // // const [searchClient, setSearchClient] = useState(
-  // //   getParam(searchParams, "client", ""),
-  // // );
-  // // const [searchReport, setSearchReport] = useState(
-  // //   getParam(searchParams, "report", ""),
-  // // );
-
-  // const DATE_PRESETS = [
-  //   "ALL",
-  //   "TODAY",
-  //   "YESTERDAY",
-  //   "LAST_7_DAYS",
-  //   "LAST_30_DAYS",
-  //   "THIS_MONTH",
-  //   "LAST_MONTH",
-  //   "THIS_YEAR",
-  //   "LAST_YEAR",
-  //   "CUSTOM",
-  // ] as const;
-
-  // const [datePreset, setDatePreset] = useState<DatePreset>(
-  //   getEnum(searchParams, "dp", DATE_PRESETS as any, "ALL"),
-  // );
-
-  // const [dateFrom, setDateFrom] = useState(getParam(searchParams, "from", ""));
-  // const [dateTo, setDateTo] = useState(getParam(searchParams, "to", ""));
-
-  // // paging (clamp pp to allowed)
-  // const allowedPP = [10, 20, 50] as const;
-  // const initPP = getInt(searchParams, "pp", 10);
-  // const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
-  //   (allowedPP as readonly number[]).includes(initPP) ? (initPP as any) : 10,
-  // );
-  // const [page, setPage] = useState(getInt(searchParams, "p", 1));
-
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [changeStatusReport, setChangeStatusReport] = useState<Report | null>(
@@ -619,6 +567,33 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+  const workspaceReports = useMemo(() => {
+    const map = new Map<string, Report>();
+    reports.forEach((r) => map.set(r.id, r));
+
+    return workspaceIds
+      .map((id) => map.get(id))
+      .filter(Boolean)
+      .map((r) => ({
+        ...r!,
+        formNumber: r!.formNumber ?? "",
+        reportNumber:
+          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+      }));
+  }, [workspaceIds, reports]);
+
   type StatusActionModalState = {
     open: boolean;
     action: "VOID_SELECTED" | null;
@@ -636,27 +611,6 @@ export default function AdminDashboard() {
     submitting: false,
     error: null,
   });
-
-  // async function setStatus(
-  //   r: Report,
-  //   nextStatus: string,
-  //   reasonText = "Common Status Change",
-  // ) {
-  //   // ✅ IMPORTANT: your chemistry status endpoint expects NO reason (based on your other dashboards)
-  //   const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-  //   const endpoint = isChem
-  //     ? `/chemistry-reports/${r.id}/status`
-  //     : `/reports/${r.id}/status`;
-
-  //   const body = isChem
-  //     ? { status: nextStatus }
-  //     : { reason: reasonText, status: nextStatus };
-
-  //   await api(endpoint, {
-  //     method: "PATCH",
-  //     body: JSON.stringify(body),
-  //   });
-  // }
 
   async function setStatus(
     r: Report,
@@ -743,60 +697,6 @@ export default function AdminDashboard() {
       setStatusFilter("ALL");
     }
   }, [formFilter, statusFilter]);
-
-  // // Derived rows
-  // const processed = useMemo(() => {
-  //   const byForm =
-  //     formFilter === "ALL"
-  //       ? reports
-  //       : reports.filter((r) => {
-  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-  //           if (formFilter === "MICROWATER")
-  //             return r.formType === "MICRO_MIX_WATER";
-  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
-  //           if (formFilter === "CHEMISTRY")
-  //             return r.formType === "CHEMISTRY_MIX";
-  //           if (formFilter === "COA") return r.formType === "COA";
-  //           return true;
-  //         });
-
-  //   const byStatus =
-  //     statusFilter === "ALL"
-  //       ? byForm
-  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
-
-  //   const byClient = searchClient.trim()
-  //     ? byStatus.filter((r) =>
-  //         r.client.toLowerCase().includes(searchClient.toLowerCase()),
-  //       )
-  //     : byStatus;
-
-  //   const byReport = searchReport.trim()
-  //     ? byClient.filter((r) =>
-  //         String(displayReportNo(r))
-  //           .toLowerCase()
-  //           .includes(searchReport.toLowerCase()),
-  //       )
-  //     : byClient;
-
-  //   const byDate = byReport.filter((r) =>
-  //     matchesDateRange(r.createdAt, dateFrom || undefined, dateTo || undefined),
-  //   );
-
-  //   return [...byDate].sort((a, b) => {
-  //     const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-  //     const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-  //     return bT - aT;
-  //   });
-  // }, [
-  //   reports,
-  //   formFilter,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   dateFrom,
-  //   dateTo,
-  // ]);
 
   const processed = useMemo(() => {
     const byForm =
@@ -1410,6 +1310,66 @@ export default function AdminDashboard() {
     return () => window.removeEventListener("click", close);
   }, []);
 
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, userObj?: any) {
+    if (r.formType === "STERILITY") {
+      return canUpdateThisSterility(r, userObj);
+    }
+
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+      return canUpdateThisChem(r, userObj);
+    }
+
+    return canUpdateThisMicro(r, userObj);
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      toast.error("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1874,10 +1834,10 @@ export default function AdminDashboard() {
 
               {!loading &&
                 pageRows.map((r) => {
+                  const isSterility = r.formType === "STERILITY";
                   const isMicro =
                     r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER" ||
-                    r.formType === "STERILITY";
+                    r.formType === "MICRO_MIX_WATER";
                   const isChemistry =
                     r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
@@ -1934,7 +1894,7 @@ export default function AdminDashboard() {
                                 formType: null,
                                 clientCode: null,
                               });
-                              setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1964,7 +1924,7 @@ export default function AdminDashboard() {
                                     );
                                     toast.success("Report Status Updated");
                                   }
-                                  goToReportEditor(r);
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -1979,7 +1939,7 @@ export default function AdminDashboard() {
                             </button>
                           )}
 
-                          {isMicro && canUpdateThisSterility(r, user) && (
+                          {isSterility && canUpdateThisSterility(r, user) && (
                             <button
                               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                               disabled={rowBusy}
@@ -2000,7 +1960,7 @@ export default function AdminDashboard() {
                                     );
                                     toast.success("Report Status Updated");
                                   }
-                                  goToReportEditor(r);
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -2036,7 +1996,7 @@ export default function AdminDashboard() {
                                     );
                                     toast.success("Report Status Updated");
                                   }
-                                  goToReportEditor(r);
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -2257,7 +2217,7 @@ export default function AdminDashboard() {
                         }
 
                         setSelectedReport(null);
-                        goToReportEditor(r);
+                        openUpdateTarget(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }
@@ -2801,6 +2761,21 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }
