@@ -46,6 +46,7 @@ import {
   canShowCOAUpdateButton,
   COA_STATUS_COLORS,
 } from "../../utils/COAReportFormWorkflow";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 // ----------------------------------
 // Types
@@ -791,6 +792,36 @@ export default function MCDashboard() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+  // -----------------------------
+  // Merge into unified list
+  // -----------------------------
+  const unified: UnifiedRow[] = useMemo(() => {
+    const m = microReports.map((r) => ({ ...r, kind: "MICRO" as const }));
+    const c = chemReports.map((r) => ({ ...r, kind: "CHEMISTRY" as const }));
+    return [...m, ...c];
+  }, [microReports, chemReports]);
+
+  const workspaceReports = useMemo(() => {
+    const map = new Map<string, UnifiedRow>();
+    unified.forEach((r) => map.set(rowKey(r), r));
+
+    return workspaceIds
+      .map((id) => map.get(id))
+      .filter(Boolean) as UnifiedRow[];
+  }, [workspaceIds, unified]);
+
   // -----------------------------
   // Fetch both queues
   // -----------------------------
@@ -896,15 +927,6 @@ export default function MCDashboard() {
       return setRange(from, to);
     }
   }, [datePreset]);
-
-  // -----------------------------
-  // Merge into unified list
-  // -----------------------------
-  const unified: UnifiedRow[] = useMemo(() => {
-    const m = microReports.map((r) => ({ ...r, kind: "MICRO" as const }));
-    const c = chemReports.map((r) => ({ ...r, kind: "CHEMISTRY" as const }));
-    return [...m, ...c];
-  }, [microReports, chemReports]);
 
   // Which status chips to show?
   // const statusOptions = useMemo(() => {
@@ -1417,7 +1439,6 @@ export default function MCDashboard() {
       let nextStatus: string | null = null;
 
       if (isSterility) {
-        // ✅ Sterility uses CHEMISTRY-like statuses
         if (r.status === "SUBMITTED_BY_CLIENT") {
           nextStatus = "UNDER_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to sterility testing");
@@ -1432,7 +1453,6 @@ export default function MCDashboard() {
           await setMicroStatus(r, nextStatus, `Set by ${actor}`);
         }
       } else {
-        // ✅ Micro Mix / Water uses PRELIM + FINAL statuses
         if (r.status === "SUBMITTED_BY_CLIENT") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to prelim testing");
@@ -1459,15 +1479,21 @@ export default function MCDashboard() {
 
       if (nextStatus) {
         setMicroReports((prev) =>
-          prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
+          prev.map((x) =>
+            x.id === r.id
+              ? {
+                  ...x,
+                  status: nextStatus!,
+                  version: (x.version ?? r.version) + 1,
+                }
+              : x,
+          ),
         );
       }
 
-      goToEditor(r);
-      return;
+      return nextStatus;
     }
 
-    // CHEMISTRY
     let nextStatus: string | null = null;
 
     if (r.formType === "COA") {
@@ -1493,7 +1519,6 @@ export default function MCDashboard() {
         );
       }
     } else {
-      // CHEMISTRY_MIX
       if (r.status === "SUBMITTED_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, "Move to testing");
@@ -1511,11 +1536,19 @@ export default function MCDashboard() {
 
     if (nextStatus) {
       setChemReports((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
+        prev.map((x) =>
+          x.id === r.id
+            ? {
+                ...x,
+                status: nextStatus!,
+                version: (x.version ?? r.version) + 1,
+              }
+            : x,
+        ),
       );
     }
 
-    goToEditor(r);
+    return nextStatus;
   }
 
   // Micro Start Final (only when micro & allowed statuses)
@@ -1693,6 +1726,61 @@ export default function MCDashboard() {
   }
 
   const ENABLE_BULK_STATUS = false;
+
+  function getTargetsForAction(clicked: UnifiedRow): UnifiedRow[] {
+    const selected = selectedReportObjects;
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some(
+      (r) => rowKey(r) === rowKey(clicked),
+    );
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function openViewTarget(clicked: UnifiedRow) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => rowKey(r)));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(rowKey(clicked));
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: UnifiedRow) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateUnified(r, user),
+    );
+
+    if (!targets.length) {
+      toast.error("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => rowKey(r)));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(rowKey(clicked));
+    setWorkspaceOpen(true);
+  }
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   // ----------------------------------
   // Render
@@ -2355,7 +2443,7 @@ export default function MCDashboard() {
                                 clientCode: r.client || null,
                               });
 
-                              setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -2379,10 +2467,10 @@ export default function MCDashboard() {
                                           : x,
                                       ),
                                     );
-                                    goToEditor({
+                                    openUpdateTarget({
                                       ...r,
                                       status: res.nextStatus,
-                                    } as any);
+                                    } as UnifiedRow);
                                   }
                                 } catch (e: any) {
                                   toast.error(
@@ -2406,6 +2494,7 @@ export default function MCDashboard() {
                                   setUpdatingKey(key);
                                   try {
                                     await autoAdvanceAndOpen(r, "lab");
+                                    openUpdateTarget(r);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -2525,7 +2614,7 @@ export default function MCDashboard() {
                         formType: selectedReport.formType,
                         status: selectedReport.status,
                       },
-                      formNumber: selectedReport.formNumber,  
+                      formNumber: selectedReport.formNumber,
                       reportNumber: selectedReport.reportNumber,
                       formType: selectedReport.formType,
                       clientCode: selectedReport.client || null,
@@ -2558,7 +2647,10 @@ export default function MCDashboard() {
                                 : x,
                             ),
                           );
-                          goToEditor({ ...(r as any), status: res.nextStatus });
+                          openUpdateTarget({
+                            ...(r as any),
+                            status: res.nextStatus,
+                          });
                         }
                       } catch (e: any) {
                         toast.error(e?.message || "Failed to start final");
@@ -2582,6 +2674,7 @@ export default function MCDashboard() {
                           const r = selectedReport;
                           setSelectedReport(null);
                           await autoAdvanceAndOpen(r, "lab");
+                          openUpdateTarget(r);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");
                         } finally {
@@ -2657,6 +2750,21 @@ export default function MCDashboard() {
           </div>
         </div>
       )}
+
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }

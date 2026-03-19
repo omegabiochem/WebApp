@@ -29,6 +29,7 @@ import {
   STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 // -----------------------------
 // Types
@@ -497,6 +498,23 @@ export default function MicroDashboard() {
 
   const navigate = useNavigate();
 
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+  const workspaceReports = useMemo(() => {
+    return workspaceIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+  }, [workspaceIds, reports]);
+
   // fetch
   useEffect(() => {
     let abort = false;
@@ -918,7 +936,7 @@ export default function MicroDashboard() {
       );
     }
 
-    goToReportEditor(r);
+    return nextStatus;
   }
 
   async function startFinalAndOpen(r: Report) {
@@ -949,7 +967,8 @@ export default function MicroDashboard() {
       prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus } : x)),
     );
 
-    goToReportEditor(r);
+    // goToReportEditor(r);
+    openUpdateTarget(r);
   }
 
   async function startFinal(r: Report) {
@@ -976,7 +995,8 @@ export default function MicroDashboard() {
     );
 
     // open editor
-    goToReportEditor(r);
+    // goToReportEditor(r);
+    openUpdateTarget(r);
   }
 
   // ✅ put this inside MicroDashboard(), before return
@@ -1300,6 +1320,59 @@ export default function MicroDashboard() {
     perPage,
     pageClamped,
   ]);
+
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, user?: any) {
+    return canUpdateThisReportLocal(r, user);
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      toast.error("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1857,7 +1930,8 @@ export default function MicroDashboard() {
                                 clientCode: r.client || null,
                               });
 
-                              setSelectedReport(r);
+                              // setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1895,6 +1969,7 @@ export default function MicroDashboard() {
                                   setUpdatingId(r.id);
                                   try {
                                     await autoAdvanceAndOpen(r, "micro");
+                                    openUpdateTarget(r);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -2054,6 +2129,7 @@ export default function MicroDashboard() {
                           const r = selectedReport;
                           setSelectedReport(null);
                           await autoAdvanceAndOpen(r, "micro");
+                          openUpdateTarget(r);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");
                         } finally {
@@ -2108,6 +2184,20 @@ export default function MicroDashboard() {
           </div>
         </div>
       )}
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }
