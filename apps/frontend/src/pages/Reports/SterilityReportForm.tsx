@@ -917,7 +917,7 @@ export default function SterilityReportForm({
           );
 
           setIsDirty(false);
-                onSaved?.(saved);
+          onSaved?.(saved);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1011,7 +1011,7 @@ export default function SterilityReportForm({
         // const updated: { status?: ReportStatus; reportNumber?: string } =
         //   await res.json();
 
-       setStatus(updated.status ?? newStatus);
+        setStatus(updated.status ?? newStatus);
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
@@ -1072,7 +1072,7 @@ export default function SterilityReportForm({
   }, [isDirty]);
 
   // Block in-app navigation
-useConfirmOnLeave(!embedded && isDirty);
+  useConfirmOnLeave(!embedded && isDirty);
 
   // // For in-app navigation (react-router)
   // useBeforeUnload(isDirty, (event) => {
@@ -1090,7 +1090,7 @@ useConfirmOnLeave(!embedded && isDirty);
 
   const handleClose = () => {
     if (onClose) return onClose();
-      if (embedded) return;
+    if (embedded) return;
     if (returnTo)
       return navigate(decodeURIComponent(returnTo), { replace: true });
     if (window.history.length > 1) navigate(-1);
@@ -1190,6 +1190,64 @@ useConfirmOnLeave(!embedded && isDirty);
   ]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(status as ReportStatus);
 
+  const showAssignReportNumberButton =
+    embedded &&
+    (role === "MICRO" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  async function assignReportNumberAndOpenTesting() {
+    if (!reportId) {
+      alert("⚠️ Please save the report first.");
+      return;
+    }
+
+    return runBusy("STATUS", async () => {
+      try {
+        const updated = await api<any>(`/reports/${reportId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "UNDER_TESTING_REVIEW",
+            reason: "Assign report number / start prelim testing",
+            expectedVersion: reportVersion,
+          }),
+        });
+
+        const nextStatus =
+          (updated?.status as SterilityReportStatus) || "UNDER_TESTING_REVIEW";
+
+        const nextVersion =
+          typeof updated?.version === "number"
+            ? updated.version
+            : reportVersion + 1;
+
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
+        if (updated?.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+
+        onStatusChanged?.(updated);
+        alert("✅ Report number assigned and moved to preliminary testing.");
+      } catch (err: any) {
+        console.error(err);
+        alert(
+          "❌ Failed to assign report number: " +
+            (err?.message || "Unknown error"),
+        );
+      }
+    });
+  }
+
+  const disableSaveUntilAssigned =
+    embedded &&
+    (role === "MICRO" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   return (
@@ -1205,58 +1263,62 @@ useConfirmOnLeave(!embedded && isDirty);
         )}
 
         {/* Header + print controls */}
-            {!hideTopActions && (
-        <div className="no-print mb-4 flex justify-end gap-2">
-          {isTemplateMode && !isTemplateViewMode && (
-            <input
-              className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
-                !templateName.trim()
-                  ? "border-red-500 ring-1 ring-red-500"
-                  : "border-black/30"
-              }`}
-              placeholder="Template name"
-              value={templateName}
-              onChange={(e) => {
-                setTemplateName(e.target.value);
-                markDirty();
-              }}
-            />
-          )}
-          <button
-            className="px-3 py-1 rounded-md border bg-gray-600 text-white"
-            onClick={handleClose}
-            disabled={isBusy}
-          >
-            {isBusy ? "Working..." : "Close"}
-          </button>
-          {/* <button
-          </button> */}
-          {!isTemplateViewMode &&
-            !HIDE_SAVE_FOR.has(status as SterilityReportStatus) && (
+        {!hideTopActions && (
+          <div className="no-print mb-4 flex justify-end gap-2">
+            {isTemplateMode && !isTemplateViewMode && (
+              <input
+                className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
+                  !templateName.trim()
+                    ? "border-red-500 ring-1 ring-red-500"
+                    : "border-black/30"
+                }`}
+                placeholder="Template name"
+                value={templateName}
+                onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  markDirty();
+                }}
+              />
+            )}
+            {!embedded && (
               <button
-                className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                onClick={handleSave}
-                disabled={
-                  role === "SYSTEMADMIN" ||
-                  role === "FRONTDESK" ||
-                  isBusy ||
-                  status === "UNDER_CLIENT_FINAL_REVIEW" ||
-                  status === "LOCKED" ||
-                  (isTemplateMode && !templateName.trim())
-                }
+                type="button"
+                className="px-3 py-1 rounded-md border bg-gray-600 text-white"
+                onClick={handleClose}
+                disabled={isBusy}
               >
-                {busy === "SAVE" && <Spinner />}
-                {isTemplateMode
-                  ? templateId
-                    ? "Update Template"
-                    : "Save Template"
-                  : reportId
-                    ? "Update Report"
-                    : "Save Report"}
+                {isBusy ? "Working..." : "Close"}
               </button>
             )}
-        </div>
-            )}
+            {/* <button
+          </button> */}
+            {!isTemplateViewMode &&
+              !HIDE_SAVE_FOR.has(status as SterilityReportStatus) && (
+                <button
+                  className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={handleSave}
+                  disabled={
+                    role === "SYSTEMADMIN" ||
+                    role === "FRONTDESK" ||
+                    isBusy ||
+                    status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                    status === "LOCKED" ||
+                    disableSaveUntilAssigned ||
+                    (isTemplateMode && !templateName.trim())
+                  }
+                >
+                  {busy === "SAVE" && <Spinner />}
+                  {isTemplateMode
+                    ? templateId
+                      ? "Update Template"
+                      : "Save Template"
+                    : reportId
+                      ? "Update Report"
+                      : "Save Report"}
+                </button>
+              )}
+          </div>
+        )}
 
         {/* Letterhead */}
         <div className="mb-2 text-center">
@@ -2246,11 +2308,22 @@ useConfirmOnLeave(!embedded && isDirty);
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      { !hideBottomActions &&!isAnyTemplateMode && (
+      {!hideBottomActions && !isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
-            {STERILITY_STATUS_TRANSITIONS[
+            {showAssignReportNumberButton && (
+              <button
+                type="button"
+                onClick={assignReportNumberAndOpenTesting}
+                disabled={isBusy}
+                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {busy === "STATUS" && <Spinner />}
+                Assign Report Number
+              </button>
+            )}
+            {!showAssignReportNumberButton &&STERILITY_STATUS_TRANSITIONS[
               status as SterilityReportStatus
             ]?.next.map((targetStatus: SterilityReportStatus) => {
               if (
@@ -2428,6 +2501,9 @@ useConfirmOnLeave(!embedded && isDirty);
                   setCorrections(fresh);
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
+
+                  if (embedded) return;
+
                   if (role === "CLIENT") {
                     backToDashboard();
                   } else if (role === "FRONTDESK") {

@@ -38,6 +38,7 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 // ---------------------------------
 // Types
@@ -591,6 +592,33 @@ export default function QaDashboard() {
     submitting: false,
     error: null,
   });
+
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+ const workspaceReports = useMemo(() => {
+  const map = new Map<string, Report>();
+  reports.forEach((r) => map.set(r.id, r));
+
+  return workspaceIds
+    .map((id) => map.get(id))
+    .filter(Boolean)
+    .map((r) => ({
+      ...r!,
+      formNumber: r!.formNumber ?? "",
+      reportNumber:
+        r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+    }));
+}, [workspaceIds, reports]);
 
   // -----------------------------
   // Bulk Change Status (QA)
@@ -1363,6 +1391,66 @@ export default function QaDashboard() {
     reportNoTo,
   ]);
 
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, userObj?: any) {
+    if (r.formType === "STERILITY") {
+      return canUpdateThisSterility(r, userObj);
+    }
+
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+      return canUpdateThisChem(r, userObj);
+    }
+
+    return canUpdateThisMicro(r, userObj);
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      toast.error("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1900,7 +1988,7 @@ export default function QaDashboard() {
                                 clientCode: r.client || null,
                               });
 
-                              setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1931,7 +2019,7 @@ export default function QaDashboard() {
                                     );
                                     toast.success("Report Status Updated");
                                   }
-                                  goToReportEditor(r);
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -1967,7 +2055,7 @@ export default function QaDashboard() {
                                     );
                                     toast.success("Report Status Updated");
                                   }
-                                  goToReportEditor(r);
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -2006,7 +2094,7 @@ export default function QaDashboard() {
                                       );
                                       toast.success("Report Status Updated");
                                     }
-                                    goToReportEditor(r);
+                                    openUpdateTarget(r);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -2237,7 +2325,7 @@ export default function QaDashboard() {
                         }
 
                         setSelectedReport(null);
-                        goToReportEditor(r);
+                        openUpdateTarget(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }
@@ -2790,6 +2878,21 @@ export default function QaDashboard() {
           </div>
         </div>
       )}
+
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }

@@ -244,7 +244,6 @@ export default function COAReportForm({
 
   const markDirty = () => !isDirty && setIsDirty(true);
 
-  
   useConfirmOnLeave(!embedded && isDirty);
 
   // ---- core report identity ----
@@ -1093,6 +1092,66 @@ export default function COAReportForm({
   ]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(status as COAReportStatus);
 
+  const showAssignReportNumberButton =
+    embedded &&
+    (role === "CHEMISTRY" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  async function assignReportNumberAndOpenTesting() {
+    if (!reportId) {
+      alert("⚠️ Please save the report first.");
+      return;
+    }
+
+    return runBusy("STATUS", async () => {
+      try {
+        const updated = await api<any>(`/chemistry-reports/${reportId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "UNDER_TESTING_REVIEW",
+            reason: "Assign report number / start prelim testing",
+            expectedVersion: reportVersion,
+          }),
+        });
+
+        const nextStatus =
+          (updated?.status as COAReportStatus) || "UNDER_TESTING_REVIEW";
+
+        const nextVersion =
+          typeof updated?.version === "number"
+            ? updated.version
+            : reportVersion + 1;
+
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
+        if (updated?.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+
+        onStatusChanged?.(updated);
+        alert("✅ Report number assigned and moved to preliminary testing.");
+      } catch (err: any) {
+        console.error(err);
+        alert(
+          "❌ Failed to assign report number: " +
+            (err?.message || "Unknown error"),
+        );
+      }
+    });
+  }
+
+  const disableSaveUntilAssigned =
+    embedded &&
+    (role === "CHEMISTRY" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   {
     /* ITEM (fixed) */
   }
@@ -1123,14 +1182,16 @@ export default function COAReportForm({
                 }}
               />
             )}
-            <button
-              type="button"
-              className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
-              onClick={handleClose}
-              disabled={isBusy}
-            >
-              {isBusy ? "Working..." : "Close"}
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
+                onClick={handleClose}
+                disabled={isBusy}
+              >
+                {isBusy ? "Working..." : "Close"}
+              </button>
+            )}
 
             {!isTemplateViewMode &&
               !HIDE_SAVE_FOR.has(status as COAReportStatus) && (
@@ -1143,6 +1204,7 @@ export default function COAReportForm({
                     isBusy ||
                     status === "UNDER_CLIENT_REVIEW" ||
                     status === "LOCKED" ||
+                    disableSaveUntilAssigned ||
                     (isTemplateMode && !templateName.trim())
                   }
                 >
@@ -1560,58 +1622,6 @@ export default function COAReportForm({
                     : undefined
                 }
               >
-                {/* ITEM (fixed OR editable for OTHER rows) */}
-                {/* <div className="p-1 border-r border-black font-medium">
-                  {isOtherRow(row.key) &&
-                  role === "CLIENT" &&
-                  !lock("coaRows") &&
-                  !selectingCorrections ? (
-                    <input
-                      className="w-full border-0 bg-transparent outline-none text-[11px]"
-                      value={row.item ?? ""}
-                      placeholder={otherLabel(row.key)} // still fine
-                      onFocus={() => {
-                        const cur = (row.item ?? "").trim().toUpperCase();
-                        if (cur === otherLabel(row.key).toUpperCase()) {
-                          setCoaRows((prev) =>
-                            prev.map((r) =>
-                              r.key === row.key ? { ...r, item: "" } : r,
-                            ),
-                          );
-                          markDirty();
-                        }
-                      }}
-                      onBlur={() => {
-                        // ✅ if user leaves blank, restore OTHER again
-                        const cur = (row.item ?? "").trim();
-                        if (!cur) {
-                          setCoaRows((prev) =>
-                            prev.map((r) =>
-                              r.key === row.key
-                                ? { ...r, item: otherLabel(row.key) }
-                                : r,
-                            ),
-                          );
-                          markDirty();
-                        }
-                      }}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setCoaRows((prev) =>
-                          prev.map((r) =>
-                            r.key === row.key ? { ...r, item: v } : r,
-                          ),
-                        );
-                        markDirty();
-                      }}
-                    />
-                  ) : (
-                    <div className="min-h-[14px]">
-                      {(row.item ?? "").trim() ? row.item : "-"}
-                    </div>
-                  )}
-                </div> */}
-
                 {/* ITEM (editable for ALL rows when coaRows is editable) */}
                 <div className="p-1 border-r border-black font-medium">
                   {!lock("coaRows") && !selectingCorrections ? (
@@ -1916,48 +1926,61 @@ export default function COAReportForm({
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
-            {STATUS_TRANSITIONS[status as COAReportStatus]?.next.map(
-              (targetStatus: COAReportStatus) => {
-                if (
-                  STATUS_TRANSITIONS[status as COAReportStatus].canSet.includes(
-                    role!,
-                  ) &&
-                  statusButtons[targetStatus]
-                ) {
-                  const { label, color } = statusButtons[targetStatus];
-
-                  const approveNeedsAttachment = isApproveAction(targetStatus);
-                  const disableApproveForNoAttachment =
-                    approveNeedsAttachment && !hasAttachment;
-
-                  const disabled =
-                    role === "SYSTEMADMIN" ||
-                    isBusy ||
-                    attachmentsLoading ||
-                    disableApproveForNoAttachment;
-
-                  return (
-                    <button
-                      key={targetStatus}
-                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                      onClick={() => requestStatusChange(targetStatus)}
-                      disabled={disabled}
-                      title={
-                        disableApproveForNoAttachment
-                          ? "Upload at least 1 attachment to enable Approve"
-                          : undefined
-                      }
-                    >
-                      {busy === "STATUS" && <Spinner />}
-                      {attachmentsLoading && label === "Approve"
-                        ? "Checking..."
-                        : label}
-                    </button>
-                  );
-                }
-                return null;
-              },
+            {showAssignReportNumberButton && (
+              <button
+                type="button"
+                onClick={assignReportNumberAndOpenTesting}
+                disabled={isBusy}
+                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {busy === "STATUS" && <Spinner />}
+                Assign Report Number
+              </button>
             )}
+            {!showAssignReportNumberButton &&
+              STATUS_TRANSITIONS[status as COAReportStatus]?.next.map(
+                (targetStatus: COAReportStatus) => {
+                  if (
+                    STATUS_TRANSITIONS[
+                      status as COAReportStatus
+                    ].canSet.includes(role!) &&
+                    statusButtons[targetStatus]
+                  ) {
+                    const { label, color } = statusButtons[targetStatus];
+
+                    const approveNeedsAttachment =
+                      isApproveAction(targetStatus);
+                    const disableApproveForNoAttachment =
+                      approveNeedsAttachment && !hasAttachment;
+
+                    const disabled =
+                      role === "SYSTEMADMIN" ||
+                      isBusy ||
+                      attachmentsLoading ||
+                      disableApproveForNoAttachment;
+
+                    return (
+                      <button
+                        key={targetStatus}
+                        className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                        onClick={() => requestStatusChange(targetStatus)}
+                        disabled={disabled}
+                        title={
+                          disableApproveForNoAttachment
+                            ? "Upload at least 1 attachment to enable Approve"
+                            : undefined
+                        }
+                      >
+                        {busy === "STATUS" && <Spinner />}
+                        {attachmentsLoading && label === "Approve"
+                          ? "Checking..."
+                          : label}
+                      </button>
+                    );
+                  }
+                  return null;
+                },
+              )}
           </div>
         </div>
       )}
@@ -2095,6 +2118,9 @@ export default function COAReportForm({
                   setCorrections(fresh);
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
+
+                  if (embedded) return;
+
                   if (role === "CLIENT") {
                     backToDashboard();
                   } else if (role === "FRONTDESK") {

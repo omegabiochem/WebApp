@@ -23,6 +23,7 @@ import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 // -----------------------------
 // Types
@@ -472,6 +473,24 @@ export default function ChemistryDashboard() {
 
   const navigate = useNavigate();
 
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+  const workspaceReports = useMemo(() => {
+    return workspaceIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+  }, [workspaceIds, reports]);
+
   // fetch
   useEffect(() => {
     let abort = false;
@@ -900,7 +919,7 @@ export default function ChemistryDashboard() {
       );
     }
 
-    goToReportEditor(r);
+    return nextStatus;
   }
 
   useEffect(() => {
@@ -1270,6 +1289,58 @@ export default function ChemistryDashboard() {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
+
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, user?: any) {
+    return canUpdateThisChemistryReportLocal(r, user);
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      toast.error("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1836,7 +1907,9 @@ export default function ChemistryDashboard() {
                                 clientCode: null,
                               });
 
-                              setSelectedReport(r);
+                              // setSelectedReport(r);
+
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1851,7 +1924,8 @@ export default function ChemistryDashboard() {
                                 if (rowBusy) return;
                                 setUpdatingId(r.id);
                                 try {
-                                  await autoAdvanceAndOpen(r, "micro");
+                                  await autoAdvanceAndOpen(r, "chemistry");
+                                  openUpdateTarget(r);
                                 } catch (e: any) {
                                   toast.error(
                                     e?.message || "Failed to update status",
@@ -1987,6 +2061,7 @@ export default function ChemistryDashboard() {
                         setSelectedReport(null);
 
                         await autoAdvanceAndOpen(r, "chemistry");
+                        openUpdateTarget(r);
                       } catch (e: any) {
                         toast.error(e?.message || "Failed to update status");
                       } finally {
@@ -2033,6 +2108,20 @@ export default function ChemistryDashboard() {
           </div>
         </div>
       )}
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }

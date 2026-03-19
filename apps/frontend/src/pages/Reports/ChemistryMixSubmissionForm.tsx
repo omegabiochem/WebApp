@@ -1340,6 +1340,66 @@ export default function ChemistryMixSubmissionForm({
     status as ChemistryReportStatus,
   );
 
+  const showAssignReportNumberButton =
+    embedded &&
+    (role === "CHEMISTRY" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  async function assignReportNumberAndOpenTesting() {
+    if (!reportId) {
+      alert("⚠️ Please save the report first.");
+      return;
+    }
+
+    return runBusy("STATUS", async () => {
+      try {
+        const updated = await api<any>(`/chemistry-reports/${reportId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "UNDER_TESTING_REVIEW",
+            reason: "Assign report number / start prelim testing",
+            expectedVersion: reportVersion,
+          }),
+        });
+
+        const nextStatus =
+          (updated?.status as ChemistryReportStatus) || "UNDER_TESTING_REVIEW";
+
+        const nextVersion =
+          typeof updated?.version === "number"
+            ? updated.version
+            : reportVersion + 1;
+
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
+        if (updated?.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+
+        onStatusChanged?.(updated);
+        alert("✅ Report number assigned and moved to preliminary testing.");
+      } catch (err: any) {
+        console.error(err);
+        alert(
+          "❌ Failed to assign report number: " +
+            (err?.message || "Unknown error"),
+        );
+      }
+    });
+  }
+
+  const disableSaveUntilAssigned =
+    embedded &&
+    (role === "CHEMISTRY" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   // ---------------- RENDER ----------------
   return (
     <>
@@ -1365,14 +1425,16 @@ export default function ChemistryMixSubmissionForm({
                 }}
               />
             )}
-            <button
-              type="button"
-              className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
-              onClick={handleClose}
-              disabled={isBusy}
-            >
-              {isBusy ? "Working..." : "Close"}
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                className="px-3 py-1 rounded-md border bg-gray-600 text-white disabled:opacity-60"
+                onClick={handleClose}
+                disabled={isBusy}
+              >
+                {isBusy ? "Working..." : "Close"}
+              </button>
+            )}
 
             {!isTemplateViewMode &&
               !HIDE_SAVE_FOR.has(status as ChemistryReportStatus) && (
@@ -1385,6 +1447,7 @@ export default function ChemistryMixSubmissionForm({
                     isBusy ||
                     status === "UNDER_CLIENT_REVIEW" ||
                     status === "LOCKED" ||
+                    disableSaveUntilAssigned ||
                     (isTemplateMode && !templateName.trim())
                   }
                 >
@@ -2684,48 +2747,62 @@ export default function ChemistryMixSubmissionForm({
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
-            {STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
-              (targetStatus: ChemistryReportStatus) => {
-                if (
-                  STATUS_TRANSITIONS[
-                    status as ChemistryReportStatus
-                  ].canSet.includes(role!) &&
-                  statusButtons[targetStatus]
-                ) {
-                  const { label, color } = statusButtons[targetStatus];
-
-                  const approveNeedsAttachment = isApproveAction(targetStatus);
-                  const disableApproveForNoAttachment =
-                    approveNeedsAttachment && !hasAttachment;
-
-                  const disabled =
-                    role === "SYSTEMADMIN" ||
-                    isBusy ||
-                    attachmentsLoading ||
-                    disableApproveForNoAttachment;
-
-                  return (
-                    <button
-                      key={targetStatus}
-                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                      onClick={() => requestStatusChange(targetStatus)}
-                      disabled={disabled}
-                      title={
-                        disableApproveForNoAttachment
-                          ? "Upload at least 1 attachment to enable Approve"
-                          : undefined
-                      }
-                    >
-                      {busy === "STATUS" && <Spinner />}
-                      {attachmentsLoading && label === "Approve"
-                        ? "Checking..."
-                        : label}
-                    </button>
-                  );
-                }
-                return null;
-              },
+            {" "}
+            {showAssignReportNumberButton && (
+              <button
+                type="button"
+                onClick={assignReportNumberAndOpenTesting}
+                disabled={isBusy}
+                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {busy === "STATUS" && <Spinner />}
+                Assign Report Number
+              </button>
             )}
+            {!showAssignReportNumberButton &&
+              STATUS_TRANSITIONS[status as ChemistryReportStatus]?.next.map(
+                (targetStatus: ChemistryReportStatus) => {
+                  if (
+                    STATUS_TRANSITIONS[
+                      status as ChemistryReportStatus
+                    ].canSet.includes(role!) &&
+                    statusButtons[targetStatus]
+                  ) {
+                    const { label, color } = statusButtons[targetStatus];
+
+                    const approveNeedsAttachment =
+                      isApproveAction(targetStatus);
+                    const disableApproveForNoAttachment =
+                      approveNeedsAttachment && !hasAttachment;
+
+                    const disabled =
+                      role === "SYSTEMADMIN" ||
+                      isBusy ||
+                      attachmentsLoading ||
+                      disableApproveForNoAttachment;
+
+                    return (
+                      <button
+                        key={targetStatus}
+                        className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                        onClick={() => requestStatusChange(targetStatus)}
+                        disabled={disabled}
+                        title={
+                          disableApproveForNoAttachment
+                            ? "Upload at least 1 attachment to enable Approve"
+                            : undefined
+                        }
+                      >
+                        {busy === "STATUS" && <Spinner />}
+                        {attachmentsLoading && label === "Approve"
+                          ? "Checking..."
+                          : label}
+                      </button>
+                    );
+                  }
+                  return null;
+                },
+              )}
           </div>
         </div>
       )}
@@ -2863,6 +2940,9 @@ export default function ChemistryMixSubmissionForm({
                   setCorrections(fresh);
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
+
+                  if (embedded) return;
+
                   if (role === "CLIENT") {
                     backToDashboard();
                   } else if (role === "FRONTDESK") {

@@ -869,19 +869,7 @@ export class ReportsService {
       }
     }
 
-    // // status-based edit guard
-    // if (fieldKeys.length > 0) {
-    //   const transition = STATUS_TRANSITIONS[current.status];
-    //   if (!transition)
-    //     throw new BadRequestException(
-    //       `Invalid current status: ${current.status}`,
-    //     );
-    //   if (!transition.canEdit.includes(user.role)) {
-    //     throw new ForbiddenException(
-    //       `Role ${user.role} cannot edit report in status ${current.status}`,
-    //     );
-    //   }
-    // }
+ 
 
     const transitions = transitionsFor(current.formType);
 
@@ -1028,33 +1016,7 @@ export class ReportsService {
     const relationKey = DETAILS_RELATION[current.formType];
     const delegate = detailsDelegate(this.prisma, current.formType);
 
-    // // do both updates in a transaction for consistency
-    // const ops: Prisma.PrismaPromise<any>[] = [
-    //   this.prisma.report.update({
-    //     where: { id },
-    //     data: { ...base, updatedBy: user.userId },
-    //     include: {
-    //       microMix: true,
-    //       microMixWater: true,
-    //     },
-    //   }),
-    // ];
-
-    // const detailsOp = updateDetailsByType(
-    //   this.prisma,
-    //   current.formType,
-    //   id,
-    //   details,
-    // );
-    // if (detailsOp) ops.push(detailsOp);
-
-    // const [updated] = await this.prisma.$transaction(ops);
-
-    // if (patchIn.status) {
-    //   this.reportsGateway.notifyStatusChange(id, patchIn.status);
-    // } else {
-    //   this.reportsGateway.notifyReportUpdate(updated);
-    // }
+  
 
     // ✅ Step 1: attempt base update with version check
     const baseRes = await this.prisma.report.updateMany({
@@ -1227,100 +1189,7 @@ export class ReportsService {
     return this.update(user, id, body);
   }
 
-  // async changeStatus(
-  //   user: { userId: string; role: UserRole },
-  //   id: string,
-  //   input: ChangeStatusInput,
-  // ) {
-  //   const current = await this.get(id);
-
-  //   if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
-  //     throw new ForbiddenException(
-  //       'Only ADMIN/SYSTEMADMIN/QA/MICRO can Change Status this directly',
-  //     );
-  //   }
-
-  //   const target: ReportStatus =
-  //     typeof input === 'string' ? input : input.status;
-  //   if (!target) {
-  //     throw new BadRequestException('Status is required');
-  //   }
-
-  //   const ctx = getRequestContext() || {};
-
-  //   const reason =
-  //     typeof input === 'string'
-  //       ? undefined
-  //       : (input.reason ?? (ctx as any)?.reason);
-  //   const eSignPassword =
-  //     typeof input === 'string'
-  //       ? undefined
-  //       : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
-
-  //   if (!reason) {
-  //     throw new BadRequestException(
-  //       'Reason for change is required (21 CFR Part 11). Provide X-Change-Reason header or body.reason',
-  //     );
-  //   }
-
-  //   const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW'; // ✅ only for Start Final
-
-  //   if (!skipESign) {
-  //     if (!eSignPassword) {
-  //       throw new BadRequestException(
-  //         'Electronic Signature (password) is required for status changes',
-  //       );
-  //     }
-  //     await this.esign.verifyPassword(user.userId, String(eSignPassword));
-  //   }
-  //   const transitions = transitionsFor((current as any).formType);
-  //   const trans = transitions[current.status as ReportStatus];
-
-  //   if (!trans) {
-  //     throw new BadRequestException(
-  //       `No transition config for status: ${current.status} (formType: ${(current as any).formType})`,
-  //     );
-  //   }
-
-  //   const patch: any = { status: target };
-
-  //   function yyyy(d: Date = new Date()): string {
-  //     const yyyy = String(d.getFullYear());
-  //     return yyyy; // e.g. "2410"
-  //   }
-
-  //   // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
-  //   function seqPad(num: number): string {
-  //     const width = Math.max(4, String(num).length);
-  //     return String(num).padStart(width, '0');
-  //   }
-  //   if (
-  //     target &&
-  //     !current.reportNumber &&
-  //     shouldAssignReportNumber((current as any).formType, target)
-  //   ) {
-  //     const deptLetter =
-  //       getDeptLetterForForm((current as any).formType) ||
-  //       getDepartmentLetter(user.role);
-  //     if (deptLetter) {
-  //       const seq = await this.prisma.labReportSequence.upsert({
-  //         where: { department: deptLetter },
-  //         update: { lastNumber: { increment: 1 } },
-  //         create: { department: deptLetter, lastNumber: 1 },
-  //       });
-  //       const n = seqPad(seq.lastNumber);
-  //       patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
-  //     }
-  //   }
-
-  //   const updated = await this.prisma.report.update({
-  //     where: { id },
-  //     data: { ...patch, updatedBy: user.userId },
-  //   });
-
-  //   this.reportsGateway.notifyStatusChange(id, target);
-  //   return updated;
-  // }
+  
 
   async changeStatus(
     user: { userId: string; role: UserRole },
@@ -1401,38 +1270,6 @@ export class ReportsService {
         throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
       }
     }
-    // else {
-    //   if (!trans.canSet.includes(user.role)) {
-    //     throw new ForbiddenException(
-    //       `Role ${user.role} cannot change status from ${prevStatus}`,
-    //     );
-    //   }
-    //   if (!trans.next.includes(target)) {
-    //     throw new BadRequestException(
-    //       `Invalid transition: ${prevStatus} → ${target}`,
-    //     );
-    //   }
-    // }
-
-    // // ✅ validate transition (YOU WERE MISSING the "next includes target" check)
-    // const transitions = transitionsFor(current.formType);
-    // const trans = transitions[prevStatus];
-
-    // if (!trans) {
-    //   throw new BadRequestException(
-    //     `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
-    //   );
-    // }
-    // if (!trans.canSet.includes(user.role)) {
-    //   throw new ForbiddenException(
-    //     `Role ${user.role} cannot change status from ${prevStatus}`,
-    //   );
-    // }
-    // if (!trans.next.includes(target)) {
-    //   throw new BadRequestException(
-    //     `Invalid transition: ${prevStatus} → ${target}`,
-    //   );
-    // }
 
     const patch: any = { status: target };
 

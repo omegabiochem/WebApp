@@ -18,7 +18,7 @@ type ReportItem = {
   id: string;
   formType: string;
   formNumber: string;
-  reportNumber?: string;
+  reportNumber?: string | null;
   status: string;
 };
 
