@@ -34,6 +34,7 @@ import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 import {
   COLS,
+  getReportSearchBlob,
   parseIntSafe,
   type ColKey,
 } from "../../utils/clientDashboardutils";
@@ -67,6 +68,8 @@ type Report = {
   manufactureDate?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+
+  _searchBlob?: string;
 };
 
 // A status filter can be micro OR chemistry OR "ALL"
@@ -733,13 +736,20 @@ export default function ClientDashboard() {
     };
   }, [user?.clientCode]);
 
+  const reportsWithSearch = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
+
   // Derived table data
   const processed = useMemo(() => {
     // 1) form type filter
     const byForm =
       formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -775,16 +785,8 @@ export default function ClientDashboard() {
 
     const bySearch = search.trim()
       ? bySearchReport.filter((r) => {
-          const q = search.toLowerCase();
-          return (
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            (r.client || "").toLowerCase().includes(q) ||
-            String(r.status || "")
-              .toLowerCase()
-              .includes(q)
-          );
+          const q = search.trim().toLowerCase();
+          return r._searchBlob.includes(q);
         })
       : bySearchReport;
 
@@ -802,7 +804,7 @@ export default function ClientDashboard() {
         : reportNoFrom.trim() || reportNoTo.trim()
           ? bySearch.filter((r) =>
               inRange(
-                extractYearAndSequence(r.formNumber).sequence,
+                extractYearAndSequence(r.reportNumber).sequence,
                 reportNoFrom,
                 reportNoTo,
               ),
@@ -1437,6 +1439,8 @@ export default function ClientDashboard() {
     setWorkspaceOpen(true);
   }
 
+  
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1700,7 +1704,7 @@ export default function ClientDashboard() {
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <input
-            placeholder="Search form #, client, or status…"
+            placeholder="Search form #, report #, lot #, formula, description, client, status…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"

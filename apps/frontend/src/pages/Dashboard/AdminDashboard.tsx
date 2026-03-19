@@ -40,6 +40,7 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 
 // ---------------------------------
 // Types
@@ -55,6 +56,48 @@ type Report = {
   formNumber: string | null;
   createdAt: string;
   version: number;
+
+  // optional searchable fields
+  updatedAt?: string | null;
+
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  sampleDescription?: string | null;
+  lotBatchNo?: string | null;
+  formulaId?: string | null;
+  sampleSize?: string | null;
+  numberOfActives?: string | null;
+  comments?: string | null;
+
+  idNo?: string | null;
+  samplingDate?: string | null;
+
+  preliminaryResults?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+
+  volumeTested?: string | null;
+  ftm_result?: string | null;
+  scdb_result?: string | null;
+
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  pathogens?: unknown;
+  sampleTypes?: unknown;
+  testTypes?: unknown;
+  sampleCollected?: unknown;
+  actives?: unknown;
+  coaRows?: unknown;
+
+  _searchBlob?: string;
 };
 
 // ---------------------------------
@@ -698,11 +741,18 @@ export default function AdminDashboard() {
     }
   }, [formFilter, statusFilter]);
 
+  const reportsWithSearch = useMemo(() => {
+  return reports.map((r) => ({
+    ...r,
+    _searchBlob: getReportSearchBlob(r),
+  }));
+}, [reports]);
+
   const processed = useMemo(() => {
-    const byForm =
-      formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+  const byForm =
+  formFilter === "ALL"
+    ? reportsWithSearch
+    : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -738,29 +788,12 @@ export default function AdminDashboard() {
         })
       : byClient;
 
-    const bySearchText = searchText.trim()
-      ? byReport.filter((r) => {
-          const q = searchText.toLowerCase();
-
-          return (
-            (r.client || "").toLowerCase().includes(q) ||
-            (r.clientCode || "").toLowerCase().includes(q) ||
-            (r.formNumber || "").toLowerCase().includes(q) ||
-            String(r.reportNumber ?? "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.status ?? "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formType ?? "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.id ?? "")
-              .toLowerCase()
-              .includes(q)
-          );
-        })
-      : byReport;
+   const bySearchText = searchText.trim()
+  ? byReport.filter((r) => {
+      const q = searchText.trim().toLowerCase();
+      return (r._searchBlob || "").includes(q);
+    })
+  : byReport;
 
     const byNumberRange = (
       numberRangeType === "FORM"
@@ -794,7 +827,7 @@ export default function AdminDashboard() {
       return bT - aT;
     });
   }, [
-    reports,
+   reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -1663,7 +1696,7 @@ export default function AdminDashboard() {
           /> */}
 
           <input
-            placeholder="Search client, client code, form #, report #, status..."
+           placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm
