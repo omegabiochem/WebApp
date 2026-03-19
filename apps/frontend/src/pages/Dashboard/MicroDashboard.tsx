@@ -30,6 +30,7 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 
 // -----------------------------
 // Types
@@ -45,6 +46,39 @@ type Report = {
   formNumber: string;
   prefix?: string;
   version: number;
+
+  // extra searchable fields
+  createdAt?: string | null;
+  updatedAt?: string | null;
+
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  idNo?: string | null;
+  samplingDate?: string | null;
+
+  preliminaryResults?: string | null;
+  preliminaryResultsDate?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+
+  volumeTested?: string | null;
+  ftm_result?: string | null;
+  scdb_result?: string | null;
+
+  comments?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  pathogens?: unknown;
+
+  _searchBlob?: string;
 };
 
 // -----------------------------
@@ -548,12 +582,19 @@ export default function MicroDashboard() {
     return MICRO_ONLY_STATUSES;
   }, [formFilter]);
 
+  const reportsWithSearch = useMemo(() => {
+  return reports.map((r) => ({
+    ...r,
+    _searchBlob: getReportSearchBlob(r),
+  }));
+}, [reports]);
+
   // derived
   const processed = useMemo(() => {
     const byForm =
-      formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+  formFilter === "ALL"
+    ? reportsWithSearch
+    : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICRO_WATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -588,28 +629,12 @@ export default function MicroDashboard() {
         })
       : byClient;
 
-    const bySearchText = searchText.trim()
-      ? byReport.filter((r) => {
-          const q = searchText.toLowerCase();
-          return (
-            String(displayReportNo(r)).toLowerCase().includes(q) ||
-            (r.client || "").toLowerCase().includes(q) ||
-            (r.clientCode || "").toLowerCase().includes(q) ||
-            String(r.status || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formType || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.id || "")
-              .toLowerCase()
-              .includes(q)
-          );
-        })
-      : byReport;
+ const bySearchText = searchText.trim()
+  ? byReport.filter((r) => {
+      const q = searchText.trim().toLowerCase();
+      return (r._searchBlob || "").includes(q);
+    })
+  : byReport;
 
     const byNumberRange =
       numberRangeType === "FORM"
@@ -648,7 +673,7 @@ export default function MicroDashboard() {
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
   }, [
-    reports,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -1631,7 +1656,7 @@ export default function MicroDashboard() {
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search client, client code, form #, report #, status..."
+             placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
             {searchText && (

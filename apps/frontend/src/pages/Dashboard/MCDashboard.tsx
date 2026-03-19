@@ -47,6 +47,7 @@ import {
   COA_STATUS_COLORS,
 } from "../../utils/COAReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 
 // ----------------------------------
 // Types
@@ -61,6 +62,37 @@ type MicroReport = {
   formNumber: string;
   prefix?: string;
   version: number;
+
+  clientCode?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  idNo?: string | null;
+  samplingDate?: string | null;
+
+  preliminaryResults?: string | null;
+  preliminaryResultsDate?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+
+  volumeTested?: string | null;
+  ftm_result?: string | null;
+  scdb_result?: string | null;
+
+  comments?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  pathogens?: unknown;
 };
 
 type ChemReport = {
@@ -73,13 +105,35 @@ type ChemReport = {
   formNumber: string;
   prefix?: string;
   version: number;
+
+  clientCode?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+
   selectedActives?: string[];
   selectedActivesText?: string;
+
+  sampleDescription?: string | null;
+  lotBatchNo?: string | null;
+  formulaId?: string | null;
+  sampleSize?: string | null;
+  numberOfActives?: string | null;
+  comments?: string | null;
+  manufactureDate?: string | null;
+  dateReceived?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  coaRows?: unknown;
+  actives?: unknown;
+  sampleTypes?: unknown;
+  testTypes?: unknown;
+  sampleCollected?: unknown;
 };
 
 type UnifiedRow =
-  | ({ kind: "MICRO" } & MicroReport)
-  | ({ kind: "CHEMISTRY" } & ChemReport);
+  | ({ kind: "MICRO"; _searchBlob?: string } & MicroReport)
+  | ({ kind: "CHEMISTRY"; _searchBlob?: string } & ChemReport);
 
 type BulkWorkflowGroup = "MICRO" | "STERILITY" | "CHEMISTRY" | "COA";
 
@@ -808,10 +862,25 @@ export default function MCDashboard() {
   // Merge into unified list
   // -----------------------------
   const unified: UnifiedRow[] = useMemo(() => {
-    const m = microReports.map((r) => ({ ...r, kind: "MICRO" as const }));
-    const c = chemReports.map((r) => ({ ...r, kind: "CHEMISTRY" as const }));
+    const m = microReports.map((r) => ({
+      ...r,
+      kind: "MICRO" as const,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+
+    const c = chemReports.map((r) => ({
+      ...r,
+      kind: "CHEMISTRY" as const,
+      _searchBlob: getReportSearchBlob({
+        ...r,
+        actives:
+          r.actives ?? r.selectedActives ?? r.selectedActivesText ?? null,
+      }),
+    }));
+
     return [...m, ...c];
   }, [microReports, chemReports]);
+   const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
 
   const workspaceReports = useMemo(() => {
     const map = new Map<string, UnifiedRow>();
@@ -1043,36 +1112,13 @@ export default function MCDashboard() {
     }
 
     // 4) global search
-    if (search.trim()) {
-      const q = search.toLowerCase();
+   if (search.trim()) {
+  const q = search.trim().toLowerCase();
 
-      rows = rows.filter((r) => {
-        const base =
-          String(displayReportNo(r)).toLowerCase().includes(q) ||
-          (r.client || "").toLowerCase().includes(q) ||
-          String(r.status || "")
-            .toLowerCase()
-            .includes(q) ||
-          String(r.formNumber || "")
-            .toLowerCase()
-            .includes(q) ||
-          String(r.formType || "")
-            .toLowerCase()
-            .includes(q);
-
-        if (base) return true;
-
-        if (r.kind === "CHEMISTRY") {
-          const activesStr = (
-            r.selectedActivesText ||
-            (r.selectedActives?.join(", ") ?? "")
-          ).toLowerCase();
-          return activesStr.includes(q);
-        }
-
-        return false;
-      });
-    }
+  rows = rows.filter((r) => {
+    return (r._searchBlob || "").includes(q);
+  });
+}
 
     // 5) number range
     if (numberRangeType === "FORM") {
@@ -1347,7 +1393,7 @@ export default function MCDashboard() {
   // -----------------------------
   // Selection
   // -----------------------------
-  const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
+ 
   const isRowSelected = (r: UnifiedRow) => selectedIds.includes(rowKey(r));
 
   const toggleRow = (r: UnifiedRow) => {
@@ -2099,7 +2145,7 @@ export default function MCDashboard() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {/* Global search */}
           <input
-            placeholder="Search client, form #, report #, status, type, actives..."
+           placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"

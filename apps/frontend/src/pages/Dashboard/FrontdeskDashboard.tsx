@@ -36,6 +36,8 @@ import {
   STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 
 // -----------------------------
 // Types
@@ -50,6 +52,50 @@ type Report = {
   version: number;
 
   attachmentsCount?: number;
+
+  client?: string | null;
+  clientCode?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  idNo?: string | null;
+  samplingDate?: string | null;
+
+  preliminaryResults?: string | null;
+  preliminaryResultsDate?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+
+  volumeTested?: string | null;
+  ftm_result?: string | null;
+  scdb_result?: string | null;
+
+  sampleDescription?: string | null;
+  lotBatchNo?: string | null;
+  formulaId?: string | null;
+  sampleSize?: string | null;
+  numberOfActives?: string | null;
+  comments?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  pathogens?: unknown;
+  sampleTypes?: unknown;
+  testTypes?: unknown;
+  sampleCollected?: unknown;
+  actives?: unknown;
+  coaRows?: unknown;
+
+  _searchBlob?: string;
 };
 
 const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
@@ -537,6 +583,24 @@ export default function FrontDeskDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+  const workspaceReports = useMemo(() => {
+    return workspaceIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+  }, [workspaceIds, reports]);
+
   // Fetch reports
   useEffect(() => {
     let abort = false;
@@ -565,13 +629,20 @@ export default function FrontDeskDashboard() {
     };
   }, []);
 
+  const reportsWithSearch = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
+
   // Derived table data
   const processed = useMemo(() => {
     // 1) form type filter
     const byForm =
       formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -612,21 +683,8 @@ export default function FrontDeskDashboard() {
 
     const bySearch = search.trim()
       ? byReport.filter((r) => {
-          const q = search.toLowerCase();
-          return (
-            String(r.reportNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.status || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formType || "")
-              .toLowerCase()
-              .includes(q)
-          );
+          const q = search.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
         })
       : byReport;
 
@@ -668,7 +726,7 @@ export default function FrontDeskDashboard() {
 
     return sorted;
   }, [
-    reports,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     search,
@@ -1139,6 +1197,65 @@ export default function FrontDeskDashboard() {
     );
   }
 
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, user?: any) {
+    if (!user) return false;
+
+    return (
+      r.status === "RECEIVED_BY_FRONTDESK" ||
+      r.status === "FRONTDESK_ON_HOLD" ||
+      r.status === "FRONTDESK_NEEDS_CORRECTION"
+    );
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      alert("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1439,7 +1556,7 @@ export default function FrontDeskDashboard() {
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <input
-            placeholder="Search form #, report #, status..."
+            placeholder="Search form #, report #, lot/batch #, formula, description, status..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
@@ -1701,7 +1818,7 @@ export default function FrontDeskDashboard() {
                                     ? "ChemistryReport"
                                     : r.formType === "COA"
                                       ? "CoaReport"
-                                      : r.formType === "STERILITY "
+                                      : r.formType === "STERILITY"
                                         ? "SterilityReport"
                                         : "Micro Report",
                                 entityId: r.id,
@@ -1717,7 +1834,7 @@ export default function FrontDeskDashboard() {
                                 clientCode: user?.clientCode || null,
                               });
 
-                              setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1754,7 +1871,7 @@ export default function FrontDeskDashboard() {
                                   );
                                 }
 
-                                goToReportEditor(r);
+                                openUpdateTarget(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
                               } finally {
@@ -1960,28 +2077,31 @@ export default function FrontDeskDashboard() {
                     onClick={async () => {
                       if (modalUpdating) return;
                       setModalUpdating(true);
+
                       try {
+                        const r = selectedReport;
+                        if (!r) return;
+
                         if (
-                          selectedReport.status ===
-                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const newStatus =
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION";
                           await setStatus(
-                            selectedReport,
+                            r,
                             newStatus,
                             "Sent back to client for correction",
                           );
+
                           setReports((prev) =>
                             prev.map((x) =>
-                              x.id === selectedReport.id
-                                ? { ...x, status: newStatus }
-                                : x,
+                              x.id === r.id ? { ...x, status: newStatus } : x,
                             ),
                           );
                         }
+
                         setSelectedReport(null);
-                        goToReportEditor(selectedReport);
+                        openUpdateTarget(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       } finally {
@@ -2198,6 +2318,21 @@ export default function FrontDeskDashboard() {
           </div>,
           document.body,
         )}
+
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }

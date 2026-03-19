@@ -24,6 +24,7 @@ import { logUiEvent } from "../../lib/uiAudit";
 import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 
 // -----------------------------
 // Types
@@ -41,8 +42,27 @@ type Report = {
   selectedActives?: string[];
   selectedActivesText?: string;
   createdAt: string;
-};
 
+  // extra searchable chemistry / coa fields
+  updatedAt?: string | null;
+  sampleDescription?: string | null;
+  lotBatchNo?: string | null;
+  formulaId?: string | null;
+  sampleSize?: string | null;
+  numberOfActives?: string | null;
+  comments?: string | null;
+  manufactureDate?: string | null;
+  dateReceived?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+  coaRows?: unknown;
+  actives?: unknown;
+  sampleTypes?: unknown;
+  testTypes?: unknown;
+  sampleCollected?: unknown;
+
+  _searchBlob?: string;
+};
 // -----------------------------
 // Statuses
 // -----------------------------
@@ -518,12 +538,23 @@ export default function ChemistryDashboard() {
     return CHEMISTRY_STATUSES;
   }, [formFilter]);
 
+  const reportsWithSearch = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob({
+        ...r,
+        actives:
+          r.actives ?? r.selectedActives ?? r.selectedActivesText ?? null,
+      }),
+    }));
+  }, [reports]);
+
   // derived
   const processed = useMemo(() => {
     const byForm =
       formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
             if (formFilter === "COA") return r.formType === "COA";
@@ -556,24 +587,8 @@ export default function ChemistryDashboard() {
 
     const bySearchText = searchText.trim()
       ? byReport.filter((r) => {
-          const q = searchText.toLowerCase();
-
-          const combinedNo = displayReportNo(r).toLowerCase();
-          const formNo = (r.formNumber || "").toLowerCase();
-          const formType = (r.formType || "").toLowerCase();
-          const activesStr = (
-            r.selectedActivesText ||
-            (r.selectedActives?.join(", ") ?? "")
-          ).toLowerCase();
-
-          return (
-            combinedNo.includes(q) ||
-            r.client.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q) ||
-            formNo.includes(q) ||
-            formType.includes(q) ||
-            activesStr.includes(q)
-          );
+          const q = searchText.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
         })
       : byReport;
 
@@ -625,7 +640,7 @@ export default function ChemistryDashboard() {
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
   }, [
-    reports,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -1593,7 +1608,7 @@ export default function ChemistryDashboard() {
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search client, form #, report #, status, actives..."
+              placeholder="Search client, form #, report #, lot/batch #, formula, actives, status..."
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
             {searchText && (
