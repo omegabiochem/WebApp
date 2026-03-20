@@ -1,5 +1,3 @@
-
-
 import { Injectable, Logger } from '@nestjs/common';
 import { ServerClient } from 'postmark';
 
@@ -13,6 +11,8 @@ function escapeHtml(input: string) {
 }
 
 type ClientNotifyKind = 'REPORT_UPDATES' | 'MESSAGES';
+
+type BadgeTone = 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
 
 @Injectable()
 export class MailService {
@@ -293,6 +293,10 @@ If you did not expect this email, contact support at ${supportEmail}.
     actionLabel?: string;
     tag: string;
     metadata: Record<string, any>;
+
+    badgeText?: string;
+    badgeTone?: BadgeTone;
+    priorityLine?: string;
   }) {
     const from =
       process.env.MAIL_FROM || 'Omega LIMS <no-reply@omegabiochemlab.com>';
@@ -303,6 +307,69 @@ If you did not expect this email, contact support at ${supportEmail}.
     const brandName = process.env.MAIL_BRAND_NAME || 'Omega BioChem Lab';
     const brandSubtitle =
       process.env.MAIL_BRAND_SUBTITLE || 'Omega LIMS Notifications';
+
+    const tone: BadgeTone = args.badgeTone ?? 'GRAY';
+
+    const badgeBg: Record<typeof tone, string> = {
+      RED: '#fee2e2',
+      ORANGE: '#ffedd5',
+      BLUE: '#dbeafe',
+      GRAY: '#eef2f7',
+      GREEN: '#dcfce7',
+    };
+
+    const badgeFg: Record<typeof tone, string> = {
+      RED: '#991b1b',
+      ORANGE: '#9a3412',
+      BLUE: '#1e40af',
+      GRAY: '#374151',
+      GREEN: '#166534',
+    };
+
+    const badgeBorder: Record<typeof tone, string> = {
+      RED: '#fecaca',
+      ORANGE: '#fed7aa',
+      BLUE: '#bfdbfe',
+      GRAY: '#e6eaf2',
+      GREEN: '#bbf7d0',
+    };
+
+    const badgeHtml = args.badgeText
+      ? `
+  <div style="margin:0 0 10px 0;">
+    <span style="
+      display:inline-block;
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:0.3px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid ${badgeBorder[tone]};
+      background:${badgeBg[tone]};
+      color:${badgeFg[tone]};
+      text-transform:uppercase;
+    ">
+      ${escapeHtml(args.badgeText)}
+    </span>
+  </div>
+`
+      : '';
+
+    const priorityHtml = args.priorityLine
+      ? `
+  <div style="
+    margin:0 0 12px 0;
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid ${badgeBorder[tone]};
+    background:${badgeBg[tone]};
+    color:${badgeFg[tone]};
+    font-weight:800;
+  ">
+    ${escapeHtml(args.priorityLine)}
+  </div>
+`
+      : '';
 
     const listHtml = args.lines
       .filter(Boolean)
@@ -340,8 +407,10 @@ If you did not expect this email, contact support at ${supportEmail}.
           </tr>
           <tr>
             <td style="padding:22px; font-family:Arial; color:#111827; font-size:14px; line-height:1.6;">
-              <h2 style="margin:0 0 12px 0; font-size:16px;">${escapeHtml(args.title)}</h2>
-              <ul style="margin:0; padding-left:18px;">${listHtml}</ul>
+     <h2 style="margin:0 0 10px 0; font-size:16px;">${escapeHtml(args.title)}</h2>
+${badgeHtml}
+${priorityHtml}
+<ul style="margin:0; padding-left:18px;">${listHtml}</ul>
               ${actionHtml}
               <p style="margin:16px 0 0 0; color:#6b7280; font-size:12px;">This message was sent automatically. Please do not reply.</p>
             </td>
@@ -354,7 +423,8 @@ If you did not expect this email, contact support at ${supportEmail}.
 </html>`;
 
     const textBody =
-      `${args.title}\n\n` +
+      `${args.badgeText ? `[${args.badgeText}] ` : ''}${args.title}\n\n` +
+      `${args.priorityLine ? `${args.priorityLine}\n\n` : ''}` +
       args.lines.filter(Boolean).join('\n') +
       (args.actionUrl ? `\n\nOpen: ${args.actionUrl}` : '') +
       `\n\n— ${brandName}\n`;

@@ -52,6 +52,80 @@ function isUrgentStatus(s: ReportStatus) {
   return false;
 }
 
+function highlightForStatus(status: string) {
+  if (status.includes('NEEDS_CORRECTION')) {
+    return {
+      badgeText: 'Correction Required',
+      badgeTone: 'RED' as const,
+      priorityLine:
+        'Action required: Please open the report and resolve the requested corrections.',
+    };
+  }
+
+  if (status === 'SUBMITTED_BY_CLIENT') {
+    return {
+      badgeText: 'New Submission',
+      badgeTone: 'BLUE' as const,
+      priorityLine:
+        'Action required: Please review and start processing this submission.',
+    };
+  }
+
+  // if (
+  //   status === 'UNDER_CLIENT_PRELIMINARY_REVIEW' ||
+  //   status === 'UNDER_CLIENT_FINAL_REVIEW' ||
+  //   status === 'UNDER_CLIENT_REVIEW'
+  // ) {
+  //   return {
+  //     badgeText: 'Review Required',
+  //     badgeTone: 'ORANGE' as const,
+  //     priorityLine:
+  //       'Action required: Please review the report and approve or request corrections.',
+  //   };
+  // }
+
+  if (status === 'UNDER_CLIENT_PRELIMINARY_REVIEW') {
+    return {
+      badgeText: 'Preliminary Results Ready',
+      badgeTone: 'GREEN' as const,
+      priorityLine:
+        'Action required: Preliminary results are ready. Please review and approve or request corrections.',
+    };
+  }
+
+  if (status === 'UNDER_CLIENT_FINAL_REVIEW') {
+    return {
+      badgeText: 'Final Results Ready',
+      badgeTone: 'GREEN' as const,
+      priorityLine:
+        'Action required: Final results are ready. Please review and approve or request corrections.',
+    };
+  }
+
+  if (status === 'UNDER_CLIENT_REVIEW') {
+    return {
+      badgeText: 'Results Ready',
+      badgeTone: 'GREEN' as const,
+      priorityLine:
+        'Action required:  Results are ready. Please review and approve or request corrections.',
+    };
+  }
+
+  if (status === 'APPROVED' || status === 'FINAL_APPROVED') {
+    return {
+      badgeText: 'Approved',
+      badgeTone: 'GREEN' as const,
+      priorityLine: 'This report has been approved.',
+    };
+  }
+
+  return {
+    badgeText: 'Update',
+    badgeTone: 'GRAY' as const,
+    priorityLine: undefined,
+  };
+}
+
 @Injectable()
 export class ReportNotificationsService {
   private readonly log = new Logger(ReportNotificationsService.name);
@@ -83,9 +157,9 @@ export class ReportNotificationsService {
 
   async onStatusChanged(args: NotifyArgs) {
     const newStatus = args.newStatus as ReportStatus;
-     this.log.warn(
-    `[MIC NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
-  );
+    this.log.warn(
+      `[MIC NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
+    );
     const dept = deptForFormType(args.formType);
 
     const labRecipient = () => {
@@ -142,11 +216,16 @@ export class ReportNotificationsService {
       const to = labRecipient();
       const urgent = isUrgentStatus(newStatus);
 
+      const hi = highlightForStatus(String(newStatus));
+
       if (urgent) {
         await this.mail.sendStatusNotificationEmail({
           to,
-          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
           title,
+          badgeText: hi.badgeText,
+          badgeTone: hi.badgeTone,
+          priorityLine: hi.priorityLine,
           lines: [
             `Form #: ${args.formNumber}`,
             `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
@@ -161,6 +240,8 @@ export class ReportNotificationsService {
             formNumber: args.formNumber,
             formType: args.formType,
             status: args.newStatus,
+            clientCode: args.clientCode ?? '',
+            highlightKind: hi.badgeText,
           },
         });
 
@@ -254,6 +335,8 @@ export class ReportNotificationsService {
         return;
       }
 
+      const hi = highlightForStatus(String(newStatus));
+
       const emailsRaw =
         await this.recipients.getClientNotificationEmails(clientCode);
       const emails = normalizeEmails(emailsRaw);
@@ -270,8 +353,11 @@ export class ReportNotificationsService {
       if (urgent) {
         await this.mail.sendStatusNotificationEmail({
           to: emails,
-          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
           title,
+          badgeText: hi.badgeText,
+          badgeTone: hi.badgeTone,
+          priorityLine: hi.priorityLine,
           lines: [
             `Form #: ${args.formNumber}`,
             `Client: ${args.clientName} (${clientCode})`,
@@ -287,6 +373,7 @@ export class ReportNotificationsService {
             formType: args.formType,
             status: args.newStatus,
             clientCode,
+            highlightKind: hi.badgeText,
           },
         });
 
@@ -427,6 +514,42 @@ export class ReportNotificationsService {
         'Final Approved (Client Action)',
         'client-to-lab-final-approved',
       );
+      return;
+    }
+
+    // ✅ CLIENT_NEEDS_PRELIMINARY_CORRECTION (client -> lab)
+    if (newStatus === 'CLIENT_NEEDS_CORRECTION') {
+      await notifyLab('Client Raised Correction', 'client-to-lab-correction');
+      return;
+    }
+
+    // ✅ PRELIMINARY_RESUBMISSION_BY_CLIENT (client -> lab)
+    if (newStatus === 'RESUBMISSION_BY_CLIENT') {
+      await notifyLab('Resubmission by Client', 'client-to-lab-resubmission');
+      return;
+    }
+
+    // ✅ UNDER_CLIENT_PRELIMINARY_REVIEW (lab -> client)
+    if (newStatus === 'UNDER_CLIENT_REVIEW') {
+      await notifyClient(
+        'Client Review Required',
+        'lab-to-client-under-client-review',
+      );
+      return;
+    }
+
+    // ✅ PRELIMINARY_TESTING_NEEDS_CORRECTION (lab -> client)
+    if (newStatus === 'TESTING_NEEDS_CORRECTION') {
+      await notifyClient(
+        'Testing Needs Correction',
+        'lab-to-client-testing-needs-correction',
+      );
+      return;
+    }
+
+    // ✅ FINAL_APPROVED (client -> lab)  <-- as you requested
+    if (newStatus === 'APPROVED') {
+      await notifyLab('Approved (Client Action)', 'client-to-lab-approved');
       return;
     }
 

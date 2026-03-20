@@ -43,6 +43,53 @@ function isUrgentChemStatus(s: ChemistryReportStatus) {
   return false;
 }
 
+function highlightForStatus(status: string) {
+  if (status.includes('NEEDS_CORRECTION')) {
+    return {
+      badgeText: 'Correction Required',
+      badgeTone: 'RED' as const,
+      priorityLine:
+        'Action required: Please open the report and resolve the requested corrections.',
+    };
+  }
+
+  if (status === 'SUBMITTED_BY_CLIENT') {
+    return {
+      badgeText: 'New Submission',
+      badgeTone: 'BLUE' as const,
+      priorityLine:
+        'Action required: Please review and start processing this submission.',
+    };
+  }
+
+  if (status === 'UNDER_CLIENT_REVIEW') {
+    return {
+      badgeText: 'Results Ready',
+      badgeTone: 'GREEN' as const,
+      priorityLine:
+        'Action required:  Results are ready. Please review and approve or request corrections.',
+    };
+  }
+
+  if (status === 'APPROVED') {
+    return {
+      badgeText: 'Approved',
+      badgeTone: 'GREEN' as const,
+      priorityLine: 'This report has been approved.',
+    };
+  }
+
+  return {
+    badgeText: 'Update',
+    badgeTone: 'GRAY' as const,
+    priorityLine: undefined,
+  };
+}
+
+function formLabel(formType: FormType) {
+  return formType === 'COA' ? 'COA' : 'Chemistry';
+}
+
 @Injectable()
 export class ChemistryReportNotificationsService {
   private readonly log = new Logger(ChemistryReportNotificationsService.name);
@@ -63,12 +110,14 @@ export class ChemistryReportNotificationsService {
   async onStatusChanged(args: NotifyArgs) {
     const newStatus = args.newStatus as ChemistryReportStatus;
 
-     this.log.warn(
-    `[CHEM NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
-  );
+    this.log.warn(
+      `[CHEM NOTIFY] hit onStatusChanged form=${args.formNumber} status=${newStatus} clientCode=${args.clientCode}`,
+    );
 
     // ---- recipients helpers ----
     const labRecipient = () => this.chemistryTo();
+
+    const formLabelText = formLabel(args.formType);
 
     const requireClientEmail = () => {
       if (!args.clientEmail) {
@@ -116,12 +165,16 @@ export class ChemistryReportNotificationsService {
     const notifyLab = async (title: string, tag: string) => {
       const to = labRecipient();
       const urgent = isUrgentChemStatus(newStatus);
+      const hi = highlightForStatus(String(newStatus));
 
       if (urgent) {
         await this.mail.sendStatusNotificationEmail({
           to,
-          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
           title,
+          badgeText: hi.badgeText,
+          badgeTone: hi.badgeTone,
+          priorityLine: hi.priorityLine,
           lines: [
             `Form #: ${args.formNumber}`,
             `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
@@ -136,6 +189,7 @@ export class ChemistryReportNotificationsService {
             formNumber: args.formNumber,
             formType: args.formType,
             status: args.newStatus,
+            highlightKind: hi.badgeText,
           },
         });
 
@@ -242,12 +296,16 @@ export class ChemistryReportNotificationsService {
       }
 
       const urgent = isUrgentChemStatus(newStatus);
+      const hi = highlightForStatus(String(newStatus));
 
       if (urgent) {
         await this.mail.sendStatusNotificationEmail({
           to: emails,
-          subject: `Omega LIMS — ${title} (${args.formNumber})`,
+          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
           title,
+          badgeText: hi.badgeText,
+          badgeTone: hi.badgeTone,
+          priorityLine: hi.priorityLine,
           lines: [
             `Form #: ${args.formNumber}`,
             `Client: ${args.clientName} (${clientCode})`,
@@ -263,6 +321,7 @@ export class ChemistryReportNotificationsService {
             formType: args.formType,
             status: args.newStatus,
             clientCode,
+            highlightKind: hi.badgeText,
           },
         });
 
@@ -298,68 +357,76 @@ export class ChemistryReportNotificationsService {
     };
 
     // =========================
-    // CHEMISTRY STATUS ROUTING
+    // CHEMISTRY && COA STATUS ROUTING
     // =========================
 
     // ✅ SUBMITTED_BY_CLIENT (client -> lab)
     if (newStatus === ChemistryReportStatus.SUBMITTED_BY_CLIENT) {
       await notifyLab(
-        'New Chemistry Submission from Client',
-        'chem-client-to-lab-submitted',
+        `New ${formLabelText} Submission from Client`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-submitted'
+          : 'chem-client-to-lab-submitted',
       );
       return;
     }
 
-    // ✅ CLIENT_NEEDS_CORRECTION (lab -> client)
     if (newStatus === ChemistryReportStatus.CLIENT_NEEDS_CORRECTION) {
       await notifyClient(
-        'Chemistry: Corrections Required',
-        'chem-lab-to-client-needs-correction',
+        `${formLabelText}: Corrections Required`,
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-needs-correction'
+          : 'chem-lab-to-client-needs-correction',
       );
       return;
     }
 
-    // ✅ UNDER_CLIENT_REVIEW (lab -> client)  (meaning: client must review/approve)
     if (newStatus === ChemistryReportStatus.UNDER_CLIENT_REVIEW) {
       await notifyClient(
-        'Chemistry: Under Client Review',
-        'chem-lab-to-client-under-client-review',
+        `${formLabelText}: Results Ready`,
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-under-client-review'
+          : 'chem-lab-to-client-under-client-review',
       );
       return;
     }
 
-    // ✅ TESTING_NEEDS_CORRECTION (lab -> client)
     if (newStatus === ChemistryReportStatus.TESTING_NEEDS_CORRECTION) {
       await notifyClient(
-        'Chemistry: Testing Needs Correction',
-        'chem-lab-to-client-testing-needs-correction',
+        `${formLabelText}: Testing Needs Correction`,
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-testing-needs-correction'
+          : 'chem-lab-to-client-testing-needs-correction',
       );
       return;
     }
 
-    // ✅ RESUBMISSION_BY_TESTING (lab -> client)
     if (newStatus === ChemistryReportStatus.RESUBMISSION_BY_TESTING) {
       await notifyClient(
-        'Chemistry: Resubmitted by Lab',
-        'chem-lab-to-client-resubmission-by-testing',
+        `${formLabelText}: Resubmitted by Lab`,
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-resubmission-by-testing'
+          : 'chem-lab-to-client-resubmission-by-testing',
       );
       return;
     }
 
-    // ✅ RESUBMISSION_BY_CLIENT (client -> lab)
     if (newStatus === ChemistryReportStatus.RESUBMISSION_BY_CLIENT) {
       await notifyLab(
-        'Chemistry: Resubmitted by Client',
-        'chem-client-to-lab-resubmission-by-client',
+        `${formLabelText}: Resubmitted by Client`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-resubmission-by-client'
+          : 'chem-client-to-lab-resubmission-by-client',
       );
       return;
     }
 
-    // ✅ APPROVED (lab -> client)
     if (newStatus === ChemistryReportStatus.APPROVED) {
       await notifyClient(
-        'Chemistry Report Approved',
-        'chem-lab-to-client-approved',
+        `${formLabelText} Report Approved`,
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-approved'
+          : 'chem-lab-to-client-approved',
       );
       return;
     }
