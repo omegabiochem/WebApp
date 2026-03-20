@@ -8,7 +8,13 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { setToken as storeToken, clearToken, getToken, api } from "../lib/api";
+import {
+  setToken as storeToken,
+  clearToken,
+  getToken,
+  api,
+  API_URL,
+} from "../lib/api";
 import type { Role } from "../utils/roles";
 import { socket } from "../lib/socket";
 
@@ -71,19 +77,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // prevent double logout calls
   const loggingOutRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
 
   const clearTimers = useCallback(() => {
-    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+    }
     idleTimerRef.current = null;
   }, []);
 
   const hardLogout = useCallback(() => {
-    // no network call, just drop local session immediately
     if (socket.connected) socket.disconnect();
     clearToken();
     localStorage.removeItem("user");
     setTokenState(null);
     setUser(null);
+    lastRefreshAtRef.current = 0;
     clearTimers();
   }, [clearTimers]);
 
@@ -105,19 +114,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const scheduleIdleLogout = useCallback(() => {
     if (!getToken()) return;
 
-    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+    }
     idleTimerRef.current = window.setTimeout(() => {
       logout();
     }, IDLE_MS);
   }, [logout]);
 
-  // Attach “activity” listeners when logged in
+  const refreshSessionIfNeeded = useCallback(async () => {
+    if (loggingOutRef.current || !getToken()) return;
+
+    const now = Date.now();
+    if (now - lastRefreshAtRef.current < 60_000) return;
+
+    lastRefreshAtRef.current = now;
+
+    try {
+      const res = await fetch(API_URL + "/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data?.accessToken) {
+        storeToken(data.accessToken);
+        setTokenState(data.accessToken);
+
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem("user", JSON.stringify(data.user));
+        }
+
+        connectSocketWithToken(data.accessToken);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!token) return;
 
-    const onActivity = () => scheduleIdleLogout();
+    const onActivity = () => {
+      scheduleIdleLogout();
+      refreshSessionIfNeeded();
+    };
 
-    // start timer immediately
     scheduleIdleLogout();
 
     const events: Array<keyof WindowEventMap> = [
@@ -135,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       events.forEach((e) => window.removeEventListener(e, onActivity as any));
     };
-  }, [token, scheduleIdleLogout]);
+  }, [token, scheduleIdleLogout, refreshSessionIfNeeded]);
 
   // init session on load
   useEffect(() => {
