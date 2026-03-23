@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { CreateMessageDto } from './create-message.dto';
 import { UserRole } from '@prisma/client';
+import { MessageNotificationsService } from 'src/notifications/message-notifications.service';
 
 type JwtUser = {
   sub?: string;
@@ -39,7 +40,10 @@ function getVisibleRoles(viewerRole: UserRole): UserRole[] {
 
 @Injectable()
 export class MessagesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly messageNotifications: MessageNotificationsService,
+  ) {}
 
   async getOrCreateThread(args: {
     clientCode: string;
@@ -121,18 +125,41 @@ export class MessagesService {
       }
     }
 
-    return this.prisma.message.create({
+    const cleanBody = String(dto.body ?? '').trim();
+    const hasAttachments =
+      Array.isArray(dto.attachments) && dto.attachments.length > 0;
+
+    if (!cleanBody && !hasAttachments) {
+      throw new ForbiddenException('Message body or attachment is required');
+    }
+
+    const created = await this.prisma.message.create({
       data: {
         threadId: thread.id,
         senderId,
         senderRole: user.role,
         senderName,
-        body: dto.body,
+        body: cleanBody,
         mentions: dto.mentions ?? [],
         attachments: dto.attachments,
         replyToMessageId,
       },
     });
+
+    await this.messageNotifications.onMessageCreated({
+      messageId: created.id,
+      threadId: thread.id,
+      senderId,
+      senderRole: user.role,
+      senderName,
+      clientCode,
+      body: created.body,
+      mentions: dto.mentions ?? [],
+      reportId: dto.reportId ?? null,
+      chemistryId: dto.chemistryId ?? null,
+    });
+
+    return created;
   }
 
   // ✅ NEW: viewer-aware fetch
@@ -219,17 +246,17 @@ export class MessagesService {
 
   async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
     const canSeeAll = PRIVILEGED.includes(viewerRole);
-const visibleRoles = getVisibleRoles(viewerRole);
+    const visibleRoles = getVisibleRoles(viewerRole);
 
-const visibleMessageFilter = canSeeAll
-  ? undefined
-  : {
-      OR: [
-        { mentions: { hasSome: visibleRoles } },
-        { senderRole: { in: visibleRoles } },
-        { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
-      ],
-    };
+    const visibleMessageFilter = canSeeAll
+      ? undefined
+      : {
+          OR: [
+            { mentions: { hasSome: visibleRoles } },
+            { senderRole: { in: visibleRoles } },
+            { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
+          ],
+        };
 
     // 1) get ALL clients (one row per clientCode)
     // If you can have multiple client users per clientCode, pick “primary” name/email or first one.
