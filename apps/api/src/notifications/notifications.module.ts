@@ -1,15 +1,3 @@
-// import { Module } from '@nestjs/common';
-// import { ReportNotificationsService } from './report-notifications.service';
-// import { MailModule } from '../mail/mail.module';
-// import { ChemistryReportNotificationsService } from './chemistryreport-notification.service';
-
-// @Module({
-//   imports: [MailModule], // because ReportNotificationsService depends on MailService
-//   providers: [ReportNotificationsService, ChemistryReportNotificationsService],
-//   exports: [ReportNotificationsService, ChemistryReportNotificationsService], // ✅ must export so ReportsModule can use it
-// })
-// export class NotificationsModule {}
-// apps/api/src/notifications/notifications.module.ts
 import { Module } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 
@@ -21,10 +9,13 @@ import { ChemistryReportNotificationsService } from './chemistryreport-notificat
 import { ClientNotificationsService } from './client-notifications.service';
 import { ClientNotificationsController } from './client-notifications.controller';
 import { NotificationsDigestService } from './notifications-digest.service';
+import { NotificationModule } from './inAppNotifications/notification.module';
+
 
 @Module({
   imports: [
     MailModule, // ✅ required for email sending
+    NotificationModule,
   ],
   controllers: [
     ClientNotificationsController, // ✅ ADMIN API (new)

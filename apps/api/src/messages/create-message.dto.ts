@@ -1,9 +1,10 @@
-import { IsArray, IsOptional, IsString } from "class-validator";
-import { UserRole } from "@prisma/client";
+import { IsArray, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { UserRole } from '@prisma/client';
 
 export class CreateMessageDto {
+  @IsOptional()
   @IsString()
-  body: string;
+  body?: string;
 
   @IsOptional()
   @IsArray()
@@ -18,12 +19,10 @@ export class CreateMessageDto {
   @IsOptional()
   chemistryId?: string;
 
-  // ✅ LAB only
   @IsOptional()
   @IsString()
   clientCode?: string;
 
-  // ✅ NEW — reply support
   @IsOptional()
   @IsString()
   replyToMessageId?: string;

@@ -205,6 +205,8 @@ model User {
   auditTrails               AuditTrail[]
   readings                  BalanceReading[]
 
+  notifications             Notification[]
+
   // Support Tickets (relations)
   supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
   supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
@@ -844,4 +846,72 @@ model NotificationOutbox {
   @@index([sentAt, createdAt])
   @@index([claimedAt])
   @@index([scope, dept, clientCode])
+}
+
+model MessageNotificationOutbox {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  sentAt       DateTime?
+  claimedAt    DateTime?
+  claimKey     String?
+
+  // routing
+  scope        String   // "LAB" | "CLIENT"
+  dept         String?  // "FRONTDESK" | "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode   String?
+  recipientsKey String  // JSON string of normalized emails
+
+  // event payload
+  threadId     String
+  messageId    String
+  senderId     String?
+  senderRole   UserRole
+  senderName   String?
+  preview      String
+  actionUrl    String?
+
+  reportId     String?
+  chemistryId  String?
+
+  attempts     Int      @default(0)
+  lastError    String?
+
+  @@index([sentAt, createdAt])
+  @@index([claimedAt])
+  @@index([scope, dept, clientCode])
+  @@index([threadId, createdAt])
+}
+
+
+
+model Notification {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  readAt     DateTime?
+
+  userId     String?
+  role       UserRole?
+  clientCode String?
+
+  kind       String   // STATUS_CHANGE | RESULT_READY | CORRECTION | MESSAGE | SYSTEM
+  title      String
+  body       String
+  severity   String   // INFO | SUCCESS | WARNING | ERROR
+
+  entityType String?  // REPORT | CHEMISTRY_REPORT | MESSAGE_THREAD
+  entityId   String?
+  formType   FormType?
+  formNumber String?
+  reportUrl  String?
+
+  status     String?  // status snapshot
+  meta       Json?
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([role, createdAt])
+  @@index([clientCode, createdAt])
+  @@index([readAt, createdAt])
 }
