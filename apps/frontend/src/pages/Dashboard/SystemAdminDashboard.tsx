@@ -46,6 +46,7 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+import { Pin } from "lucide-react";
 
 // ---------------------------------
 // Types
@@ -595,6 +596,7 @@ export default function SystemAdminDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>(
     (searchParams.get("sel") || "").split(",").filter(Boolean),
   );
+
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
@@ -614,6 +616,19 @@ export default function SystemAdminDashboard() {
 
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid;
+
+  const PIN_STORAGE_KEY = userKey
+    ? `clientDashboardPinned:user:${userKey}`
+    : null;
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinsHydrated, setPinsHydrated] = useState(false);
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
@@ -854,6 +869,12 @@ export default function SystemAdminDashboard() {
     );
 
     return [...byDate].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned; // pinned first
+      }
       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return bT - aT;
@@ -872,6 +893,7 @@ export default function SystemAdminDashboard() {
     reportNoTo,
     dateFrom,
     dateTo,
+    pinnedIds,
   ]);
 
   const total = processed.length;
@@ -1475,6 +1497,41 @@ export default function SystemAdminDashboard() {
   }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
 
   useEffect(() => {
+    if (!PIN_STORAGE_KEY) {
+      setPinsHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          setPinnedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPinsHydrated(true);
+    }
+  }, [PIN_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) return;
+    if (!pinsHydrated) return;
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+
+  const isPinned = (id: string) => pinnedIds.includes(id);
+
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  useEffect(() => {
     if (!colOpen) return;
 
     const onDown = (e: MouseEvent) => {
@@ -1537,7 +1594,7 @@ export default function SystemAdminDashboard() {
     });
   };
 
-  if (!colsHydrated) {
+  if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -1951,18 +2008,20 @@ export default function SystemAdminDashboard() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50">
+       <div className="min-h-0">
+  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+            <thead className="sticky top-0 z-30 bg-slate-50">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10">
+                <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -1970,15 +2029,17 @@ export default function SystemAdminDashboard() {
                   />
                 </th>
                 {selectedCols.map((k) => (
-                  <th
-                    key={k}
-                    className="px-4 py-3 font-medium whitespace-nowrap"
-                  >
+              <th
+  key={k}
+  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+>
                     {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
                   </th>
                 ))}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">
+                <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+  Status
+</th>
+                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                   <div className="flex items-center justify-between gap-2">
                     <span>Actions</span>
 
@@ -2077,10 +2138,13 @@ export default function SystemAdminDashboard() {
             </thead>
 
             <tbody>
-                      {loading &&
+              {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3">
+                    <td className="pl-2 pr-1 py-3">
+                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
+                    </td>
+                    <td className="pl-1 pr-3 py-3">
                       <div className="h-4 w-4 rounded bg-slate-200" />
                     </td>
 
@@ -2110,8 +2174,38 @@ export default function SystemAdminDashboard() {
                   const rowBusy = updatingId === r.id;
 
                   return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50">
-                      <td className="px-4 py-3">
+                    <tr
+                      key={r.id}
+                      className={classNames(
+                        "border-t hover:bg-slate-50",
+                        isPinned(r.id) && "bg-blue-50/40",
+                      )}
+                    >
+                      <td className="pl-2 pr-1 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePin(r.id);
+                          }}
+                          className="inline-flex items-center justify-center transition hover:scale-110"
+                          aria-label={
+                            isPinned(r.id) ? "Unpin report" : "Pin report"
+                          }
+                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                        >
+                          <Pin
+                            className={classNames(
+                              "h-3 w-3 rotate-45 transition",
+                              isPinned(r.id)
+                                ? "text-blue-600 fill-blue-600"
+                                : "text-slate-400 hover:text-slate-600",
+                            )}
+                          />
+                        </button>
+                      </td>
+
+                      <td className="pl-4 pr-3 py-3">
                         <input
                           type="checkbox"
                           checked={isRowSelected(r.id)}
@@ -2135,7 +2229,7 @@ export default function SystemAdminDashboard() {
                       <td className="px-4 py-3">
                         <span
                           className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
                             badgeClasses(r),
                           )}
                         >
@@ -2143,7 +2237,7 @@ export default function SystemAdminDashboard() {
                         </span>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                         <div className="flex items-center gap-2">
                           <button
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2186,7 +2280,7 @@ export default function SystemAdminDashboard() {
                                   ) {
                                     const next =
                                       "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by system admin");
+                                    await setStatus(r, next, "set by sytemadmin");
                                     setReports((prev) =>
                                       prev.map((x) =>
                                         x.id === r.id
@@ -2258,7 +2352,7 @@ export default function SystemAdminDashboard() {
                                   if (r.status === "CLIENT_NEEDS_CORRECTION") {
                                     const next =
                                       "UNDER_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by system admin");
+                                    await setStatus(r, next, "set by systemadmin");
                                     setReports((prev) =>
                                       prev.map((x) =>
                                         x.id === r.id
@@ -2316,8 +2410,8 @@ export default function SystemAdminDashboard() {
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                                   <td
-                    colSpan={1 + selectedCols.length + 2}
+                  <td
+colSpan={2 + selectedCols.length + 2}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports match filters.
@@ -2327,10 +2421,11 @@ export default function SystemAdminDashboard() {
             </tbody>
           </table>
         </div>
+        </div>
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
+          <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
               Showing <span className="font-medium">{start + 1}</span>–{" "}
               <span className="font-medium">{Math.min(end, total)}</span> of{" "}
