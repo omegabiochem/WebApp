@@ -193,39 +193,95 @@ function intersectAll(lists: string[][]): string[] {
 // ----------------------------------
 const MICRO_STATUSES = [
   "ALL",
+  "DRAFT",
   "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "UNDER_CLIENT_FINAL_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_ON_HOLD",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "FINAL_RESUBMISSION_BY_TESTING",
   "PRELIMINARY_APPROVED",
   "UNDER_FINAL_TESTING_REVIEW",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "FINAL_TESTING_ON_HOLD",
+  "FINAL_TESTING_NEEDS_CORRECTION",
   "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "UNDER_QA_PRELIMINARY_REVIEW",
   "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "UNDER_QA_FINAL_REVIEW",
   "QA_NEEDS_FINAL_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  "FINAL_APPROVED",
+  "LOCKED",
+  "VOID",
+] as const;
 
-  //STERILITY
-  "UNDER_TESTING_REVIEW",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+const STERILITY_STATUSES = [
+  "ALL",
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
   "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
   "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
+  "LOCKED",
+  "VOID",
 ] as const;
 
 const CHEMISTRY_STATUSES = [
   "ALL",
+  "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "UNDER_TESTING_REVIEW",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
   "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
+  "LOCKED",
+  "VOID",
 ] as const;
 
 // ----------------------------------
@@ -880,7 +936,7 @@ export default function MCDashboard() {
 
     return [...m, ...c];
   }, [microReports, chemReports]);
-   const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
+  const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
 
   const workspaceReports = useMemo(() => {
     const map = new Map<string, UnifiedRow>();
@@ -1008,24 +1064,50 @@ export default function MCDashboard() {
   //   CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
   //   return Array.from(set);
   // }, [category]);
-
   const statusOptions = useMemo(() => {
-    if (category === "MICRO") return MICRO_STATUSES as unknown as string[];
+    // MICRO tab
+    if (category === "MICRO") {
+      if (microFormFilter === "STERILITY") {
+        return STERILITY_STATUSES as unknown as string[];
+      }
 
+      // MICRO + MICRO_WATER + ALL under MICRO tab should use micro statuses
+      return MICRO_STATUSES as unknown as string[];
+    }
+
+    // CHEMISTRY tab
     if (category === "CHEMISTRY") {
+      // CHEMISTRY_MIX + COA both use chemistry-style statuses
+      return CHEMISTRY_STATUSES as unknown as string[];
+    }
+
+    // ALL tab
+    if (category === "ALL") {
+      if (
+        allTypeFilter === "MICRO_MIX" ||
+        allTypeFilter === "MICRO_MIX_WATER"
+      ) {
+        return MICRO_STATUSES as unknown as string[];
+      }
+
+      if (allTypeFilter === "STERILITY") {
+        return STERILITY_STATUSES as unknown as string[];
+      }
+
+      if (allTypeFilter === "CHEMISTRY_MIX" || allTypeFilter === "COA") {
+        return CHEMISTRY_STATUSES as unknown as string[];
+      }
+
+      // true ALL = union of all statuses
       const set = new Set<string>(["ALL"]);
+      MICRO_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
+      STERILITY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
       CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
-      Object.keys(COA_STATUS_COLORS).forEach((s) => set.add(String(s)));
       return Array.from(set);
     }
 
-    // ALL: union
-    const set = new Set<string>(["ALL"]);
-    MICRO_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
-    CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
-    Object.keys(COA_STATUS_COLORS).forEach((s) => set.add(String(s)));
-    return Array.from(set);
-  }, [category]);
+    return ["ALL"];
+  }, [category, microFormFilter, chemFormFilter, allTypeFilter]);
 
   // Chemistry actives list (only from chemReports)
   const allActives = useMemo(() => {
@@ -1044,6 +1126,12 @@ export default function MCDashboard() {
     }
     return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [chemReports]);
+
+  useEffect(() => {
+    if (!statusOptions.includes(statusFilter)) {
+      setStatusFilter("ALL");
+    }
+  }, [statusOptions, statusFilter]);
 
   // -----------------------------
   // Filtering + sorting
@@ -1112,13 +1200,13 @@ export default function MCDashboard() {
     }
 
     // 4) global search
-   if (search.trim()) {
-  const q = search.trim().toLowerCase();
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
 
-  rows = rows.filter((r) => {
-    return (r._searchBlob || "").includes(q);
-  });
-}
+      rows = rows.filter((r) => {
+        return (r._searchBlob || "").includes(q);
+      });
+    }
 
     // 5) number range
     if (numberRangeType === "FORM") {
@@ -1393,7 +1481,7 @@ export default function MCDashboard() {
   // -----------------------------
   // Selection
   // -----------------------------
- 
+
   const isRowSelected = (r: UnifiedRow) => selectedIds.includes(rowKey(r));
 
   const toggleRow = (r: UnifiedRow) => {
@@ -2145,7 +2233,7 @@ export default function MCDashboard() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {/* Global search */}
           <input
-           placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
+            placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"

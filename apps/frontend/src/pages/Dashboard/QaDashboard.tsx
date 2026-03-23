@@ -190,19 +190,29 @@ const QA_CHEM_STATUSES: DashboardStatus[] = [
 
 const QA_STERILITY_STATUSES: DashboardStatus[] = [
   "ALL",
-  // ✅ Put ONLY sterility-valid statuses here
-  // Example (replace with your real ones):
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
-  "UNDER_PRELIMINARY_TESTING_REVIEW",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_QA_PRELIMINARY_REVIEW",
-  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
+  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
+  "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "FINAL_APPROVED",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  "APPROVED",
   "LOCKED",
+  "VOID",
 ];
 
 // ---------------------------------
@@ -582,7 +592,7 @@ export default function QaDashboard() {
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   const statusOptions =
-    formFilter === "CHEMISTRY"
+    formFilter === "CHEMISTRY" || formFilter === "COA"
       ? QA_CHEM_STATUSES
       : formFilter === "STERILITY"
         ? QA_STERILITY_STATUSES
@@ -645,20 +655,20 @@ export default function QaDashboard() {
     null,
   );
 
- const workspaceReports = useMemo(() => {
-  const map = new Map<string, Report>();
-  reports.forEach((r) => map.set(r.id, r));
+  const workspaceReports = useMemo(() => {
+    const map = new Map<string, Report>();
+    reports.forEach((r) => map.set(r.id, r));
 
-  return workspaceIds
-    .map((id) => map.get(id))
-    .filter(Boolean)
-    .map((r) => ({
-      ...r!,
-      formNumber: r!.formNumber ?? "",
-      reportNumber:
-        r!.reportNumber != null ? String(r!.reportNumber) : undefined,
-    }));
-}, [workspaceIds, reports]);
+    return workspaceIds
+      .map((id) => map.get(id))
+      .filter(Boolean)
+      .map((r) => ({
+        ...r!,
+        formNumber: r!.formNumber ?? "",
+        reportNumber:
+          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+      }));
+  }, [workspaceIds, reports]);
 
   // -----------------------------
   // Bulk Change Status (QA)
@@ -751,20 +761,19 @@ export default function QaDashboard() {
     }
   }, [formFilter, statusOptions]); // ✅ include statusOptions
 
-const reportsWithSearch = useMemo(() => {
-  return reports.map((r) => ({
-    ...r,
-    _searchBlob: getReportSearchBlob(r),
-  }));
-}, [reports]);
-
+  const reportsWithSearch = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
 
   // Derived rows (filter → search → sort)
   const processed = useMemo(() => {
-   const byForm =
-  formFilter === "ALL"
-    ? reportsWithSearch
-    : reportsWithSearch.filter((r) => {
+    const byForm =
+      formFilter === "ALL"
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -800,12 +809,12 @@ const reportsWithSearch = useMemo(() => {
         })
       : byClient;
 
-const bySearchText = searchText.trim()
-  ? byReport.filter((r) => {
-      const q = searchText.trim().toLowerCase();
-      return (r._searchBlob || "").includes(q);
-    })
-  : byReport;
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
+        })
+      : byReport;
 
     const byNumberRange = (
       numberRangeType === "FORM"
@@ -844,7 +853,7 @@ const bySearchText = searchText.trim()
       return bT - aT;
     });
   }, [
- reportsWithSearch,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -1485,6 +1494,9 @@ const bySearchText = searchText.trim()
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   return (
     <div className="p-6">
@@ -1773,7 +1785,7 @@ const bySearchText = searchText.trim()
           /> */}
           {/* Global text search */}
           <input
-           placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
+            placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm

@@ -86,34 +86,84 @@ type Report = {
 // -----------------------------
 // Micro + Micro Water (prelim/final workflow)
 const MICRO_ONLY_STATUSES = [
+  // "ALL",
+  // "SUBMITTED_BY_CLIENT",
+  // "UNDER_PRELIMINARY_TESTING_REVIEW",
+  // "PRELIMINARY_APPROVED",
+  // "PRELIMINARY_TESTING_ON_HOLD",
+  // "UNDER_FINAL_TESTING_REVIEW",
+  // "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  // "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  // "QA_NEEDS_PRELIMINARY_CORRECTION",
+  // "QA_NEEDS_FINAL_CORRECTION",
+
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "UNDER_PRELIMINARY_TESTING_REVIEW",
-  "PRELIMINARY_APPROVED",
-  "PRELIMINARY_TESTING_ON_HOLD",
-  "UNDER_FINAL_TESTING_REVIEW",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
-  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
+  "UNDER_CLIENT_FINAL_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_PRELIMINARY_TESTING_REVIEW",
+  "PRELIMINARY_TESTING_ON_HOLD",
+  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  "FINAL_RESUBMISSION_BY_TESTING",
+  "PRELIMINARY_APPROVED",
+  "UNDER_FINAL_TESTING_REVIEW",
+  "FINAL_TESTING_ON_HOLD",
+  "FINAL_TESTING_NEEDS_CORRECTION",
+  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_PRELIMINARY_REVIEW",
   "QA_NEEDS_PRELIMINARY_CORRECTION",
+  "UNDER_QA_FINAL_REVIEW",
   "QA_NEEDS_FINAL_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  "FINAL_APPROVED",
+  "LOCKED",
+  "VOID",
 ] as const;
 
 // Sterility (chemistry-like workflow)
 const STERILITY_ONLY_STATUSES = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "UNDER_TESTING_REVIEW",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "UNDER_CLIENT_REVIEW",
+  "RECEIVED_BY_FRONTDESK",
+  "FRONTDESK_ON_HOLD",
+  "FRONTDESK_NEEDS_CORRECTION",
+  "UNDER_TESTING_REVIEW",
+  "TESTING_ON_HOLD",
+  "TESTING_NEEDS_CORRECTION",
+  "RESUBMISSION_BY_TESTING",
   "UNDER_RESUBMISSION_TESTING_REVIEW",
+  "UNDER_QA_REVIEW",
   "QA_NEEDS_CORRECTION",
+  "UNDER_ADMIN_REVIEW",
+  "ADMIN_NEEDS_CORRECTION",
+  "ADMIN_REJECTED",
+  "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
+  "LOCKED",
+  "VOID",
 ] as const;
 
 type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY";
@@ -583,18 +633,18 @@ export default function MicroDashboard() {
   }, [formFilter]);
 
   const reportsWithSearch = useMemo(() => {
-  return reports.map((r) => ({
-    ...r,
-    _searchBlob: getReportSearchBlob(r),
-  }));
-}, [reports]);
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
 
   // derived
   const processed = useMemo(() => {
     const byForm =
-  formFilter === "ALL"
-    ? reportsWithSearch
-    : reportsWithSearch.filter((r) => {
+      formFilter === "ALL"
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICRO_WATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -629,12 +679,12 @@ export default function MicroDashboard() {
         })
       : byClient;
 
- const bySearchText = searchText.trim()
-  ? byReport.filter((r) => {
-      const q = searchText.trim().toLowerCase();
-      return (r._searchBlob || "").includes(q);
-    })
-  : byReport;
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
+        })
+      : byReport;
 
     const byNumberRange =
       numberRangeType === "FORM"
@@ -1656,7 +1706,7 @@ export default function MicroDashboard() {
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-             placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
+              placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
             {searchText && (
