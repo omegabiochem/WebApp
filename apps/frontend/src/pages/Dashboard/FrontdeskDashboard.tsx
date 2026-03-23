@@ -38,6 +38,12 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+import {
+  ChemistryCOLS,
+  COLS,
+  type DashboardColKey,
+} from "../../utils/globalUtils";
+import { Pin } from "lucide-react";
 
 // -----------------------------
 // Types
@@ -467,6 +473,15 @@ export default function FrontDeskDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid;
+
   const initialFilters = getInitialFrontDeskFilters(searchParams);
 
   const [formFilter, setFormFilter] = useState<
@@ -516,45 +531,15 @@ export default function FrontDeskDashboard() {
     initialFilters.modalPane,
   );
 
-  // const [formFilter, setFormFilter] = useState<
-  //   "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
-  // >((searchParams.get("form") as any) || "ALL");
-
-  // const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
-  //   (searchParams.get("status") as any) || "ALL",
-  // );
-
-  // const [search, setSearch] = useState(searchParams.get("q") || "");
-
-  // const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-  //   ((searchParams.get("sb") as any) || "dateSent") as any,
-  // );
-
-  // const [sortDir, setSortDir] = useState<"asc" | "desc">(
-  //   ((searchParams.get("sd") as any) || "desc") as any,
-  // );
-
-  // const [datePreset, setDatePreset] = useState<DatePreset>(
-  //   (searchParams.get("dp") as any) || "ALL",
-  // );
-
-  // const [fromDate, setFromDate] = useState<string>(
-  //   searchParams.get("from") || "",
-  // );
-  // const [toDate, setToDate] = useState<string>(searchParams.get("to") || "");
-
-  // const [perPage, setPerPage] = useState(
-  //   parseIntSafe(searchParams.get("pp"), 10),
-  // );
-  // const [page, setPage] = useState(parseIntSafe(searchParams.get("p"), 1));
-
-  // const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  // const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
-  //   (searchParams.get("pane") as any) || "FORM",
-  // );
-
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const PIN_STORAGE_KEY = userKey
+    ? `clientDashboardPinned:user:${userKey}`
+    : null;
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinsHydrated, setPinsHydrated] = useState(false);
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
@@ -580,8 +565,32 @@ export default function FrontDeskDashboard() {
 
   const fileInputs = React.useRef<Record<string, HTMLInputElement>>({});
 
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const colUserKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "frontdesk";
+
+  const COL_STORAGE_KEY = `frontdeskDashboardCols:user:${colUserKey}`;
+
+  const [colOpen, setColOpen] = useState(false);
+
+  const DEFAULT_COLS: DashboardColKey[] = [
+    "reportNumber",
+    "formNumber",
+    "dateSent",
+    "formType",
+  ];
+
+  const [selectedCols, setSelectedCols] =
+    useState<DashboardColKey[]>(DEFAULT_COLS);
+  const [colsHydrated, setColsHydrated] = useState(false);
 
   type WorkspaceMode = "VIEW" | "UPDATE";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
@@ -714,6 +723,12 @@ export default function FrontDeskDashboard() {
     );
 
     const sorted = [...byDate].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned; // pinned first
+      }
       if (sortBy === "reportNumber") {
         const aN = a.reportNumber.toLowerCase();
         const bN = b.reportNumber.toLowerCase();
@@ -742,6 +757,7 @@ export default function FrontDeskDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    pinnedIds,
   ]);
 
   // Pagination
@@ -1256,6 +1272,158 @@ export default function FrontDeskDashboard() {
     setWorkspaceOpen(true);
   }
 
+  const DASHBOARD_COLS = useMemo(() => {
+    const map = new Map<string, { key: DashboardColKey; label: string }>();
+
+    for (const c of COLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    for (const c of ChemistryCOLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    return Array.from(map.values());
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as DashboardColKey[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSelectedCols(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setColsHydrated(true);
+    }
+  }, [COL_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!colsHydrated) return;
+    try {
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(selectedCols));
+    } catch {
+      // ignore
+    }
+  }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) {
+      setPinsHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          setPinnedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPinsHydrated(true);
+    }
+  }, [PIN_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) return;
+    if (!pinsHydrated) return;
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+
+  const isPinned = (id: string) => pinnedIds.includes(id);
+
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  useEffect(() => {
+    if (!colOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-col-dropdown]")) setColOpen(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [colOpen]);
+
+  function niceFormType(ft?: string) {
+    switch (ft) {
+      case "MICRO_MIX":
+        return "MICRO";
+      case "MICRO_MIX_WATER":
+        return "MICRO_WATER";
+      case "CHEMISTRY_MIX":
+        return "CHEMISTRY";
+      default:
+        return ft || "-";
+    }
+  }
+
+  function getCellValue(r: Report, key: DashboardColKey) {
+    switch (key) {
+      case "reportNumber":
+        return r.reportNumber || "-";
+
+      case "formNumber":
+        return r.formNumber || "-";
+
+      case "client":
+        return r.client || "-";
+
+      case "formType":
+        return niceFormType(r.formType);
+
+      case "dateSent":
+        return formatDate(r.dateSent);
+
+      case "manufactureDate":
+        return formatDate(r.manufactureDate ?? null);
+
+      case "createdAt":
+        return formatDate(r.createdAt ?? null);
+
+      case "updatedAt":
+        return formatDate(r.updatedAt ?? null);
+
+      case "actives": {
+        if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
+
+        if (typeof r.actives === "string") return r.actives || "-";
+        if (Array.isArray(r.actives)) return r.actives.join(", ") || "-";
+        return "-";
+      }
+
+      default: {
+        const v = (r as any)[key];
+        return v == null || v === "" ? "-" : String(v);
+      }
+    }
+  }
+
+  const toggleCol = (key: DashboardColKey) => {
+    setSelectedCols((prev) => {
+      const exists = prev.includes(key);
+      if (exists) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+  };
+
+  if (!colsHydrated || !pinsHydrated) {
+    return <div className="p-6 text-slate-500">Loading dashboard…</div>;
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1712,12 +1880,13 @@ export default function FrontDeskDashboard() {
             {error}
           </div>
         )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50">
+<div className="min-h-0">
+  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+           <thead className="sticky top-0 z-30 bg-slate-50">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10">
+              <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -1725,34 +1894,137 @@ export default function FrontDeskDashboard() {
                     disabled={printingBulk}
                   />
                 </th>
-                <th className="px-4 py-3 font-medium">Report #</th>
-                <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Date Sent</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                {selectedCols.map((k) => (
+                 <th
+  key={k}
+  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+>
+                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                  </th>
+                ))}
+               <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+  Status
+</th>
+                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Actions</span>
+
+                    <div className="relative" data-col-dropdown>
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              });
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
+                      </button>
+
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {DASHBOARD_COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3">
+                    <td className="pl-2 pr-1 py-3">
+                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
+                    </td>
+                    <td className="pl-1 pr-3 py-3">
                       <div className="h-4 w-4 rounded bg-slate-200" />
                     </td>
+
+                    {selectedCols.map((k) => (
+                      <td key={`${k}-${i}`} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+
                     <td className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      <div className="h-5 w-28 animate-pulse rounded bg-slate-200" />
                     </td>
+
                     <td className="px-4 py-3">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                      <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
                     </td>
                   </tr>
                 ))}
@@ -1766,7 +2038,36 @@ export default function FrontDeskDashboard() {
                   const rowUploading = uploadingId === r.id;
 
                   return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                   <tr
+                      key={r.id}
+                      className={classNames(
+                        "border-t hover:bg-slate-50",
+                        isPinned(r.id) && "bg-blue-50/40",
+                      )}
+                    >
+                      <td className="pl-2 pr-1 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePin(r.id);
+                          }}
+                          className="inline-flex items-center justify-center transition hover:scale-110"
+                          aria-label={
+                            isPinned(r.id) ? "Unpin report" : "Pin report"
+                          }
+                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                        >
+                          <Pin
+                            className={classNames(
+                              "h-3 w-3 rotate-45 transition",
+                              isPinned(r.id)
+                                ? "text-blue-600 fill-blue-600"
+                                : "text-slate-400 hover:text-slate-600",
+                            )}
+                          />
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
@@ -1776,16 +2077,22 @@ export default function FrontDeskDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3 font-medium">
-                        {r.reportNumber}
-                      </td>
-                      <td className="px-4 py-3">{r.formNumber}</td>
-                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      {selectedCols.map((k) => (
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
+                          {k === "reportNumber" || k === "formNumber" ? (
+                            <span className="font-medium">
+                              {getCellValue(r, k)}
+                            </span>
+                          ) : (
+                            getCellValue(r, k)
+                          )}
+                        </td>
+                      ))}
 
                       <td className="px-4 py-3">
                         <span
                           className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
                             (isChemistry
                               ? CHEMISTRY_STATUS_COLORS[
                                   r.status as ChemistryReportStatus
@@ -1798,7 +2105,7 @@ export default function FrontDeskDashboard() {
                         </span>
                       </td>
 
-                      <td className="px-4 py-3">
+                     <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                         <div className="flex flex-wrap items-center gap-2">
                           {/* <button
                             disabled={rowBusy}
@@ -1969,7 +2276,7 @@ export default function FrontDeskDashboard() {
               {!loading && pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+colSpan={2 + selectedCols.length + 2}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports found for{" "}
@@ -1991,10 +2298,11 @@ export default function FrontDeskDashboard() {
             </tbody>
           </table>
         </div>
+        </div>
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
+          <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
               Showing <span className="font-medium">{start + 1}</span>–
               <span className="font-medium">{Math.min(end, total)}</span> of

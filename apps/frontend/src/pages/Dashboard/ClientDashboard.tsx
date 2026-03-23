@@ -45,6 +45,8 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
+import { Pin } from "lucide-react";
+
 // -----------------------------
 // Types
 // -----------------------------
@@ -607,7 +609,9 @@ export default function ClientDashboard() {
   );
 
   const statusOptions =
-    formFilter === "CHEMISTRY" || formFilter === "COA" || formFilter === "STERILITY"
+    formFilter === "CHEMISTRY" ||
+    formFilter === "COA" ||
+    formFilter === "STERILITY"
       ? CLIENT_CHEM_STATUSES
       : CLIENT_MICRO_STATUSES;
 
@@ -655,6 +659,13 @@ export default function ClientDashboard() {
 
   const [selectedCols, setSelectedCols] = useState<ColKey[]>(DEFAULT_COLS);
   const [colsHydrated, setColsHydrated] = useState(false);
+
+  const PIN_STORAGE_KEY = userKey
+    ? `clientDashboardPinned:user:${userKey}`
+    : null;
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinsHydrated, setPinsHydrated] = useState(false);
 
   type StatusActionModalState = {
     open: boolean;
@@ -704,6 +715,41 @@ export default function ClientDashboard() {
     if (!colsHydrated) return; // ✅ don't overwrite before loading
     localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(selectedCols));
   }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) {
+      setPinsHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          setPinnedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPinsHydrated(true);
+    }
+  }, [PIN_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) return;
+    if (!pinsHydrated) return;
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+
+  const isPinned = (id: string) => pinnedIds.includes(id);
+
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
   useEffect(() => {
     let abort = false;
@@ -817,11 +863,19 @@ export default function ClientDashboard() {
 
     // 4) sort (same as you already have)
     const sorted = [...byDate].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned; // pinned first
+      }
+
       if (sortBy === "formNumber") {
-        const aN = a.formNumber.toLowerCase();
-        const bN = b.formNumber.toLowerCase();
+        const aN = (a.formNumber || "").toLowerCase();
+        const bN = (b.formNumber || "").toLowerCase();
         return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
       }
+
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
@@ -830,6 +884,7 @@ export default function ClientDashboard() {
     return sorted;
   }, [
     reports,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -844,6 +899,7 @@ export default function ClientDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    pinnedIds,
   ]);
 
   // Pagination
@@ -1288,7 +1344,7 @@ export default function ClientDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-  if (!colsHydrated) {
+  if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -1438,8 +1494,6 @@ export default function ClientDashboard() {
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
   }
-
-  
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1860,7 +1914,7 @@ export default function ClientDashboard() {
       </div>
 
       {/* Content card */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
         {/* States */}
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
@@ -1869,32 +1923,34 @@ export default function ClientDashboard() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50">
-              <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleSelectPage}
-                  />
-                </th>
-                {selectedCols.map((k) => (
-                  <th
-                    key={k}
-                    className="px-4 py-3 font-medium whitespace-nowrap"
-                  >
-                    {COLS.find((c) => c.key === k)?.label ?? k}
-                  </th>
-                ))}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Actions</span>
+        <div className="min-h-0">
+         <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+              <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+               <thead className="sticky top-0 z-30 bg-slate-50">
+                  <tr className="text-left text-slate-600">
+                   <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                    <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        onChange={toggleSelectPage}
+                      />
+                    </th>
+                    {selectedCols.map((k) => (
+                      <th
+                        key={k}
+                        className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+                      >
+                        {COLS.find((c) => c.key === k)?.label ?? k}
+                      </th>
+                    ))}
+                    <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">Status</th>
+                    <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Actions</span>
 
-                    <div className="relative" data-col-dropdown>
-                      {/* <button
+                        <div className="relative" data-col-dropdown>
+                          {/* <button
                         type="button"
                         onClick={() => setColOpen((v) => !v)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
@@ -1904,345 +1960,390 @@ export default function ClientDashboard() {
                         ▾
                       </button> */}
 
-                      <button
-                        ref={colBtnRef}
-                        type="button"
-                        onClick={() => {
-                          setColOpen((v) => {
-                            const next = !v;
-                            if (next && colBtnRef.current) {
-                              const r =
-                                colBtnRef.current.getBoundingClientRect();
-                              setColPos({
-                                top: r.bottom + 8,
-                                left: r.right - 288,
-                              }); // 288 = w-72
-                            }
-                            return next;
-                          });
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                        title="Choose columns"
-                        aria-label="Choose columns"
-                      >
-                        ▾
-                      </button>
-
-                      {colOpen &&
-                        colPos &&
-                        createPortal(
-                          <div
-                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                            style={{ top: colPos.top, left: colPos.left }}
-                            data-col-dropdown
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold text-slate-600">
-                                Columns ({selectedCols.length})
-                              </div>
-                              <button
-                                type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800"
-                                onClick={() => setColOpen(false)}
-                                aria-label="Close"
-                                title="Close"
-                              >
-                                ✕
-                              </button>
-                            </div>
-
-                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                              {COLS.map((c) => {
-                                const checked = selectedCols.includes(c.key);
-                                const disabled = false; // or remove variable
-
-                                return (
-                                  <label
-                                    key={c.key}
-                                    className={classNames(
-                                      "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
-                                      disabled
-                                        ? "cursor-not-allowed opacity-50"
-                                        : "cursor-pointer hover:bg-slate-50",
-                                    )}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleCol(c.key)}
-                                    />
-                                    <span>{c.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-slate-600 hover:underline"
-                                onClick={() => setSelectedCols(DEFAULT_COLS)}
-                              >
-                                Reset defaults
-                              </button>
-
-                              <button
-                                type="button"
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                onClick={() => setColOpen(false)}
-                              >
-                                Done
-                              </button>
-                            </div>
-                          </div>,
-                          document.body,
-                        )}
-                    </div>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading &&
-                [...Array(6)].map((_, i) => (
-                  <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))}
-
-              {!loading &&
-                pageRows.map((r) => {
-                  const isMicro =
-                    r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER" ||
-                    r.formType === "STERILITY";
-
-                  const isChemistry =
-                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-                  return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(r.id)}
-                          onChange={() => toggleRow(r.id)}
-                        />
-                      </td>
-                      {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3 whitespace-nowrap">
-                          {k === "formNumber" ? (
-                            <span className="font-medium">
-                              {getCellValue(r, k)}
-                            </span>
-                          ) : (
-                            getCellValue(r, k)
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                            (isChemistry
-                              ? CHEMISTRY_STATUS_COLORS[
-                                  r.status as ChemistryReportStatus
-                                ]
-                              : STATUS_COLORS[r.status as ReportStatus]) ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
-                          )}
-                        >
-                          {niceStatus(String(r.status))}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
                           <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                            ref={colBtnRef}
+                            type="button"
                             onClick={() => {
-                              logUiEvent({
-                                action: "UI_VIEW",
-                                entity:
-                                  r.formType === "CHEMISTRY_MIX"
-                                    ? "ChemistryReport"
-                                    : "Micro Report",
-                                entityId: r.id,
-                                details: `Viewed ${r.formNumber}`,
-                                meta: {
-                                  formNumber: r.formNumber,
-                                  formType: r.formType,
-                                  status: r.status,
-                                },
-                                formNumber: r.formNumber || null,
-                                reportNumber: r.reportNumber || null,
-                                formType: r.formType || null,
-                                clientCode: user?.clientCode || null,
-                              });
-
-                              // setSelectedReport(r);
-                              openViewTarget(r);
-                            }}
-                          >
-                            View
-                          </button>
-                          {isMicro && canUpdateThisReport(r, user) && (
-                            <button
-                              disabled={updatingId === r.id}
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              onClick={async () => {
-                                if (updatingId === r.id) return; // 🚫 prevent double
-                                setUpdatingId(r.id);
-                                try {
-                                  if (
-                                    r.status ===
-                                    "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                                  ) {
-                                    await setStatus(
-                                      r,
-                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                                      "Sent back to client for correction",
-                                    );
-                                    toast.success("Report status updated");
-                                  }
-                                  // else if (
-                                  //   r.status ===
-                                  //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                  // ) {
-                                  //   await setStatus(
-                                  //     r,
-                                  //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                  //     "Resubmission under Review",
-                                  //   );
-                                  // }
-                                  openUpdateTarget(r);
-                                } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to update status",
-                                  );
-                                } finally {
-                                  setUpdatingId(null);
+                              setColOpen((v) => {
+                                const next = !v;
+                                if (next && colBtnRef.current) {
+                                  const r =
+                                    colBtnRef.current.getBoundingClientRect();
+                                  setColPos({
+                                    top: r.bottom + 8,
+                                    left: r.right - 288,
+                                  }); // 288 = w-72
                                 }
-                              }}
-                            >
-                              {updatingId === r.id ? <Spinner /> : null}
-                              {updatingId === r.id ? "Updating..." : "Update"}
-                            </button>
-                          )}
+                                return next;
+                              });
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                            title="Choose columns"
+                            aria-label="Choose columns"
+                          >
+                            ▾
+                          </button>
 
-                          {isChemistry &&
-                            canUpdateThisChemistryReport(r, user) && (
-                              <button
-                                disabled={updatingId === r.id}
-                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                                onClick={async () => {
-                                  if (updatingId === r.id) return; // 🚫 prevent double
-                                  setUpdatingId(r.id);
-                                  try {
-                                    if (
-                                      r.status === "TESTING_NEEDS_CORRECTION"
-                                    ) {
-                                      await setStatus(
-                                        r,
-                                        "UNDER_CLIENT_CORRECTION",
-                                        "Sent back to client for correction",
-                                      );
-                                    } else if (
-                                      r.status === "RESUBMISSION_BY_TESTING"
-                                    ) {
-                                      await setStatus(
-                                        r,
-                                        "UNDER_CLIENT_REVIEW",
-                                        "Resubmission under Review",
-                                      );
-                                    }
-                                    openUpdateTarget(r);
-                                  } catch (e: any) {
-                                    toast.error(
-                                      e?.message || "Failed to update status",
-                                    );
-                                  } finally {
-                                    setUpdatingId(null);
-                                  }
-                                }}
+                          {colOpen &&
+                            colPos &&
+                            createPortal(
+                              <div
+                                className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                                style={{ top: colPos.top, left: colPos.left }}
+                                data-col-dropdown
                               >
-                                {updatingId === r.id ? <Spinner /> : null}
-                                {updatingId === r.id ? "Updating..." : "Update"}
-                              </button>
+                                <div className="mb-2 flex items-center justify-between">
+                                  <div className="text-xs font-semibold text-slate-600">
+                                    Columns ({selectedCols.length})
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-slate-500 hover:text-slate-800"
+                                    onClick={() => setColOpen(false)}
+                                    aria-label="Close"
+                                    title="Close"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+
+                                <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                  {COLS.map((c) => {
+                                    const checked = selectedCols.includes(
+                                      c.key,
+                                    );
+                                    const disabled = false; // or remove variable
+
+                                    return (
+                                      <label
+                                        key={c.key}
+                                        className={classNames(
+                                          "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
+                                          disabled
+                                            ? "cursor-not-allowed opacity-50"
+                                            : "cursor-pointer hover:bg-slate-50",
+                                        )}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => toggleCol(c.key)}
+                                        />
+                                        <span>{c.label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    className="text-xs font-medium text-slate-600 hover:underline"
+                                    onClick={() =>
+                                      setSelectedCols(DEFAULT_COLS)
+                                    }
+                                  >
+                                    Reset defaults
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                    onClick={() => setColOpen(false)}
+                                  >
+                                    Done
+                                  </button>
+                                </div>
+                              </div>,
+                              document.body,
                             )}
                         </div>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading &&
+                    [...Array(6)].map((_, i) => (
+                      <tr key={`skel-${i}`} className="border-t">
+                        <td className="px-3 py-3">
+                          <div className="mx-auto h-6 w-6 animate-pulse rounded bg-slate-200" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-4 w-4 animate-pulse rounded bg-slate-200" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                        </td>
+                      </tr>
+                    ))}
+
+                  {!loading &&
+                    pageRows.map((r) => {
+                      const isMicro =
+                        r.formType === "MICRO_MIX" ||
+                        r.formType === "MICRO_MIX_WATER" ||
+                        r.formType === "STERILITY";
+
+                      const isChemistry =
+                        r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+                      return (
+                        <tr
+                          key={r.id}
+                          className={classNames(
+                            "border-t hover:bg-slate-50",
+                            isPinned(r.id) && "bg-amber-50/40",
+                          )}
+                        >
+                          <td className="pl-2 pr-1 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                togglePin(r.id);
+                              }}
+                              className="inline-flex items-center justify-center transition transform hover:scale-110"
+                              aria-label={
+                                isPinned(r.id) ? "Unpin report" : "Pin report"
+                              }
+                              title={isPinned(r.id) ? "Unpin" : "Pin"}
+                            >
+                              <Pin
+                                className={classNames(
+                                  "h-3 w-3 transition rotate-45",
+                                  isPinned(r.id)
+                                    ? "text-blue-600 fill-blue-600"
+                                    : "text-slate-400 hover:text-slate-600",
+                                )}
+                              />
+                            </button>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isRowSelected(r.id)}
+                              onChange={() => toggleRow(r.id)}
+                            />
+                          </td>
+                          {selectedCols.map((k) => (
+                            <td key={k} className="px-4 py-3 whitespace-nowrap">
+                              {k === "formNumber" ? (
+                                <span className="font-medium">
+                                  {getCellValue(r, k)}
+                                </span>
+                              ) : (
+                                getCellValue(r, k)
+                              )}
+                            </td>
+                          ))}
+                          <td className="px-4 py-3">
+                            <span
+                              className={classNames(
+                                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                                (isChemistry
+                                  ? CHEMISTRY_STATUS_COLORS[
+                                      r.status as ChemistryReportStatus
+                                    ]
+                                  : STATUS_COLORS[r.status as ReportStatus]) ||
+                                  "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+                          </td>
+                          <td className="sticky right-0 z-20 px-4 py-3 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                                onClick={() => {
+                                  logUiEvent({
+                                    action: "UI_VIEW",
+                                    entity:
+                                      r.formType === "CHEMISTRY_MIX"
+                                        ? "ChemistryReport"
+                                        : "Micro Report",
+                                    entityId: r.id,
+                                    details: `Viewed ${r.formNumber}`,
+                                    meta: {
+                                      formNumber: r.formNumber,
+                                      formType: r.formType,
+                                      status: r.status,
+                                    },
+                                    formNumber: r.formNumber || null,
+                                    reportNumber: r.reportNumber || null,
+                                    formType: r.formType || null,
+                                    clientCode: user?.clientCode || null,
+                                  });
+
+                                  // setSelectedReport(r);
+                                  openViewTarget(r);
+                                }}
+                              >
+                                View
+                              </button>
+                              {isMicro && canUpdateThisReport(r, user) && (
+                                <button
+                                  disabled={updatingId === r.id}
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                  onClick={async () => {
+                                    if (updatingId === r.id) return; // 🚫 prevent double
+                                    setUpdatingId(r.id);
+                                    try {
+                                      if (
+                                        r.status ===
+                                        "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                      ) {
+                                        await setStatus(
+                                          r,
+                                          "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                          "Sent back to client for correction",
+                                        );
+                                        toast.success("Report status updated");
+                                      }
+                                      // else if (
+                                      //   r.status ===
+                                      //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                      // ) {
+                                      //   await setStatus(
+                                      //     r,
+                                      //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                      //     "Resubmission under Review",
+                                      //   );
+                                      // }
+                                      openUpdateTarget(r);
+                                    } catch (e: any) {
+                                      toast.error(
+                                        e?.message || "Failed to update status",
+                                      );
+                                    } finally {
+                                      setUpdatingId(null);
+                                    }
+                                  }}
+                                >
+                                  {updatingId === r.id ? <Spinner /> : null}
+                                  {updatingId === r.id
+                                    ? "Updating..."
+                                    : "Update"}
+                                </button>
+                              )}
+
+                              {isChemistry &&
+                                canUpdateThisChemistryReport(r, user) && (
+                                  <button
+                                    disabled={updatingId === r.id}
+                                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                    onClick={async () => {
+                                      if (updatingId === r.id) return; // 🚫 prevent double
+                                      setUpdatingId(r.id);
+                                      try {
+                                        if (
+                                          r.status ===
+                                          "TESTING_NEEDS_CORRECTION"
+                                        ) {
+                                          await setStatus(
+                                            r,
+                                            "UNDER_CLIENT_CORRECTION",
+                                            "Sent back to client for correction",
+                                          );
+                                        } else if (
+                                          r.status === "RESUBMISSION_BY_TESTING"
+                                        ) {
+                                          await setStatus(
+                                            r,
+                                            "UNDER_CLIENT_REVIEW",
+                                            "Resubmission under Review",
+                                          );
+                                        }
+                                        openUpdateTarget(r);
+                                      } catch (e: any) {
+                                        toast.error(
+                                          e?.message ||
+                                            "Failed to update status",
+                                        );
+                                      } finally {
+                                        setUpdatingId(null);
+                                      }
+                                    }}
+                                  >
+                                    {updatingId === r.id ? <Spinner /> : null}
+                                    {updatingId === r.id
+                                      ? "Updating..."
+                                      : "Update"}
+                                  </button>
+                                )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                  {!loading && pageRows.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={2 + selectedCols.length + 2} // checkbox + dynamic cols + status + actions
+                        className="px-4 py-12 text-center text-slate-500"
+                      >
+                        No reports found for{" "}
+                        <span className="font-medium">
+                          {niceStatus(String(statusFilter))}
+                        </span>
+                        {search ? (
+                          <>
+                            {" "}
+                            matching{" "}
+                            <span className="font-medium">“{search}”</span>.
+                          </>
+                        ) : (
+                          "."
+                        )}
                       </td>
                     </tr>
-                  );
-                })}
+                  )}
+                </tbody>
+              </table>
+            </div>
+        
 
-              {!loading && pageRows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={1 + selectedCols.length + 2} // checkbox + dynamic cols + status + actions
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    No reports found for{" "}
-                    <span className="font-medium">
-                      {niceStatus(String(statusFilter))}
-                    </span>
-                    {search ? (
-                      <>
-                        {" "}
-                        matching <span className="font-medium">“{search}”</span>
-                        .
-                      </>
-                    ) : (
-                      "."
-                    )}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          {/* Pagination */}
+          {!loading && total > 0 && (
+            <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
+              <div className="text-slate-600">
+                Showing <span className="font-medium">{start + 1}</span>–
+                <span className="font-medium">{Math.min(end, total)}</span> of
+                <span className="font-medium"> {total}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={pageClamped === 1}
+                >
+                  Prev
+                </button>
+                <span className="tabular-nums">
+                  {pageClamped} / {totalPages}
+                </span>
+                <button
+                  className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={pageClamped === totalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Pagination */}
-        {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
-            <div className="text-slate-600">
-              Showing <span className="font-medium">{start + 1}</span>–
-              <span className="font-medium">{Math.min(end, total)}</span> of
-              <span className="font-medium"> {total}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={pageClamped === 1}
-              >
-                Prev
-              </button>
-              <span className="tabular-nums">
-                {pageClamped} / {totalPages}
-              </span>
-              <button
-                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={pageClamped === totalPages}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modal: read-only full form */}

@@ -45,6 +45,7 @@ import {
   COLS,
   type DashboardColKey,
 } from "../../utils/globalUtils";
+import { Pin } from "lucide-react";
 
 // ---------------------------------
 // Types
@@ -642,6 +643,14 @@ export default function QaDashboard() {
   // Selection + Printing (QA)
   // -----------------------------
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const PIN_STORAGE_KEY = userKey
+    ? `clientDashboardPinned:user:${userKey}`
+    : null;
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinsHydrated, setPinsHydrated] = useState(false);
+
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
@@ -880,6 +889,12 @@ export default function QaDashboard() {
     );
 
     return [...byDate].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned; // pinned first
+      }
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return bT - aT;
@@ -898,6 +913,7 @@ export default function QaDashboard() {
     reportNoTo,
     dateFrom,
     dateTo,
+    pinnedIds,
   ]);
 
   const total = processed.length;
@@ -1563,6 +1579,41 @@ export default function QaDashboard() {
   }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
 
   useEffect(() => {
+    if (!PIN_STORAGE_KEY) {
+      setPinsHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          setPinnedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPinsHydrated(true);
+    }
+  }, [PIN_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) return;
+    if (!pinsHydrated) return;
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+
+  const isPinned = (id: string) => pinnedIds.includes(id);
+
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  useEffect(() => {
     if (!colOpen) return;
 
     const onDown = (e: MouseEvent) => {
@@ -1625,7 +1676,7 @@ export default function QaDashboard() {
     });
   };
 
-  if (!colsHydrated) {
+  if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2045,311 +2096,310 @@ export default function QaDashboard() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50">
-              <tr className="text-left text-slate-600">
-                {/* ✅ selection column */}
-                <th className="px-4 py-3 font-medium w-10">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelectedNow}
-                    onChange={toggleSelectPage}
-                  />
-                </th>
-
-                {selectedCols.map((k) => (
-                  <th
-                    key={k}
-                    className="px-4 py-3 font-medium whitespace-nowrap"
-                  >
-                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+        <div className="min-h-0">
+  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                  {/* ✅ selection column */}
+                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelectedNow}
+                      onChange={toggleSelectPage}
+                    />
                   </th>
-                ))}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Actions</span>
 
-                    <div className="relative" data-col-dropdown>
-                      <button
-                        ref={colBtnRef}
-                        type="button"
-                        onClick={() => {
-                          setColOpen((v) => {
-                            const next = !v;
-                            if (next && colBtnRef.current) {
-                              const r =
-                                colBtnRef.current.getBoundingClientRect();
-                              setColPos({
-                                top: r.bottom + 8,
-                                left: r.right - 288,
-                              });
-                            }
-                            return next;
-                          });
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                        title="Choose columns"
-                        aria-label="Choose columns"
-                      >
-                        ▾
-                      </button>
+                  {selectedCols.map((k) => (
+                   <th
+  key={k}
+  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+>
+                      {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                    </th>
+                  ))}
+                 <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+  Status
+</th>
+                  <th  className="sticky right-0 z-20 px-4 py-3 font-medium bg-slate-50 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Actions</span>
 
-                      {colOpen &&
-                        colPos &&
-                        createPortal(
-                          <div
-                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                            style={{ top: colPos.top, left: colPos.left }}
-                            data-col-dropdown
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold text-slate-600">
-                                Columns ({selectedCols.length})
+                      <div className="relative" data-col-dropdown>
+                        <button
+                          ref={colBtnRef}
+                          type="button"
+                          onClick={() => {
+                            setColOpen((v) => {
+                              const next = !v;
+                              if (next && colBtnRef.current) {
+                                const r =
+                                  colBtnRef.current.getBoundingClientRect();
+                                setColPos({
+                                  top: r.bottom + 8,
+                                  left: r.right - 288,
+                                });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                          title="Choose columns"
+                          aria-label="Choose columns"
+                        >
+                          ▾
+                        </button>
+
+                        {colOpen &&
+                          colPos &&
+                          createPortal(
+                            <div
+                              className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                              style={{ top: colPos.top, left: colPos.left }}
+                              data-col-dropdown
+                            >
+                              <div className="mb-2 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  Columns ({selectedCols.length})
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs text-slate-500 hover:text-slate-800"
+                                  onClick={() => setColOpen(false)}
+                                  aria-label="Close"
+                                  title="Close"
+                                >
+                                  ✕
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800"
-                                onClick={() => setColOpen(false)}
-                                aria-label="Close"
-                                title="Close"
-                              >
-                                ✕
-                              </button>
-                            </div>
 
-                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                              {DASHBOARD_COLS.map((c) => {
-                                const checked = selectedCols.includes(c.key);
+                              <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                {DASHBOARD_COLS.map((c) => {
+                                  const checked = selectedCols.includes(c.key);
 
-                                return (
-                                  <label
-                                    key={c.key}
-                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleCol(c.key)}
-                                    />
-                                    <span>{c.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
+                                  return (
+                                    <label
+                                      key={c.key}
+                                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleCol(c.key)}
+                                      />
+                                      <span>{c.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
 
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-slate-600 hover:underline"
-                                onClick={() => setSelectedCols(DEFAULT_COLS)}
-                              >
-                                Reset defaults
-                              </button>
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                  onClick={() => setSelectedCols(DEFAULT_COLS)}
+                                >
+                                  Reset defaults
+                                </button>
 
-                              <button
-                                type="button"
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                onClick={() => setColOpen(false)}
-                              >
-                                Done
-                              </button>
-                            </div>
-                          </div>,
-                          document.body,
-                        )}
-                    </div>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading &&
-                [...Array(6)].map((_, i) => (
-                  <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-4 rounded bg-slate-200" />
-                    </td>
-
-                    {selectedCols.map((k) => (
-                      <td key={`${k}-${i}`} className="px-4 py-3">
-                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                      </td>
-                    ))}
-
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))}
-
-              {!loading &&
-                pageRows.map((r) => {
-                  const isMicro =
-                    r.formType === "MICRO_MIX" ||
-                    r.formType === "MICRO_MIX_WATER" ||
-                    r.formType === "STERILITY";
-                  const isChemistry =
-                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-                  const rowBusy = updatingId === r.id;
-
-                  return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50">
-                      {/* ✅ row checkbox */}
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(r.id)}
-                          onChange={() => toggleRow(r.id)}
-                          disabled={rowBusy}
-                        />
-                      </td>
-
-                      {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3 whitespace-nowrap">
-                          {k === "formNumber" || k === "reportNumber" ? (
-                            <span className="font-medium">
-                              {getCellValue(r, k)}
-                            </span>
-                          ) : (
-                            getCellValue(r, k)
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                  onClick={() => setColOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>,
+                            document.body,
                           )}
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading &&
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-t">
+                      <td className="pl-2 pr-1 py-3">
+                        <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
+                      </td>
+                      <td className="pl-1 pr-3 py-3">
+                        <div className="h-4 w-4 rounded bg-slate-200" />
+                      </td>
+                      {selectedCols.map((k) => (
+                        <td key={`${k}-${i}`} className="px-4 py-3">
+                          <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                         </td>
                       ))}
 
                       <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                            badgeClasses(r),
-                          )}
-                        >
-                          {niceStatus(String(r.status))}
-                        </span>
+                        <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
                       </td>
-
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    </tr>
+                  ))}
+
+                {!loading &&
+                  pageRows.map((r) => {
+                    const isMicro =
+                      r.formType === "MICRO_MIX" ||
+                      r.formType === "MICRO_MIX_WATER" ||
+                      r.formType === "STERILITY";
+                    const isChemistry =
+                      r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+                    const rowBusy = updatingId === r.id;
+
+                    return (
+                      <tr
+                        key={r.id}
+                        className={classNames(
+                          "border-t hover:bg-slate-50",
+                          isPinned(r.id) && "bg-blue-50/40",
+                        )}
+                      >
+                        <td className="pl-2 pr-1 py-3 text-center">
                           <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                            onClick={() => {
-                              logUiEvent({
-                                action: "UI_VIEW",
-                                entity:
-                                  r.formType === "CHEMISTRY_MIX"
-                                    ? "ChemistryReport"
-                                    : r.formType === "COA"
-                                      ? "CoaReport"
-                                      : "Micro Report",
-                                entityId: r.id,
-                                details: `Viewed ${r.formNumber}`,
-                                meta: {
-                                  formNumber: r.formNumber,
-                                  formType: r.formType,
-                                  status: r.status,
-                                },
-                                formNumber: r.formNumber,
-                                reportNumber: String(r.reportNumber),
-                                formType: r.formType,
-                                clientCode: r.client || null,
-                              });
-
-                              openViewTarget(r);
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(r.id);
                             }}
-                            disabled={rowBusy}
+                            className="inline-flex items-center justify-center transition hover:scale-110"
+                            aria-label={
+                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                            }
+                            title={isPinned(r.id) ? "Unpin" : "Pin"}
                           >
-                            View
+                            <Pin
+                              className={classNames(
+                                "h-3 w-3 rotate-45 transition",
+                                isPinned(r.id)
+                                  ? "text-blue-600 fill-blue-600"
+                                  : "text-slate-400 hover:text-slate-600",
+                              )}
+                            />
                           </button>
+                        </td>
 
-                          {/* ✅ Update buttons with your existing transitions */}
-                          {isMicro && canUpdateThisMicro(r, user) && (
+                        {/* ✅ row checkbox */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                            disabled={rowBusy}
+                          />
+                        </td>
+
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "formNumber" || k === "reportNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                              badgeClasses(r),
+                            )}
+                          >
+                            {niceStatus(String(r.status))}
+                          </span>
+                        </td>
+
+<td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                          <div className="flex items-center gap-2">
                             <button
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              disabled={rowBusy}
-                              onClick={async () => {
-                                if (rowBusy) return;
-                                setUpdatingId(r.id);
-                                try {
-                                  if (
-                                    r.status === "CLIENT_NEEDS_FINAL_CORRECTION"
-                                  ) {
-                                    const next =
-                                      "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by qa");
-                                    setReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: next }
-                                          : x,
-                                      ),
-                                    );
-                                    toast.success("Report Status Updated");
-                                  }
-                                  openUpdateTarget(r);
-                                } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to update status",
-                                  );
-                                } finally {
-                                  setUpdatingId(null);
-                                }
-                              }}
-                            >
-                              {rowBusy ? <Spinner /> : null}
-                              {rowBusy ? "Updating..." : "Update"}
-                            </button>
-                          )}
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                              onClick={() => {
+                                logUiEvent({
+                                  action: "UI_VIEW",
+                                  entity:
+                                    r.formType === "CHEMISTRY_MIX"
+                                      ? "ChemistryReport"
+                                      : r.formType === "COA"
+                                        ? "CoaReport"
+                                        : "Micro Report",
+                                  entityId: r.id,
+                                  details: `Viewed ${r.formNumber}`,
+                                  meta: {
+                                    formNumber: r.formNumber,
+                                    formType: r.formType,
+                                    status: r.status,
+                                  },
+                                  formNumber: r.formNumber,
+                                  reportNumber: String(r.reportNumber),
+                                  formType: r.formType,
+                                  clientCode: r.client || null,
+                                });
 
-                          {isChemistry && canUpdateThisChem(r, user) && (
-                            <button
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              disabled={rowBusy}
-                              onClick={async () => {
-                                if (rowBusy) return;
-                                setUpdatingId(r.id);
-                                try {
-                                  if (r.status === "CLIENT_NEEDS_CORRECTION") {
-                                    const next =
-                                      "UNDER_RESUBMISSION_TESTING_REVIEW";
-                                    await setStatus(r, next, "set by qa");
-                                    setReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: next }
-                                          : x,
-                                      ),
-                                    );
-                                    toast.success("Report Status Updated");
-                                  }
-                                  openUpdateTarget(r);
-                                } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to update status",
-                                  );
-                                } finally {
-                                  setUpdatingId(null);
-                                }
+                                openViewTarget(r);
                               }}
+                              disabled={rowBusy}
                             >
-                              {rowBusy ? <Spinner /> : null}
-                              {rowBusy ? "Updating..." : "Update"}
+                              View
                             </button>
-                          )}
 
-                          {r.formType === "STERILITY" &&
-                            canUpdateThisSterility(r, user) && (
+                            {/* ✅ Update buttons with your existing transitions */}
+                            {isMicro && canUpdateThisMicro(r, user) && (
+                              <button
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                disabled={rowBusy}
+                                onClick={async () => {
+                                  if (rowBusy) return;
+                                  setUpdatingId(r.id);
+                                  try {
+                                    if (
+                                      r.status ===
+                                      "CLIENT_NEEDS_FINAL_CORRECTION"
+                                    ) {
+                                      const next =
+                                        "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                      await setStatus(r, next, "set by qa");
+                                      setReports((prev) =>
+                                        prev.map((x) =>
+                                          x.id === r.id
+                                            ? { ...x, status: next }
+                                            : x,
+                                        ),
+                                      );
+                                      toast.success("Report Status Updated");
+                                    }
+                                    openUpdateTarget(r);
+                                  } catch (e: any) {
+                                    toast.error(
+                                      e?.message || "Failed to update status",
+                                    );
+                                  } finally {
+                                    setUpdatingId(null);
+                                  }
+                                }}
+                              >
+                                {rowBusy ? <Spinner /> : null}
+                                {rowBusy ? "Updating..." : "Update"}
+                              </button>
+                            )}
+
+                            {isChemistry && canUpdateThisChem(r, user) && (
                               <button
                                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 disabled={rowBusy}
@@ -2387,57 +2437,97 @@ export default function QaDashboard() {
                               </button>
                             )}
 
-                          {/* Change status dialog */}
-                          <button
-                            className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
-                            onClick={() => {
-                              setChangeStatusReport(r);
+                            {r.formType === "STERILITY" &&
+                              canUpdateThisSterility(r, user) && (
+                                <button
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                  disabled={rowBusy}
+                                  onClick={async () => {
+                                    if (rowBusy) return;
+                                    setUpdatingId(r.id);
+                                    try {
+                                      if (
+                                        r.status === "CLIENT_NEEDS_CORRECTION"
+                                      ) {
+                                        const next =
+                                          "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                        await setStatus(r, next, "set by qa");
+                                        setReports((prev) =>
+                                          prev.map((x) =>
+                                            x.id === r.id
+                                              ? { ...x, status: next }
+                                              : x,
+                                          ),
+                                        );
+                                        toast.success("Report Status Updated");
+                                      }
+                                      openUpdateTarget(r);
+                                    } catch (e: any) {
+                                      toast.error(
+                                        e?.message || "Failed to update status",
+                                      );
+                                    } finally {
+                                      setUpdatingId(null);
+                                    }
+                                  }}
+                                >
+                                  {rowBusy ? <Spinner /> : null}
+                                  {rowBusy ? "Updating..." : "Update"}
+                                </button>
+                              )}
 
-                              const options =
-                                r.formType === "CHEMISTRY_MIX" ||
-                                r.formType === "COA"
-                                  ? QA_CHEM_STATUSES
-                                  : r.formType === "STERILITY"
-                                    ? QA_STERILITY_STATUSES
-                                    : QA_MICRO_STATUSES;
+                            {/* Change status dialog */}
+                            <button
+                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
+                              onClick={() => {
+                                setChangeStatusReport(r);
 
-                              const current = String(r.status);
-                              setNewStatus(
-                                options.map(String).includes(current)
-                                  ? current
-                                  : String(options[0] ?? "DRAFT"),
-                              );
+                                const options =
+                                  r.formType === "CHEMISTRY_MIX" ||
+                                  r.formType === "COA"
+                                    ? QA_CHEM_STATUSES
+                                    : r.formType === "STERILITY"
+                                      ? QA_STERILITY_STATUSES
+                                      : QA_MICRO_STATUSES;
 
-                              setReason("");
-                              setESignPassword("");
-                              setESignError("");
-                            }}
-                          >
-                            Change Status
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                                const current = String(r.status);
+                                setNewStatus(
+                                  options.map(String).includes(current)
+                                    ? current
+                                    : String(options[0] ?? "DRAFT"),
+                                );
 
-              {!loading && pageRows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={1 + selectedCols.length + 2}
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    No reports match filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                                setReason("");
+                                setESignPassword("");
+                                setESignError("");
+                              }}
+                            >
+                              Change Status
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={2 + selectedCols.length + 2}
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      No reports match filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
+          <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
               Showing <span className="font-medium">{start + 1}</span>–{" "}
               <span className="font-medium">{Math.min(end, total)}</span> of{" "}
