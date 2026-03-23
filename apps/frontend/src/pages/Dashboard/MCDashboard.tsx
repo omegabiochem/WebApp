@@ -48,6 +48,7 @@ import {
 } from "../../utils/COAReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+import { ChemistryCOLS, COLS, type DashboardColKey } from "../../utils/globalUtils";
 
 // ----------------------------------
 // Types
@@ -1909,6 +1910,132 @@ export default function MCDashboard() {
     setWorkspaceOpen(true);
   }
 
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const colUserKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "mc";
+
+  const COL_STORAGE_KEY = `mcDashboardCols:user:${colUserKey}`;
+
+  const [colOpen, setColOpen] = useState(false);
+  const DEFAULT_COLS: DashboardColKey[] = [
+    "formType",
+    "reportNumber",
+    "formNumber",
+    "dateSent",
+    "actives",
+  ];
+
+  const [selectedCols, setSelectedCols] =
+    useState<DashboardColKey[]>(DEFAULT_COLS);
+  const [colsHydrated, setColsHydrated] = useState(false);
+
+  const DASHBOARD_COLS = useMemo(() => {
+    const map = new Map<string, { key: DashboardColKey; label: string }>();
+
+    for (const c of COLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    for (const c of ChemistryCOLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    return Array.from(map.values());
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as DashboardColKey[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSelectedCols(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setColsHydrated(true);
+    }
+  }, [COL_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!colsHydrated) return;
+    try {
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(selectedCols));
+    } catch {
+      // ignore
+    }
+  }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
+
+  useEffect(() => {
+    if (!colOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-col-dropdown]")) setColOpen(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [colOpen]);
+
+  function getCellValue(r: UnifiedRow, key: DashboardColKey) {
+    switch (key) {
+      case "reportNumber":
+        return displayReportNo(r);
+
+      case "formNumber":
+        return r.formNumber || "-";
+
+      case "client":
+        return r.client || "-";
+
+      case "formType":
+        return typeLabel(r);
+
+      case "dateSent":
+        return formatDate(r.dateSent);
+
+      case "manufactureDate":
+        return formatDate(r.manufactureDate ?? null);
+
+      case "createdAt":
+        return formatDate(r.createdAt ?? null);
+
+      case "updatedAt":
+        return formatDate(r.updatedAt ?? null);
+
+      case "actives":
+        if (r.kind !== "CHEMISTRY") return "-";
+        return "__ACTIVES__";
+
+      default: {
+        const v = (r as any)[key];
+        return v == null || v === "" ? "-" : String(v);
+      }
+    }
+  }
+
+  const toggleCol = (key: DashboardColKey) => {
+    setSelectedCols((prev) => {
+      const exists = prev.includes(key);
+      if (exists) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+  };
+
+  if (!colsHydrated) {
+    return <div className="p-6 text-slate-500">Loading dashboard…</div>;
+  }
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2431,13 +2558,110 @@ export default function MCDashboard() {
                     onChange={toggleSelectPage}
                   />
                 </th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Report #</th>
-                <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Actives</th>
-                <th className="px-4 py-3 font-medium">Date Sent</th>
+                {selectedCols.map((k) => (
+                  <th
+                    key={k}
+                    className="px-4 py-3 font-medium whitespace-nowrap"
+                  >
+                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                  </th>
+                ))}
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className="px-4 py-3 font-medium">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Actions</span>
+
+                    <div className="relative" data-col-dropdown>
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              });
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
+                      </button>
+
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {DASHBOARD_COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  </div>
+                </th>
               </tr>
             </thead>
 
@@ -2448,23 +2672,18 @@ export default function MCDashboard() {
                     <td className="px-4 py-3">
                       <div className="h-4 w-4 rounded bg-slate-200" />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-16 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                    </td>
+
+                    {selectedCols.map((k) => (
+                      <td key={`${k}-${i}`} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+
                     <td className="px-4 py-3">
                       <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
                     </td>
                   </tr>
                 ))}
@@ -2500,36 +2719,37 @@ export default function MCDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1",
-                            r.kind === "MICRO"
-                              ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                              : "bg-violet-50 text-violet-800 ring-violet-200",
+                      {selectedCols.map((k) => (
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
+                          {k === "formType" ? (
+                            <span
+                              className={classNames(
+                                "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1",
+                                r.kind === "MICRO"
+                                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                                  : "bg-violet-50 text-violet-800 ring-violet-200",
+                              )}
+                            >
+                              {typeLabel(r)}
+                            </span>
+                          ) : k === "actives" ? (
+                            r.kind === "CHEMISTRY" ? (
+                              <ActivesCell
+                                selectedActives={r.selectedActives}
+                                selectedActivesText={r.selectedActivesText}
+                              />
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )
+                          ) : k === "formNumber" || k === "reportNumber" ? (
+                            <span className="font-medium">
+                              {getCellValue(r, k)}
+                            </span>
+                          ) : (
+                            getCellValue(r, k)
                           )}
-                        >
-                          {typeLabel(r)}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3 font-medium">
-                        {displayReportNo(r)}
-                      </td>
-                      <td className="px-4 py-3">{r.formNumber}</td>
-
-                      <td className="px-4 py-3">
-                        {r.kind === "CHEMISTRY" ? (
-                          <ActivesCell
-                            selectedActives={r.selectedActives}
-                            selectedActivesText={r.selectedActivesText}
-                          />
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                        </td>
+                      ))}
 
                       <td className="px-4 py-3">
                         <span
@@ -2652,7 +2872,7 @@ export default function MCDashboard() {
               {!loading && pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={1 + selectedCols.length + 2}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports found

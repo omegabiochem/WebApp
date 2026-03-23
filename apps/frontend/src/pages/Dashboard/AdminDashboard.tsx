@@ -34,7 +34,12 @@ import {
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { getInt } from "../../utils/globalUtils";
+import {
+  ChemistryCOLS,
+  COLS,
+  getInt,
+  type DashboardColKey,
+} from "../../utils/globalUtils";
 import {
   STERILITY_STATUS_COLORS,
   type SterilityReportStatus,
@@ -610,6 +615,33 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const colUserKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "qa";
+
+  const COL_STORAGE_KEY = `qaDashboardCols:user:${colUserKey}`;
+
+  const [colOpen, setColOpen] = useState(false);
+
+  const DEFAULT_COLS: DashboardColKey[] = [
+    "reportNumber",
+    "formNumber",
+    "client",
+    "dateSent",
+  ];
+
+  const [selectedCols, setSelectedCols] =
+    useState<DashboardColKey[]>(DEFAULT_COLS);
+  const [colsHydrated, setColsHydrated] = useState(false);
+
   type WorkspaceMode = "VIEW" | "UPDATE";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
@@ -742,17 +774,17 @@ export default function AdminDashboard() {
   }, [formFilter, statusFilter]);
 
   const reportsWithSearch = useMemo(() => {
-  return reports.map((r) => ({
-    ...r,
-    _searchBlob: getReportSearchBlob(r),
-  }));
-}, [reports]);
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
 
   const processed = useMemo(() => {
-  const byForm =
-  formFilter === "ALL"
-    ? reportsWithSearch
-    : reportsWithSearch.filter((r) => {
+    const byForm =
+      formFilter === "ALL"
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
@@ -788,12 +820,12 @@ export default function AdminDashboard() {
         })
       : byClient;
 
-   const bySearchText = searchText.trim()
-  ? byReport.filter((r) => {
-      const q = searchText.trim().toLowerCase();
-      return (r._searchBlob || "").includes(q);
-    })
-  : byReport;
+    const bySearchText = searchText.trim()
+      ? byReport.filter((r) => {
+          const q = searchText.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
+        })
+      : byReport;
 
     const byNumberRange = (
       numberRangeType === "FORM"
@@ -827,7 +859,7 @@ export default function AdminDashboard() {
       return bT - aT;
     });
   }, [
-   reportsWithSearch,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     searchClient,
@@ -1403,6 +1435,115 @@ export default function AdminDashboard() {
     setWorkspaceOpen(true);
   }
 
+  const DASHBOARD_COLS = useMemo(() => {
+    const map = new Map<string, { key: DashboardColKey; label: string }>();
+
+    for (const c of COLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    for (const c of ChemistryCOLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    return Array.from(map.values());
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as DashboardColKey[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSelectedCols(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setColsHydrated(true);
+    }
+  }, [COL_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!colsHydrated) return;
+    try {
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(selectedCols));
+    } catch {
+      // ignore
+    }
+  }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
+
+  useEffect(() => {
+    if (!colOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-col-dropdown]")) setColOpen(false);
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [colOpen]);
+
+  function getCellValue(r: Report, key: DashboardColKey) {
+    switch (key) {
+      case "reportNumber":
+        return displayReportNo(r);
+
+      case "formNumber":
+        return r.formNumber || "-";
+
+      case "client":
+        return r.client || "-";
+
+      case "formType":
+        return niceFormType(r.formType);
+
+      case "dateSent":
+        return formatDate(r.dateSent);
+
+      case "manufactureDate":
+        return formatDate(r.manufactureDate ?? null);
+
+      case "createdAt":
+        return formatDate(r.createdAt ?? null);
+
+      case "updatedAt":
+        return formatDate(r.updatedAt ?? null);
+
+      case "actives": {
+        const list =
+          typeof r.actives === "string"
+            ? r.actives
+            : Array.isArray(r.actives)
+              ? r.actives.join(", ")
+              : "-";
+        return list || "-";
+      }
+
+      default: {
+        const v = (r as any)[key];
+        return v == null || v === "" ? "-" : String(v);
+      }
+    }
+  }
+
+  const toggleCol = (key: DashboardColKey) => {
+    setSelectedCols((prev) => {
+      const exists = prev.includes(key);
+      if (exists) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+  };
+
+  if (!colsHydrated) {
+    return <div className="p-6 text-slate-500">Loading dashboard…</div>;
+  }
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1696,7 +1837,7 @@ export default function AdminDashboard() {
           /> */}
 
           <input
-           placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
+            placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm
@@ -1828,34 +1969,127 @@ export default function AdminDashboard() {
                     onChange={toggleSelectPage}
                   />
                 </th>
-                <th className="px-4 py-3 font-medium">Report #</th>
-                <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Client</th>
-                <th className="px-4 py-3 font-medium">Created At</th>
+                {selectedCols.map((k) => (
+                  <th
+                    key={k}
+                    className="px-4 py-3 font-medium whitespace-nowrap"
+                  >
+                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                  </th>
+                ))}
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className="px-4 py-3 font-medium">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Actions</span>
+
+                    <div className="relative" data-col-dropdown>
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              });
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
+                      </button>
+
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {DASHBOARD_COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  </div>
+                </th>
               </tr>
             </thead>
 
             <tbody>
-              {loading &&
+                      {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
                     <td className="px-4 py-3">
                       <div className="h-4 w-4 rounded bg-slate-200" />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                    </td>
+
+                    {selectedCols.map((k) => (
+                      <td key={`${k}-${i}`} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+
                     <td className="px-4 py-3">
                       <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
                     </td>
@@ -1886,12 +2120,17 @@ export default function AdminDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3 font-medium">
-                        {displayReportNo(r)}
-                      </td>
-                      <td className="px-4 py-3">{r.formNumber}</td>
-                      <td className="px-4 py-3">{r.client}</td>
-                      <td className="px-4 py-3">{formatDate(r.createdAt)}</td>
+                      {selectedCols.map((k) => (
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
+                          {k === "formNumber" || k === "reportNumber" ? (
+                            <span className="font-medium">
+                              {getCellValue(r, k)}
+                            </span>
+                          ) : (
+                            getCellValue(r, k)
+                          )}
+                        </td>
+                      ))}
 
                       <td className="px-4 py-3">
                         <span
@@ -2077,8 +2316,8 @@ export default function AdminDashboard() {
 
               {!loading && pageRows.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={7}
+                                   <td
+                    colSpan={1 + selectedCols.length + 2}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports match filters.
