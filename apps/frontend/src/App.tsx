@@ -11,7 +11,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster, toast } from "react-hot-toast";
 import { socket } from "./lib/socket";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
-import { api } from "./lib/api";
+// import { api } from "./lib/api";
 
 const qc = new QueryClient();
 
@@ -111,7 +111,7 @@ function AppShell() {
               </button>
             </div>
 
-            <div className="mt-3 flex justify-end gap-2">
+            {/* <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => toast.dismiss(t.id)}
@@ -141,7 +141,7 @@ function AppShell() {
                   Open
                 </button>
               )}
-            </div>
+            </div> */}
           </div>
         ),
         { duration: 5000 },

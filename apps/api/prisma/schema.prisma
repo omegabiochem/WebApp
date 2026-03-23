@@ -848,6 +848,40 @@ model NotificationOutbox {
   @@index([scope, dept, clientCode])
 }
 
+model MessageNotificationOutbox {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  sentAt       DateTime?
+  claimedAt    DateTime?
+  claimKey     String?
+
+  // routing
+  scope        String   // "LAB" | "CLIENT"
+  dept         String?  // "FRONTDESK" | "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode   String?
+  recipientsKey String  // JSON string of normalized emails
+
+  // event payload
+  threadId     String
+  messageId    String
+  senderId     String?
+  senderRole   UserRole
+  senderName   String?
+  preview      String
+  actionUrl    String?
+
+  reportId     String?
+  chemistryId  String?
+
+  attempts     Int      @default(0)
+  lastError    String?
+
+  @@index([sentAt, createdAt])
+  @@index([claimedAt])
+  @@index([scope, dept, clientCode])
+  @@index([threadId, createdAt])
+}
+
 
 
 model Notification {
