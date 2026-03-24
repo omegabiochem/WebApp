@@ -27,7 +27,7 @@ export class MessageDigestService {
     private readonly mail: MailService,
   ) {}
 
-  @Cron('*/2 * * * *')
+  @Cron('*/5 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
     const now = new Date();
