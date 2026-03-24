@@ -142,7 +142,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
     if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
   }
   const map: Record<Role, string[]> = {
-    SYSTEMADMIN: [],
+    SYSTEMADMIN: ["*"],
     ADMIN: [
       "testSopNo",
       "dateTested",
@@ -1205,7 +1205,7 @@ export default function MicroMixReportForm({
 
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
-          SYSTEMADMIN: [],
+          SYSTEMADMIN: ["*"],
           FRONTDESK: [
             "client",
             "dateSent",
@@ -1798,7 +1798,7 @@ export default function MicroMixReportForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-                    role === "SYSTEMADMIN" ||
+                  
                     role === "FRONTDESK" ||
                     isBusy ||
                     status === "UNDER_CLIENT_FINAL_REVIEW" ||
@@ -3182,7 +3182,7 @@ export default function MicroMixReportForm({
                     approveNeedsAttachment && !hasAttachment;
 
                   const disabled =
-                    role === "SYSTEMADMIN" ||
+               
                     isBusy ||
                     attachmentsLoading ||
                     disableApproveForNoAttachment;
