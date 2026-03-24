@@ -139,7 +139,7 @@ export class NotificationsDigestService {
   ) {}
 
   // every 30 minutes
-  @Cron('*/2 * * * *')
+  @Cron('*/30 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
     const now = new Date();
