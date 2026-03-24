@@ -1,20 +1,22 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
-import type {
-  Role,
-  ReportStatus,
+import {
+  STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
+  type Role,
+  type ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
 import {
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 import {
+  STATUS_TRANSITIONS as CHEM_STATUS_TRANSITIONS,
   canShowChemistryUpdateButton,
   CHEMISTRY_STATUS_COLORS,
   type ChemistryReportStatus,
@@ -28,6 +30,20 @@ import {
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import COAReportFormView from "../Reports/COAReportFormView";
+import { parseIntSafe } from "../../utils/commonDashboardUtil";
+import {
+  STERILITY_STATUS_TRANSITIONS,
+  type SterilityReportStatus,
+} from "../../utils/SterilityReportFormWorkflow";
+import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
+import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+import {
+  ChemistryCOLS,
+  COLS,
+  type DashboardColKey,
+} from "../../utils/globalUtils";
+import { Pin } from "lucide-react";
 
 // -----------------------------
 // Types
@@ -40,6 +56,52 @@ type Report = {
   status: ReportStatus | string;
   reportNumber: string;
   version: number;
+
+  attachmentsCount?: number;
+
+  client?: string | null;
+  clientCode?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  idNo?: string | null;
+  samplingDate?: string | null;
+
+  preliminaryResults?: string | null;
+  preliminaryResultsDate?: string | null;
+  tbc_result?: string | null;
+  tbc_spec?: string | null;
+  tmy_result?: string | null;
+  tmy_spec?: string | null;
+
+  volumeTested?: string | null;
+  ftm_result?: string | null;
+  scdb_result?: string | null;
+
+  sampleDescription?: string | null;
+  lotBatchNo?: string | null;
+  formulaId?: string | null;
+  sampleSize?: string | null;
+  numberOfActives?: string | null;
+  comments?: string | null;
+  testedBy?: string | null;
+  reviewedBy?: string | null;
+
+  pathogens?: unknown;
+  sampleTypes?: unknown;
+  testTypes?: unknown;
+  sampleCollected?: unknown;
+  actives?: unknown;
+  coaRows?: unknown;
+
+  _searchBlob?: string;
 };
 
 const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
@@ -55,6 +117,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
   CHEMISTRY_MIX: "chemistry-mix",
+  COA: "coa",
 };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
@@ -69,7 +132,7 @@ function canUpdateThisReport(r: Report, user?: any) {
   if (user?.role !== "CLIENT") return false;
   if (r.formNumber !== user?.clientCode) return false;
 
-  const isChem = r.formType === "CHEMISTRY_MIX";
+  const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   return isChem
     ? canShowChemistryUpdateButton(user.role, r.status as ChemistryReportStatus)
@@ -178,6 +241,18 @@ function BulkPrintArea({
               />
             </div>
           );
+        } else if (r.formType === "COA") {
+          return (
+            <div key={r.id} className="report-page">
+              <COAReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+              />
+            </div>
+          );
         } else {
           return (
             <div key={r.id} className="report-page">
@@ -191,6 +266,204 @@ function BulkPrintArea({
   );
 }
 
+type ReportKind = "MICRO" | "STERILITY" | "CHEMISTRY";
+
+function getReportKind(r: Report): ReportKind {
+  if (r.formType === "STERILITY") return "STERILITY";
+  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
+    return "CHEMISTRY";
+  return "MICRO"; // MICRO_MIX + MICRO_MIX_WATER
+}
+
+function getNextStatusesForReport(r: Report): string[] {
+  const s = String(r.status);
+
+  const kind = getReportKind(r);
+
+  if (kind === "MICRO") {
+    return MICRO_STATUS_TRANSITIONS?.[s as ReportStatus]?.next ?? [];
+  }
+
+  if (kind === "STERILITY") {
+    return (
+      STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ?? []
+    );
+  }
+
+  // CHEMISTRY
+  return CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus]?.next ?? [];
+}
+
+function intersectAll(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const set = new Set(lists[0]);
+  for (let i = 1; i < lists.length; i++) {
+    const s = new Set(lists[i]);
+    for (const v of Array.from(set)) {
+      if (!s.has(v)) set.delete(v);
+    }
+  }
+  return Array.from(set);
+}
+
+const DEFAULT_FRONTDESK_FILTERS = {
+  formFilter: "ALL" as
+    | "ALL"
+    | "MICRO"
+    | "MICROWATER"
+    | "STERILITY"
+    | "CHEMISTRY"
+    | "COA",
+  statusFilter: "ALL" as "ALL" | ReportStatus,
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  datePreset: "ALL" as DatePreset,
+  fromDate: "",
+  toDate: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "dateSent" as "dateSent" | "reportNumber",
+  sortDir: "desc" as "asc" | "desc",
+  perPage: 10,
+  page: 1,
+  modalPane: "FORM" as "FORM" | "ATTACHMENTS",
+};
+
+function extractYearAndSequence(value?: string | number | null): {
+  year: number | null;
+  sequence: number | null;
+} {
+  if (value == null) return { year: null, sequence: null };
+
+  const text = String(value).trim();
+  const match = text.match(/(\d{5,})$/);
+  if (!match) return { year: null, sequence: null };
+
+  const digits = match[1];
+  if (digits.length < 5) return { year: null, sequence: null };
+
+  const yearPart = digits.slice(0, 4);
+  const seqPart = digits.slice(4);
+
+  const year = Number(yearPart);
+  const sequence = Number(seqPart);
+
+  return {
+    year: Number.isFinite(year) ? year : null,
+    sequence: Number.isFinite(sequence) ? sequence : null,
+  };
+}
+
+function inRange(
+  value: number | null,
+  fromRaw?: string,
+  toRaw?: string,
+): boolean {
+  if (value == null) return false;
+
+  const from =
+    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+
+  if (from != null && Number.isFinite(from) && value < from) return false;
+  if (to != null && Number.isFinite(to) && value > to) return false;
+
+  return true;
+}
+
+function getInitialFrontDeskFilters(searchParams: URLSearchParams) {
+  try {
+    const spForm = searchParams.get("form");
+    const spStatus = searchParams.get("status");
+    const spClient = searchParams.get("client");
+    const spReport = searchParams.get("report");
+    const spQ = searchParams.get("q");
+
+    const spDp = searchParams.get("dp");
+    const spFrom = searchParams.get("from");
+    const spTo = searchParams.get("to");
+
+    const spRangeType = searchParams.get("rangeType");
+    const spFormFrom = searchParams.get("formFrom");
+    const spFormTo = searchParams.get("formTo");
+    const spReportFrom = searchParams.get("reportFrom");
+    const spReportTo = searchParams.get("reportTo");
+
+    const spSortBy = searchParams.get("sb");
+    const spSortDir = searchParams.get("sd");
+    const spPp = searchParams.get("pp");
+    const spP = searchParams.get("p");
+    const spPane = searchParams.get("pane");
+
+    const hasUrlFilters =
+      spForm ||
+      spStatus ||
+      spClient ||
+      spReport ||
+      spQ ||
+      spDp ||
+      spFrom ||
+      spTo ||
+      spRangeType ||
+      spFormFrom ||
+      spFormTo ||
+      spReportFrom ||
+      spReportTo ||
+      spSortBy ||
+      spSortDir ||
+      spPp ||
+      spP ||
+      spPane;
+
+    if (hasUrlFilters) {
+      return {
+        formFilter:
+          (spForm as typeof DEFAULT_FRONTDESK_FILTERS.formFilter) ||
+          DEFAULT_FRONTDESK_FILTERS.formFilter,
+        statusFilter:
+          (spStatus as "ALL" | ReportStatus) ||
+          DEFAULT_FRONTDESK_FILTERS.statusFilter,
+        searchClient: spClient || DEFAULT_FRONTDESK_FILTERS.searchClient,
+        searchReport: spReport || DEFAULT_FRONTDESK_FILTERS.searchReport,
+        searchText: spQ || DEFAULT_FRONTDESK_FILTERS.searchText,
+        datePreset:
+          (spDp as DatePreset) || DEFAULT_FRONTDESK_FILTERS.datePreset,
+        fromDate: spFrom || DEFAULT_FRONTDESK_FILTERS.fromDate,
+        toDate: spTo || DEFAULT_FRONTDESK_FILTERS.toDate,
+        numberRangeType:
+          (spRangeType as "FORM" | "REPORT") ||
+          DEFAULT_FRONTDESK_FILTERS.numberRangeType,
+        formNoFrom: spFormFrom || DEFAULT_FRONTDESK_FILTERS.formNoFrom,
+        formNoTo: spFormTo || DEFAULT_FRONTDESK_FILTERS.formNoTo,
+        reportNoFrom: spReportFrom || DEFAULT_FRONTDESK_FILTERS.reportNoFrom,
+        reportNoTo: spReportTo || DEFAULT_FRONTDESK_FILTERS.reportNoTo,
+        sortBy:
+          (spSortBy as "dateSent" | "reportNumber") ||
+          DEFAULT_FRONTDESK_FILTERS.sortBy,
+        sortDir:
+          (spSortDir as "asc" | "desc") || DEFAULT_FRONTDESK_FILTERS.sortDir,
+        perPage: parseIntSafe(spPp, DEFAULT_FRONTDESK_FILTERS.perPage),
+        page: parseIntSafe(spP, DEFAULT_FRONTDESK_FILTERS.page),
+        modalPane:
+          (spPane as "FORM" | "ATTACHMENTS") ||
+          DEFAULT_FRONTDESK_FILTERS.modalPane,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_FRONTDESK_FILTERS;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -198,29 +471,81 @@ export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">("dateSent");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid;
+
+  const initialFilters = getInitialFrontDeskFilters(searchParams);
+
+  const [formFilter, setFormFilter] = useState<
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+  >(initialFilters.formFilter);
+
+  const [statusFilter, setStatusFilter] = useState<"ALL" | ReportStatus>(
+    initialFilters.statusFilter,
+  );
+
+  const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
+
+  const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
+
+  const [search, setSearch] = useState(initialFilters.searchText);
+
+  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
+    initialFilters.sortBy,
+  );
+
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    initialFilters.sortDir,
+  );
+
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    initialFilters.datePreset,
+  );
+
+  const [fromDate, setFromDate] = useState<string>(initialFilters.fromDate);
+  const [toDate, setToDate] = useState<string>(initialFilters.toDate);
+
+  const [numberRangeType, setNumberRangeType] = useState<"FORM" | "REPORT">(
+    initialFilters.numberRangeType,
+  );
+
+  const [formNoFrom, setFormNoFrom] = useState(initialFilters.formNoFrom);
+  const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
+  const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
+  const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [page, setPage] = useState(initialFilters.page);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
+    initialFilters.modalPane,
+  );
 
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const PIN_STORAGE_KEY = userKey
+    ? `clientDashboardPinned:user:${userKey}`
+    : null;
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [pinsHydrated, setPinsHydrated] = useState(false);
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
     null,
   );
-
-  const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY"
-  >("ALL");
 
   // ✅ guards
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -229,12 +554,61 @@ export default function FrontDeskDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [modalUpdating, setModalUpdating] = useState(false);
 
-  const [datePreset, setDatePreset] = useState<DatePreset>("ALL");
-  const [fromDate, setFromDate] = useState<string>(""); // yyyy-mm-dd
-  const [toDate, setToDate] = useState<string>(""); // yyyy-mm-dd
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  // one hidden input per row (keyed by report id)
+  // const fileInputs = React.useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [bulkNextStatus, setBulkNextStatus] = useState<string>("");
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+
+  const fileInputs = React.useRef<Record<string, HTMLInputElement>>({});
+
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const colUserKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "frontdesk";
+
+  const COL_STORAGE_KEY = `frontdeskDashboardCols:user:${colUserKey}`;
+
+  const [colOpen, setColOpen] = useState(false);
+
+  const DEFAULT_COLS: DashboardColKey[] = [
+    "reportNumber",
+    "formNumber",
+    "dateSent",
+    "formType",
+  ];
+
+  const [selectedCols, setSelectedCols] =
+    useState<DashboardColKey[]>(DEFAULT_COLS);
+  const [colsHydrated, setColsHydrated] = useState(false);
+
+  type WorkspaceMode = "VIEW" | "UPDATE";
+  type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("VIEW");
+  const [workspaceLayout, setWorkspaceLayout] =
+    useState<WorkspaceLayout>("VERTICAL");
+  const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
+    null,
+  );
+
+  const workspaceReports = useMemo(() => {
+    return workspaceIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+  }, [workspaceIds, reports]);
 
   // Fetch reports
   useEffect(() => {
@@ -264,44 +638,97 @@ export default function FrontDeskDashboard() {
     };
   }, []);
 
+  const reportsWithSearch = useMemo(() => {
+    return reports.map((r) => ({
+      ...r,
+      _searchBlob: getReportSearchBlob(r),
+    }));
+  }, [reports]);
+
   // Derived table data
   const processed = useMemo(() => {
     // 1) form type filter
     const byForm =
       formFilter === "ALL"
-        ? reports
-        : reports.filter((r) => {
+        ? reportsWithSearch
+        : reportsWithSearch.filter((r) => {
             if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
             if (formFilter === "MICROWATER")
               return r.formType === "MICRO_MIX_WATER";
             if (formFilter === "STERILITY") return r.formType === "STERILITY";
             if (formFilter === "CHEMISTRY")
               return r.formType === "CHEMISTRY_MIX";
+            if (formFilter === "COA") return r.formType === "COA";
             return true;
           });
 
     const byStatus =
       statusFilter === "ALL"
         ? byForm
-        : byForm.filter((r) => r.status === statusFilter);
+        : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-    const bySearch = search.trim()
+    const byClient = searchClient.trim()
       ? byStatus.filter((r) => {
-          const q = search.toLowerCase();
-          return (
-            r.reportNumber.toLowerCase().includes(q) ||
-            r.formNumber.toLowerCase().includes(q) ||
-            String(r.status).toLowerCase().includes(q)
-          );
+          const q = searchClient.toLowerCase();
+          return String(r.formNumber || "")
+            .toLowerCase()
+            .includes(q);
         })
       : byStatus;
 
-    // 3.5) date range filter (by dateSent)
-    const byDate = bySearch.filter((r) =>
+    const byReport = searchReport.trim()
+      ? byClient.filter((r) => {
+          const q = searchReport.toLowerCase();
+          return (
+            String(r.reportNumber || "")
+              .toLowerCase()
+              .includes(q) ||
+            String(r.formNumber || "")
+              .toLowerCase()
+              .includes(q)
+          );
+        })
+      : byClient;
+
+    const bySearch = search.trim()
+      ? byReport.filter((r) => {
+          const q = search.trim().toLowerCase();
+          return (r._searchBlob || "").includes(q);
+        })
+      : byReport;
+
+    const byNumberRange =
+      numberRangeType === "FORM"
+        ? formNoFrom.trim() || formNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.formNumber).sequence,
+                formNoFrom,
+                formNoTo,
+              ),
+            )
+          : bySearch
+        : reportNoFrom.trim() || reportNoTo.trim()
+          ? bySearch.filter((r) =>
+              inRange(
+                extractYearAndSequence(r.reportNumber).sequence,
+                reportNoFrom,
+                reportNoTo,
+              ),
+            )
+          : bySearch;
+
+    const byDate = byNumberRange.filter((r) =>
       matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
     );
 
     const sorted = [...byDate].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned; // pinned first
+      }
       if (sortBy === "reportNumber") {
         const aN = a.reportNumber.toLowerCase();
         const bN = b.reportNumber.toLowerCase();
@@ -314,7 +741,7 @@ export default function FrontDeskDashboard() {
 
     return sorted;
   }, [
-    reports,
+    reportsWithSearch,
     formFilter,
     statusFilter,
     search,
@@ -322,6 +749,15 @@ export default function FrontDeskDashboard() {
     sortDir,
     fromDate,
     toDate,
+    datePreset,
+    searchClient,
+    searchReport,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    pinnedIds,
   ]);
 
   // Pagination
@@ -335,35 +771,76 @@ export default function FrontDeskDashboard() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, perPage, formFilter]);
+  }, [
+    statusFilter,
+    search,
+    perPage,
+    formFilter,
+    sortBy,
+    sortDir,
+    fromDate,
+    toDate,
+    datePreset,
+  ]);
 
-  // async function setStatus(
-  //   r: Report,
-  //   newStatus: string,
-  //   reason = "Common Status Change",
-  // ) {
-  //   const isChemistry = r.formType === "CHEMISTRY_MIX";
+  useEffect(() => {
+    const sp = new URLSearchParams();
 
-  //   const url = isChemistry
-  //     ? `/chemistry-reports/${r.id}/status`
-  //     : `/reports/${r.id}/status`;
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
 
-  //   const body = isChemistry
-  //     ? { status: newStatus } // keep your API behavior
-  //     : { reason, status: newStatus };
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (search.trim()) sp.set("q", search.trim());
 
-  //   await api(url, {
-  //     method: "PATCH",
-  //     body: JSON.stringify(body),
-  //   });
-  // }
+    if (sortBy !== "dateSent") sp.set("sb", sortBy);
+    if (sortDir !== "desc") sp.set("sd", sortDir);
+
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
+    if (modalPane !== "FORM") sp.set("pane", modalPane);
+
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+
+    setSearchParams(sp, { replace: true });
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    sortBy,
+    sortDir,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    modalPane,
+    perPage,
+    pageClamped,
+    setSearchParams,
+  ]);
 
   async function setStatus(
     r: Report,
     newStatus: string,
     reason = "Status Change",
+    opts?: { eSignPassword?: string },
   ) {
-    const isChemistry = r.formType === "CHEMISTRY_MIX";
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
@@ -374,14 +851,86 @@ export default function FrontDeskDashboard() {
       body: JSON.stringify({
         status: newStatus,
         reason,
+        // ✅ IMPORTANT: align field name with backend
+        // If your backend expects `password` or `eSignPassword`, keep it here.
+        eSignPassword: opts?.eSignPassword,
         expectedVersion: r.version,
       }),
     });
   }
 
+  async function applyBulkStatusChange(
+    toStatus: string,
+    reason: string,
+    eSignPassword?: string,
+  ) {
+    setBulkUpdating(true);
+    try {
+      for (const r of selected) {
+        await setStatus(r, toStatus, reason, { eSignPassword });
+      }
+
+      const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+
+      setReports((prev) => {
+        const next = prev.map((x) =>
+          selectedIds.includes(x.id)
+            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
+            : x,
+        );
+
+        // ✅ IMPORTANT: keep dashboard list consistent with initial fetch behavior
+        return next.filter((r) => keep.has(r.status as any));
+      });
+
+      setSelectedIds([]);
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+    const base = isChemistry
+      ? `/chemistry-reports/${r.id}`
+      : `/reports/${r.id}`;
+    const url = `${base}/attachments`;
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "frontdesk");
+    form.append("kind", "SIGNED_FORM"); // or "RAW_SCAN" etc.
+    form.append("meta", JSON.stringify({ via: "frontdesk-dashboard" }));
+
+    // IMPORTANT: Your `api()` helper is JSON-based.
+    // Use fetch directly so browser sets multipart boundary automatically.
+    const token = localStorage.getItem("token"); // adjust if you store token differently
+
+    const res = await fetch(`${API_URL}${url}`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // DO NOT set Content-Type for FormData
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      let msg = `Upload failed (${res.status})`;
+      try {
+        const data = await res.json();
+        msg = data?.message || JSON.stringify(data) || msg;
+      } catch {}
+      const err: any = new Error(msg);
+      err.status = res.status;
+      throw err;
+    }
+  }
+
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX") {
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
       navigate(`/chemistry-reports/${slug}/${r.id}`);
     } else {
       navigate(`/reports/${slug}/${r.id}`);
@@ -431,6 +980,10 @@ export default function FrontDeskDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
+      formNumber: selectedReportObjects[0]?.formNumber || null,
+      reportNumber: selectedReportObjects[0]?.reportNumber || null,
+      formType: selectedReportObjects[0]?.formType || null,
+      clientCode: user?.clientCode || null,
     });
 
     setPrintingBulk(true);
@@ -440,6 +993,37 @@ export default function FrontDeskDashboard() {
   const selectedReportObjects = selectedIds
     .map((id) => reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
+
+  const selected = selectedReportObjects;
+
+  const selectedSameKindAndStatus = useMemo(() => {
+    if (selected.length === 0) return false;
+    const kind0 = getReportKind(selected[0]);
+    const status0 = String(selected[0].status);
+    return selected.every(
+      (r) => getReportKind(r) === kind0 && String(r.status) === status0,
+    );
+  }, [selected]);
+
+  const commonNextStatuses = useMemo(() => {
+    if (!selected.length) return [];
+    if (!selectedSameKindAndStatus) return [];
+    return intersectAll(selected.map(getNextStatusesForReport));
+  }, [selected, selectedSameKindAndStatus]);
+
+  useEffect(() => {
+    // reset dropdown if selection changes
+    if (!commonNextStatuses.length) setBulkNextStatus("");
+    else if (bulkNextStatus && !commonNextStatuses.includes(bulkNextStatus)) {
+      setBulkNextStatus("");
+    }
+  }, [commonNextStatuses, bulkNextStatus]);
+
+  useEffect(() => {
+    const close = () => setBulkMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   useEffect(() => {
     const now = new Date();
@@ -516,17 +1100,26 @@ export default function FrontDeskDashboard() {
     return (
       formFilter !== "ALL" ||
       statusFilter !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
       search.trim() !== "" ||
       sortBy !== "dateSent" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== ""
     );
   }, [
     formFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     sortBy,
     sortDir,
@@ -534,29 +1127,302 @@ export default function FrontDeskDashboard() {
     datePreset,
     fromDate,
     toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
   ]);
 
   const clearAllFilters = () => {
-    setFormFilter("ALL");
-    setStatusFilter("ALL");
-    setSearch("");
-    setSortBy("dateSent");
-    setSortDir("desc");
-    setPerPage(10);
-    setDatePreset("ALL");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
+    setFormFilter(DEFAULT_FRONTDESK_FILTERS.formFilter);
+    setStatusFilter(DEFAULT_FRONTDESK_FILTERS.statusFilter);
+    setSearchClient(DEFAULT_FRONTDESK_FILTERS.searchClient);
+    setSearchReport(DEFAULT_FRONTDESK_FILTERS.searchReport);
+    setSearch(DEFAULT_FRONTDESK_FILTERS.searchText);
+    setSortBy(DEFAULT_FRONTDESK_FILTERS.sortBy);
+    setSortDir(DEFAULT_FRONTDESK_FILTERS.sortDir);
+    setPerPage(DEFAULT_FRONTDESK_FILTERS.perPage);
+    setDatePreset(DEFAULT_FRONTDESK_FILTERS.datePreset);
+    setFromDate(DEFAULT_FRONTDESK_FILTERS.fromDate);
+    setToDate(DEFAULT_FRONTDESK_FILTERS.toDate);
+    setNumberRangeType(DEFAULT_FRONTDESK_FILTERS.numberRangeType);
+    setFormNoFrom(DEFAULT_FRONTDESK_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_FRONTDESK_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_FRONTDESK_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_FRONTDESK_FILTERS.reportNoTo);
+    setPage(DEFAULT_FRONTDESK_FILTERS.page);
+  };
+  useEffect(() => {
+    const validStatuses = FRONTDESK_STATUSES.map(String);
+
+    if (!validStatuses.includes(String(statusFilter))) {
+      setStatusFilter("ALL");
+    }
+  }, [formFilter, statusFilter]);
+
+  useLiveReportStatus(setReports, {
+    shouldKeep: (r) =>
+      r.status === "RECEIVED_BY_FRONTDESK" ||
+      r.status === "FRONTDESK_ON_HOLD" ||
+      r.status === "FRONTDESK_NEEDS_CORRECTION",
+  });
+
+  // ---------------- E-VERIFY (Bulk) ----------------
+  const [bulkESignOpen, setBulkESignOpen] = useState(false);
+  const [bulkESignReason, setBulkESignReason] = useState("");
+  const [bulkESignPassword, setBulkESignPassword] = useState("");
+  const [bulkPendingStatus, setBulkPendingStatus] = useState<string>("");
+
+  const BULK_FORCE_EVERIFY_STATUSES = new Set([
+    "UNDER_CLIENT_REVIEW",
+    "UNDER_CLIENT_FINAL_REVIEW",
+  ]);
+
+  // Decide if bulk transition needs e-verify (hook into your workflow maps)
+  function bulkRequiresESign(args: { report: Report; toStatus: string }) {
+    const { report, toStatus } = args;
+
+    // ✅ Always require password+reason for these two bulk actions
+    if (BULK_FORCE_EVERIFY_STATUSES.has(toStatus)) return true;
+
+    // (optional) keep your existing workflow-map-based logic too
+    const from = String(report.status);
+    const kind = getReportKind(report);
+
+    if (kind === "MICRO") {
+      const t = MICRO_STATUS_TRANSITIONS?.[from as ReportStatus];
+      return Boolean(
+        (t as any)?.requireESign?.includes?.(toStatus) ||
+        (t as any)?.eSignNext?.includes?.(toStatus),
+      );
+    }
+
+    if (kind === "STERILITY") {
+      const t = STERILITY_STATUS_TRANSITIONS?.[from as SterilityReportStatus];
+      return Boolean(
+        (t as any)?.requireESign?.includes?.(toStatus) ||
+        (t as any)?.eSignNext?.includes?.(toStatus),
+      );
+    }
+
+    const t = CHEM_STATUS_TRANSITIONS?.[from as ChemistryReportStatus];
+    return Boolean(
+      (t as any)?.requireESign?.includes?.(toStatus) ||
+      (t as any)?.eSignNext?.includes?.(toStatus),
+    );
+  }
+
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return [clicked];
+
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+
+    return clickedInsideSelection ? selected : [clicked];
+  }
+
+  function canUpdateAnyReport(r: Report, user?: any) {
+    if (!user) return false;
+
+    return (
+      r.status === "RECEIVED_BY_FRONTDESK" ||
+      r.status === "FRONTDESK_ON_HOLD" ||
+      r.status === "FRONTDESK_NEEDS_CORRECTION"
+    );
+  }
+
+  function openViewTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked);
+
+    if (targets.length <= 1) {
+      setSelectedReport(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("VIEW");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  function openUpdateTarget(clicked: Report) {
+    const targets = getTargetsForAction(clicked).filter((r) =>
+      canUpdateAnyReport(r, user),
+    );
+
+    if (!targets.length) {
+      alert("No selected reports are available for update");
+      return;
+    }
+
+    if (targets.length <= 1) {
+      goToReportEditor(clicked);
+      return;
+    }
+
+    setWorkspaceIds(targets.map((r) => r.id));
+    setWorkspaceMode("UPDATE");
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(clicked.id);
+    setWorkspaceOpen(true);
+  }
+
+  const DASHBOARD_COLS = useMemo(() => {
+    const map = new Map<string, { key: DashboardColKey; label: string }>();
+
+    for (const c of COLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    for (const c of ChemistryCOLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    return Array.from(map.values());
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as DashboardColKey[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSelectedCols(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setColsHydrated(true);
+    }
+  }, [COL_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!colsHydrated) return;
+    try {
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(selectedCols));
+    } catch {
+      // ignore
+    }
+  }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) {
+      setPinsHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          setPinnedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPinsHydrated(true);
+    }
+  }, [PIN_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!PIN_STORAGE_KEY) return;
+    if (!pinsHydrated) return;
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
+  }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+
+  const isPinned = (id: string) => pinnedIds.includes(id);
+
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   };
 
   useEffect(() => {
-    setStatusFilter("ALL");
-  }, [formFilter]);
+    if (!colOpen) return;
 
-  useLiveReportStatus(setReports);
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-col-dropdown]")) setColOpen(false);
+    };
 
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [colOpen]);
 
-  
+  function niceFormType(ft?: string) {
+    switch (ft) {
+      case "MICRO_MIX":
+        return "MICRO";
+      case "MICRO_MIX_WATER":
+        return "MICRO_WATER";
+      case "CHEMISTRY_MIX":
+        return "CHEMISTRY";
+      default:
+        return ft || "-";
+    }
+  }
+
+  function getCellValue(r: Report, key: DashboardColKey) {
+    switch (key) {
+      case "reportNumber":
+        return r.reportNumber || "-";
+
+      case "formNumber":
+        return r.formNumber || "-";
+
+      case "client":
+        return r.client || "-";
+
+      case "formType":
+        return niceFormType(r.formType);
+
+      case "dateSent":
+        return formatDate(r.dateSent);
+
+      case "manufactureDate":
+        return formatDate(r.manufactureDate ?? null);
+
+      case "createdAt":
+        return formatDate(r.createdAt ?? null);
+
+      case "updatedAt":
+        return formatDate(r.updatedAt ?? null);
+
+      case "actives": {
+        if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
+
+        if (typeof r.actives === "string") return r.actives || "-";
+        if (Array.isArray(r.actives)) return r.actives.join(", ") || "-";
+        return "-";
+      }
+
+      default: {
+        const v = (r as any)[key];
+        return v == null || v === "" ? "-" : String(v);
+      }
+    }
+  }
+
+  const toggleCol = (key: DashboardColKey) => {
+    setSelectedCols((prev) => {
+      const exists = prev.includes(key);
+      if (exists) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+  };
+
+  if (!colsHydrated || !pinsHydrated) {
+    return <div className="p-6 text-slate-500">Loading dashboard…</div>;
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -567,7 +1433,7 @@ export default function FrontDeskDashboard() {
       {(isBulkPrinting || !!singlePrintReport) &&
         createPortal(
           <>
-            <style>
+            {/* <style>
               {`
                 @media print {
                   body > *:not(#bulk-print-root) { display: none !important; }
@@ -599,6 +1465,50 @@ export default function FrontDeskDashboard() {
                   }
                 }
               `}
+            </style> */}
+
+            <style>
+              {`
+    @media print {
+      body > *:not(#bulk-print-root) { display: none !important; }
+      #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
+      @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
+
+      #bulk-print-root .sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      #bulk-print-root .report-page {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+        min-height: 279mm !important;
+      }
+
+      #bulk-print-root .report-page + .report-page {
+        break-before: page;
+        page-break-before: always;
+      }
+
+      @supports (margin-trim: block) {
+        @page { margin-trim: block; }
+      }
+    }
+  `}
             </style>
 
             <BulkPrintArea
@@ -628,6 +1538,92 @@ export default function FrontDeskDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ✅ Bulk status update */}
+          <div className="relative">
+            <button
+              type="button"
+              disabled={
+                !selectedIds.length ||
+                !selectedSameKindAndStatus ||
+                bulkUpdating ||
+                printingBulk
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setBulkMenuOpen((o) => !o);
+              }}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+                selectedIds.length && selectedSameKindAndStatus
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+              )}
+            >
+              {bulkUpdating ? <Spinner /> : "⚡"}
+              {bulkUpdating
+                ? "Applying..."
+                : `Bulk Status (${selectedIds.length})`}
+            </button>
+
+            {bulkMenuOpen && commonNextStatuses.length > 0 && (
+              <div className="absolute right-0 mt-2 w-52 rounded-xl border bg-white shadow-lg ring-1 ring-black/5 z-20">
+                <div className="py-1 text-sm">
+                  {commonNextStatuses.map((s) => (
+                    <button
+                      key={s}
+                      className="flex w-full items-center px-3 py-2 hover:bg-slate-100 text-left"
+                      onClick={async () => {
+                        if (bulkUpdating) return;
+
+                        setBulkMenuOpen(false);
+
+                        logUiEvent({
+                          action: "UI_BULK_STATUS_CHANGE",
+                          entity: "Report",
+                          entityId: selectedIds.join(","),
+                          details: `Bulk status → ${s} (${selectedIds.length})`,
+                          meta: {
+                            reportIds: selectedIds,
+                            fromStatus: String(selected[0].status),
+                            toStatus: s,
+                            kind: getReportKind(selected[0]),
+                          },
+                          formNumber: selected[0]?.formNumber || null,
+                          reportNumber: selected[0]?.reportNumber || null,
+                          formType: selected[0]?.formType || null,
+                          clientCode: user?.clientCode || null,
+                        });
+
+                        const needsESign = bulkRequiresESign({
+                          report: selected[0],
+                          toStatus: s,
+                        });
+
+                        if (needsESign) {
+                          setBulkPendingStatus(s);
+                          setBulkESignReason(""); // or default like "Bulk Status Change"
+                          setBulkESignPassword("");
+                          setBulkESignOpen(true);
+                          setBulkESignReason(
+                            `Bulk status change to ${niceStatus(s)}`,
+                          );
+                          return;
+                        }
+
+                        try {
+                          await applyBulkStatusChange(s, "Bulk Status Change");
+                        } catch (e: any) {
+                          alert(e?.message || "❌ Bulk status update failed");
+                        }
+                      }}
+                    >
+                      {niceStatus(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={handlePrintSelected}
@@ -666,7 +1662,14 @@ export default function FrontDeskDashboard() {
       <div className="mb-4 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
           {(
-            ["ALL", "MICRO", "MICROWATER", "STERILITY", "CHEMISTRY"] as const
+            [
+              "ALL",
+              "MICRO",
+              "MICROWATER",
+              "STERILITY",
+              "CHEMISTRY",
+              "COA",
+            ] as const
           ).map((ft) => {
             const isActive = formFilter === ft;
             return (
@@ -689,7 +1692,9 @@ export default function FrontDeskDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : "Chemistry"}
+                        : ft === "COA"
+                          ? "Coa"
+                          : "Chemistry"}
               </button>
             );
           })}
@@ -697,7 +1702,8 @@ export default function FrontDeskDashboard() {
       </div>
 
       {/* Controls Card */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+      {/* Controls Card */}
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {FRONTDESK_STATUSES.map((s) => (
             <button
@@ -716,47 +1722,37 @@ export default function FrontDeskDashboard() {
           ))}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search form #, formNumber, or status…"
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-label="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            placeholder="Search form #, report #, lot/batch #, formula, description, status..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          />
 
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              onChange={(e) =>
+                setSortBy(e.target.value as "dateSent" | "reportNumber")
+              }
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
-              <option value="reportNumber">Form #</option>
+              <option value="reportNumber">Report #</option>
             </select>
 
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
               aria-label="Toggle sort direction"
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
+          <div className="flex items-center gap-2">
             <label htmlFor="perPage" className="text-sm text-slate-600">
               Rows:
             </label>
@@ -773,14 +1769,12 @@ export default function FrontDeskDashboard() {
               ))}
             </select>
           </div>
-        </div>
-        {/* Date + Clear row */}
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="flex items-center gap-2">
+
+          <div className="flex gap-3 flex-wrap">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -793,10 +1787,7 @@ export default function FrontDeskDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
-          </div>
 
-          {/* Custom from/to only when CUSTOM */}
-          <div className="flex items-center gap-2">
             <input
               type="date"
               value={fromDate}
@@ -806,10 +1797,11 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+
             <input
               type="date"
               value={toDate}
@@ -819,28 +1811,65 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              disabled={!hasActiveFilters}
-              className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                hasActiveFilters
-                  ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                  : "border bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}
-              title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={numberRangeType}
+              onChange={(e) =>
+                setNumberRangeType(e.target.value as "FORM" | "REPORT")
+              }
+              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              ✕ Clear
-            </button>
+              <option value="FORM">Forms</option>
+              <option value="REPORT">Reports</option>
+            </select>
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # from`}
+              value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
+                else setReportNoFrom(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <input
+              type="number"
+              placeholder={`${
+                numberRangeType === "FORM" ? "Form" : "Report"
+              } # to`}
+              value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
+              onChange={(e) => {
+                if (numberRangeType === "FORM") setFormNoTo(e.target.value);
+                else setReportNoTo(e.target.value);
+              }}
+              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={classNames(
+              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              hasActiveFilters
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
+                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+            )}
+            title={hasActiveFilters ? "Clear filters" : "No filters applied"}
+          >
+            ✕ Clear
+          </button>
         </div>
       </div>
 
@@ -851,12 +1880,13 @@ export default function FrontDeskDashboard() {
             {error}
           </div>
         )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50">
+<div className="min-h-0">
+  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+           <thead className="sticky top-0 z-30 bg-slate-50">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium w-10">
+              <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -864,45 +1894,180 @@ export default function FrontDeskDashboard() {
                     disabled={printingBulk}
                   />
                 </th>
-                <th className="px-4 py-3 font-medium">Report #</th>
-                <th className="px-4 py-3 font-medium">Form #</th>
-                <th className="px-4 py-3 font-medium">Date Sent</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                {selectedCols.map((k) => (
+                 <th
+  key={k}
+  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+>
+                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                  </th>
+                ))}
+               <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+  Status
+</th>
+                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Actions</span>
+
+                    <div className="relative" data-col-dropdown>
+                      <button
+                        ref={colBtnRef}
+                        type="button"
+                        onClick={() => {
+                          setColOpen((v) => {
+                            const next = !v;
+                            if (next && colBtnRef.current) {
+                              const r =
+                                colBtnRef.current.getBoundingClientRect();
+                              setColPos({
+                                top: r.bottom + 8,
+                                left: r.right - 288,
+                              });
+                            }
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                        title="Choose columns"
+                        aria-label="Choose columns"
+                      >
+                        ▾
+                      </button>
+
+                      {colOpen &&
+                        colPos &&
+                        createPortal(
+                          <div
+                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                            style={{ top: colPos.top, left: colPos.left }}
+                            data-col-dropdown
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-semibold text-slate-600">
+                                Columns ({selectedCols.length})
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs text-slate-500 hover:text-slate-800"
+                                onClick={() => setColOpen(false)}
+                                aria-label="Close"
+                                title="Close"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                              {DASHBOARD_COLS.map((c) => {
+                                const checked = selectedCols.includes(c.key);
+
+                                return (
+                                  <label
+                                    key={c.key}
+                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCol(c.key)}
+                                    />
+                                    <span>{c.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-slate-600 hover:underline"
+                                onClick={() => setSelectedCols(DEFAULT_COLS)}
+                              >
+                                Reset defaults
+                              </button>
+
+                              <button
+                                type="button"
+                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                onClick={() => setColOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading &&
                 [...Array(6)].map((_, i) => (
                   <tr key={`skel-${i}`} className="border-t">
-                    <td className="px-4 py-3">
+                    <td className="pl-2 pr-1 py-3">
+                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
+                    </td>
+                    <td className="pl-1 pr-3 py-3">
                       <div className="h-4 w-4 rounded bg-slate-200" />
                     </td>
+
+                    {selectedCols.map((k) => (
+                      <td key={`${k}-${i}`} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+
                     <td className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      <div className="h-5 w-28 animate-pulse rounded bg-slate-200" />
                     </td>
+
                     <td className="px-4 py-3">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                      <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
                     </td>
                   </tr>
                 ))}
 
               {!loading &&
                 pageRows.map((r) => {
-                  const isChemistry = r.formType === "CHEMISTRY_MIX";
+                  const isChemistry =
+                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                   const rowBusy = updatingId === r.id;
 
+                  const rowUploading = uploadingId === r.id;
+
                   return (
-                    <tr key={r.id} className="border-t hover:bg-slate-50">
+                   <tr
+                      key={r.id}
+                      className={classNames(
+                        "border-t hover:bg-slate-50",
+                        isPinned(r.id) && "bg-blue-50/40",
+                      )}
+                    >
+                      <td className="pl-2 pr-1 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePin(r.id);
+                          }}
+                          className="inline-flex items-center justify-center transition hover:scale-110"
+                          aria-label={
+                            isPinned(r.id) ? "Unpin report" : "Pin report"
+                          }
+                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                        >
+                          <Pin
+                            className={classNames(
+                              "h-3 w-3 rotate-45 transition",
+                              isPinned(r.id)
+                                ? "text-blue-600 fill-blue-600"
+                                : "text-slate-400 hover:text-slate-600",
+                            )}
+                          />
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
@@ -912,16 +2077,22 @@ export default function FrontDeskDashboard() {
                         />
                       </td>
 
-                      <td className="px-4 py-3 font-medium">
-                        {r.reportNumber}
-                      </td>
-                      <td className="px-4 py-3">{r.formNumber}</td>
-                      <td className="px-4 py-3">{formatDate(r.dateSent)}</td>
+                      {selectedCols.map((k) => (
+                        <td key={k} className="px-4 py-3 whitespace-nowrap">
+                          {k === "reportNumber" || k === "formNumber" ? (
+                            <span className="font-medium">
+                              {getCellValue(r, k)}
+                            </span>
+                          ) : (
+                            getCellValue(r, k)
+                          )}
+                        </td>
+                      ))}
 
                       <td className="px-4 py-3">
                         <span
                           className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
                             (isChemistry
                               ? CHEMISTRY_STATUS_COLORS[
                                   r.status as ChemistryReportStatus
@@ -934,7 +2105,7 @@ export default function FrontDeskDashboard() {
                         </span>
                       </td>
 
-                      <td className="px-4 py-3">
+                     <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                         <div className="flex flex-wrap items-center gap-2">
                           {/* <button
                             disabled={rowBusy}
@@ -952,9 +2123,11 @@ export default function FrontDeskDashboard() {
                                 entity:
                                   r.formType === "CHEMISTRY_MIX"
                                     ? "ChemistryReport"
-                                    : r.formType === "STERILITY "
-                                      ? "SterilityReport"
-                                      : "Micro Report",
+                                    : r.formType === "COA"
+                                      ? "CoaReport"
+                                      : r.formType === "STERILITY"
+                                        ? "SterilityReport"
+                                        : "Micro Report",
                                 entityId: r.id,
                                 details: `Viewed ${r.formNumber}`,
                                 meta: {
@@ -962,9 +2135,13 @@ export default function FrontDeskDashboard() {
                                   formType: r.formType,
                                   status: r.status,
                                 },
+                                formNumber: r.formNumber,
+                                reportNumber: r.reportNumber,
+                                formType: r.formType,
+                                clientCode: user?.clientCode || null,
                               });
 
-                              setSelectedReport(r);
+                              openViewTarget(r);
                             }}
                             disabled={rowBusy}
                           >
@@ -1001,7 +2178,7 @@ export default function FrontDeskDashboard() {
                                   );
                                 }
 
-                                goToReportEditor(r);
+                                openUpdateTarget(r);
                               } catch (e: any) {
                                 alert(e?.message || "Failed to update status");
                               } finally {
@@ -1012,6 +2189,84 @@ export default function FrontDeskDashboard() {
                             {rowBusy ? <Spinner /> : null}
                             {rowBusy ? "Updating..." : "Update"}
                           </button>
+
+                          <>
+                            {/* Hidden input */}
+                            <input
+                              type="file"
+                              accept=".pdf,image/*"
+                              className="hidden"
+                              ref={(el) => {
+                                if (el) fileInputs.current[r.id] = el;
+                                else delete fileInputs.current[r.id]; // cleanup on unmount
+                              }}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = ""; // allow re-upload same file again
+                                if (!file) return;
+
+                                if (rowUploading) return;
+                                setUploadingId(r.id);
+
+                                // ✅ AUDIT
+                                logUiEvent({
+                                  action: "UI_UPLOAD_ATTACHMENT",
+                                  entity:
+                                    r.formType === "CHEMISTRY_MIX"
+                                      ? "ChemistryReport"
+                                      : r.formType === "COA"
+                                        ? "CoaReport"
+                                        : r.formType === "STERILITY"
+                                          ? "SterilityReport"
+                                          : "MicroReport",
+                                  entityId: r.id,
+                                  details: `Uploaded attachment for ${r.formNumber}`,
+                                  meta: {
+                                    filename: file.name,
+                                    size: file.size,
+                                    type: file.type,
+                                  },
+                                  formNumber: r.formNumber,
+                                  reportNumber: r.reportNumber,
+                                  formType: r.formType,
+                                  clientCode: user?.clientCode || null,
+                                });
+
+                                try {
+                                  await uploadAttachmentForReport(r, file);
+                                  alert("✅ Uploaded!");
+                                  // optional: if modal open for same report, switch pane
+                                  if (selectedReport?.id === r.id)
+                                    setModalPane("ATTACHMENTS");
+                                } catch (err: any) {
+                                  if (err?.status === 409) {
+                                    alert(
+                                      "ℹ️ Duplicate attachment already exists.",
+                                    );
+                                  } else if (err?.status === 403) {
+                                    alert(
+                                      "⚠️ Forbidden. Check role/scopes for attachment upload.",
+                                    );
+                                  } else {
+                                    alert(err?.message || "Upload failed");
+                                  }
+                                } finally {
+                                  setUploadingId(null);
+                                }
+                              }}
+                            />
+
+                            {/* Upload Button */}
+                            <button
+                              type="button"
+                              disabled={rowBusy || rowUploading}
+                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              onClick={() => fileInputs.current[r.id]?.click()}
+                            >
+                              {rowUploading ? <Spinner /> : "⬆️"}
+                              {rowUploading ? "Uploading..." : "Upload"}
+                            </button>
+                          </>
                         </div>
                       </td>
                     </tr>
@@ -1021,7 +2276,7 @@ export default function FrontDeskDashboard() {
               {!loading && pageRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+colSpan={2 + selectedCols.length + 2}
                     className="px-4 py-12 text-center text-slate-500"
                   >
                     No reports found for{" "}
@@ -1043,10 +2298,11 @@ export default function FrontDeskDashboard() {
             </tbody>
           </table>
         </div>
+        </div>
 
         {/* Pagination */}
         {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm md:flex-row">
+          <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
             <div className="text-slate-600">
               Showing <span className="font-medium">{start + 1}</span>–
               <span className="font-medium">{Math.min(end, total)}</span> of
@@ -1129,28 +2385,31 @@ export default function FrontDeskDashboard() {
                     onClick={async () => {
                       if (modalUpdating) return;
                       setModalUpdating(true);
+
                       try {
+                        const r = selectedReport;
+                        if (!r) return;
+
                         if (
-                          selectedReport.status ===
-                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const newStatus =
                             "UNDER_CLIENT_PRELIMINARY_CORRECTION";
                           await setStatus(
-                            selectedReport,
+                            r,
                             newStatus,
                             "Sent back to client for correction",
                           );
+
                           setReports((prev) =>
                             prev.map((x) =>
-                              x.id === selectedReport.id
-                                ? { ...x, status: newStatus }
-                                : x,
+                              x.id === r.id ? { ...x, status: newStatus } : x,
                             ),
                           );
                         }
+
                         setSelectedReport(null);
-                        goToReportEditor(selectedReport);
+                        openUpdateTarget(r);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       } finally {
@@ -1173,9 +2432,20 @@ export default function FrontDeskDashboard() {
                       entity:
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
-                          : "MicroReport",
+                          : selectedReport.formType === "COA"
+                            ? "CoaReport"
+                            : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,
+                      meta: {
+                        formNumber: selectedReport.formNumber,
+                        formType: selectedReport.formType,
+                        status: selectedReport.status,
+                      },
+                      formNumber: selectedReport.formNumber,
+                      reportNumber: selectedReport.reportNumber,
+                      formType: selectedReport.formType,
+                      clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
                     setSinglePrintReport(selectedReport);
@@ -1187,7 +2457,18 @@ export default function FrontDeskDashboard() {
 
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
+                  onClick={() => {
+                    setSelectedReport(null);
+                    setModalPane("FORM"); // ✅ reset state so URL won't re-add it
+                    setSearchParams(
+                      (prev) => {
+                        const sp = new URLSearchParams(prev);
+                        sp.delete("pane");
+                        return sp;
+                      },
+                      { replace: true },
+                    );
+                  }}
                 >
                   Close
                 </button>
@@ -1227,6 +2508,14 @@ export default function FrontDeskDashboard() {
                   pane={modalPane}
                   onPaneChange={setModalPane}
                 />
+              ) : selectedReport?.formType === "COA" ? (
+                <COAReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={modalPane}
+                  onPaneChange={setModalPane}
+                />
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a
@@ -1237,6 +2526,121 @@ export default function FrontDeskDashboard() {
           </div>
         </div>
       )}
+
+      {bulkESignOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !bulkUpdating)
+                setBulkESignOpen(false);
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
+              <div className="border-b px-5 py-4">
+                <div className="text-lg font-semibold">E-Verify required</div>
+                <div className="text-sm text-slate-500 mt-1">
+                  You’re changing status for{" "}
+                  <span className="font-medium">{selectedIds.length}</span>{" "}
+                  reports to{" "}
+                  <span className="font-medium">
+                    {niceStatus(bulkPendingStatus)}
+                  </span>
+                  .
+                </div>
+              </div>
+
+              <div className="px-5 py-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Reason
+                  </label>
+                  <input
+                    value={bulkESignReason}
+                    onChange={(e) => setBulkESignReason(e.target.value)}
+                    placeholder="Enter change reason (21 CFR Part 11)"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    disabled={bulkUpdating}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={bulkESignPassword}
+                    onChange={(e) => setBulkESignPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    disabled={bulkUpdating}
+                  />
+                </div>
+
+                <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  This will be recorded in the audit trail as an electronically
+                  signed status change.
+                </div>
+              </div>
+
+              <div className="border-t px-5 py-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
+                  onClick={() => setBulkESignOpen(false)}
+                  disabled={bulkUpdating}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-2"
+                  disabled={
+                    bulkUpdating ||
+                    !bulkPendingStatus ||
+                    bulkESignReason.trim().length < 3 ||
+                    bulkESignPassword.trim().length < 3
+                  }
+                  onClick={async () => {
+                    try {
+                      await applyBulkStatusChange(
+                        bulkPendingStatus,
+                        bulkESignReason.trim(),
+                        bulkESignPassword,
+                      );
+                      setBulkESignOpen(false);
+                    } catch (e: any) {
+                      alert(e?.message || "❌ Bulk status update failed");
+                    }
+                  }}
+                >
+                  {bulkUpdating ? <Spinner /> : null}
+                  {bulkUpdating ? "Signing..." : "E-Verify & Apply"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      <ReportWorkspaceModal
+        open={workspaceOpen}
+        reports={workspaceReports}
+        mode={workspaceMode}
+        layout={workspaceLayout}
+        activeId={workspaceActiveId}
+        onClose={() => {
+          setWorkspaceOpen(false);
+          setWorkspaceIds([]);
+          setWorkspaceActiveId(null);
+        }}
+        onLayoutChange={(layout) => setWorkspaceLayout(layout)}
+        onFocus={(id) => setWorkspaceActiveId(id)}
+      />
     </div>
   );
 }

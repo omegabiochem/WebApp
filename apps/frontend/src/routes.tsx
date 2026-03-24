@@ -22,10 +22,10 @@ import RequireAuth from "./Routes/RequireAuth";
 import RequireRole from "./Routes/RequireRole";
 import FormsDropdown from "./components/forms/FormsDropdown";
 import MicroMixWaterReportForm from "./pages/Reports/MicroMixWaterReportForm";
-import ChemistryMixReportForm from "./pages/Reports/ChemistryMixReportForm";
+import ChemistryMixSubmissionForm from "./pages/Reports/ChemistryMixSubmissionForm";
 import ChemistryMixReportFormWrapper from "./pages/Reports/ChemistryMixReportFormWrapper";
 
-import JJLClientAuditTrailPage from "./pages/Audit/JJLClientAuditTrailPage";
+import ClientAuditTrailPage from "./pages/Audit/ClientAuditTrailPage";
 import OmegaChatBox from "./pages/ChatBox/OmegaChatBox";
 import ReportAttachmentsPage from "./pages/Results/ReportAttachmentsPage";
 import ClientNotificationSettings from "./pages/Admin/ClientNotificationSettings";
@@ -40,6 +40,10 @@ import SupportHelpPage from "./pages/Support/supportHelpPage";
 import PublicSupport from "./pages/Support/PublicSupport";
 import SupportTicketsPage from "./pages/Support/SupportTicketsPage";
 import SterilityReportForm from "./pages/Reports/SterilityReportForm";
+import TemplatePage from "./pages/Templates/TemplatesPage";
+import TemplatesDropdown from "./pages/Templates/TemplatesDropdown";
+import COAReportForm from "./pages/Reports/COAReportForm";
+import CommonSelect from "./pages/Auth/CommonSelect";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -57,6 +61,7 @@ export const router = createBrowserRouter([
       // Public
       { path: "login", element: <Login /> },
       { path: "auth/verify-2fa", element: <Verify2FA /> },
+      { path: "auth/common-select", element: <CommonSelect /> },
 
       // Auth-only utility routes
       {
@@ -316,7 +321,17 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
-              <ChemistryMixReportForm />
+              <ChemistryMixSubmissionForm />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "reports/coa/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+              <COAReportForm />
             </RequireRole>
           </RequireAuth>
         ),
@@ -324,6 +339,26 @@ export const router = createBrowserRouter([
 
       {
         path: "chemistry-reports/chemistry-mix/:id", // ← no leading slash
+        element: (
+          <RequireAuth>
+            <RequireRole
+              roles={[
+                "FRONTDESK",
+                "CHEMISTRY",
+                "MC",
+                "QA",
+                "ADMIN",
+                "SYSTEMADMIN",
+                "CLIENT",
+              ]}
+            >
+              <ChemistryMixReportFormWrapper />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "chemistry-reports/coa/:id", // ← no leading slash
         element: (
           <RequireAuth>
             <RequireRole
@@ -374,8 +409,8 @@ export const router = createBrowserRouter([
         path: "clientAudit",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT"]}>
-              <JJLClientAuditTrailPage />
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
+              <ClientAuditTrailPage />
             </RequireRole>
           </RequireAuth>
         ),
@@ -449,7 +484,7 @@ export const router = createBrowserRouter([
         path: "chemistryLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CHEMISTRY", "MC"]}>
+            <RequireRole roles={["CHEMISTRY", "MC", "SYSTEMADMIN"]}>
               <ChemistryLoginBook />
             </RequireRole>
           </RequireAuth>
@@ -460,7 +495,7 @@ export const router = createBrowserRouter([
         path: "microLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["MICRO", "MC"]}>
+            <RequireRole roles={["MICRO", "MC", "SYSTEMADMIN"]}>
               <MicroLoginBook />
             </RequireRole>
           </RequireAuth>
@@ -495,6 +530,28 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
               <SupportTicketsPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "templatesPage",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN", "CLIENT"]}>
+              <TemplatePage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "templatesDropdown",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN", "CLIENT"]}>
+              <TemplatesDropdown />
             </RequireRole>
           </RequireAuth>
         ),

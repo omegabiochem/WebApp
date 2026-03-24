@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { rememberedPath } from "../../utils/globalUtils";
 
 // Header-attached FORMS dropdown (borderless, text-only trigger: "Forms ▾")
 // - No borders on trigger or menu; soft shadow + blur for uniqueness
@@ -12,18 +13,18 @@ import { useNavigate } from "react-router-dom";
 
 // put at the top of FormsDropdown.tsx (or import from a routes file)
 const PATH_BY_ID: Record<FormId, string> = {
-  // ⬇️ CHANGE these to your actual pages
-  MICRO_MIX: "/reports/micro-mix/new",
-  MICRO_MIX_WATER: "/reports/micro-mix-water/new",
-  CHEMISTRY_MIX: "/reports/chemistry-mix/new",
-  STERILITY: "/reports/sterility/new",
+  MICRO_MIX: rememberedPath("/reports/micro-mix/new"),
+  MICRO_MIX_WATER: rememberedPath("/reports/micro-mix-water/new"),
+  CHEMISTRY_MIX: rememberedPath("/reports/chemistry-mix/new"),
+  STERILITY: rememberedPath("/reports/sterility/new"),
+  COA: rememberedPath("/reports/coa/new"),
 };
 
 type Category = "MICRO" | "CHEMISTRY";
 
 type FormId =
   // MICRO (matches your Prisma.FormType values)
-  "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX";
+  "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX" | "COA";
 // CHEMISTRY (placeholder slugs for future chemistry forms)
 // | "HPLC_ASSAY"
 // | "GC_RESIDUALS"
@@ -57,6 +58,12 @@ const FORMS: FormDef[] = [
     name: "Chemistry Mix",
     category: "CHEMISTRY",
     emoji: "🧴",
+  },
+  {
+    id: "COA",
+    name: "COA",
+    category: "CHEMISTRY",
+    emoji: "📜",
   },
 ];
 

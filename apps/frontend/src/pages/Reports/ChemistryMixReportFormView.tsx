@@ -254,44 +254,48 @@ function formatDateForInput(value: string | null) {
   return new Date(value).toISOString().split("T")[0];
 }
 
-// sample type checkboxes
-type SampleTypeKey =
-  | "BULK"
-  | "FINISHED_GOOD"
-  | "RAW_MATERIAL"
-  | "PROCESS_VALIDATION"
-  | "COMPOSITE"
-  | "DI_WATER_SAMPLE"
-  | "STABILITY";
 
-// Above component body (or inside, before return)
-// const sampleTypeColumns: [SampleTypeKey, string][][] = [
-//   [
-//     ["BULK", "BULK"],
-//     ["FINISHED_GOOD", "FINISHED GOOD"],
-//   ],
-//   [
-//     ["RAW_MATERIAL", "RAW MATERIAL"],
-//     ["COMPOSITE", "COMPOSITE"],
-//   ],
-//   [
-//     ["PROCESS_VALIDATION", "PROCESS VALIDATION (PV)"],
-//     ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-//   ],
-//   [
-//     ["STABILITY", "STABILITY"], // ✅ add this column/row wherever you want
-//   ],
-// ];
 
-const sampleTypeItems: [SampleTypeKey, string][] = [
-  ["BULK", "BULK"],
-  ["FINISHED_GOOD", "FINISHED GOOD"],
-  ["RAW_MATERIAL", "RAW MATERIAL"],
-  ["COMPOSITE", "COMPOSITE"],
-  ["DI_WATER_SAMPLE", "DI WATER SAMPLE"],
-  ["PROCESS_VALIDATION", "PROCESS VALIDATION"],
-  ["STABILITY", "STABILITY"],
-];
+// const PrintStyles = () => (
+//   <style>{`
+//     @media print {
+//       @page { size: A4 portrait; margin: 6mm 10mm 12mm 6mm; }
+
+//       html, body { margin: 0 !important; padding: 0 !important; }
+//       .no-print { display: none !important; }
+
+//       .sheet {
+//         width: 100% !important;
+//         box-shadow: none !important;
+//         border: none !important;
+//         padding: 0 !important;
+//         max-height: none !important;
+//         overflow: visible !important;
+//       }
+
+//       .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
+//       .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
+//         .actives-reserve {
+//         min-height: 130px;  /* tune this */
+//       }
+
+//       .tight-row { line-height: 1.1 !important; }
+
+//       .print-center {
+//     display: grid !important;
+//     align-items: center !important;
+//   }
+
+//       img, svg {
+//         -webkit-print-color-adjust: exact;
+//         print-color-adjust: exact;
+//       }
+
+//       /* If we ever render QR as <img>, keep it crisp */
+//       img { image-rendering: pixelated; image-rendering: crisp-edges; }
+//     }
+//   `}</style>
+// );
 
 const PrintStyles = () => (
   <style>{`
@@ -308,26 +312,70 @@ const PrintStyles = () => (
         padding: 0 !important;
         max-height: none !important;
         overflow: visible !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 279mm !important;
       }
 
-      .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
-      .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
+      .print-footer {
+        margin-top: auto !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
 
-      .tight-row { line-height: 1.1 !important; }
+      /* ✅ IMPORTANT: keep actives rows as GRID (do NOT convert to table) */
+      .actives-row {
+        display: grid !important;
+        grid-template-columns: 25% 15% 13% 20% 12% 15% !important;
+        align-items: stretch !important;
 
-      .print-center {
-    display: grid !important;
-    align-items: center !important;
-  }
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+
+      .actives-row > div {
+        height: 100% !important;   /* ensures borders stretch full row height */
+      }
 
       img, svg {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
 
-      /* If we ever render QR as <img>, keep it crisp */
       img { image-rendering: pixelated; image-rendering: crisp-edges; }
     }
+  `}</style>
+);
+
+const ClampStyles = () => (
+  <style>{`
+    :root { --row-h: 17.45px; } /* adjust if needed */
+
+    .cell-wrap {
+      height: var(--row-h);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      overflow: hidden;
+    }
+
+    .clamp-3 {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+      line-height: 0.58;
+      text-align: center;
+      white-space: normal;
+      word-break: break-word;
+      width: 100%;
+    }
+
+   .fs-9 { font-size: 8px; }
+.fs-8 { font-size: 7.5px; }
+.fs-7 { font-size: 7px; }
   `}</style>
 );
 
@@ -421,7 +469,7 @@ export default function ChemistryMixReportFormView(
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const FOOTER_NOTE = "Rev-00 [Date Effective : 01/01/2026]";
+  const FOOTER_NOTE = "Rev-02 [Date Effective : 03/10/2026]";
 
   const BLUR_SIGNATURE_STATUSES = new Set([
     "DRAFT",
@@ -442,6 +490,17 @@ export default function ChemistryMixReportFormView(
   const HIDE_SIGNATURES_FOR = new Set(["DRAFT", "SUBMITTED_BY_CLIENT"]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status);
 
+  const allActives = (report?.actives || DEFAULT_CHEM_ACTIVES) as any[];
+  const checkedActives = allActives.filter((r) => r.checked);
+
+  const HIDE_DATE_INPUT_FOR = new Set([
+    "RECEIVED_BY_FRONTDESK",
+    "UNDER_QA_REVIEW",
+    // add more if needed
+  ]);
+
+  const hideDateInputs = HIDE_DATE_INPUT_FOR.has(report?.status);
+
   return (
     <div
       className={
@@ -453,6 +512,7 @@ export default function ChemistryMixReportFormView(
       {/* only inject styles when NOT bulk-printing from dashboard */}
       {!isBulk && <PrintStyles />}
       {!isBulk && <BlurStyles />}
+      {!isBulk && <ClampStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -501,7 +561,7 @@ export default function ChemistryMixReportFormView(
               className="font-bold tracking-wide text-[22px]"
               style={{ color: "blue" }}
             >
-              OMEGA BIOLOGICAL LABORATORY, INC.
+              OMEGA / BIOCHEM LABORATORIES, INC.
             </div>
             <div className="text-[16px]" style={{ color: "blue" }}>
               (FDA REG. | ISO 17025 ACC)
@@ -570,7 +630,7 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* TYPE OF TEST / SAMPLE COLLECTED */}
-            <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px] min-h-[20px]">
+            <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] min-h-[20px]">
               {/* LEFT */}
               <div className="px-2 border-r border-black grid items-center">
                 <div className="flex items-center gap-2 whitespace-nowrap">
@@ -612,12 +672,23 @@ export default function ChemistryMixReportFormView(
                     />
                     <span>Content Uniformity</span>
                   </label>
+
+                  <label className="inline-flex items-center gap-1 shrink-0">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={report?.testTypes?.includes("OTHER")}
+                      readOnly
+                      disabled
+                    />
+                    <span>Other</span>
+                  </label>
                 </div>
               </div>
 
               {/* RIGHT */}
               <div className="px-2 grid items-center">
-                <div className="flex items-center gap-3 whitespace-nowrap">
+                <div className="flex items-center gap-1 whitespace-nowrap">
                   <span className="font-medium mr-1 shrink-0">
                     SAMPLE COLLECTED :
                   </span>
@@ -724,42 +795,128 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE TYPE checkboxes */}
-            <div className="px-2 text-[12px] grid grid-cols-[auto_1fr] items-stretch">
-              {/* LEFT: Sample type */}
-              <div className="flex max-w-[600px]   self-stretch border-r border-black">
-                <span className="font-medium mr-1 whitespace-nowrap">
-                  SAMPLE TYPE :
-                </span>
+            <div className="px-2 text-[12px] grid grid-cols-[1fr_auto] items-stretch">
+              {/* LEFT: sample type section */}
+              <div className="flex flex-col border-r border-black pr-2">
+                {/* Row 1 */}
+                <div className="flex items-center gap-4 whitespace-nowrap">
+                  <span className="font-medium">SAMPLE TYPE :</span>
 
-                <div className="inline-flex border border-transparent">
-                  <div className="grid grid-cols-4 grid-rows-2 gap-x-7 gap-y-1">
-                    {sampleTypeItems.map(([key, label]) => (
-                      <label
-                        key={key}
-                        className="flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <input
-                          type="checkbox"
-                          className="thick-box2"
-                          checked={report?.sampleTypes?.includes(key) ?? false}
-                          readOnly
-                          disabled
-                        />
-                        <span className="text-[10px]">{label}</span>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={report?.sampleTypes?.includes("BULK") ?? false}
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">BULK</span>
+                  </label>
 
-                        {/* ✅ STABILITY writing line (view mode) */}
-                        {key === "STABILITY" && (
-                          <input
-                            type="text"
-                            value={report?.stabilityNote ?? ""} // <-- use your field name here
-                            readOnly
-                            disabled
-                            className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
-                          />
-                        )}
-                      </label>
-                    ))}
-                  </div>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("FINISHED_GOOD") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">FINISHED GOOD</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("RAW_MATERIAL") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">RAW MATERIAL</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("CLEANING_VALIDATION") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">CLEANING VALIDATION</span>
+                  </label>
+                </div>
+
+                {/* Row 2 */}
+                <div className="mt-1 flex items-center gap-6 whitespace-nowrap">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("COMPOSITE") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">COMPOSITE</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("DI_WATER_SAMPLE") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">DI WATER SAMPLE</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("PROCESS_VALIDATION") ??
+                        false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">PROCESS VALIDATION</span>
+                  </label>
+
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      className="thick-box2"
+                      checked={
+                        report?.sampleTypes?.includes("STABILITY") ?? false
+                      }
+                      readOnly
+                      disabled
+                    />
+                    <span className="text-[10px]">STABILITY</span>
+
+                    <input
+                      type="text"
+                      value={report?.stabilityNote ?? ""}
+                      readOnly
+                      disabled
+                      className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -768,7 +925,6 @@ export default function ChemistryMixReportFormView(
                 <span className="whitespace-nowrap font-medium">
                   DATE RECEIVED :
                 </span>
-
                 <input
                   type="date"
                   className="w-[80px] border-0 border-b border-black/60 outline-none text-[11px]"
@@ -781,8 +937,9 @@ export default function ChemistryMixReportFormView(
           </div>
 
           {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
-          <div className="mt-0.5 border border-black text-[11px]">
-            <div className="grid grid-cols-[25%_15%_11%_14%_15%_20%] font-bold text-center border-b border-black">
+          {/* ---- ACTIVE TO BE TESTED TABLE ---- */}
+          <div className="actives-reserve mt-7 border border-black text-[11px] ">
+            <div className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] font-bold text-center border-b border-black">
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 ACTIVE TO BE TESTED
               </div>
@@ -790,7 +947,7 @@ export default function ChemistryMixReportFormView(
                 RAW / BULK ACTIVE LOT #
               </div>
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
-                SOP # / VALIDATED
+                SOP # / VALIDATED TM
               </div>
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 FORMULA CONTENT
@@ -798,135 +955,112 @@ export default function ChemistryMixReportFormView(
               <div className="p-0.5 border-r border-black h-full flex items-center justify-center">
                 RESULTS
               </div>
-              <div className="p-0.5 whitespace-nowrap h-full flex items-center justify-center">
+              <div className="p-0.5 h-full flex items-center justify-center">
                 DATE TESTED / INITIAL
               </div>
             </div>
 
-            {(report?.actives || DEFAULT_CHEM_ACTIVES).map((row: any) => (
-              <div
-                key={row.key}
-                className="grid grid-cols-[25%_15%_11%_14%_15%_20%] border-b last:border-b-0 border-black"
-              >
-                {/* active name + checkbox */}
-                {/* <div className="flex items-center gap-2 border-r border-black px-1 ">
-                  <input
-                    type="checkbox"
-                    className="thick-box2"
-                    checked={row.checked}
-                    readOnly
-                    disabled
-                  />
-                  <span>{row.label}</span>
-                </div> */}
-
-                {/* active name + checkbox (VIEW MODE FIX) */}
-                <div className="flex items-center gap-2 border-r border-black px-1">
-                  <input
-                    type="checkbox"
-                    className="thick-box2"
-                    checked={row.checked}
-                    readOnly
-                    disabled
-                  />
-
-                  <div className="flex-1 leading-tight">
-                    {row.key === "OTHER" || row.key.startsWith("OTHER_") ? (
-                      row.checked ? (
-                        <span>
-                          {row.otherName?.trim() ||
-                            (row.key === "OTHER" ? "OTHER" : "OTHER 2")}
-                        </span>
-                      ) : (
-                        <span>{row.key === "OTHER" ? "OTHER" : "OTHER 2"}</span>
-                      )
-                    ) : (
-                      <span>{row.label}</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* BULK ACTIVE LOT # */}
-                <div className="border-r border-black px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    value={row.bulkActiveLot}
-                    readOnly
-                    disabled
-                  />
-                </div>
-
-                {/* SOP # */}
-                <div className="border-r border-black px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    value={row.sopNo}
-                    readOnly
-                    disabled
-                  />
-                </div>
-
-                {/* formula content % */}
-                <div className="border-r border-black px-1 flex items-center">
-                  <div className="flex w-full items-center gap-1 whitespace-nowrap">
-                    <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
-                      value={row.formulaContent}
-                      readOnly
-                      disabled
-                    />
-                    {row.showPercent !== false && (
-                      <span className="shrink-0">%</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* result % */}
-                <div className="border-r border-black px-1 flex items-center">
-                  <div className="flex w-full items-center gap-1 whitespace-nowrap">
-                    <input
-                      className="min-w-0 flex-1 border-none outline-none text-[11px] text-center"
-                      value={row.result}
-                      readOnly
-                      disabled
-                    />
-                    {row.showPercent !== false && (
-                      <span className="shrink-0">%</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* date tested / initials */}
-                <div className="px-1 ">
-                  <input
-                    className="w-full border-none outline-none text-[11px] text-center"
-                    placeholder="MM/DD/YYYY / AB"
-                    value={row.dateTestedInitial}
-                    readOnly
-                    disabled
-                  />
-                </div>
+            {/* ✅ show only selected actives */}
+            {checkedActives.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-slate-600">
+                No actives were selected for testing.
               </div>
-            ))}
+            ) : (
+              checkedActives.map((row: any) => {
+                // ✅ In view mode, allow unlimited lines: no fixed height, no clamp
+                const cellText = (v: any) => String(v ?? "");
+
+                return (
+                  <div
+                    key={row.key}
+                    className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] border-b last:border-b-0 border-black"
+                  >
+                    {/* ACTIVE NAME + checkbox */}
+                    <div className="flex items-start gap-2 border-r border-black px-1 py-1">
+                      {/* <input
+                        type="checkbox"
+                        className="thick-box2 mt-[2px]"
+                        checked={true}
+                        readOnly
+                        disabled
+                      /> */}
+
+                      <div className="flex-1 leading-tight whitespace-pre-wrap break-words">
+                        {row.key === "OTHER" || row.key.startsWith("OTHER_")
+                          ? row.otherName?.trim() ||
+                            (row.key === "OTHER" ? "OTHER" : "OTHER 2")
+                          : row.label}
+                      </div>
+                    </div>
+
+                    {/* BULK ACTIVE LOT # */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.bulkActiveLot)}
+                      </div>
+                    </div>
+
+                    {/* SOP # */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.sopNo)}
+                      </div>
+                    </div>
+
+                    {/* FORMULA CONTENT */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.formulaContent)}
+                      </div>
+                    </div>
+
+                    {/* RESULTS */}
+                    <div className="border-r border-black px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.result)}
+                      </div>
+                    </div>
+
+                    {/* DATE TESTED / INITIAL */}
+                    <div className="px-1 py-1">
+                      <div className="whitespace-pre-wrap break-words leading-tight text-center">
+                        {cellText(row.dateTestedInitial)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           {/* NOTE line (you can make this static text) */}
-          <div className="mt-1 text-[10px]">
+          <div className="mt-4 text-[10px]">
             NOTE : Turn Over time is at least 1 week. Biochem, Inc is not
             responsible for the release of any product not in the Biochem
             stability program.
           </div>
 
           {/* Comments + signatures */}
-          <div className="mt- text-[12px]">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-medium">Comments :</span>
-              <input
-                className="flex-1 border-0 border-b border-black/60 outline-none"
-                value={report?.comments || ""}
-                readOnly
-                disabled
-              />
+          <div className="mt-2 text-[12px]">
+            <div className="flex items-start gap-2">
+              <span className="font-medium mt-[2px] whitespace-nowrap">
+                Comments :
+              </span>
+
+              <div className="flex-1 relative">
+                {/* Always show 2 base lines */}
+                <div className="min-h-[36px] border-b border-black/60 relative">
+                  {/* Dynamic extra lines (auto-grow) */}
+                  {report?.comments && (
+                    <div className="whitespace-pre-wrap break-words leading-[16px] pb-1">
+                      {report.comments}
+                    </div>
+                  )}
+                </div>
+
+                {/* Second fixed underline */}
+                {/* <div className="border-b border-black/60 mt-1" /> */}
+              </div>
             </div>
 
             {showSignatures && (
@@ -946,15 +1080,25 @@ export default function ChemistryMixReportFormView(
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">DATE :</span>
-                      <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                          shouldBlurSignatures ? "blur-field" : ""
-                        }`}
-                        type="date"
-                        value={formatDateForInput(report?.testedDate) || ""}
-                        readOnly
-                        disabled
-                      />
+                      {hideDateInputs ? (
+                        <div
+                          className={`flex-1 border-b border-black/60 min-h-[20px] ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                        >
+                          {formatDateForInput(report?.testedDate) || ""}
+                        </div>
+                      ) : (
+                        <input
+                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                          type="date"
+                          value={formatDateForInput(report?.testedDate) || ""}
+                          readOnly
+                          disabled
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -972,15 +1116,25 @@ export default function ChemistryMixReportFormView(
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">DATE :</span>
-                      <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
-                          shouldBlurSignatures ? "blur-field" : ""
-                        }`}
-                        type="date"
-                        value={formatDateForInput(report?.reviewedDate) || ""}
-                        readOnly
-                        disabled
-                      />
+                      {hideDateInputs ? (
+                        <div
+                          className={`flex-1 border-b border-black/60 min-h-[20px] ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                        >
+                          {formatDateForInput(report?.reviewedDate) || ""}
+                        </div>
+                      ) : (
+                        <input
+                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                            shouldBlurSignatures ? "blur-field" : ""
+                          }`}
+                          type="date"
+                          value={formatDateForInput(report?.reviewedDate) || ""}
+                          readOnly
+                          disabled
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

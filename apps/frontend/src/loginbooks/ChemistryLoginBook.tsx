@@ -26,6 +26,9 @@ type Report = {
 
   dateTested?: string | null;
   initial?: string | null;
+
+  ReportnumberAssignedAt?: string | null;
+  ReportnumberAssignedBy?: string | null;
 };
 
 function displayReportNo(r: Report) {
@@ -123,7 +126,9 @@ function StatusPill({ value }: { value: string }) {
 
   if (v.includes("APPROVED"))
     return (
-      <span className={`${base} bg-emerald-50 text-emerald-700 ring-emerald-200`}>
+      <span
+        className={`${base} bg-emerald-50 text-emerald-700 ring-emerald-200`}
+      >
         APPROVED
       </span>
     );
@@ -230,7 +235,9 @@ export default function ChemistryLoginBook() {
         const all = await api<Report[]>("/chemistry-reports");
         if (abort) return;
 
-        const chem = all.filter((r) => r.formType === "CHEMISTRY_MIX");
+        const chem = all.filter((r) =>
+          ["CHEMISTRY_MIX", "COA"].includes(r.formType),
+        );
         setRows(chem);
       } catch (e: any) {
         toast.error(e?.message || "Failed to load Chemistry Login Book");
@@ -248,7 +255,9 @@ export default function ChemistryLoginBook() {
   const processed = useMemo(() => {
     const query = q.trim().toLowerCase();
 
-    const withReportNo = rows.filter((r) => (r.reportNumber || "").trim() !== "");
+    const withReportNo = rows.filter(
+      (r) => (r.reportNumber || "").trim() !== "",
+    );
 
     const filtered = query
       ? withReportNo.filter((r) => {
@@ -410,7 +419,9 @@ export default function ChemistryLoginBook() {
           </div>
         </div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Needs correction</div>
+          <div className="text-xs font-medium text-slate-500">
+            Needs correction
+          </div>
           <div className="mt-1 text-2xl font-bold text-slate-900">
             {loading ? "—" : stats.needs}
           </div>
@@ -433,7 +444,9 @@ export default function ChemistryLoginBook() {
                   {paging.startIndex + 1}–{paging.endIndex}
                 </span>{" "}
                 of{" "}
-                <span className="font-semibold text-slate-900">{paging.total}</span>
+                <span className="font-semibold text-slate-900">
+                  {paging.total}
+                </span>
               </>
             )}
           </div>
@@ -472,22 +485,26 @@ export default function ChemistryLoginBook() {
             </PageBtn>
 
             <div className="flex items-center gap-1">
-              {getPageItems(paging.safePage, paging.totalPages).map((it, idx) =>
-                it === "..." ? (
-                  <span key={`e-${idx}`} className="px-2 text-sm text-slate-400">
-                    …
-                  </span>
-                ) : (
-                  <PageBtn
-                    key={it}
-                    active={it === paging.safePage}
-                    disabled={loading}
-                    onClick={() => setPage(it)}
-                    ariaLabel={`Page ${it}`}
-                  >
-                    {it}
-                  </PageBtn>
-                ),
+              {getPageItems(paging.safePage, paging.totalPages).map(
+                (it, idx) =>
+                  it === "..." ? (
+                    <span
+                      key={`e-${idx}`}
+                      className="px-2 text-sm text-slate-400"
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <PageBtn
+                      key={it}
+                      active={it === paging.safePage}
+                      disabled={loading}
+                      onClick={() => setPage(it)}
+                      ariaLabel={`Page ${it}`}
+                    >
+                      {it}
+                    </PageBtn>
+                  ),
               )}
             </div>
 
@@ -518,6 +535,7 @@ export default function ChemistryLoginBook() {
                 <th className="border-b px-4 py-3">Lot #</th>
                 <th className="border-b px-4 py-3">Actives</th>
                 <th className="no-print border-b px-4 py-3">Status</th>
+                <th className="border-b px-4 py-3">Date Tested / Initials</th>
               </tr>
             </thead>
 
@@ -535,7 +553,9 @@ export default function ChemistryLoginBook() {
 
               {!loading &&
                 displayRows.map((r, idx) => {
-                  const absoluteIndex = isPrinting ? idx : paging.startIndex + idx;
+                  const absoluteIndex = isPrinting
+                    ? idx
+                    : paging.startIndex + idx;
 
                   return (
                     <tr
@@ -599,13 +619,27 @@ export default function ChemistryLoginBook() {
                       <td className="no-print px-4 py-3">
                         <StatusPill value={r.status} />
                       </td>
+
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-slate-900">
+                          {r.ReportnumberAssignedAt
+                            ? formatDate(r.ReportnumberAssignedAt)
+                            : "-"}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {r.ReportnumberAssignedBy || "-"}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
 
               {!loading && processed.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-14 text-center text-slate-500">
+                  <td
+                    colSpan={7}
+                    className="px-6 py-14 text-center text-slate-500"
+                  >
                     No records found.
                   </td>
                 </tr>
@@ -618,9 +652,13 @@ export default function ChemistryLoginBook() {
           <div className="no-print flex items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm">
             <div className="text-slate-600">
               Page{" "}
-              <span className="font-semibold text-slate-900">{paging.safePage}</span>{" "}
+              <span className="font-semibold text-slate-900">
+                {paging.safePage}
+              </span>{" "}
               of{" "}
-              <span className="font-semibold text-slate-900">{paging.totalPages}</span>
+              <span className="font-semibold text-slate-900">
+                {paging.totalPages}
+              </span>
             </div>
 
             <div className="text-xs text-slate-500">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useBlocker, useNavigate } from "react-router-dom";
+import { useBlocker, useLocation, useNavigate } from "react-router-dom";
 import {
   STERILITY_STATUS_TRANSITIONS,
   type CorrectionItem,
@@ -37,6 +37,7 @@ function useConfirmOnLeave(isDirty: boolean) {
 // ---- Map each transition to buttons ----
 
 const statusButtons: Record<string, { label: string; color: string }> = {
+  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
   UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
 
@@ -134,6 +135,7 @@ function canEdit(
       "scdb_turbidity",
       "scdb_observation",
       "scdb_result",
+      "dateCompleted",
       "comments",
     ],
     MC: [
@@ -145,9 +147,10 @@ function canEdit(
       "scdb_turbidity",
       "scdb_observation",
       "scdb_result",
+      "dateCompleted",
       "comments",
     ],
-    QA: ["dateCompleted"],
+    QA: [],
     CLIENT: [
       "client",
       "dateSent",
@@ -220,6 +223,19 @@ const DashStyles = () => (
   `}</style>
 );
 
+type SterilityReportFormProps = {
+  report?: any; // same pattern as Micro
+  onClose?: () => void;
+
+  embedded?: boolean;
+  pageMode?: "VIEW" | "UPDATE";
+  hideTopActions?: boolean;
+  hideBottomActions?: boolean;
+  forcePageReadOnly?: boolean;
+  onSaved?: (updated: any) => void;
+  onStatusChanged?: (updated: any) => void;
+};
+
 const HIDE_SAVE_FOR = new Set<SterilityReportStatus>(["APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -249,10 +265,15 @@ function SpinnerDark({ className = "" }: { className?: string }) {
 export default function SterilityReportForm({
   report,
   onClose,
-}: {
-  report?: any;
-  onClose?: () => void;
-}) {
+
+  embedded = false,
+  pageMode = "UPDATE",
+  hideTopActions = false,
+  hideBottomActions = false,
+  forcePageReadOnly = false,
+  onSaved,
+  onStatusChanged,
+}: SterilityReportFormProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
@@ -286,7 +307,7 @@ export default function SterilityReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || "");
+  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -364,6 +385,39 @@ export default function SterilityReportForm({
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  const { search } = useLocation();
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const returnTo = params.get("returnTo");
+  const backToDashboard = () => {
+    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+    else navigate("/clientDashboard", { replace: true });
+  };
+
+  const routeMode = params.get("mode");
+  const urlTemplateId = params.get("templateId");
+
+  const isTemplateMode = routeMode === "template";
+  const isTemplateViewMode = routeMode === "templateView";
+  const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
+
+  const forceReadOnly =
+    forcePageReadOnly || isTemplateViewMode || pageMode === "VIEW";
+
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [templateVersion, setTemplateVersion] = useState<number>(0);
+  const [templateName, setTemplateName] = useState<string>("");
+
+  useEffect(() => {
+    if (!isAnyTemplateMode) {
+      setTemplateId(null);
+      setTemplateVersion(0);
+      setTemplateName("");
+      return;
+    }
+    setTemplateId(urlTemplateId); // works for view + edit
+  }, [isAnyTemplateMode, urlTemplateId]);
 
   function getFieldDisplayValue(fieldKey: string) {
     const [base] = fieldKey.split(":");
@@ -567,7 +621,7 @@ export default function SterilityReportForm({
   // const lock = (f: string) => !canEdit(role, f);
   // use:
   const lock = (f: string) =>
-    !canEdit(role, f, status as SterilityReportStatus);
+    forceReadOnly || !canEdit(role, f, status as SterilityReportStatus);
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
     role,
@@ -585,6 +639,67 @@ export default function SterilityReportForm({
     // checkbox behavior but mutually exclusive:
     return current === value ? "" : value;
   }
+
+  // ✅ Hydrate all local state from an incoming report
+  function hydrateForm(r?: any) {
+    // ---- header fields ----
+    setClient(
+      r?.client ??
+        (!r?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+    );
+    setDateSent(r?.dateSent ?? "");
+    setTypeOfTest(r?.typeOfTest ?? "");
+    setSampleType(r?.sampleType ?? "");
+    setFormulaNo(r?.formulaNo ?? "");
+    setDescription(r?.description ?? "");
+    setLotNo(r?.lotNo ?? "");
+    setManufactureDate(r?.manufactureDate ?? "");
+    setTestSopNo(r?.testSopNo ?? "");
+    setDateTested(r?.dateTested ?? "");
+    setDateCompleted(r?.dateCompleted ?? "");
+
+    // ---- sterility table ----
+    setFtmTurbidity(r?.ftm_turbidity ?? "");
+    setFtmObservation(r?.ftm_observation ?? "");
+    setFtmResult(r?.ftm_result ?? "");
+    setScdbTurbidity(r?.scdb_turbidity ?? "");
+    setScdbObservation(r?.scdb_observation ?? "");
+    setScdbResult(r?.scdb_result ?? "");
+
+    // ---- comments/signatures ----
+    setComments(r?.comments ?? "");
+    setTestedBy(r?.testedBy ?? "");
+    setTestedDate(r?.testedDate ?? "");
+    setReviewedBy(r?.reviewedBy ?? "");
+    setReviewedDate(r?.reviewedDate ?? "");
+  }
+
+  useEffect(() => {
+    if (!isAnyTemplateMode || !templateId) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const t = await api<any>(`/templates/${templateId}`, { method: "GET" });
+        if (!alive) return;
+
+        setTemplateName(t?.name ?? "");
+        setTemplateVersion(typeof t?.version === "number" ? t.version : 0);
+
+        hydrateForm(t?.data ?? {});
+        setIsDirty(false);
+      } catch (e) {
+        console.error(e);
+        alert("❌ Failed to load template.");
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAnyTemplateMode, templateId, role, user?.clientCode]);
 
   const makeValues = (): SterilityReportFormValues =>
     ({
@@ -700,7 +815,7 @@ export default function SterilityReportForm({
             "scdb_result",
             "comments",
           ],
-          QA: ["dateCompleted"],
+          QA: [],
           CLIENT: [
             "client",
             "dateSent",
@@ -728,7 +843,53 @@ export default function SterilityReportForm({
         }
 
         try {
-          let saved: SavedReport;
+          let saved: any;
+
+          if (isTemplateMode) {
+            const name = templateName.trim();
+
+            // ✅ Block saving if template name is missing
+            if (!name) {
+              alert("⚠️ Please enter a Template name before saving.");
+              return false;
+            }
+            // ✅ template payload: store data + formType + name
+            const templatePayload = {
+              name,
+              formType: "STERILITY",
+              data: { ...payload }, // store only allowed fields
+            };
+
+            if (templateId) {
+              saved = await api(`/templates/${templateId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  ...templatePayload,
+                  expectedVersion: templateVersion, // ✅ required
+                }),
+              });
+
+              // bump local version from server
+              setTemplateVersion(
+                typeof saved.version === "number"
+                  ? saved.version
+                  : templateVersion + 1,
+              );
+            } else {
+              saved = await api(`/templates`, {
+                method: "POST",
+                body: JSON.stringify(templatePayload),
+              });
+              setTemplateId(saved.id);
+              setTemplateVersion(
+                typeof saved.version === "number" ? saved.version : 1,
+              );
+            }
+
+            setIsDirty(false);
+            alert("✅ Template saved");
+            return true;
+          }
 
           if (reportId) {
             saved = await api<SavedReport>(`/reports/${reportId}`, {
@@ -756,6 +917,7 @@ export default function SterilityReportForm({
           );
 
           setIsDirty(false);
+          onSaved?.(saved);
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -778,6 +940,7 @@ export default function SterilityReportForm({
   type UpdatedReport = {
     status?: SterilityReportStatus;
     reportNumber?: string;
+    version?: number;
   };
 
   async function handleStatusChange(
@@ -792,6 +955,7 @@ export default function SterilityReportForm({
       const okFields = validateAndSetErrors(values);
 
       if (
+        newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
@@ -816,6 +980,12 @@ export default function SterilityReportForm({
           return;
         }
       }
+
+      //  if (newStatus === "SUBMITTED_BY_CLIENT") {
+      //   const sent = todayISO();
+      //   setDateSent(sent);
+      //   markDirty(); // ✅ IMPORTANT so handleSave runs
+      // }
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
@@ -842,11 +1012,22 @@ export default function SterilityReportForm({
         //   await res.json();
 
         setStatus(updated.status ?? newStatus);
-        setReportNumber(updated.reportNumber || reportNumber);
+        if (updated.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+        setReportVersion((prev) =>
+          typeof updated.version === "number" ? updated.version : prev + 1,
+        );
         setIsDirty(false);
+        onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
+
+        if (returnTo) {
+          backToDashboard();
+          return;
+        }
         if (role === "CLIENT") {
-          navigate("/clientDashboard");
+          backToDashboard();
         } else if (role === "FRONTDESK") {
           navigate("/frontdeskDashboard");
         } else if (role === "MICRO") {
@@ -891,7 +1072,7 @@ export default function SterilityReportForm({
   }, [isDirty]);
 
   // Block in-app navigation
-  useConfirmOnLeave(isDirty);
+  useConfirmOnLeave(!embedded && isDirty);
 
   // // For in-app navigation (react-router)
   // useBeforeUnload(isDirty, (event) => {
@@ -909,11 +1090,20 @@ export default function SterilityReportForm({
 
   const handleClose = () => {
     if (onClose) return onClose();
-
-    // If opened from Gmail, history may not have a previous in-app page
+    if (embedded) return;
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
     if (window.history.length > 1) navigate(-1);
     else navigate(fallbackRoute, { replace: true });
   };
+
+  // const handleClose = () => {
+  //   if (onClose) return onClose();
+
+  //   // If opened from Gmail, history may not have a previous in-app page
+  //   if (window.history.length > 1) navigate(-1);
+  //   else navigate(fallbackRoute, { replace: true });
+  // };
 
   // any open correction = red
   // const hasOpenCorrection = (field: string) => !!corrByField[field];
@@ -995,10 +1185,69 @@ export default function SterilityReportForm({
 
   const HIDE_SIGNATURES_FOR = new Set<ReportStatus>([
     "DRAFT",
+    "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(status as ReportStatus);
 
+  const showAssignReportNumberButton =
+    embedded &&
+    (role === "MICRO" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  async function assignReportNumberAndOpenTesting() {
+    if (!reportId) {
+      alert("⚠️ Please save the report first.");
+      return;
+    }
+
+    return runBusy("STATUS", async () => {
+      try {
+        const updated = await api<any>(`/reports/${reportId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "UNDER_TESTING_REVIEW",
+            reason: "Assign report number / start prelim testing",
+            expectedVersion: reportVersion,
+          }),
+        });
+
+        const nextStatus =
+          (updated?.status as SterilityReportStatus) || "UNDER_TESTING_REVIEW";
+
+        const nextVersion =
+          typeof updated?.version === "number"
+            ? updated.version
+            : reportVersion + 1;
+
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
+        if (updated?.reportNumber != null) {
+          setReportNumber(String(updated.reportNumber));
+        }
+
+        onStatusChanged?.(updated);
+        alert("✅ Report number assigned and moved to preliminary testing.");
+      } catch (err: any) {
+        console.error(err);
+        alert(
+          "❌ Failed to assign report number: " +
+            (err?.message || "Unknown error"),
+        );
+      }
+    });
+  }
+
+  const disableSaveUntilAssigned =
+    embedded &&
+    (role === "MICRO" || role === "MC") &&
+    status === "SUBMITTED_BY_CLIENT";
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   return (
@@ -1007,34 +1256,69 @@ export default function SterilityReportForm({
         <PrintStyles />
         <DashStyles />
 
+        {isTemplateViewMode && (
+          <div className="no-print mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Viewing template: <b>{templateName || "Untitled"}</b> (read-only)
+          </div>
+        )}
+
         {/* Header + print controls */}
-        <div className="no-print mb-4 flex justify-end gap-2">
-          <button
-            className="px-3 py-1 rounded-md border bg-gray-600 text-white"
-            onClick={handleClose}
-            disabled={isBusy}
-          >
-            {isBusy ? "Working..." : "Close"}
-          </button>
-          {/* <button
+        {!hideTopActions && (
+          <div className="no-print mb-4 flex justify-end gap-2">
+            {isTemplateMode && !isTemplateViewMode && (
+              <input
+                className={`mr-auto w-72 rounded-md border px-3 py-1 text-sm ${
+                  !templateName.trim()
+                    ? "border-red-500 ring-1 ring-red-500"
+                    : "border-black/30"
+                }`}
+                placeholder="Template name"
+                value={templateName}
+                onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  markDirty();
+                }}
+              />
+            )}
+            {!embedded && (
+              <button
+                type="button"
+                className="px-3 py-1 rounded-md border bg-gray-600 text-white"
+                onClick={handleClose}
+                disabled={isBusy}
+              >
+                {isBusy ? "Working..." : "Close"}
+              </button>
+            )}
+            {/* <button
           </button> */}
-          {!HIDE_SAVE_FOR.has(status as SterilityReportStatus) && (
-            <button
-              className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-              onClick={handleSave}
-              disabled={
-                role === "SYSTEMADMIN" ||
-                role === "FRONTDESK" ||
-                isBusy ||
-                status === "UNDER_CLIENT_FINAL_REVIEW" ||
-                status === "LOCKED"
-              }
-            >
-              {busy === "SAVE" && <Spinner />}
-              {reportId ? "Update Report" : "Save Report"}
-            </button>
-          )}
-        </div>
+            {!isTemplateViewMode &&
+              !HIDE_SAVE_FOR.has(status as SterilityReportStatus) && (
+                <button
+                  className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={handleSave}
+                  disabled={
+                    role === "SYSTEMADMIN" ||
+                    role === "FRONTDESK" ||
+                    isBusy ||
+                    status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                    status === "LOCKED" ||
+                    disableSaveUntilAssigned ||
+                    (isTemplateMode && !templateName.trim())
+                  }
+                >
+                  {busy === "SAVE" && <Spinner />}
+                  {isTemplateMode
+                    ? templateId
+                      ? "Update Template"
+                      : "Save Template"
+                    : reportId
+                      ? "Update Report"
+                      : "Save Report"}
+                </button>
+              )}
+          </div>
+        )}
 
         {/* Letterhead */}
         <div className="mb-2 text-center">
@@ -1042,7 +1326,7 @@ export default function SterilityReportForm({
             className="font-bold tracking-wide text-[22px]"
             style={{ color: "blue" }}
           >
-            OMEGA BIOLOGICAL LABORATORY, INC.
+            OMEGA / BIOCHEM LABORATORIES, INC.
           </div>
           <div className="text-[16px]" style={{ color: "blue" }}>
             (FDA REG.)
@@ -1067,12 +1351,14 @@ export default function SterilityReportForm({
           <div className="mt-1 grid grid-cols-3 items-center">
             <div /> {/* left spacer */}
             <div className="text-[18px] font-bold text-center underline">
-              {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+              {status === "DRAFT" ||
+              status === "UNDER_DRAFT_REVIEW" ||
+              status === "SUBMITTED_BY_CLIENT"
                 ? "STERILITY SUBMISSION FORM"
                 : "STERILITY REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+              {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
             </div>
           </div>
         </div>
@@ -2022,53 +2308,66 @@ export default function SterilityReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      <div className="no-print mt-4 flex items-center justify-between">
-        {/* Left: status action buttons */}
-        <div className="flex flex-wrap gap-2">
-          {STERILITY_STATUS_TRANSITIONS[
-            status as SterilityReportStatus
-          ]?.next.map((targetStatus: SterilityReportStatus) => {
-            if (
-              STERILITY_STATUS_TRANSITIONS[
-                status as SterilityReportStatus
-              ].canSet.includes(role!) &&
-              statusButtons[targetStatus]
-            ) {
-              const { label, color } = statusButtons[targetStatus];
+      {!hideBottomActions && !isAnyTemplateMode && (
+        <div className="no-print mt-4 flex items-center justify-between">
+          {/* Left: status action buttons */}
+          <div className="flex flex-wrap gap-2">
+            {showAssignReportNumberButton && (
+              <button
+                type="button"
+                onClick={assignReportNumberAndOpenTesting}
+                disabled={isBusy}
+                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {busy === "STATUS" && <Spinner />}
+                Assign Report Number
+              </button>
+            )}
+            {!showAssignReportNumberButton &&STERILITY_STATUS_TRANSITIONS[
+              status as SterilityReportStatus
+            ]?.next.map((targetStatus: SterilityReportStatus) => {
+              if (
+                STERILITY_STATUS_TRANSITIONS[
+                  status as SterilityReportStatus
+                ].canSet.includes(role!) &&
+                statusButtons[targetStatus]
+              ) {
+                const { label, color } = statusButtons[targetStatus];
 
-              const approveNeedsAttachment = isApproveAction(targetStatus);
-              const disableApproveForNoAttachment =
-                approveNeedsAttachment && !hasAttachment;
+                const approveNeedsAttachment = isApproveAction(targetStatus);
+                const disableApproveForNoAttachment =
+                  approveNeedsAttachment && !hasAttachment;
 
-              const disabled =
-                role === "SYSTEMADMIN" ||
-                isBusy ||
-                attachmentsLoading ||
-                disableApproveForNoAttachment;
+                const disabled =
+                  role === "SYSTEMADMIN" ||
+                  isBusy ||
+                  attachmentsLoading ||
+                  disableApproveForNoAttachment;
 
-              return (
-                <button
-                  key={targetStatus}
-                  className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                  onClick={() => requestStatusChange(targetStatus)}
-                  disabled={disabled}
-                  title={
-                    disableApproveForNoAttachment
-                      ? "Upload at least 1 attachment to enable Approve"
-                      : undefined
-                  }
-                >
-                  {busy === "STATUS" && <Spinner />}
-                  {attachmentsLoading && label === "Approve"
-                    ? "Checking..."
-                    : label}
-                </button>
-              );
-            }
-            return null;
-          })}
+                return (
+                  <button
+                    key={targetStatus}
+                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                    onClick={() => requestStatusChange(targetStatus)}
+                    disabled={disabled}
+                    title={
+                      disableApproveForNoAttachment
+                        ? "Upload at least 1 attachment to enable Approve"
+                        : undefined
+                    }
+                  >
+                    {busy === "STATUS" && <Spinner />}
+                    {attachmentsLoading && label === "Approve"
+                      ? "Checking..."
+                      : label}
+                  </button>
+                );
+              }
+              return null;
+            })}
+          </div>
         </div>
-      </div>
+      )}
       {showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -2139,7 +2438,7 @@ export default function SterilityReportForm({
         </div>
       )}
 
-      {selectingCorrections && (
+      {!isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
           <div className="text-xs text-slate-600">
@@ -2202,8 +2501,11 @@ export default function SterilityReportForm({
                   setCorrections(fresh);
                   setStatus(pendingStatus!);
                   setPendingStatus(null);
+
+                  if (embedded) return;
+
                   if (role === "CLIENT") {
-                    navigate("/clientDashboard");
+                    backToDashboard();
                   } else if (role === "FRONTDESK") {
                     navigate("/frontdeskDashboard");
                   } else if (role === "MICRO") {
@@ -2227,7 +2529,7 @@ export default function SterilityReportForm({
         </div>
       )}
 
-      {addForField && (
+      {!isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -2280,21 +2582,23 @@ export default function SterilityReportForm({
       )}
 
       {/* Floating Corrections button */}
-      <div className="no-print fixed bottom-20 right-6 z-40">
-        <button
-          onClick={() => setShowCorrTray((s) => !s)}
-          className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
-        >
-          📝 Corrections
-          {openCorrections.length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
-              {openCorrections.length}
-            </span>
-          )}
-        </button>
-      </div>
+      {!isTemplateViewMode && (
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+          >
+            📝 Corrections
+            {openCorrections.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+                {openCorrections.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
-      {showCorrTray && (
+      {!isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>

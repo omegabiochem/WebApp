@@ -12,6 +12,7 @@ export type Role =
 
 export type ReportStatus =
   | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
   | "CLIENT_NEEDS_FINAL_CORRECTION"
@@ -46,6 +47,7 @@ export type ReportStatus =
   | "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
   | "FINAL_APPROVED"
+  | "VOID"
   | "LOCKED";
 
 // The values your form passes into validation
@@ -156,6 +158,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
+    "dateCompleted"
     // "comments",
     // "testedBy",
     // "testedDate",
@@ -172,8 +175,9 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
+     "dateCompleted"
   ],
-  QA: ["dateCompleted"],
+  QA: [],
   CLIENT: [
     "dateSent",
     "typeOfTest",
@@ -204,6 +208,7 @@ export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
     "tbc_result",
   ],
   FINAL: [
+    "dateCompleted",
     "tmy_gram",
     "tmy_result",
     "pathogens",
@@ -433,9 +438,9 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
         case "dateCompleted": {
           // ✅ Only required in FINAL phase (QA completion step)
-          if (currentPhase !== "FINAL") return false;
+          // if (currentPhase !== "FINAL") return false;
           // (optional) only QA/ADMIN enforce
-          if (role !== "QA" && role !== "ADMIN") return false;
+          // if (role !== "QA" && role !== "ADMIN") return false;
           return !v.dateCompleted;
         }
         case "reviewedBy":
@@ -593,9 +598,9 @@ export function useMicroMixWaterReportValidation(
 
         case "dateCompleted": {
           // ✅ Only required in FINAL phase (QA completion step)
-          if (currentPhase !== "FINAL") return false;
+          // if (currentPhase !== "FINAL") return false;
           // (optional) only QA/ADMIN enforce
-          if (role !== "QA" && role !== "ADMIN") return false;
+          // if (role !== "QA" && role !== "ADMIN") return false;
           return !v.dateCompleted;
         }
         case "reviewedBy":

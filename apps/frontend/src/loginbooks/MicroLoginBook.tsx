@@ -27,6 +27,9 @@ type Report = {
 
   dateTested?: string | null; // fallback
   initial?: string | null; // fallback
+
+    ReportnumberAssignedAt?: string | null;
+  ReportnumberAssignedBy?: string | null;
 };
 
 function displayReportNo(r: Report) {
@@ -528,6 +531,7 @@ export default function MicroLoginBook() {
                 <th className="border-b px-4 py-3">Lot #</th>
                 <th className="border-b px-4 py-3">Type of test</th>
                 <th className="border-b px-4 py-3">Status</th>
+                <th className="border-b px-4 py-3">Date Tested / Initials</th>
               </tr>
             </thead>
 
@@ -603,6 +607,17 @@ export default function MicroLoginBook() {
 
                       <td className="px-4 py-3">
                         <StatusPill value={r.status} />
+                      </td>
+
+                         <td className="px-4 py-3">
+                        <div className="text-sm text-slate-900">
+                          {r.ReportnumberAssignedAt
+                            ? formatDate(r.ReportnumberAssignedAt)
+                            : "-"}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {r.ReportnumberAssignedBy || "-"}
+                        </div>
                       </td>
                     </tr>
                   );

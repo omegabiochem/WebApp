@@ -11,6 +11,7 @@ import {
   UserRole,
   Prisma,
   FormType,
+  $Enums,
 } from '@prisma/client';
 
 import { ReportsGateway } from './reports.gateway';
@@ -28,7 +29,7 @@ import { ReportNotificationsService } from 'src/notifications/report-notificatio
 // Which roles may edit which fields (unchanged)
 // ----------------------------
 const EDIT_MAP: Record<UserRole, string[]> = {
-  SYSTEMADMIN: [],
+  SYSTEMADMIN: ['*'],
   ADMIN: ['*'],
   FRONTDESK: [
     'client',
@@ -54,6 +55,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
+    'dateCompleted',
     'comments',
 
     'ftm_turbidity',
@@ -89,6 +91,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'dateTested',
     'preliminaryResults',
     'preliminaryResultsDate',
+    'dateCompleted',
     'comments',
 
     'ftm_turbidity',
@@ -111,7 +114,6 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResults',
     'preliminaryResultsDate',
     'comments',
-    'dateCompleted',
   ],
   CLIENT: [
     'client',
@@ -139,214 +141,220 @@ type Transition = {
 
 const STATUS_TRANSITIONS = {
   DRAFT: {
-    canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT'],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['CLIENT_NEEDS_PRELIMINARY_CORRECTION', 'PRELIMINARY_APPROVED'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['PRELIMINARY_RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['FINAL_RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
-    nextEditableBy: ['ADMIN', 'QA'],
+    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
+    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ['ADMIN', 'QA', 'MICRO', 'MC'],
+    canSet: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA'],
+    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FINAL_RESUBMISSION_BY_CLIENT: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
+    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK'],
+    nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_PRELIMINARY_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'PRELIMINARY_TESTING_ON_HOLD',
       'PRELIMINARY_TESTING_NEEDS_CORRECTION',
       'UNDER_QA_PRELIMINARY_REVIEW',
     ],
-    nextEditableBy: ['MICRO', 'MC'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   PRELIMINARY_TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_PRELIMINARY_CORRECTION'],
     nextEditableBy: ['CLIENT'],
     canEdit: [],
   },
   UNDER_QA_PRELIMINARY_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: [
       'QA_NEEDS_PRELIMINARY_CORRECTION',
       'UNDER_CLIENT_PRELIMINARY_REVIEW',
     ],
-    nextEditableBy: ['MICRO', 'MC'],
-    canEdit: ['QA'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ['QA'],
+    canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_QA_PRELIMINARY_REVIEW'],
     nextEditableBy: ['CLIENT'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['UNDER_QA_PRELIMINARY_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'FINAL_TESTING_ON_HOLD',
       'FINAL_TESTING_NEEDS_CORRECTION',
       'UNDER_QA_FINAL_REVIEW',
     ],
-    nextEditableBy: ['QA', 'ADMIN'],
+    nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['MICRO', 'MC'],
   },
   FINAL_TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['FINAL_TESTING_NEEDS_CORRECTION', 'UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['CLIENT', 'MICRO', 'MC'],
+    nextEditableBy: ['CLIENT', 'MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_FINAL_CORRECTION'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_RESUBMISSION_QA_REVIEW'],
-    nextEditableBy: ['QA'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['UNDER_QA_FINAL_REVIEW'],
-    nextEditableBy: [],
-    canEdit: [],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   UNDER_QA_FINAL_REVIEW: {
-    canSet: ['MICRO', 'MC', 'QA'],
+    canSet: ['MICRO', 'MC', 'QA', 'SYSTEMADMIN'],
     next: ['QA_NEEDS_FINAL_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA'],
-    canEdit: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_FINAL_CORRECTION: {
-    canSet: ['QA'],
+    canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['ADMIN', 'QA'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'QA', 'SYSTEMADMIN'],
   },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_FINAL_REVIEW'],
-    nextEditableBy: ['QA'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_FINAL_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   FINAL_APPROVED: {
     canSet: [],
@@ -360,105 +368,117 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: [],
     canEdit: [],
   },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ['SYSTEMADMIN'],
+    canEdit: [],
+  },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
 // 🔁 Keep this in sync with backend
 const STERILITY_STATUS_TRANSITIONS = {
   DRAFT: {
-    canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'FRONTDESK'],
+    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT', 'FRONTDESK' ,'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    canEdit: ['CLIENT' ,'SYSTEMADMIN'],
+  },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT' ,'SYSTEMADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
-    nextEditableBy: ['ADMIN', 'QA'],
+    nextEditableBy: ['ADMIN', 'QA' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT' ,'SYSTEMADMIN'],
     next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
-    canEdit: ['CLIENT'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    canEdit: ['CLIENT' ,'SYSTEMADMIN'],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK'  ,'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK'  ,'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK'],
+    nextEditableBy: ['FRONTDESK'  ,'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
   },
   TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT' ,'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC'],
+    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['MICRO', 'MC'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
   },
   RESUBMISSION_BY_TESTING: {
-    canSet: ['QA'],
+    canSet: ['QA' ,'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA' ,'SYSTEMADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA'],
-    canEdit: ['QA'],
+    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    canEdit: ['QA' ,'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA'],
+    canSet: ['QA' ,'SYSTEMADMIN','MC','MICRO'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC'],
+    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
     canEdit: [],
   },
 
@@ -466,31 +486,31 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN'],
+    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA' ,'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['QA'],
+    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    canEdit: ['QA' ,'SYSTEMADMIN'],
   },
   UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
   },
   APPROVED: {
     canSet: [],
@@ -502,6 +522,12 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
     next: [],
     nextEditableBy: [],
+    canEdit: [],
+  },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
@@ -532,7 +558,6 @@ function getDepartmentLetter(role: string): string {
 
 // Critical fields that require reason
 const CRITICAL_FIELDS = new Set<string>([
-  'dateCompleted',
   'reviewedBy',
   'reviewedDate',
   'testedBy',
@@ -805,10 +830,10 @@ export class ReportsService {
 
     // LOCK guard
     if (
-      current.status === 'LOCKED' &&
+      (current.status === 'LOCKED' || current.status === 'VOID') &&
       !['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)
     ) {
-      throw new ForbiddenException('Report is locked');
+      throw new ForbiddenException('Report is locked/void');
     }
 
     const ctx = getRequestContext() || {};
@@ -830,25 +855,21 @@ export class ReportsService {
     const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
 
     // Clients can edit any field while in DRAFT
-    if (!(user.role === 'CLIENT' && current.status === 'DRAFT')) {
+    const clientMayEditDraft =
+      user.role === 'CLIENT' &&
+      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
+    const SystemAdminMayEditDraft =
+      user.role === 'SYSTEMADMIN' &&
+      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
+
+    if (!clientMayEditDraft && !SystemAdminMayEditDraft) {
       const bad = allowedForRole(user.role, fieldKeys);
-      if (bad.length)
+      if (bad.length) {
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
+      }
     }
 
-    // // status-based edit guard
-    // if (fieldKeys.length > 0) {
-    //   const transition = STATUS_TRANSITIONS[current.status];
-    //   if (!transition)
-    //     throw new BadRequestException(
-    //       `Invalid current status: ${current.status}`,
-    //     );
-    //   if (!transition.canEdit.includes(user.role)) {
-    //     throw new ForbiddenException(
-    //       `Role ${user.role} cannot edit report in status ${current.status}`,
-    //     );
-    //   }
-    // }
+ 
 
     const transitions = transitionsFor(current.formType);
 
@@ -884,25 +905,48 @@ export class ReportsService {
     // handle status transitions (base.status)
     if (patchIn.status) {
       const transitions = transitionsFor(current.formType);
-
       const trans = transitions[current.status];
+
       if (!trans) {
         throw new BadRequestException(
           `No transition config for status: ${current.status} (formType: ${current.formType})`,
         );
       }
 
-      if (!trans.canSet.includes(user.role)) {
-        throw new ForbiddenException(
-          `Role ${user.role} cannot change status from ${current.status}`,
-        );
+      const targetStatus = patchIn.status as ReportStatus;
+      const isVoid = targetStatus === 'VOID';
+
+      if (isVoid) {
+        if (current.status === 'VOID') {
+          throw new BadRequestException('Report is already VOID');
+        }
+
+        // ✅ allow VOID only if role is allowed by VOID rule
+        const voidRule = transitions.VOID;
+
+        // ✅ force the array element type to be UserRole
+        const allowed: UserRole[] = (voidRule?.canSet as
+          | UserRole[]
+          | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+        if (!allowed.includes(user.role)) {
+          throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+        }
+      } else {
+        // normal transitions
+        if (!trans.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status from ${current.status}`,
+          );
+        }
+        if (!trans.next.includes(targetStatus)) {
+          throw new BadRequestException(
+            `Invalid transition: ${current.status} → ${targetStatus}`,
+          );
+        }
       }
 
-      if (!trans.next.includes(patchIn.status)) {
-        throw new BadRequestException(
-          `Invalid transition: ${current.status} → ${patchIn.status}`,
-        );
-      }
+      base.status = targetStatus;
 
       function yyyy(d: Date = new Date()): string {
         const yyyy = String(d.getFullYear());
@@ -927,14 +971,30 @@ export class ReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
+
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: {
+            name: true,
+            userId: true,
+            email: true,
+          },
+        });
         const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+        base.ReportnumberAssignedAt = new Date();
+        base.ReportnumberAssignedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
       }
 
       // e-sign requirements
       if (
         patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
-        patchIn.status === 'LOCKED'
+        patchIn.status === 'LOCKED' ||
+        patchIn.status === 'VOID'
       ) {
         const password =
           _pwdFromBody ||
@@ -956,33 +1016,7 @@ export class ReportsService {
     const relationKey = DETAILS_RELATION[current.formType];
     const delegate = detailsDelegate(this.prisma, current.formType);
 
-    // // do both updates in a transaction for consistency
-    // const ops: Prisma.PrismaPromise<any>[] = [
-    //   this.prisma.report.update({
-    //     where: { id },
-    //     data: { ...base, updatedBy: user.userId },
-    //     include: {
-    //       microMix: true,
-    //       microMixWater: true,
-    //     },
-    //   }),
-    // ];
-
-    // const detailsOp = updateDetailsByType(
-    //   this.prisma,
-    //   current.formType,
-    //   id,
-    //   details,
-    // );
-    // if (detailsOp) ops.push(detailsOp);
-
-    // const [updated] = await this.prisma.$transaction(ops);
-
-    // if (patchIn.status) {
-    //   this.reportsGateway.notifyStatusChange(id, patchIn.status);
-    // } else {
-    //   this.reportsGateway.notifyReportUpdate(updated);
-    // }
+  
 
     // ✅ Step 1: attempt base update with version check
     const baseRes = await this.prisma.report.updateMany({
@@ -1031,6 +1065,25 @@ export class ReportsService {
     }
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
+      const ctx = getRequestContext() || {};
+      const reason =
+        (ctx as any)?.reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
+
+      await this.logStatusChange({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: current.status,
+        to: patchIn.status,
+        reason,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    if (patchIn.status && prevStatus !== String(patchIn.status)) {
       const slug =
         current.formType === 'MICRO_MIX'
           ? 'micro-mix'
@@ -1058,6 +1111,62 @@ export class ReportsService {
 
     return flattenReport(updated);
   }
+  private async logStatusChange(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+    from: ReportStatus;
+    to: ReportStatus;
+    reason: string | null;
+    actorUserId: string;
+    actorRole: UserRole;
+  }) {
+    const ctx = getRequestContext();
+
+    // optional bypass
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.$transaction([
+      // Status history (your dedicated table)
+      this.prisma.statusHistory.create({
+        data: {
+          reportId: args.reportId,
+          from: args.from,
+          to: args.to,
+          reason: args.reason ?? null,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+        },
+      }),
+
+      // Audit trail (what your Audit page reads)
+      this.prisma.auditTrail.create({
+        data: {
+          action: 'STATUS_CHANGE',
+          entity: args.formType, // OR "REPORT" if you want one entity name for all
+          entityId: args.reportId,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+          clientCode: args.clientCode ?? null,
+          details: `Status changed: ${args.from} → ${args.to}`,
+          changes: {
+            from: args.from,
+            to: args.to,
+            reason: args.reason ?? null,
+            formNumber: args.formNumber,
+            reportNumber: args.reportNumber ?? null,
+          },
+          formNumber: args.formNumber,
+          reportNumber: args.reportNumber ?? null,
+          formType: args.formType,
+        },
+      }),
+    ]);
+  }
 
   // async updateStatus(
   //   user: { userId: string; role: UserRole },
@@ -1080,12 +1189,21 @@ export class ReportsService {
     return this.update(user, id, body);
   }
 
+  
+
   async changeStatus(
     user: { userId: string; role: UserRole },
     id: string,
     input: ChangeStatusInput,
   ) {
-    const current = await this.get(id);
+    // IMPORTANT: use prisma findUnique so we have base + details
+    const current = await this.prisma.report.findUnique({
+      where: { id },
+      include: { microMix: true, microMixWater: true, sterility: true },
+    });
+    if (!current) throw new NotFoundException('Report not found');
+
+    const prevStatus = current.status;
 
     if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
       throw new ForbiddenException(
@@ -1095,19 +1213,18 @@ export class ReportsService {
 
     const target: ReportStatus =
       typeof input === 'string' ? input : input.status;
-    if (!target) {
-      throw new BadRequestException('Status is required');
-    }
+    if (!target) throw new BadRequestException('Status is required');
 
     const ctx = getRequestContext() || {};
 
     const reason =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.reason
         : (input.reason ?? (ctx as any)?.reason);
+
     const eSignPassword =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.eSignPassword
         : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
 
     if (!reason) {
@@ -1116,8 +1233,8 @@ export class ReportsService {
       );
     }
 
-    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW'; // ✅ only for Start Final
-
+    // ✅ e-sign rules (keep your existing rule)
+    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW';
     if (!skipESign) {
       if (!eSignPassword) {
         throw new BadRequestException(
@@ -1126,53 +1243,127 @@ export class ReportsService {
       }
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
-    const transitions = transitionsFor((current as any).formType);
-    const trans = transitions[current.status as ReportStatus];
+
+    const transitions = transitionsFor(current.formType);
+    const trans = transitions[prevStatus];
 
     if (!trans) {
       throw new BadRequestException(
-        `No transition config for status: ${current.status} (formType: ${(current as any).formType})`,
+        `No transition config for status: ${prevStatus} (formType: ${current.formType})`,
       );
+    }
+
+    const isVoid = target === 'VOID';
+
+    if (isVoid) {
+      if (prevStatus === 'VOID') {
+        throw new BadRequestException('Report is already VOID');
+      }
+      const voidRule = transitions.VOID;
+
+      // ✅ force the array element type to be UserRole
+      const allowed: UserRole[] = (voidRule?.canSet as
+        | UserRole[]
+        | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+      if (!allowed.includes(user.role)) {
+        throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+      }
     }
 
     const patch: any = { status: target };
 
+    // ✅ assign report number same behavior as update()
     function yyyy(d: Date = new Date()): string {
-      const yyyy = String(d.getFullYear());
-      return yyyy; // e.g. "2410"
+      return String(d.getFullYear());
     }
-
-    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
     function seqPad(num: number): string {
       const width = Math.max(4, String(num).length);
       return String(num).padStart(width, '0');
     }
+
     if (
-      target &&
       !current.reportNumber &&
-      shouldAssignReportNumber((current as any).formType, target)
+      shouldAssignReportNumber(current.formType, target)
     ) {
-      const deptLetter =
-        getDeptLetterForForm((current as any).formType) ||
-        getDepartmentLetter(user.role);
-      if (deptLetter) {
-        const seq = await this.prisma.labReportSequence.upsert({
-          where: { department: deptLetter },
-          update: { lastNumber: { increment: 1 } },
-          create: { department: deptLetter, lastNumber: 1 },
-        });
-        const n = seqPad(seq.lastNumber);
-        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
-      }
+      const deptLetter = getDeptLetterForForm(current.formType);
+      const seq = await this.prisma.labReportSequence.upsert({
+        where: { department: deptLetter },
+        update: { lastNumber: { increment: 1 } },
+        create: { department: deptLetter, lastNumber: 1 },
+      });
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
+      patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
+      patch.ReportnumberAssignedAt = new Date();
+      patch.ReportnumberAssignedBy =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
     }
+
+    // ✅ apply lock timestamp
+    if (target === 'LOCKED') patch.lockedAt = new Date();
 
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
+      include: { microMix: true, microMixWater: true, sterility: true },
     });
 
+    // ✅ NOW log status change (StatusHistory + AuditTrail)
+    if (prevStatus !== target) {
+      await this.logStatusChange({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: prevStatus,
+        to: target,
+        reason: reason ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    // ✅ notify websocket
     this.reportsGateway.notifyStatusChange(id, target);
-    return updated;
+
+    // ✅ OPTIONAL: if you also want emails for change-status (same as update())
+    if (prevStatus !== target) {
+      const slug =
+        current.formType === 'MICRO_MIX'
+          ? 'micro-mix'
+          : current.formType === 'MICRO_MIX_WATER'
+            ? 'micro-mix-water'
+            : current.formType === 'STERILITY'
+              ? 'sterility'
+              : 'micro-mix';
+
+      const clientName = pickDetails(current)?.client ?? '-';
+      await this.reportNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName,
+        clientCode: current.clientCode ?? null,
+        oldStatus: String(prevStatus),
+        newStatus: String(target),
+        reportUrl: `${process.env.APP_URL}/reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
+    }
+
+    return flattenReport(updated);
   }
 
   async findAll() {

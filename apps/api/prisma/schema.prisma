@@ -23,6 +23,10 @@ model Report {
   formType      FormType
   clientCode    String?
   version       Int                   @default(1)
+
+  ReportnumberAssignedAt DateTime?
+  ReportnumberAssignedBy String?
+
   attachments   Attachment[]
   microMix      MicroMixDetails?
   microMixWater MicroMixWaterDetails?
@@ -168,6 +172,8 @@ model User {
   passwordHash       String
   mustChangePassword Boolean  @default(false)
 
+  isCommonAccount    Boolean  @default(false)
+
   // ✅ add these
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
@@ -199,6 +205,8 @@ model User {
   auditTrails               AuditTrail[]
   readings                  BalanceReading[]
 
+  notifications             Notification[]
+
   // Support Tickets (relations)
   supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
   supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
@@ -210,8 +218,76 @@ model User {
 
   resultsLastSeenAt  DateTime?  @db.Timestamp(6)
 
+  commonAccountMemberships CommonAccountMember[]
+
   @@index([clientCode, role])
 }
+model CommonAccount {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  label             String
+  passwordHash      String
+  active            Boolean  @default(true)
+
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  lastFailedLoginAt DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  members           CommonAccountMember[]
+  challenges        CommonAuthChallenge[]
+}
+
+model CommonAccountMember {
+  id              String        @id @default(cuid())
+  commonAccountId String
+  userId          String
+  active          Boolean       @default(true)
+  allowedRoles    UserRole[]    @default([])
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  commonAccount   CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commonAccountId, userId])
+  @@index([commonAccountId, active])
+  @@index([userId])
+}
+
+model CommonAuthChallenge {
+  id                 String    @id @default(cuid())
+  challengeToken     String    @unique
+  commonAccountId    String
+
+  stage              String
+  selectedUserId     String?
+  selectedRole       UserRole?
+
+  twoFactorCodeHash  String?
+  twoFactorExpiresAt DateTime?
+  twoFactorAttempts  Int       @default(0)
+
+  expiresAt          DateTime
+  usedAt             DateTime?
+
+  ipAddress          String?
+  userAgent          String?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  commonAccount      CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+
+  @@index([commonAccountId, expiresAt])
+  @@index([selectedUserId])
+}
+
+
+
 
 model ClientSequence {
   clientCode String @id
@@ -246,8 +322,24 @@ model AuditTrail {
   role      UserRole?
   user      User?     @relation(fields: [userId], references: [id])
 
+  clientCode String?
+
+  formNumber   String?
+  reportNumber String?
+  formType     FormType?
+
+  @@index([clientCode, createdAt])
+  
+
   @@index([entity, entityId, createdAt])
   @@index([userId, createdAt])
+
+  @@index([formNumber])
+  @@index([reportNumber])
+  @@index([formType])
+  @@index([entity, formNumber])
+  @@index([entity, reportNumber])
+
 }
 
 model Attachment {
@@ -309,8 +401,14 @@ model ChemistryReport {
   status        ChemistryReportStatus          @default(DRAFT)
   clientCode    String?
   version       Int                            @default(1)
+
+  ReportnumberAssignedAt DateTime?
+  ReportnumberAssignedBy String?
+
+  
   attachments   ChemistryAttachment[]
   chemistryMix  ChemistryMixDetails?
+  coa          COADetails?
   statusHistory ChemistryReportStatusHistory[]
 }
 
@@ -343,6 +441,49 @@ model ChemistryMixDetails {
   dateReceived      DateTime?
   stabilityNote     String?
   chemistryReport   ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+}
+
+model COADetails {
+  chemistryId        String       @id
+
+  // header
+  client             String?
+  dateSent           DateTime?
+  sampleDescription  String?
+  coaVerification    Boolean      @default(false)
+
+  lotBatchNo         String?
+  manufactureDate    DateTime?
+  formulaId          String?
+  sampleSize         String?
+  dateReceived       DateTime?
+
+  sampleTypes        SampleType[]  // uses your existing enum
+
+  // ✅ COA SPEC TABLE (store rows)
+  // each row: { key, item, standard, result }
+  coaRows            Json?
+
+  // comments/signatures
+  comments           String?
+  testedBy           String?
+  testedDate         DateTime?
+  reviewedBy         String?
+  reviewedDate       DateTime?
+
+  // workflow (keep consistent with your other detail models)
+  status             ChemistryReportStatus  @default(DRAFT)
+  lockedAt           DateTime?
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  corrections        Json?         // optional if you store corrections in a table elsewhere
+
+  chemistryReport   ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+
+  @@index([status])
 }
 
 model ChemistryReportStatusHistory {
@@ -396,19 +537,30 @@ model MessageThread {
 }
 
 model Message {
-  id          String        @id @default(cuid())
-  threadId    String
-  senderId    String
-  senderRole  UserRole
-  senderName  String?
-  body        String
-  mentions    UserRole[]    @default([])
-  attachments Json?
-  createdAt   DateTime      @default(now())
-  readAt      DateTime?
-  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  threadId        String
+  senderId        String
+  senderRole      UserRole
+  senderName      String?
+  body            String
+  mentions        UserRole[]    @default([])
+  attachments     Json?
+  createdAt       DateTime      @default(now())
+  readAt          DateTime?
+
+  deletedAt       DateTime?
+  deletedBy       String?
+
+
+  replyToMessageId String?
+  replyTo          Message?   @relation("MessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[]  @relation("MessageReply")
+
+
+  thread          MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
+  @@index([replyToMessageId])
 }
 
 model MessageThreadRead {
@@ -452,10 +604,12 @@ enum FormType {
   MICRO_MIX_WATER
   STERILITY
   CHEMISTRY_MIX
+  COA
 }
 
 enum ReportStatus {
   DRAFT
+  UNDER_DRAFT_REVIEW
   SUBMITTED_BY_CLIENT
   CLIENT_NEEDS_PRELIMINARY_CORRECTION
   CLIENT_NEEDS_FINAL_CORRECTION
@@ -490,6 +644,7 @@ enum ReportStatus {
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW
   FINAL_APPROVED
   LOCKED
+  VOID
 
 
 
@@ -528,6 +683,7 @@ enum AttachmentKind {
 
 enum ChemistryReportStatus {
   DRAFT
+  UNDER_DRAFT_REVIEW
   SUBMITTED_BY_CLIENT
   CLIENT_NEEDS_CORRECTION
   UNDER_CLIENT_CORRECTION
@@ -549,6 +705,7 @@ enum ChemistryReportStatus {
   UNDER_RESUBMISSION_ADMIN_REVIEW
   APPROVED
   LOCKED
+  VOID
   UNDER_RESUBMISSION_QA_REVIEW
 }
 
@@ -556,6 +713,7 @@ enum TestType {
   ID
   PERCENT_ASSAY
   CONTENT_UNIFORMITY
+  OTHER
 }
 
 enum SampleCollected {
@@ -637,4 +795,123 @@ model ChatUpload {
   clientCode  String?  // set for client uploads
   uploadedBy  String   // userId
   createdAt   DateTime @default(now())
+}
+
+model FormTemplate {
+  id         String   @id @default(cuid())
+  name       String
+  formType   FormType
+  clientCode String?      // usually required for CLIENT templates
+  data       Json
+
+  version    Int      @default(1)
+
+  createdBy  String?
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([clientCode, formType])
+  @@index([createdBy])
+}
+
+
+model NotificationOutbox {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+  claimedAt DateTime?
+  claimKey  String?
+
+  // grouping
+  scope         String   // "LAB" | "CLIENT"
+  dept          String?  // "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode    String?
+  recipientsKey String   // JSON string of normalized emails
+  tag           String?
+
+  // event payload
+  reportId    String
+  formType    FormType
+  formNumber  String
+  clientName  String
+  oldStatus   String
+  newStatus   String
+  reportUrl   String?
+  actorUserId String?
+
+  attempts  Int     @default(0)
+  lastError String?
+
+  @@index([sentAt, createdAt])
+  @@index([claimedAt])
+  @@index([scope, dept, clientCode])
+}
+
+model MessageNotificationOutbox {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  sentAt       DateTime?
+  claimedAt    DateTime?
+  claimKey     String?
+
+  // routing
+  scope        String   // "LAB" | "CLIENT"
+  dept         String?  // "FRONTDESK" | "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode   String?
+  recipientsKey String  // JSON string of normalized emails
+
+  // event payload
+  threadId     String
+  messageId    String
+  senderId     String?
+  senderRole   UserRole
+  senderName   String?
+  preview      String
+  actionUrl    String?
+
+  reportId     String?
+  chemistryId  String?
+
+  attempts     Int      @default(0)
+  lastError    String?
+
+  @@index([sentAt, createdAt])
+  @@index([claimedAt])
+  @@index([scope, dept, clientCode])
+  @@index([threadId, createdAt])
+}
+
+
+
+model Notification {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  readAt     DateTime?
+
+  userId     String?
+  role       UserRole?
+  clientCode String?
+
+  kind       String   // STATUS_CHANGE | RESULT_READY | CORRECTION | MESSAGE | SYSTEM
+  title      String
+  body       String
+  severity   String   // INFO | SUCCESS | WARNING | ERROR
+
+  entityType String?  // REPORT | CHEMISTRY_REPORT | MESSAGE_THREAD
+  entityId   String?
+  formType   FormType?
+  formNumber String?
+  reportUrl  String?
+
+  status     String?  // status snapshot
+  meta       Json?
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([role, createdAt])
+  @@index([clientCode, createdAt])
+  @@index([readAt, createdAt])
 }

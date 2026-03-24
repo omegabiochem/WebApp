@@ -15,7 +15,7 @@ export type ChemistryMixReportDTO = {
   client?: string | null;
   dateSent?: string | null;
   sampleDescription?: string | null;
-  testTypes?: Array<"ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY">; // TestType[]
+  testTypes?: Array<"ID" | "PERCENT_ASSAY" | "CONTENT_UNIFORMITY" | "OTHER">; // TestType[]
   sampleCollected?: "TOP_BEG" | "MID" | "BOTTOM_END" | null; // SampleCollected?
   lotBatchNo?: string | null;
   manufactureDate?: string | null;

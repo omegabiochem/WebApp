@@ -29,12 +29,23 @@ import { ReportsGateway } from './reports.gateway';
 function getDeptLetterForForm(formType: FormType) {
   return formType.startsWith('MICRO') ? 'OM' : 'BC';
 }
+type ChemistryFormType = Extract<FormType, 'CHEMISTRY_MIX' | 'COA'>;
 
-type ChemistryFormType = Extract<FormType, 'CHEMISTRY_MIX'>;
-
-const DETAILS_RELATIONS: Record<ChemistryFormType, 'chemistryMix'> = {
+const DETAILS_RELATIONS: Record<ChemistryFormType, 'chemistryMix' | 'coa'> = {
   CHEMISTRY_MIX: 'chemistryMix',
+  COA: 'coa',
 };
+
+function detailsDelegate(prisma: PrismaService, t: FormType) {
+  switch (t) {
+    case 'CHEMISTRY_MIX':
+      return prisma.chemistryMixDetails;
+    case 'COA':
+      return prisma.cOADetails;
+    default:
+      throw new BadRequestException(`Unsupported formType: ${t}`);
+  }
+}
 
 const BASE_FIELDS = new Set([
   'formNumber',
@@ -51,17 +62,17 @@ const BASE_FIELDS = new Set([
 
 // to pick existed related report
 function pickDetails(r: any) {
+  if (r.formType === 'COA') return r.coa ?? null;
   return r.chemistryMix ?? null;
 }
-
 function flattenReport(r: any) {
-  const { chemistryMix, ...base } = r;
+  const { chemistryMix, coa, ...base } = r;
 
   const dRaw = pickDetails(r) || {};
-
   const d = Object.fromEntries(
     Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)),
   );
+
   return { ...base, ...d };
 }
 
@@ -76,100 +87,106 @@ const STATUS_TRANSITIONS: Record<
   }
 > = {
   DRAFT: {
-    canSet: ['CLIENT'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'FRONTDESK'],
-    canEdit: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
+    next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
+    nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
+    next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
-    nextEditableBy: ['ADMIN', 'QA'],
+    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
-    canEdit: ['CLIENT'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC'],
+    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['CHEMISTRY', 'MC'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK'],
+    nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   TESTING_ON_HOLD: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC'],
+    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['CHEMISTRY', 'MC'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   RESUBMISSION_BY_TESTING: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA'],
-    canEdit: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC'],
+    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
 
@@ -177,31 +194,31 @@ const STATUS_TRANSITIONS: Record<
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['QA'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['ADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   APPROVED: {
     canSet: [],
@@ -210,15 +227,21 @@ const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   LOCKED: {
-    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: ['ADMIN', 'SYSTEMADMIN', 'QA'],
     next: [],
-    nextEditableBy: [],
+    nextEditableBy: ['ADMIN', 'SYSTEMADMIN', 'QA'],
+    canEdit: [],
+  },
+  VOID: {
+    canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
 };
 
 const EDIT_MAP: Record<UserRole, string[]> = {
-  SYSTEMADMIN: [],
+  SYSTEMADMIN: ['*'],
   ADMIN: ['*'],
   FRONTDESK: [],
   CHEMISTRY: [
@@ -231,6 +254,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedBy',
     'testedDate',
     'actives',
+    'coaRows',
   ],
   QA: [
     'dateReceived',
@@ -270,8 +294,21 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'testedBy',
     'testedDate',
     'actives',
+    'coaRows',
   ],
 };
+
+const STATUSES_REQUIRING_ESIGN = new Set<ChemistryReportStatus>([
+  'UNDER_CLIENT_REVIEW',
+  'LOCKED',
+  'VOID', // ✅ add
+]);
+
+const STATUSES_REQUIRING_REASON = new Set<ChemistryReportStatus>([
+  'UNDER_CLIENT_REVIEW',
+  'LOCKED',
+  'VOID', // ✅ add
+]);
 
 type ChangeStatusInput =
   | ChemistryReportStatus
@@ -296,10 +333,10 @@ function updateDetailsByType(
 
   switch (formType) {
     case 'CHEMISTRY_MIX':
-      return tx.chemistryMixDetails.update({
-        where: { chemistryId },
-        data,
-      });
+      return tx.chemistryMixDetails.update({ where: { chemistryId }, data });
+
+    case 'COA':
+      return tx.cOADetails.update({ where: { chemistryId }, data }); // ✅ Prisma client name is cOADetails
     default:
       throw new BadRequestException(`Unsupported formType: ${formType}`);
   }
@@ -441,11 +478,24 @@ export class ChemistryReportsService {
       },
       include: {
         chemistryMix: true, // ✅ REQUIRED
+        coa: true,
       },
     });
     const flat = flattenReport(created);
     this.reportsGateway.notifyReportCreated(flat);
     return flat;
+  }
+
+  async get(id: string) {
+    const r = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: {
+        chemistryMix: true,
+        coa: true,
+      },
+    });
+    if (!r) throw new NotFoundException('Report not found');
+    return flattenReport(r);
   }
 
   private _coerce(obj: any) {
@@ -496,6 +546,7 @@ export class ChemistryReportsService {
       orderBy: { createdAt: 'desc' },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
 
@@ -518,15 +569,17 @@ export class ChemistryReportsService {
   ) {
     const current = await this.prisma.chemistryReport.findUnique({
       where: { id },
-      include: { chemistryMix: true },
+      include: { chemistryMix: true, coa: true },
     });
     if (!current) throw new BadRequestException('Report not found');
 
     if (
-      current.status === 'LOCKED' &&
+      (current.status === 'LOCKED' || current.status === 'VOID') &&
       !['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)
     ) {
-      throw new ForbiddenException('Report is locked and cannot be edited');
+      throw new ForbiddenException(
+        'Report is locked/void and cannot be edited',
+      );
     }
 
     const ctx = getRequestContext() || {};
@@ -550,10 +603,16 @@ export class ChemistryReportsService {
     const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
 
     // Clients can edit any field while in DRAFT
-    if (!(user.role === 'CLIENT' && current.status === 'DRAFT')) {
+    // Clients and System Admin can edit any field while in DRAFT
+    const canEditAnyDraft =
+      (user.role === 'CLIENT' || user.role === 'SYSTEMADMIN') &&
+      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
+
+    if (!canEditAnyDraft) {
       const bad = allowedForRole(user.role, fieldKeys);
-      if (bad.length)
+      if (bad.length) {
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
+      }
     }
 
     // status-based edit guard
@@ -592,15 +651,35 @@ export class ChemistryReportsService {
           `Invalid status transition from ${current.status}`,
         );
       }
-      if (!trans.canSet.includes(user.role)) {
-        throw new ForbiddenException(
-          `User role ${user.role} cannot set status to ${patchIn.status}`,
-        );
-      }
-      if (!trans.next.includes(patchIn.status)) {
-        throw new BadRequestException(
-          `Invalid transition: ${current.status} → ${patchIn.status}`,
-        );
+      const targetStatus = patchIn.status as ChemistryReportStatus;
+      const isVoid = targetStatus === 'VOID';
+
+      if (isVoid) {
+        if (current.status === 'VOID') {
+          throw new BadRequestException('Report is already VOID');
+        }
+
+        const voidRule = STATUS_TRANSITIONS.VOID;
+
+        const allowed: UserRole[] = (voidRule?.canSet as
+          | UserRole[]
+          | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+        if (!allowed.includes(user.role)) {
+          throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+        }
+      } else {
+        // normal transitions
+        if (!trans.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status from ${current.status}`,
+          );
+        }
+        if (!trans.next.includes(targetStatus)) {
+          throw new BadRequestException(
+            `Invalid transition: ${current.status} → ${targetStatus}`,
+          );
+        }
       }
 
       function yyyy(d: Date = new Date()): string {
@@ -620,8 +699,33 @@ export class ChemistryReportsService {
           update: { lastNumber: { increment: 1 } },
           create: { department: deptLetter, lastNumber: 1 },
         });
+
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: {
+            name: true,
+            userId: true,
+            email: true,
+          },
+        });
+        const now = new Date();
         const n = seqPad(seq.lastNumber);
         base.reportNumber = `${deptLetter}-${yyyy()}${n}`;
+        base.ReportnumberAssignedAt = new Date();
+        base.ReportnumberAssignedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        // ✅ Auto-fill dateReceived at the same time as BC number assignment
+        const currentDetails = pickDetails(current);
+        const alreadyHasDateReceived = !!currentDetails?.dateReceived;
+        const incomingDateReceived = details.dateReceived;
+
+        if (!alreadyHasDateReceived && !incomingDateReceived) {
+          details.dateReceived = now;
+        }
       }
 
       // e-sign requirements
@@ -708,11 +812,33 @@ export class ChemistryReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.chemistryReport.findUnique({
       where: { id },
-      include: { chemistryMix: true },
+      include: { chemistryMix: true, coa: true },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
     const prevStatus = String(current.status);
+
+    const newStatus = patchIn.status ? String(patchIn.status) : null;
+
+    if (newStatus && prevStatus !== newStatus) {
+      const ctx = getRequestContext() || {};
+
+      const reason =
+        (ctx as any).reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
+
+      await this.logChemStatusChange({
+        chemistryReportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: current.status as ChemistryReportStatus,
+        to: patchIn.status as ChemistryReportStatus,
+        reason,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
 
     if (patchIn.status) {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
@@ -721,24 +847,21 @@ export class ChemistryReportsService {
     }
 
     if (patchIn.status && String(current.status) !== String(patchIn.status)) {
-      const slug = 'chemistry-mix';
-      current.formType === 'CHEMISTRY_MIX';
+      const slug =
+        current.formType === 'CHEMISTRY_MIX'
+          ? 'chemistry-mix'
+          : current.formType === 'COA'
+            ? 'coa'
+            : 'chemistry-mix';
+
+      current.formType === 'CHEMISTRY_MIX'
+        ? 'chemistry-mix'
+        : current.formType === 'COA'
+          ? 'coa'
+          : 'chemistry-mix';
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
-
-      // await this.chemistryNotifications.onStatusChanged({
-      //   formType: current.formType,
-      //   reportId: current.id,
-      //   formNumber: current.formNumber,
-      //   clientName: clientUser?.name ?? '-',
-      //   clientCode: clientUser?.clientCode ?? null,
-      //   clientEmail: clientUser?.email ?? null,
-      //   oldStatus: prevStatus,
-      //   newStatus: String(patchIn.status),
-      //   reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
-      //   actorUserId: user.userId,
-      // });
 
       await this.chemistryNotifications.onStatusChanged({
         formType: current.formType,
@@ -777,25 +900,70 @@ export class ChemistryReportsService {
     return this.update(user, id, body);
   }
 
-  async get(id: string) {
-    const r = await this.prisma.chemistryReport.findUnique({
-      where: { id },
-      include: {
-        chemistryMix: true,
-      },
-    });
-    if (!r) throw new NotFoundException('Report not found');
-    return flattenReport(r);
-  }
+  private async logChemStatusChange(args: {
+    chemistryReportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+    from: ChemistryReportStatus;
+    to: ChemistryReportStatus;
+    reason: string | null;
+    actorUserId: string;
+    actorRole: UserRole;
+  }) {
+    const ctx = getRequestContext();
+    if (ctx?.skipAudit) return;
 
-  // TO CHANGE STATUS
+    await this.prisma.$transaction([
+      this.prisma.chemistryReportStatusHistory.create({
+        data: {
+          chemistryId: args.chemistryReportId,
+          from: args.from,
+          to: args.to,
+          reason: args.reason ?? null,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+        },
+      }),
+      this.prisma.auditTrail.create({
+        data: {
+          action: 'STATUS_CHANGE',
+          entity: args.formType, // CHEMISTRY_MIX or COA
+          entityId: args.chemistryReportId,
+          userId: args.actorUserId,
+          role: args.actorRole,
+          ipAddress: ctx?.ip ?? null,
+          clientCode: args.clientCode ?? null,
+          details: `Status changed: ${args.from} → ${args.to}`,
+          changes: {
+            from: args.from,
+            to: args.to,
+            reason: args.reason ?? null,
+            formNumber: args.formNumber,
+            reportNumber: args.reportNumber ?? null,
+          },
+          formNumber: args.formNumber,
+          reportNumber: args.reportNumber ?? null,
+          formType: args.formType,
+        },
+      }),
+    ]);
+  }
 
   async changeStatus(
     user: { userId: string; role: UserRole },
     id: string,
     input: ChangeStatusInput,
   ) {
-    const current = await this.get(id);
+    const current = await this.prisma.chemistryReport.findUnique({
+      where: { id },
+      include: { chemistryMix: true, coa: true },
+    });
+    if (!current) throw new NotFoundException('Report not found');
+
+    const prevStatus = current.status;
 
     if (!['ADMIN', 'SYSTEMADMIN', 'QA'].includes(user.role)) {
       throw new ForbiddenException(
@@ -805,19 +973,18 @@ export class ChemistryReportsService {
 
     const target: ChemistryReportStatus =
       typeof input === 'string' ? input : input.status;
-    if (!target) {
-      throw new BadRequestException('Status is required');
-    }
+    if (!target) throw new BadRequestException('Status is required');
 
     const ctx = getRequestContext() || {};
 
     const reason =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.reason
         : (input.reason ?? (ctx as any)?.reason);
+
     const eSignPassword =
       typeof input === 'string'
-        ? undefined
+        ? (ctx as any)?.eSignPassword
         : (input.eSignPassword ?? (ctx as any)?.eSignPassword);
 
     if (!reason) {
@@ -831,51 +998,159 @@ export class ChemistryReportsService {
         'Electronic Signature (password) is required for status changes',
       );
     }
-
     await this.esign.verifyPassword(user.userId, String(eSignPassword));
 
-    const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
+    // // ✅ validate transition properly
+    // const trans = STATUS_TRANSITIONS[prevStatus as ChemistryReportStatus];
+    // if (!trans) {
+    //   throw new BadRequestException(`Invalid current status: ${prevStatus}`);
+    // }
+    // if (!trans.canSet.includes(user.role)) {
+    //   throw new ForbiddenException(
+    //     `Role ${user.role} cannot change status from ${prevStatus}`,
+    //   );
+    // }
+    // if (!trans.next.includes(target)) {
+    //   throw new BadRequestException(
+    //     `Invalid transition: ${prevStatus} → ${target}`,
+    //   );
+    // }
+
+    const transitions = STATUS_TRANSITIONS;
+    const trans = transitions[prevStatus as ChemistryReportStatus];
+
     if (!trans) {
       throw new BadRequestException(
-        `Invalid current status: ${current.status}`,
+        `No transition config for status: ${prevStatus}`,
       );
     }
 
+    const isVoid = target === 'VOID';
+
+    if (isVoid) {
+      if (prevStatus === 'VOID') {
+        throw new BadRequestException('Report is already VOID');
+      }
+
+      const voidRule = transitions.VOID;
+
+      const allowed: UserRole[] = (voidRule?.canSet as
+        | UserRole[]
+        | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
+
+      if (!allowed.includes(user.role)) {
+        throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
+      }
+    }
+    //  else {
+    //   if (!trans.canSet.includes(user.role)) {
+    //     throw new ForbiddenException(
+    //       `Role ${user.role} cannot change status from ${prevStatus}`,
+    //     );
+    //   }
+    //   if (!trans.next.includes(target)) {
+    //     throw new BadRequestException(
+    //       `Invalid transition: ${prevStatus} → ${target}`,
+    //     );
+    //   }
+    // }
+
     const patch: any = { status: target };
 
+    // ✅ report number assignment (same behavior as update())
     function yyyy(d: Date = new Date()): string {
-      const yyyy = String(d.getFullYear());
-      return yyyy; // e.g. "2410"
+      return String(d.getFullYear());
     }
-
-    // Pads with a minimum of 4 digits, but grows as needed (10000 → width 5, etc.)
     function seqPad(num: number): string {
       const width = Math.max(4, String(num).length);
       return String(num).padStart(width, '0');
     }
 
     if (target === 'UNDER_TESTING_REVIEW' && !current.reportNumber) {
-      const deptLetter =
-        getDeptLetterForForm((current as any).formType) ||
-        getDepartmentLetter(user.role);
-      if (deptLetter) {
-        const seq = await this.prisma.labReportSequence.upsert({
-          where: { department: deptLetter },
-          update: { lastNumber: { increment: 1 } },
-          create: { department: deptLetter, lastNumber: 1 },
+      const deptLetter = getDeptLetterForForm(current.formType);
+      const seq = await this.prisma.labReportSequence.upsert({
+        where: { department: deptLetter },
+        update: { lastNumber: { increment: 1 } },
+        create: { department: deptLetter, lastNumber: 1 },
+      });
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
+      const now = new Date();
+      patch.reportNumber = `${deptLetter}-${yyyy()}${seqPad(seq.lastNumber)}`;
+      patch.ReportnumberAssignedAt = new Date();
+      patch.ReportnumberAssignedBy =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
+
+      const currentDetails = pickDetails(current);
+      if (!currentDetails?.dateReceived) {
+        await updateDetailsByType(this.prisma, current.formType, id, {
+          dateReceived: now,
         });
-        const n = seqPad(seq.lastNumber);
-        patch.reportNumber = `${deptLetter}-${yyyy()}${n}`;
       }
     }
+
+    if (target === 'LOCKED') patch.lockedAt = new Date();
 
     const updated = await this.prisma.chemistryReport.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
+      include: { chemistryMix: true, coa: true },
     });
 
+    // ✅ log StatusHistory + AuditTrail
+    if (prevStatus !== target) {
+      await this.logChemStatusChange({
+        chemistryReportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        from: prevStatus as ChemistryReportStatus,
+        to: target,
+        reason: reason ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+    }
+
+    // ✅ websocket
     this.reportsGateway.notifyStatusChange(id, target);
-    return updated;
+
+    // ✅ OPTIONAL: send same email notification as update()
+    if (prevStatus !== target) {
+      const slug =
+        current.formType === 'CHEMISTRY_MIX'
+          ? 'chemistry-mix'
+          : current.formType === 'COA'
+            ? 'coa'
+            : 'chemistry-mix';
+
+      const clientName = pickDetails(current)?.client ?? '-';
+
+      await this.chemistryNotifications.onStatusChanged({
+        formType: current.formType,
+        reportId: current.id,
+        formNumber: current.formNumber,
+        clientName,
+        clientCode: current.clientCode ?? null,
+        oldStatus: String(prevStatus),
+        newStatus: String(target),
+        reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+        actorUserId: user.userId,
+      });
+    }
+
+    return flattenReport(updated);
   }
 
   async addAttachment(
@@ -931,6 +1206,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -989,6 +1265,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -1006,6 +1283,7 @@ export class ChemistryReportsService {
       where: { id },
       include: {
         chemistryMix: true,
+        coa: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');

@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { Public } from 'src/common/public.decorator';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import type { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -81,8 +82,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    const { sub, role, uid, jti } = req.user ?? {};
-    return this.auth.logout(req, { id: sub, role, userId: uid }, jti, res);
+    const { sub, role, uid, jti, clientCode } = req.user ?? {};
+    return this.auth.logout(
+      req,
+      { id: sub, role, userId: uid, clientCode },
+      jti,
+      res,
+    );
   }
 
   @Post('m2m/token')
@@ -125,19 +131,38 @@ export class AuthController {
     return rows?.[0] ?? {};
   }
 
+  // @Public()
+  // @Post('verify-2fa')
+  // verify2fa(
+  //   @Req() req: any,
+  //   @Res({ passthrough: true }) res: Response,
+  //   @Body() body: { userId: string; code: string },
+  // ) {
+  //   return this.auth.verifyTwoFactor(body, req, res);
+  // }
+
   @Public()
   @Post('verify-2fa')
   verify2fa(
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
-    @Body() body: { userId: string; code: string },
+    @Body() body: { userId?: string; pendingToken?: string; code: string },
   ) {
     return this.auth.verifyTwoFactor(body, req, res);
   }
 
+  // @Public()
+  // @Post('resend-2fa')
+  // resend2fa(@Req() req: any, @Body() body: { userId: string }) {
+  //   return this.auth.resendTwoFactor(body, req);
+  // }
+
   @Public()
   @Post('resend-2fa')
-  resend2fa(@Req() req: any, @Body() body: { userId: string }) {
+  resend2fa(
+    @Req() req: any,
+    @Body() body: { userId?: string; pendingToken?: string },
+  ) {
     return this.auth.resendTwoFactor(body, req);
   }
 
@@ -145,5 +170,14 @@ export class AuthController {
   @Post('refresh')
   refresh(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     return this.auth.refresh(req, res);
+  }
+
+  @Public()
+  @Post('common/select')
+  selectCommonIdentity(
+    @Req() req: any,
+    @Body() body: { challengeToken: string; personId: string; role: string },
+  ) {
+    return this.auth.selectCommonIdentity(body, req);
   }
 }

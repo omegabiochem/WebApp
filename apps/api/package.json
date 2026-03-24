@@ -19,12 +19,14 @@
     "db:local:create-only": "dotenv -e .env -- npx prisma migrate dev --create-only",
     "db:staging:deploy": "dotenv -e .env.staging -- npx prisma migrate deploy && npx prisma db seed",
     "db:production:deploy": "dotenv -e .env.production -- npx prisma migrate deploy && npx prisma db seed",
-    "start:staging": "dotenv -e .env.staging -- nest start --watch"
+    "start:staging": "dotenv -e .env.staging -- nest start --watch",
+    "backfill:report-number-assigned": "ts-node scripts/backfill-report-number-assigned.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.987.0",
     "@aws-sdk/lib-storage": "^3.958.0",
     "@aws-sdk/s3-request-presigner": "^3.987.0",
+    "@heroicons/react": "^2.2.0",
     "@nestjs/common": "^11.1.11",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.11",
@@ -32,6 +34,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.12",
     "@nestjs/platform-socket.io": "^11.1.6",
+    "@nestjs/schedule": "^6.1.1",
     "@nestjs/websockets": "^11.1.6",
     "@prisma/client": "^5.19.0",
     "@serialport/parser-readline": "^13.0.0",
@@ -56,6 +59,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "serialport": "^13.0.0",
+    "sharp": "^0.34.5",
     "socket.io": "^4.8.1",
     "twilio": "^5.12.1",
     "zod": "^4.0.17"

@@ -8,6 +8,9 @@ import {
   Body,
   Query,
   UseGuards,
+  Req,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserRole } from '@prisma/client';
@@ -111,6 +114,29 @@ export class UsersController {
   // @Roles('ADMIN', 'SYSTEMADMIN')
   checkUserIdAvailability(@Query('value') value: string) {
     return this.users.checkUserIdAvailability(value ?? '');
+  }
+
+  // GET /users/lookup?ids=id1,id2,id3
+  @Get('lookup')
+  async lookup(@Req() req: Request, @Query('ids') idsRaw: string) {
+    const authUser = (req as any).user;
+    const role = authUser?.role as UserRole | undefined;
+
+    // ✅ only staff can use lookup (recommended)
+    const allowed: UserRole[] = ['SYSTEMADMIN', 'ADMIN', 'QA', 'FRONTDESK'];
+    if (!role || !allowed.includes(role)) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    if (!idsRaw || !idsRaw.trim()) {
+      throw new BadRequestException('ids is required');
+    }
+
+    const ids = idsRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return this.users.lookupByIds(ids);
   }
 }
 

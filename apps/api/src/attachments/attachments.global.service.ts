@@ -6,7 +6,7 @@ import { ChemistryAttachmentsService } from './chemistryattachments.service';
 import { Readable } from 'stream';
 import { PDFDocument } from 'pdf-lib';
 
-type ReportType = 'MICRO' | 'MICRO_WATER' | 'STERILITY' | 'CHEMISTRY';
+type ReportType = 'MICRO' | 'MICRO_WATER' | 'STERILITY' | 'CHEMISTRY' | 'COA';
 
 type ListArgs = {
   q?: string;
@@ -48,12 +48,12 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 
 function allowedTypesForRole(role: string | null): ReportType[] {
   return role === 'CHEMISTRY'
-    ? ['CHEMISTRY']
+    ? ['CHEMISTRY', 'COA']
     : role === 'MICRO'
       ? ['MICRO', 'MICRO_WATER', 'STERILITY']
       : role === 'CLIENT'
-        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY']
-        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY'];
+        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'COA'] // or based on client ownership
+        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'COA']; // ADMIN/QA etc
 }
 
 @Injectable()
@@ -120,7 +120,14 @@ export class AttachmentsGlobalService {
               source: true,
               createdAt: true,
               createdBy: true,
-              report: { select: { formType: true, clientCode: true } },
+              report: {
+                select: {
+                  formType: true,
+                  clientCode: true,
+                  formNumber: true,
+                  reportNumber: true,
+                },
+              },
             },
             take: 5000,
           })
@@ -139,7 +146,14 @@ export class AttachmentsGlobalService {
               source: true,
               createdAt: true,
               createdBy: true,
-              report: { select: { clientCode: true } },
+              report: {
+                select: {
+                  formType: true,
+                  clientCode: true,
+                  formNumber: true,
+                  reportNumber: true,
+                },
+              },
             },
             take: 5000,
           })
@@ -157,6 +171,9 @@ export class AttachmentsGlobalService {
       pages: number | null;
       source: string | null;
       clientCode: string | null;
+      formType: string | null;
+      formNumber: string | null;
+      reportNumber: string | null;
     }> = [
       ...microItems.map((a) => ({
         id: a.id,
@@ -174,11 +191,17 @@ export class AttachmentsGlobalService {
         pages: a.pages ?? null,
         source: a.source ?? null,
         clientCode: a.report?.clientCode ?? null,
+        formType: a.report?.formType ?? null,
+        formNumber: a.report?.formNumber ?? null,
+        reportNumber: a.report?.reportNumber ?? null,
       })),
 
       ...chemItems.map((a) => ({
         id: a.id,
-        reportType: 'CHEMISTRY' as const,
+        reportType:
+          a.report?.formType === 'COA'
+            ? ('COA' as const)
+            : ('CHEMISTRY' as const),
         reportId: a.chemistryId,
         filename: a.filename,
         kind: a.kind,
@@ -187,6 +210,9 @@ export class AttachmentsGlobalService {
         pages: a.pages ?? null,
         source: a.source ?? null,
         clientCode: a.report?.clientCode ?? null,
+        formType: a.report?.formType ?? null,
+        formNumber: a.report?.formNumber ?? null,
+        reportNumber: a.report?.reportNumber ?? null,
       })),
     ];
 
@@ -291,7 +317,10 @@ export class AttachmentsGlobalService {
     // ✅ CHEM
     const chem = await this.prisma.chemistryAttachment.findUnique({
       where: { id },
-      select: { id: true, report: { select: { clientCode: true } } },
+      select: {
+        id: true,
+        report: { select: { clientCode: true, formType: true } },
+      },
     });
 
     if (chem) {
@@ -299,7 +328,10 @@ export class AttachmentsGlobalService {
         return null;
 
       // ✅ role-based type check
-      if (!allowed.includes('CHEMISTRY')) return null;
+      const rt: ReportType =
+        chem.report?.formType === 'COA' ? 'COA' : 'CHEMISTRY';
+
+      if (!allowed.includes(rt)) return null;
 
       return this.chem.stream(id);
     }

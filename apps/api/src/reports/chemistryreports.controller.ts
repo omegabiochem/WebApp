@@ -29,9 +29,13 @@ type CreateCorrectionsDto = {
 type ResolveCorrectionDto = { resolutionNote?: string };
 
 const slugToFormType = (slug: string): FormType | null => {
-  switch (slug) {
+  const s = (slug ?? '').trim().toLowerCase();
+
+  switch (s) {
     case 'chemistry-mix':
       return 'CHEMISTRY_MIX';
+    case 'coa':
+      return 'COA';
     default:
       return null;
   }
@@ -55,6 +59,7 @@ type CreateAttachmentDto = {
 
 @UseGuards(JwtAuthGuard)
 @Controller(['chemistry-reports', 'chemistry-reports/chemistry-mix'])
+// @Controller(['chemistry-reports','coa-reports'])
 export class ChemistryReportsController {
   // Controller methods would go here
   constructor(private svc: ChemistryReportsService) {}
@@ -114,16 +119,16 @@ export class ChemistryReportsController {
       | string
       | undefined;
 
-    setRequestContext({
-      userId: req.user?.userId,
-      role: req.user?.role,
-      ip: req.ip,
-      reason: body?.reason ?? reasonFromHeader,
-      eSignPassword: body?.eSignPassword ?? eSignFromHeader,
-    });
-
-    // ✅ pass full payload through
-    return this.svc.update(req.user, id, body);
+    return withRequestContext(
+      {
+        userId: req.user?.userId,
+        role: req.user?.role,
+        ip: req.ip,
+        reason: body?.reason ?? reasonFromHeader,
+        eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+      },
+      () => this.svc.update(req.user, id, body),
+    );
   }
 
   @Get(':id')

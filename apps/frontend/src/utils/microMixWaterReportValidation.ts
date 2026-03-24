@@ -12,6 +12,7 @@ export type Role =
 
 export type ReportStatus =
   | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
   | "SUBMITTED_BY_CLIENT"
   | "CLIENT_NEEDS_PRELIMINARY_CORRECTION"
   | "CLIENT_NEEDS_FINAL_CORRECTION"
@@ -91,7 +92,31 @@ export type MicroMixWaterReportFormValues = {
 
 // Centralized field requirements per role (no layout impact)
 export const ROLE_FIELDS: Record<Role, string[]> = {
-  SYSTEMADMIN: [],
+  SYSTEMADMIN: [
+    "dateSent",
+    "typeOfTest",
+    "sampleType",
+    // "idNo",
+    "description",
+    "lotNo",
+    // "samplingDate",
+    "tmy_spec",
+    "tbc_spec",
+    "testSopNo",
+    "dateTested",
+    "preliminaryResults",
+    "preliminaryResultsDate",
+    "tbc_gram",
+    "tbc_result",
+    "tbc_spec",
+    "tmy_gram",
+    "tmy_result",
+    "tmy_spec",
+    "pathogens",
+    "comments",
+    "testedBy",
+    "testedDate",
+  ],
   ADMIN: [
     "testSopNo",
     "dateTested",
@@ -124,6 +149,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
+    "dateCompleted",
     // "comments",
     // "testedBy",
     // "testedDate",
@@ -140,11 +166,12 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
+    "dateCompleted",
     // "comments",
     // "testedBy",
     // "testedDate",
   ],
-  QA: ["dateCompleted"],
+  QA: [],
   CLIENT: [
     "dateSent",
     "typeOfTest",
@@ -175,6 +202,7 @@ export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
     "tbc_result",
   ],
   FINAL: [
+    "dateCompleted",
     "tmy_gram",
     "tmy_result",
     "pathogens",
@@ -408,9 +436,9 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
         case "dateCompleted": {
           // ✅ Only required in FINAL phase (QA completion step)
-          if (currentPhase !== "FINAL") return false;
+          // if (currentPhase !== "FINAL") return false;
           // (optional) only QA/ADMIN enforce
-          if (role !== "QA" && role !== "ADMIN") return false;
+          // if (role !== "QA" && role !== "ADMIN") return false;
           return !v.dateCompleted;
         }
         case "reviewedBy":
@@ -425,7 +453,7 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
           // Only enforce results for MICRO/ADMIN in FINAL
           if (
-            (role === "MICRO" || role === "MC" || role === "ADMIN") &&
+            (role === "MICRO" || role === "MC" || role === "ADMIN" || role === "SYSTEMADMIN") &&
             currentPhase === "FINAL"
           ) {
             const missingResult = rows.some(

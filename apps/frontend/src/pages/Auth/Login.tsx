@@ -16,13 +16,33 @@ type Role =
   | "QA"
   | "CLIENT";
 
+type CommonPerson = {
+  id: string;
+  name: string;
+  emailMasked?: string;
+  roles: Role[];
+};
+
 type LoginResponse = {
   accessToken?: string;
   requiresPasswordReset?: boolean;
   requiresTwoFactor?: boolean;
+
+  requiresCommonSelection?: boolean;
+  challengeToken?: string;
+
   method?: "EMAIL" | "SMS";
   expiresAt?: string;
   userId?: string;
+  pendingToken?: string;
+
+  commonAccount?: {
+    id: string;
+    label: string;
+  };
+
+  people?: CommonPerson[];
+
   user?: {
     id: string;
     email: string;
@@ -30,6 +50,11 @@ type LoginResponse = {
     name?: string;
     mustChangePassword?: boolean;
     clientCode?: string;
+    authMode?: "NORMAL" | "COMMON";
+    commonAccountId?: string;
+    commonAccountUserId?: string;
+    actingAsUserId?: string;
+    actingAsName?: string;
   };
 };
 
@@ -90,8 +115,44 @@ export default function Login() {
         body: JSON.stringify(data),
       });
 
+      if (
+        res.requiresCommonSelection &&
+        res.challengeToken &&
+        res.people?.length
+      ) {
+        sessionStorage.removeItem("pendingUserId");
+        sessionStorage.removeItem("pendingCommonToken");
+
+        sessionStorage.setItem("commonChallengeToken", res.challengeToken);
+        sessionStorage.setItem("commonPeople", JSON.stringify(res.people));
+        sessionStorage.setItem(
+          "commonAccountLabel",
+          res.commonAccount?.label ?? "Lab Common Account",
+        );
+
+        navigate("/auth/common-select", { replace: true });
+        return;
+      }
+
       if (res.requiresTwoFactor) {
         sessionStorage.setItem("pendingUserId", data.userId);
+
+        // If backend gives expiresAt (ISO string), store it:
+        if (res.expiresAt) {
+          const t = Date.parse(res.expiresAt);
+          if (!Number.isNaN(t))
+            sessionStorage.setItem("otpExpiresAt", String(t));
+        } else {
+          // fallback: start from now
+          sessionStorage.setItem(
+            "otpExpiresAt",
+            String(Date.now() + 10 * 60 * 1000),
+          );
+        }
+
+        // clear any prior cooldown
+        sessionStorage.removeItem("otpCooldownUntil");
+
         navigate("/auth/verify-2fa", { replace: true });
         return;
       }

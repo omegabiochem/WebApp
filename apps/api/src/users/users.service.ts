@@ -336,4 +336,19 @@ export class UsersService {
     });
     return { available: !exists };
   }
+
+  // src/users/users.service.ts
+
+  async lookupByIds(ids: string[]) {
+    const clean = Array.from(
+      new Set((ids ?? []).map((s) => (s ?? '').trim()).filter(Boolean)),
+    ).slice(0, 200);
+
+    if (!clean.length) return [];
+
+    return this.prisma.user.findMany({
+      where: { id: { in: clean } },
+      select: { id: true, name: true, email: true },
+    });
+  }
 }
