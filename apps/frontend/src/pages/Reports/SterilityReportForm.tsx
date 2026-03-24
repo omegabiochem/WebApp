@@ -102,7 +102,6 @@ function canEdit(
       "testSopNo",
       "dateTested",
       "testSopNo",
-      "dateTested",
       "ftm_turbidity",
       "ftm_observation",
       "ftm_result",
@@ -796,6 +795,7 @@ export default function SterilityReportForm({
           MICRO: [
             "testSopNo",
             "dateTested",
+            "dateCompleted",
             "ftm_turbidity",
             "ftm_observation",
             "ftm_result",
@@ -807,6 +807,7 @@ export default function SterilityReportForm({
           MC: [
             "testSopNo",
             "dateTested",
+            "dateCompleted",
             "ftm_turbidity",
             "ftm_observation",
             "ftm_result",
