@@ -24,7 +24,7 @@ type AttachmentItem = {
   createdAt: string;
 };
 
-const attBase = (id: string) => `/reports/sterility/${id}/attachments`;
+const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
 const authHeaders = (): HeadersInit => {
   const t = getToken();
