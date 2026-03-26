@@ -44,6 +44,7 @@ import TemplatePage from "./pages/Templates/TemplatesPage";
 import TemplatesDropdown from "./pages/Templates/TemplatesDropdown";
 import COAReportForm from "./pages/Reports/COAReportForm";
 import CommonSelect from "./pages/Auth/CommonSelect";
+import ManageReports from "./pages/Admin/ManageReports";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -552,6 +553,16 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["ADMIN", "SYSTEMADMIN", "CLIENT"]}>
               <TemplatesDropdown />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "manage-reports",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+              <ManageReports />
             </RequireRole>
           </RequireAuth>
         ),

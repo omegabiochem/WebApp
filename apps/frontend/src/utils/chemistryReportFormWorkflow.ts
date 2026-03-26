@@ -261,7 +261,7 @@ export const CHEMISTRY_STATUS_COLORS: Record<ChemistryReportStatus, string> = {
 
 // Field-level permissions (frontend hint; backend is source of truth)
 export const FIELD_EDIT_MAP: Record<Role, string[]> = {
-  SYSTEMADMIN: [],
+  SYSTEMADMIN: ["*"],
   ADMIN: ["*"],
   FRONTDESK: [],
   CHEMISTRY: [
