@@ -421,7 +421,7 @@ export class ChemistryReportsService {
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
   ) {
-    if (!['ADMIN', 'SYSTEMADMIN', 'CLIENT'].includes(user.role)) {
+    if (!['ADMIN','CLIENT'].includes(user.role)) {
       throw new ForbiddenException('Not allowed to create report');
     }
 
