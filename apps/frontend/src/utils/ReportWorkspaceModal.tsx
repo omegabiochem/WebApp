@@ -10,6 +10,7 @@ import ChemistryMixSubmissionForm from "../pages/Reports/ChemistryMixSubmissionF
 import MicroMixReportForm from "../pages/Reports/MicroMixReportForm";
 import MicroMixWaterReportForm from "../pages/Reports/MicroMixWaterReportForm";
 import SterilityReportForm from "../pages/Reports/SterilityReportForm";
+import { useAuth } from "../context/AuthContext";
 
 type WorkspaceMode = "VIEW" | "UPDATE";
 type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
@@ -57,6 +58,38 @@ export default function ReportWorkspaceModal({
     {},
   );
 
+  const { user } = useAuth();
+
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
+
+  const showReportNumberForRoles = new Set(["MICRO", "CHEMISTRY", "MC", "QA", "FRONTDESK", "ADMIN", "SYSTEMADMIN"]);
+
+  const useReportNumberChip = showReportNumberForRoles.has(
+    String(user?.role || ""),
+  );
+
+  function getChipLabel(r: ReportItem) {
+    if (useReportNumberChip) {
+      return r.reportNumber?.trim() || r.formNumber;
+    }
+    return r.formNumber;
+  }
+
+  const sortedReports = React.useMemo(() => {
+    const copy = [...reports];
+
+    copy.sort((a, b) => {
+      const aLabel = getChipLabel(a).toLowerCase();
+      const bLabel = getChipLabel(b).toLowerCase();
+
+      return sortDir === "asc"
+        ? aLabel.localeCompare(bLabel, undefined, { numeric: true })
+        : bLabel.localeCompare(aLabel, undefined, { numeric: true });
+    });
+
+    return copy;
+  }, [reports, sortDir, useReportNumberChip]);
+
   function scrollToReport(id: string) {
     const el = reportRefs.current[id];
     if (!el) return;
@@ -92,7 +125,7 @@ export default function ReportWorkspaceModal({
         let bestId: string | null = null;
         let bestRatio = -1;
 
-        for (const r of reports) {
+        for (const r of sortedReports) {
           const ratio = visibleRatios.get(r.id) ?? 0;
           if (ratio > bestRatio) {
             bestRatio = ratio;
@@ -110,13 +143,13 @@ export default function ReportWorkspaceModal({
       },
     );
 
-    for (const r of reports) {
+    for (const r of sortedReports) {
       const el = reportRefs.current[r.id];
       if (el) observer.observe(el);
     }
 
     return () => observer.disconnect();
-  }, [open, reports, activeId, onFocus, layout]);
+  }, [open, sortedReports, activeId, onFocus, layout]);
 
   React.useEffect(() => {
     if (!activeId) return;
@@ -154,6 +187,16 @@ export default function ReportWorkspaceModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-1"
+              title={`Sort ${sortDir === "asc" ? "Ascending" : "Descending"}`}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+
+            
+            <button
+              type="button"
               onClick={() => onLayoutChange("VERTICAL")}
               className={`rounded-lg px-3 py-1.5 text-sm ${
                 layout === "VERTICAL"
@@ -188,7 +231,7 @@ export default function ReportWorkspaceModal({
 
         <div className="border-b px-6 py-2">
           <div className="flex gap-2 overflow-auto">
-            {reports.map((r) => (
+            {sortedReports.map((r) => (
               <button
                 key={r.id}
                 ref={(el) => {
@@ -205,7 +248,7 @@ export default function ReportWorkspaceModal({
                     : "hover:bg-slate-50"
                 }`}
               >
-                {r.formNumber}
+                {getChipLabel(r)}
               </button>
             ))}
           </div>
@@ -219,7 +262,7 @@ export default function ReportWorkspaceModal({
                 : "flex min-w-max gap-6 items-start"
             }
           >
-            {reports.map((r) => (
+            {sortedReports.map((r) => (
               <div
                 key={r.id}
                 data-report-id={r.id}
@@ -233,7 +276,7 @@ export default function ReportWorkspaceModal({
                 }
               >
                 <div className="mb-3">
-                  <div className="font-semibold">{r.formNumber}</div>
+                  <div className="font-semibold">{getChipLabel(r)}</div>
                   <div className="text-xs text-slate-500">
                     {r.formType} • {r.status}
                   </div>

@@ -2140,6 +2140,7 @@ export default function FrontDeskDashboard() {
                                 formType: r.formType,
                                 clientCode: user?.clientCode || null,
                               });
+                                setModalPane("ATTACHMENTS");
 
                               openViewTarget(r);
                             }}
@@ -2345,7 +2346,7 @@ colSpan={2 + selectedCols.length + 2}
           <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
-                Report ({selectedReport.reportNumber})
+                Report ({selectedReport.formNumber})
               </h2>
 
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
