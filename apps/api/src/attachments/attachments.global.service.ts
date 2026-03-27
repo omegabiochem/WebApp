@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
 import * as path from 'path';
@@ -437,5 +441,35 @@ export class AttachmentsGlobalService {
     });
 
     return { ok: true };
+  }
+
+  async deleteByAnyId(id: string, user?: UserLike) {
+    const userRole = (user?.role || '').toUpperCase();
+
+    if (userRole !== 'SYSTEMADMIN') {
+      throw new ForbiddenException('Only SYSTEMADMIN can delete attachments');
+    }
+
+    const micro = await this.prisma.attachment.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (micro) {
+      return this.micro.remove(id);
+    }
+
+    const chem = await this.prisma.chemistryAttachment.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (chem) {
+      return this.chem.remove(id);
+    }
+
+    if (userRole !== 'SYSTEMADMIN') {
+      throw new ForbiddenException('Only SYSTEMADMIN can delete attachments');
+    }
   }
 }
