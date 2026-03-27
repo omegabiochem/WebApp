@@ -830,7 +830,7 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
-  const isSystemAdmin = role === "SYSTEMADMIN";
+  const isSystemAdmin = role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA";
 
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [deletingBulk, setDeletingBulk] = useState(false);
