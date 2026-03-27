@@ -1661,47 +1661,53 @@ export default function ReportAttachmentsPage() {
             </select>
           </div>
 
-          <div className="lg:col-span-3">
-            <select
-              value={createdBy}
-              onChange={(e) => setCreatedBy(e.target.value)}
-              className={inputCls}
-            >
-              <option value="ALL">All creators</option>
-              {Array.from(
-                new Set(
-                  items.map((x) => (x.createdBy || "").trim()).filter(Boolean),
-                ),
-              )
-                .sort()
-                .map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-            </select>
-          </div>
+          {isSystemAdmin && (
+            <div className="lg:col-span-3">
+              <select
+                value={createdBy}
+                onChange={(e) => setCreatedBy(e.target.value)}
+                className={inputCls}
+              >
+                <option value="ALL">All creators</option>
+                {Array.from(
+                  new Set(
+                    items
+                      .map((x) => (x.createdBy || "").trim())
+                      .filter(Boolean),
+                  ),
+                )
+                  .sort()
+                  .map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
-          <div className="lg:col-span-3">
-            <select
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              className={inputCls}
-            >
-              <option value="ALL">All sources</option>
-              {Array.from(
-                new Set(
-                  items.map((x) => (x.source || "").trim()).filter(Boolean),
-                ),
-              )
-                .sort()
-                .map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-            </select>
-          </div>
+          {isSystemAdmin && (
+            <div className="lg:col-span-3">
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                className={inputCls}
+              >
+                <option value="ALL">All sources</option>
+                {Array.from(
+                  new Set(
+                    items.map((x) => (x.source || "").trim()).filter(Boolean),
+                  ),
+                )
+                  .sort()
+                  .map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           <div className="lg:col-span-3">
             <select
