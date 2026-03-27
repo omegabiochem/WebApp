@@ -830,6 +830,11 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
+  const isSystemAdmin = role === "SYSTEMADMIN";
+
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [deletingBulk, setDeletingBulk] = useState(false);
+
   const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
     if (!role) return "ALL";
     if (role === "CHEMISTRY") return ["CHEMISTRY", "COA"];
@@ -1403,6 +1408,50 @@ export default function ReportAttachmentsPage() {
     setSearchParams,
   ]);
 
+  const handleDeleteAttachments = async (ids: string[]) => {
+    if (!isSystemAdmin) return;
+    if (!ids.length) return;
+
+    const ok = window.confirm(
+      ids.length === 1
+        ? "Are you sure you want to delete this attachment?"
+        : `Are you sure you want to delete ${ids.length} attachments?`,
+    );
+
+    if (!ok) return;
+
+    try {
+      setDeletingIds(ids);
+      setDeletingBulk(ids.length > 1);
+
+      await Promise.all(
+        ids.map((id) =>
+          api(`/attachments/${id}`, {
+            method: "DELETE",
+          }),
+        ),
+      );
+
+      setItems((prev) => prev.filter((x) => !ids.includes(x.id)));
+      setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
+
+      if (open && ids.includes(open.id)) {
+        setOpen(null);
+      }
+    } catch (e: any) {
+      alert(e?.message || "Delete failed");
+    } finally {
+      setDeletingIds([]);
+      setDeletingBulk(false);
+    }
+  };
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   return (
     <div className="p-6">
       {(isBulkPrinting || !!singlePrintItem) &&
@@ -1493,6 +1542,24 @@ export default function ReportAttachmentsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isSystemAdmin && (
+            <button
+              type="button"
+              onClick={() => handleDeleteAttachments(selectedIds)}
+              disabled={!selectedIds.length || deletingBulk}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length
+                  ? "bg-rose-600 text-white hover:bg-rose-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
+            >
+              {deletingBulk ? <Spinner /> : "🗑️"}
+              {deletingBulk
+                ? "Deleting..."
+                : `Delete selected (${selectedIds.length})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={handlePrintSelected}
@@ -1994,6 +2061,21 @@ export default function ReportAttachmentsPage() {
                           </button>
                         );
                       })()}
+
+                      {isSystemAdmin && (
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await handleDeleteAttachments([a.id]);
+                          }}
+                          disabled={deletingIds.includes(a.id)}
+                          className="text-xs rounded-lg border border-rose-200 px-2 py-1 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          title="Delete this attachment"
+                        >
+                          {deletingIds.includes(a.id) ? "Deleting..." : "🗑️"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -2213,6 +2295,21 @@ export default function ReportAttachmentsPage() {
                               )}
                               Print
                             </button>
+
+                            {isSystemAdmin && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await handleDeleteAttachments([a.id]);
+                                }}
+                                disabled={deletingIds.includes(a.id)}
+                                className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50 disabled:opacity-60"
+                              >
+                                {deletingIds.includes(a.id)
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            )}
 
                             <button
                               type="button"
