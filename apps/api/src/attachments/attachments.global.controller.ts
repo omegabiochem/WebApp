@@ -9,6 +9,8 @@ import {
   Post,
   Body,
   BadRequestException,
+  Delete,
+  ForbiddenException,
 } from '@nestjs/common';
 import express from 'express';
 import { AttachmentsGlobalService } from './attachments.global.service';
@@ -30,7 +32,6 @@ function clean(v: any) {
 export class AttachmentsGlobalController {
   constructor(private readonly svc: AttachmentsGlobalService) {}
 
-  // ✅ GET /attachments?q=...&kind=...&fileType=... etc
   @Get('attachments')
   listAll(@Query() q: any, @Req() req: any) {
     return this.svc.listAll(
@@ -48,14 +49,17 @@ export class AttachmentsGlobalController {
         take: num(q.take, 100),
         skip: num(q.skip, 0),
       },
-      req.user, // ✅ keep
+      req.user,
     );
   }
 
-  // ✅ GET /attachments/:id/file
   @Get('attachments/:id/file')
-  async file(@Param('id') id: string, @Res() res: express.Response) {
-    const out = await this.svc.streamByAnyId(id);
+  async file(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Res() res: express.Response,
+  ) {
+    const out = await this.svc.streamByAnyId(id, req.user);
     if (!out) throw new NotFoundException('Attachment not found');
 
     const { stream, mime, filename } = out;
@@ -70,7 +74,6 @@ export class AttachmentsGlobalController {
     stream.pipe(res);
   }
 
-  // ✅ NEW: POST /attachments/merge-pdf
   @Post('attachments/merge-pdf')
   async mergePdf(
     @Body() body: { ids: string[] },
@@ -86,22 +89,25 @@ export class AttachmentsGlobalController {
     res.setHeader('Content-Disposition', `inline; filename="merged.pdf"`);
     res.send(Buffer.from(mergedBytes));
   }
-  // ✅ GET /attachments/unread-count
+
   @Get('attachments/unread-count')
   async unreadCount(@Req() req: any) {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     if (!userId) throw new BadRequestException('Missing user id');
 
-    // req.user already contains role + clientCode in your system
     return this.svc.unreadResultsCountByUserId(userId, req.user);
   }
 
-  // ✅ POST /attachments/mark-results-read
   @Post('attachments/mark-results-read')
   async markResultsRead(@Req() req: any) {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     if (!userId) throw new BadRequestException('Missing user id');
 
     return this.svc.markResultsRead(userId);
+  }
+
+  @Delete('attachments/:id')
+  async deleteAttachment(@Param('id') id: string, @Req() req: any) {
+    return this.svc.deleteByAnyId(id, req.user);
   }
 }

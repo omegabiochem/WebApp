@@ -161,4 +161,22 @@ export class AttachmentsService {
     const stream = await this.storage.createReadStream(a.storageKey);
     return { stream: stream as any, mime, filename: a.filename };
   }
+
+
+async remove(id: string) {
+  const a = await this.prisma.attachment.findUnique({
+    where: { id },
+    select: { id: true, storageKey: true },
+  });
+
+  if (!a) throw new NotFoundException('Attachment not found');
+
+  await this.prisma.attachment.delete({
+    where: { id },
+  });
+
+  await this.storage.delete(a.storageKey).catch(() => {});
+
+  return { ok: true, id };
+}
 }

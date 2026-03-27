@@ -9,6 +9,7 @@ import {
   S3Client,
   GetObjectCommand,
   HeadObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
@@ -173,4 +174,39 @@ export class StorageService {
 
     return path.relative(this.ROOT, outPath).split(path.sep).join('/');
   }
+
+  async delete(storageKey: string): Promise<void> {
+  if (!storageKey) return;
+
+  if (this.driver !== 's3') {
+    const fullPath = path.isAbsolute(storageKey)
+      ? storageKey
+      : path.join(this.ROOT, storageKey);
+
+    await fs.unlink(fullPath).catch(() => {});
+    return;
+  }
+
+  let deleted = false;
+  let lastErr: any;
+
+  for (const key of this.candidates(storageKey)) {
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+      deleted = true;
+      break;
+    } catch (e: any) {
+      lastErr = e;
+    }
+  }
+
+  if (!deleted && lastErr) {
+    throw lastErr;
+  }
+}
 }
