@@ -229,7 +229,17 @@ export default function OmegaChatBox() {
         : "/messages";
 
     const res = await api<{ messages: Message[] }>(url, { method: "GET" });
-    setMessages(res.messages ?? []);
+
+    const sortedMessages = [...(res.messages ?? [])].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    setMessages(sortedMessages);
+
+    setTimeout(() => {
+      scrollToBottom(false);
+    }, 0);
   };
 
   const filteredMessages = useMemo(() => {
@@ -302,8 +312,20 @@ export default function OmegaChatBox() {
 
     api<Thread[]>("/messages/inbox", { method: "GET" })
       .then((data) => {
-        setThreads(data);
-        if (!selectedThread && data.length > 0) setSelectedThread(data[0]);
+        const sorted = [...data].sort((a, b) => {
+          const aTime = a.lastMessage?.createdAt
+            ? new Date(a.lastMessage.createdAt).getTime()
+            : 0;
+          const bTime = b.lastMessage?.createdAt
+            ? new Date(b.lastMessage.createdAt).getTime()
+            : 0;
+          return bTime - aTime; // latest first
+        });
+
+        setThreads(sorted);
+        if (sorted.length > 0) {
+          setSelectedThread(sorted[0]); // always open latest thread
+        }
       })
       .catch(console.error);
   }, [open, isLab]);
@@ -338,9 +360,15 @@ export default function OmegaChatBox() {
 
   useEffect(() => {
     if (!open) return;
-    scrollToBottom(false);
+    if (loading) return;
+
+    const t = setTimeout(() => {
+      scrollToBottom(false);
+    }, 0);
+
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+  }, [open, loading, selectedThread?.id, messages]);
 
   // -----------------------------------
   // ✅ When LAB opens a thread, mark it as "seen" locally
@@ -360,8 +388,19 @@ export default function OmegaChatBox() {
 
       // update counts in sidebar + total badge
       const inbox = await api<Thread[]>("/messages/inbox", { method: "GET" });
-      setThreads(inbox);
-      setTotalUnread(inbox.reduce((a, t) => a + (t.unreadCount || 0), 0));
+
+      const sorted = [...inbox].sort((a, b) => {
+        const aTime = a.lastMessage?.createdAt
+          ? new Date(a.lastMessage.createdAt).getTime()
+          : 0;
+        const bTime = b.lastMessage?.createdAt
+          ? new Date(b.lastMessage.createdAt).getTime()
+          : 0;
+        return bTime - aTime;
+      });
+
+      setThreads(sorted);
+      setTotalUnread(sorted.reduce((a, t) => a + (t.unreadCount || 0), 0));
     })().catch(console.error);
   }, [open, isLab, selectedThread?.id]);
 
@@ -509,10 +548,20 @@ export default function OmegaChatBox() {
     const inbox = await api<Thread[]>("/messages/inbox", { method: "GET" });
     const sum = inbox.reduce((acc, t) => acc + (t.unreadCount || 0), 0);
 
-    setThreads(inbox);
+    const sorted = [...inbox].sort((a, b) => {
+      const aTime = a.lastMessage?.createdAt
+        ? new Date(a.lastMessage.createdAt).getTime()
+        : 0;
+      const bTime = b.lastMessage?.createdAt
+        ? new Date(b.lastMessage.createdAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
+
+    setThreads(sorted);
     setTotalUnread(sum);
 
-    if (!selectedThread && inbox.length > 0) setSelectedThread(inbox[0]);
+    if (sorted.length > 0) setSelectedThread(sorted[0]);
   };
 
   useEffect(() => {

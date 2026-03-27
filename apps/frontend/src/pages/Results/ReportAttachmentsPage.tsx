@@ -865,9 +865,53 @@ export default function ReportAttachmentsPage() {
     );
   };
 
+  const [page, setPage] = useState<number>(() => {
+    const n = Number(searchParams.get("page") || "1");
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  });
+
+  const [pageSize, setPageSize] = useState<number>(() => {
+    const n = Number(searchParams.get("pageSize") || "24");
+    return [12, 24, 48, 96].includes(n) ? n : 24;
+  });
+
   const inputCls =
     "w-full rounded-lg border px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500 bg-white";
-
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          view,
+          q,
+          kind,
+          fileType,
+          createdBy,
+          source,
+          fromDate,
+          toDate,
+          reportType,
+          sort,
+          datePreset,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    view,
+    q,
+    kind,
+    fileType,
+    createdBy,
+    source,
+    fromDate,
+    toDate,
+    reportType,
+    sort,
+    datePreset,
+  ]);
   // (1) UI_VIEW_ATTACHMENTS_PAGE (once)
   const didLogView = useRef(false);
   useEffect(() => {
@@ -1097,6 +1141,22 @@ export default function ReportAttachmentsPage() {
     selectedIds.length,
   ]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const pageStart = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, filtered.length);
+
   const clearAllFilters = () => {
     setView(DEFAULT_ATTACHMENT_FILTERS.view);
     setQ(DEFAULT_ATTACHMENT_FILTERS.q);
@@ -1110,124 +1170,8 @@ export default function ReportAttachmentsPage() {
     setSort(DEFAULT_ATTACHMENT_FILTERS.sort);
     setDatePreset(DEFAULT_ATTACHMENT_FILTERS.datePreset);
     setSelectedIds([]);
-
-    useEffect(() => {
-      try {
-        localStorage.setItem(
-          FILTER_STORAGE_KEY,
-          JSON.stringify({
-            view,
-            q,
-            kind,
-            fileType,
-            createdBy,
-            source,
-            fromDate,
-            toDate,
-            reportType,
-            sort,
-            datePreset,
-          }),
-        );
-      } catch {
-        // ignore
-      }
-    }, [
-      FILTER_STORAGE_KEY,
-      view,
-      q,
-      kind,
-      fileType,
-      createdBy,
-      source,
-      fromDate,
-      toDate,
-      reportType,
-      sort,
-      datePreset,
-    ]);
-
-    useEffect(() => {
-      const sp = new URLSearchParams();
-
-      if (view !== DEFAULT_ATTACHMENT_FILTERS.view) sp.set("view", view);
-      if (q.trim()) sp.set("q", q.trim());
-      if (kind !== DEFAULT_ATTACHMENT_FILTERS.kind) sp.set("kind", kind);
-      if (fileType !== DEFAULT_ATTACHMENT_FILTERS.fileType)
-        sp.set("fileType", fileType);
-      if (createdBy !== DEFAULT_ATTACHMENT_FILTERS.createdBy)
-        sp.set("createdBy", createdBy);
-      if (source !== DEFAULT_ATTACHMENT_FILTERS.source)
-        sp.set("source", source);
-      if (fromDate) sp.set("from", fromDate);
-      if (toDate) sp.set("to", toDate);
-      if (reportType !== DEFAULT_ATTACHMENT_FILTERS.reportType)
-        sp.set("reportType", reportType);
-      if (sort !== DEFAULT_ATTACHMENT_FILTERS.sort) sp.set("sort", sort);
-      if (datePreset) sp.set("datePreset", datePreset);
-      if (selectedIds.length) sp.set("selected", selectedIds.join(","));
-
-      setSearchParams(sp, { replace: true });
-    }, [
-      view,
-      q,
-      kind,
-      fileType,
-      createdBy,
-      source,
-      fromDate,
-      toDate,
-      reportType,
-      sort,
-      datePreset,
-      selectedIds,
-      setSearchParams,
-    ]);
-
-    useEffect(() => {
-      const nextView =
-        (searchParams.get("view") as ViewMode) ||
-        DEFAULT_ATTACHMENT_FILTERS.view;
-      const nextQ = searchParams.get("q") || DEFAULT_ATTACHMENT_FILTERS.q;
-      const nextKind =
-        searchParams.get("kind") || DEFAULT_ATTACHMENT_FILTERS.kind;
-      const nextFileType =
-        (searchParams.get("fileType") as "ALL" | "image" | "pdf" | "other") ||
-        DEFAULT_ATTACHMENT_FILTERS.fileType;
-      const nextCreatedBy =
-        searchParams.get("createdBy") || DEFAULT_ATTACHMENT_FILTERS.createdBy;
-      const nextSource =
-        searchParams.get("source") || DEFAULT_ATTACHMENT_FILTERS.source;
-      const nextFrom =
-        searchParams.get("from") || DEFAULT_ATTACHMENT_FILTERS.fromDate;
-      const nextTo =
-        searchParams.get("to") || DEFAULT_ATTACHMENT_FILTERS.toDate;
-      const nextReportType =
-        (searchParams.get("reportType") as ReportTypeFilter) ||
-        DEFAULT_ATTACHMENT_FILTERS.reportType;
-      const nextSort =
-        (searchParams.get("sort") as
-          | "NEWEST"
-          | "OLDEST"
-          | "FILENAME_AZ"
-          | "FILENAME_ZA"
-          | "KIND") || DEFAULT_ATTACHMENT_FILTERS.sort;
-      const nextDatePreset =
-        (searchParams.get("datePreset") as DatePreset) ||
-        DEFAULT_ATTACHMENT_FILTERS.datePreset;
-
-      if (nextView !== view) setView(nextView);
-      if (nextQ !== q) setQ(nextQ);
-      if (nextKind !== kind) setKind(nextKind);
-      if (nextFileType !== fileType) setFileType(nextFileType);
-      if (nextCreatedBy !== createdBy) setCreatedBy(nextCreatedBy);
-      if (nextSource !== source) setSource(nextSource);
-      if (nextFrom !== fromDate) setFromDate(nextFrom);
-      if (nextTo !== toDate) setToDate(nextTo);
-      if (nextReportType !== reportType) setReportType(nextReportType);
-      if (nextSort !== sort) setSort(nextSort);
-      if (nextDatePreset !== datePreset) setDatePreset(nextDatePreset);
-    }, [searchParams]);
+    setPage(1);
+    setPageSize(24);
 
     try {
       localStorage.setItem(
@@ -1327,16 +1271,17 @@ export default function ReportAttachmentsPage() {
 
   const toggleSelectFiltered = () => {
     const allSelected =
-      filtered.length > 0 && filtered.every((a) => selectedIds.includes(a.id));
+      pagedItems.length > 0 &&
+      pagedItems.every((a) => selectedIds.includes(a.id));
 
     if (allSelected) {
       setSelectedIds((prev) =>
-        prev.filter((id) => !filtered.some((a) => a.id === id)),
+        prev.filter((id) => !pagedItems.some((a) => a.id === id)),
       );
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
-        filtered.forEach((a) => set.add(a.id));
+        pagedItems.forEach((a) => set.add(a.id));
         return Array.from(set);
       });
     }
@@ -1406,6 +1351,22 @@ export default function ReportAttachmentsPage() {
     selectedIds,
     datePreset,
     setSearchParams,
+  ]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    q,
+    kind,
+    fileType,
+    createdBy,
+    source,
+    fromDate,
+    toDate,
+    reportType,
+    sort,
+    datePreset,
+    view,
   ]);
 
   const handleDeleteAttachments = async (ids: string[]) => {
@@ -1829,7 +1790,7 @@ export default function ReportAttachmentsPage() {
             </div>
           ) : view === "GRID" ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {filtered.map((a) => {
+              {pagedItems.map((a) => {
                 const ext = fileExt(a.filename);
                 const ft = fileTypeFromExt(ext);
                 const filePath = fileById(a.id);
@@ -2090,8 +2051,8 @@ export default function ReportAttachmentsPage() {
                       <input
                         type="checkbox"
                         checked={
-                          filtered.length > 0 &&
-                          filtered.every((a) => selectedIds.includes(a.id))
+                          pagedItems.length > 0 &&
+                          pagedItems.every((a) => selectedIds.includes(a.id))
                         }
                         onChange={toggleSelectFiltered}
                       />
@@ -2107,7 +2068,7 @@ export default function ReportAttachmentsPage() {
                 </thead>
 
                 <tbody>
-                  {filtered.map((a) => {
+                  {pagedItems.map((a) => {
                     const ft = fileTypeFromExt(fileExt(a.filename));
                     const canPrint = ft === "image" || ft === "pdf";
                     const reportLink = reportLinkFor(a.reportType, a.reportId);
@@ -2359,6 +2320,71 @@ export default function ReportAttachmentsPage() {
               </table>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-slate-600">
+          Showing <span className="font-medium">{pageStart}</span> to{" "}
+          <span className="font-medium">{pageEnd}</span> of{" "}
+          <span className="font-medium">{filtered.length}</span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
+            <option value={12}>12 / page</option>
+            <option value={24}>24 / page</option>
+            <option value={48}>48 / page</option>
+            <option value={96}>96 / page</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            First
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Prev
+          </button>
+
+          <div className="px-2 text-sm text-slate-700">
+            Page <span className="font-semibold">{page}</span> of{" "}
+            <span className="font-semibold">{totalPages}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Next
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPage(totalPages)}
+            disabled={page === totalPages}
+            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Last
+          </button>
         </div>
       </div>
 
