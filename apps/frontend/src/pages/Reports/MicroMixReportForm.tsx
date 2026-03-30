@@ -206,7 +206,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       // "testedBy",
       // "testedDate",
     ],
-    QA: [],
+    QA: ["comments"],
     CLIENT: [
       "client",
       "dateSent",
@@ -1250,7 +1250,7 @@ export default function MicroMixReportForm({
             // "testedDate",
             "comments",
           ],
-          QA: [],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",
