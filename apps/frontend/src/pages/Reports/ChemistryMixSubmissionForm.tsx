@@ -939,7 +939,7 @@ export default function ChemistryMixSubmissionForm({
             "testedDate",
             "actives",
           ],
-          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",

@@ -708,7 +708,7 @@ export default function COAReportForm({
             "coaRows",
           ],
           MC: ["dateReceived", "comments", "testedBy", "testedDate", "coaRows"],
-          QA: ["dateCompleted"],
+          QA: ["dateCompleted","comments"],
           CLIENT: [
             "client",
             "dateSent",

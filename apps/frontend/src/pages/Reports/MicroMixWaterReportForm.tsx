@@ -208,7 +208,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "testedBy",
       "testedDate",
     ],
-    QA: ["reviewedBy", "reviewedDate"],
+    QA: ["comments","reviewedBy", "reviewedDate"],
     CLIENT: [
       "client",
       "dateSent",
@@ -1232,7 +1232,7 @@ export default function MicroMixWaterReportForm({
             // "testedDate",
             "comments",
           ],
-          QA: [],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",
