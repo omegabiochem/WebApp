@@ -149,7 +149,7 @@ function canEdit(
       "dateCompleted",
       "comments",
     ],
-    QA: [],
+    QA: ["comments"],
     CLIENT: [
       "client",
       "dateSent",
@@ -816,7 +816,7 @@ export default function SterilityReportForm({
             "scdb_result",
             "comments",
           ],
-          QA: [],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",
