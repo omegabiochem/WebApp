@@ -323,9 +323,13 @@ export default function OmegaChatBox() {
         });
 
         setThreads(sorted);
-        if (sorted.length > 0) {
-          setSelectedThread(sorted[0]); // always open latest thread
-        }
+        setSelectedThread((prev) => {
+          if (!sorted.length) return null;
+          if (!prev) return sorted[0];
+
+          const stillExists = sorted.find((t) => t.id === prev.id);
+          return stillExists ?? sorted[0];
+        });
       })
       .catch(console.error);
   }, [open, isLab]);
@@ -561,23 +565,26 @@ export default function OmegaChatBox() {
     setThreads(sorted);
     setTotalUnread(sum);
 
-    if (sorted.length > 0) setSelectedThread(sorted[0]);
+    setSelectedThread((prev) => {
+      if (!sorted.length) return null;
+      if (!prev) return sorted[0];
+
+      const stillExists = sorted.find((t) => t.id === prev.id);
+      return stillExists ?? sorted[0];
+    });
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !open) return;
 
-    // initial fetch
     fetchTotalUnread().catch(console.error);
 
-    // poll every 10s
     const id = window.setInterval(() => {
       fetchTotalUnread().catch(console.error);
     }, 10000);
 
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role, open, selectedThread?.id]);
+  }, [user?.role, open]);
 
   async function loadRecentForms() {
     setFormsLoading(true);
