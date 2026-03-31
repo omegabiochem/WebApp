@@ -97,19 +97,19 @@ export const STATUS_TRANSITIONS: Record<
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
     canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
-    next: ["UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW"],
+    next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
     canSet: ["CLIENT","SYSTEMADMIN"],
-    next: ["PRELIMINARY_RESUBMISSION_BY_CLIENT"],
+    next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
     canSet: ["CLIENT","SYSTEMADMIN"],
-    next: ["FINAL_RESUBMISSION_BY_CLIENT"],
+    next: ["UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
     canEdit: ["CLIENT"],
   },
@@ -127,7 +127,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
     canSet: ["ADMIN", "QA", "MICRO", "MC" ,"SYSTEMADMIN"],
-    next: ["UNDER_FINAL_RESUBMISSION_TESTING_REVIEW"],
+    next: ["UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["ADMIN", "QA" ,"SYSTEMADMIN"],
     canEdit: [],
   },

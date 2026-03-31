@@ -1135,7 +1135,7 @@ export default function MicroDashboard() {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setStatus(r, nextStatus, "Move to sterility testing");
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        nextStatus = "UNDER_TESTING_REVIEW";
         await setStatus(
           r,
           nextStatus,
@@ -1154,7 +1154,7 @@ export default function MicroDashboard() {
         nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
         await setStatus(r, nextStatus, "Move to prelim testing");
       } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
-        nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
+        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
         await setStatus(r, nextStatus, "Move to RESUBMISSION");
       } else if (r.status === "PRELIMINARY_APPROVED") {
         nextStatus = "UNDER_FINAL_TESTING_REVIEW";
@@ -1163,7 +1163,7 @@ export default function MicroDashboard() {
         nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
         await setStatus(r, nextStatus, "Resubmitted by client");
       } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-        nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
         await setStatus(r, nextStatus, `Set by ${actor}`);
       } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
         nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
