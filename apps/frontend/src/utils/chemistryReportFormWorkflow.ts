@@ -87,13 +87,13 @@ export const STATUS_TRANSITIONS: Record<
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ["CHEMISTRY", "MC", "SYSTEMADMIN"],
-    next: ["UNDER_RESUBMISSION_TESTING_REVIEW"],
+    next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ["CLIENT", "SYSTEMADMIN"],
-    next: ["RESUBMISSION_BY_CLIENT"],
+    next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: ["CLIENT", "SYSTEMADMIN"],
   },

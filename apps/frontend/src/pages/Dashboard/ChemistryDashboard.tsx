@@ -1088,7 +1088,7 @@ export default function ChemistryDashboard() {
         reason: "Resubmitted by client",
       });
     } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-      nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+      nextStatus = "UNDER_TESTING_REVIEW";
       await setStatus({
         report: r,
         newStatus: nextStatus,

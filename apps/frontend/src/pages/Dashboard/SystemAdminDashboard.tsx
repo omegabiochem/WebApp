@@ -2283,7 +2283,7 @@ export default function SystemAdminDashboard() {
                                       "CLIENT_NEEDS_FINAL_CORRECTION"
                                     ) {
                                       const next =
-                                        "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                        "UNDER_FINAL_TESTING_REVIEW";
                                       await setStatus(
                                         r,
                                         next,
@@ -2325,7 +2325,7 @@ export default function SystemAdminDashboard() {
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
                                       const next =
-                                        "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                        "UNDER_TESTING_REVIEW";
                                       await setStatus(r, next, "set by qa");
                                       setReports((prev) =>
                                         prev.map((x) =>
@@ -2363,7 +2363,7 @@ export default function SystemAdminDashboard() {
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
                                       const next =
-                                        "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                        "UNDER_TESTING_REVIEW";
                                       await setStatus(
                                         r,
                                         next,
