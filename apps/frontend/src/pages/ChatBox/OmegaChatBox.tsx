@@ -137,6 +137,8 @@ export default function OmegaChatBox() {
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [menuDir, setMenuDir] = useState<"up" | "down">("down");
 
+  const [messageSearch, setMessageSearch] = useState("");
+
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // // ✅ unread counts per client (lab sidebar)
@@ -227,8 +229,78 @@ export default function OmegaChatBox() {
         : "/messages";
 
     const res = await api<{ messages: Message[] }>(url, { method: "GET" });
-    setMessages(res.messages ?? []);
+
+    const sortedMessages = [...(res.messages ?? [])].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    setMessages(sortedMessages);
+
+    setTimeout(() => {
+      scrollToBottom(false);
+    }, 0);
   };
+
+  const filteredMessages = useMemo(() => {
+    const q = messageSearch.trim().toLowerCase();
+    if (!q) return messages;
+
+    return messages.filter((m) => {
+      const body = (m.body || "").toLowerCase();
+      const senderRole = (m.senderRole || "").toLowerCase();
+      const senderName = (m.senderName || "").toLowerCase();
+      const replyBody = (m.replyTo?.body || "").toLowerCase();
+
+      const d = new Date(m.createdAt);
+      const dateText1 = d.toLocaleDateString().toLowerCase(); // example: 3/25/2026
+      const dateText2 = d
+        .toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+        .toLowerCase(); // example: mar 25, 2026
+      const dateText3 = d
+        .toLocaleDateString(undefined, {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+        .toLowerCase(); // example: march 25, 2026
+
+      const timeText = d
+        .toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+        .toLowerCase(); // example: 9:45 am
+
+      const attachmentText = Array.isArray(m.attachments)
+        ? m.attachments
+            .map((a) => {
+              if (a.kind === "FORM") {
+                return `${a.formNumber} ${a.reportNumber || ""} ${a.formType}`;
+              }
+              return `${a.filename} ${a.contentType || ""}`;
+            })
+            .join(" ")
+            .toLowerCase()
+        : "";
+
+      return (
+        body.includes(q) ||
+        senderRole.includes(q) ||
+        senderName.includes(q) ||
+        replyBody.includes(q) ||
+        attachmentText.includes(q) ||
+        dateText1.includes(q) ||
+        dateText2.includes(q) ||
+        dateText3.includes(q) ||
+        timeText.includes(q)
+      );
+    });
+  }, [messages, messageSearch]);
 
   // -----------------------------------
   // LAB: fetch inbox (client list)
@@ -240,8 +312,20 @@ export default function OmegaChatBox() {
 
     api<Thread[]>("/messages/inbox", { method: "GET" })
       .then((data) => {
-        setThreads(data);
-        if (!selectedThread && data.length > 0) setSelectedThread(data[0]);
+        const sorted = [...data].sort((a, b) => {
+          const aTime = a.lastMessage?.createdAt
+            ? new Date(a.lastMessage.createdAt).getTime()
+            : 0;
+          const bTime = b.lastMessage?.createdAt
+            ? new Date(b.lastMessage.createdAt).getTime()
+            : 0;
+          return bTime - aTime; // latest first
+        });
+
+        setThreads(sorted);
+        if (sorted.length > 0) {
+          setSelectedThread(sorted[0]); // always open latest thread
+        }
       })
       .catch(console.error);
   }, [open, isLab]);
@@ -276,9 +360,15 @@ export default function OmegaChatBox() {
 
   useEffect(() => {
     if (!open) return;
-    scrollToBottom(false);
+    if (loading) return;
+
+    const t = setTimeout(() => {
+      scrollToBottom(false);
+    }, 0);
+
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+  }, [open, loading, selectedThread?.id, messages]);
 
   // -----------------------------------
   // ✅ When LAB opens a thread, mark it as "seen" locally
@@ -298,8 +388,19 @@ export default function OmegaChatBox() {
 
       // update counts in sidebar + total badge
       const inbox = await api<Thread[]>("/messages/inbox", { method: "GET" });
-      setThreads(inbox);
-      setTotalUnread(inbox.reduce((a, t) => a + (t.unreadCount || 0), 0));
+
+      const sorted = [...inbox].sort((a, b) => {
+        const aTime = a.lastMessage?.createdAt
+          ? new Date(a.lastMessage.createdAt).getTime()
+          : 0;
+        const bTime = b.lastMessage?.createdAt
+          ? new Date(b.lastMessage.createdAt).getTime()
+          : 0;
+        return bTime - aTime;
+      });
+
+      setThreads(sorted);
+      setTotalUnread(sorted.reduce((a, t) => a + (t.unreadCount || 0), 0));
     })().catch(console.error);
   }, [open, isLab, selectedThread?.id]);
 
@@ -375,6 +476,12 @@ export default function OmegaChatBox() {
     setMenuOpenFor(null);
     await refresh();
     scrollToBottom(true);
+
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+      }
+    }, 0);
   };
 
   // -----------------------------------
@@ -384,7 +491,7 @@ export default function OmegaChatBox() {
     const items: RenderItem[] = [];
     let lastDateKey: string | null = null;
 
-    for (const m of messages) {
+    for (const m of filteredMessages) {
       const d = new Date(m.createdAt);
       const key = toDateKey(d);
 
@@ -396,7 +503,7 @@ export default function OmegaChatBox() {
     }
 
     return items;
-  }, [messages]);
+  }, [filteredMessages]);
 
   const CLIENT_TAGS = ["MICRO", "CHEMISTRY", "FRONTDESK"] as const;
 
@@ -441,10 +548,20 @@ export default function OmegaChatBox() {
     const inbox = await api<Thread[]>("/messages/inbox", { method: "GET" });
     const sum = inbox.reduce((acc, t) => acc + (t.unreadCount || 0), 0);
 
-    setThreads(inbox);
+    const sorted = [...inbox].sort((a, b) => {
+      const aTime = a.lastMessage?.createdAt
+        ? new Date(a.lastMessage.createdAt).getTime()
+        : 0;
+      const bTime = b.lastMessage?.createdAt
+        ? new Date(b.lastMessage.createdAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
+
+    setThreads(sorted);
     setTotalUnread(sum);
 
-    if (!selectedThread && inbox.length > 0) setSelectedThread(inbox[0]);
+    if (sorted.length > 0) setSelectedThread(sorted[0]);
   };
 
   useEffect(() => {
@@ -589,6 +706,10 @@ export default function OmegaChatBox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachOpen]);
 
+  useEffect(() => {
+    setMessageSearch("");
+  }, [selectedThread?.id]);
+
   async function openAttachment(a: any) {
     try {
       // a.url could be old "/messages/uploads/<key>" OR new "/messages/uploads?key=<key>"
@@ -623,7 +744,6 @@ export default function OmegaChatBox() {
       alert("Unable to open attachment.");
     }
   }
-
 
   async function handleUndo() {
     if (!undoBar) return;
@@ -748,14 +868,39 @@ export default function OmegaChatBox() {
               {/* Messages */}
               <div
                 ref={messagesBoxRef}
-                className="flex-1 overflow-y-auto p-3 space-y-2 text-sm"
+                className="flex-1 overflow-y-auto px-3 pb-3 pt-2 space-y-2 text-sm"
               >
+                <div className="sticky top-0 z-10 flex justify-center bg-transparent pb-2 pt-1">
+                  <div className="relative w-full max-w-[240px]">
+                    <input
+                      type="text"
+                      value={messageSearch}
+                      onChange={(e) => setMessageSearch(e.target.value)}
+                      placeholder="Search messages..."
+                      className="w-full rounded-full border border-white/40 bg-white/70 px-4 py-2 text-sm shadow-sm backdrop-blur-md outline-none focus:ring-2 focus:ring-green-200"
+                    />
+                    {messageSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setMessageSearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        title="Clear search"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
                 {loading && (
                   <div className="text-xs text-gray-400">Loading…</div>
                 )}
 
-                {!loading && messages.length === 0 && (
-                  <div className="text-gray-500 text-xs">No messages yet</div>
+                {!loading && filteredMessages.length === 0 && (
+                  <div className="text-gray-500 text-xs">
+                    {messageSearch.trim()
+                      ? "No matching messages found"
+                      : "No messages yet"}
+                  </div>
                 )}
 
                 {!loading &&
@@ -1101,18 +1246,29 @@ export default function OmegaChatBox() {
                     <Paperclip className="h-5 w-5 text-gray-600" />
                   </button>
 
-                  <input
-                    ref={inputRef}
+                  <textarea
+                    ref={inputRef as any}
+                    rows={1}
                     value={editingId ? editingText : message}
-                    onChange={(e) =>
-                      editingId
-                        ? setEditingText(e.target.value)
-                        : setMessage(e.target.value)
-                    }
+                    onChange={(e) => {
+                      if (editingId) {
+                        setEditingText(e.target.value);
+                      } else {
+                        setMessage(e.target.value);
+                      }
+
+                      // ✅ auto grow
+                      e.currentTarget.style.height = "auto";
+                      e.currentTarget.style.height =
+                        e.currentTarget.scrollHeight + "px";
+                    }}
                     placeholder="Type a message…"
-                    className="flex-1 h-10 rounded-full border px-4 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+                    className="flex-1 min-h-[40px] max-h-[120px] resize-none overflow-y-auto rounded-2xl border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") sendMessage();
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault(); // prevent newline
+                        sendMessage();
+                      }
                     }}
                   />
 

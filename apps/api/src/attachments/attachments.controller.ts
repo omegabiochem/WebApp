@@ -2,6 +2,8 @@
 import {
   Controller, Post, Param, UploadedFile, UseInterceptors, Body, BadRequestException,
   Get, Res,
+  Req,
+  Delete,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -76,6 +78,8 @@ export class AttachmentsController {
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`);
     stream.pipe(res);
   }
+
+
 
   
 }

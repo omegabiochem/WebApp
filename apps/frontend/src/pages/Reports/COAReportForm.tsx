@@ -698,7 +698,7 @@ export default function COAReportForm({
         };
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
-          SYSTEMADMIN: [],
+          SYSTEMADMIN: ["*"],
           FRONTDESK: [],
           CHEMISTRY: [
             "dateReceived",
@@ -708,7 +708,7 @@ export default function COAReportForm({
             "coaRows",
           ],
           MC: ["dateReceived", "comments", "testedBy", "testedDate", "coaRows"],
-          QA: ["dateCompleted"],
+          QA: ["dateCompleted","comments"],
           CLIENT: [
             "client",
             "dateSent",
@@ -1199,7 +1199,7 @@ export default function COAReportForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-                    role === "SYSTEMADMIN" ||
+                   
                     role === "FRONTDESK" ||
                     isBusy ||
                     status === "UNDER_CLIENT_REVIEW" ||
@@ -1954,7 +1954,7 @@ export default function COAReportForm({
                       approveNeedsAttachment && !hasAttachment;
 
                     const disabled =
-                      role === "SYSTEMADMIN" ||
+                 
                       isBusy ||
                       attachmentsLoading ||
                       disableApproveForNoAttachment;

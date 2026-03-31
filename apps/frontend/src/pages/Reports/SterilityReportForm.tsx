@@ -97,12 +97,11 @@ function canEdit(
   }
 
   const map: Record<Role, string[]> = {
-    SYSTEMADMIN: [],
+    SYSTEMADMIN: ["*"],
     ADMIN: [
       "testSopNo",
       "dateTested",
       "testSopNo",
-      "dateTested",
       "ftm_turbidity",
       "ftm_observation",
       "ftm_result",
@@ -150,7 +149,7 @@ function canEdit(
       "dateCompleted",
       "comments",
     ],
-    QA: [],
+    QA: ["comments"],
     CLIENT: [
       "client",
       "dateSent",
@@ -782,7 +781,7 @@ export default function SterilityReportForm({
 
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
-          SYSTEMADMIN: [],
+          SYSTEMADMIN: ["*"],
           FRONTDESK: [
             "client",
             "dateSent",
@@ -796,6 +795,7 @@ export default function SterilityReportForm({
           MICRO: [
             "testSopNo",
             "dateTested",
+            "dateCompleted",
             "ftm_turbidity",
             "ftm_observation",
             "ftm_result",
@@ -807,6 +807,7 @@ export default function SterilityReportForm({
           MC: [
             "testSopNo",
             "dateTested",
+            "dateCompleted",
             "ftm_turbidity",
             "ftm_observation",
             "ftm_result",
@@ -815,7 +816,7 @@ export default function SterilityReportForm({
             "scdb_result",
             "comments",
           ],
-          QA: [],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",
@@ -1298,7 +1299,7 @@ export default function SterilityReportForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-                    role === "SYSTEMADMIN" ||
+        
                     role === "FRONTDESK" ||
                     isBusy ||
                     status === "UNDER_CLIENT_FINAL_REVIEW" ||
@@ -2339,7 +2340,7 @@ export default function SterilityReportForm({
                   approveNeedsAttachment && !hasAttachment;
 
                 const disabled =
-                  role === "SYSTEMADMIN" ||
+                
                   isBusy ||
                   attachmentsLoading ||
                   disableApproveForNoAttachment;

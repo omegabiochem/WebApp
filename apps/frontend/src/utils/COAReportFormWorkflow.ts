@@ -261,7 +261,7 @@ export const COA_STATUS_COLORS: Record<COAReportStatus, string> = {
 
 // Field-level permissions (frontend hint; backend is source of truth)
 export const FIELD_EDIT_MAP: Record<Role, string[]> = {
-  SYSTEMADMIN: [],
+  SYSTEMADMIN: ["*"],
   ADMIN: ["*"],
 
   FRONTDESK: [],
@@ -276,7 +276,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
 
   MC: ["dateReceived", "coaRows", "comments", "testedBy", "testedDate"],
 
-  QA: ["dateCompleted"],
+  QA: ["comments"],
 
   CLIENT: [
     "client",

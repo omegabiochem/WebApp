@@ -915,7 +915,7 @@ export default function ChemistryMixSubmissionForm({
 
         const BASE_ALLOWED: Record<Role, string[]> = {
           ADMIN: ["*"],
-          SYSTEMADMIN: [],
+          SYSTEMADMIN: ["*"],
           FRONTDESK: [],
           CHEMISTRY: [
             "dateReceived",
@@ -939,7 +939,7 @@ export default function ChemistryMixSubmissionForm({
             "testedDate",
             "actives",
           ],
-          QA: ["dateCompleted", "reviewedBy", "reviewedDate"],
+          QA: ["comments"],
           CLIENT: [
             "client",
             "dateSent",
@@ -1442,7 +1442,7 @@ export default function ChemistryMixSubmissionForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-                    role === "SYSTEMADMIN" ||
+                   
                     role === "FRONTDESK" ||
                     isBusy ||
                     status === "UNDER_CLIENT_REVIEW" ||
@@ -2776,7 +2776,7 @@ export default function ChemistryMixSubmissionForm({
                       approveNeedsAttachment && !hasAttachment;
 
                     const disabled =
-                      role === "SYSTEMADMIN" ||
+                    
                       isBusy ||
                       attachmentsLoading ||
                       disableApproveForNoAttachment;

@@ -166,4 +166,22 @@ export class ChemistryAttachmentsService {
     const stream = await this.storage.createReadStream(a.storageKey);
     return { stream: stream as any, mime, filename: a.filename };
   }
+
+
+async remove(id: string) {
+  const a = await this.prisma.chemistryAttachment.findUnique({
+    where: { id },
+    select: { id: true, storageKey: true },
+  });
+
+  if (!a) throw new NotFoundException('Attachment not found');
+
+  await this.prisma.chemistryAttachment.delete({
+    where: { id },
+  });
+
+  await this.storage.delete(a.storageKey).catch(() => {});
+
+  return { ok: true, id };
+}
 }

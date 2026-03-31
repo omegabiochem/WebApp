@@ -33,6 +33,7 @@ export default function Header() {
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
+      { label : "Report Management", path:"/manage-reports"},
       { label: "Support", path: "/support" },
     ],
     CLIENT: [
@@ -48,6 +49,7 @@ export default function Header() {
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
+       { label : "Report Management", path:"/manage-reports"},
       { label: "Support Tickets", path: "/supportTickets" },
       { label: "More", path: "/more" },
     ],
