@@ -48,7 +48,11 @@ export type ReportStatus =
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
   | "FINAL_APPROVED"
   | "VOID"
-  | "LOCKED";
+  | "LOCKED"
+  | "UNDER_CHANGE_UPDATE"
+  | "CORRECTION_REQUESTED"
+  | "UNDER_CORRECTION_UPDATE"
+  | "CHANGE_REQUESTED";
 
 // The values your form passes into validation
 export type PathRow = {
@@ -158,7 +162,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
-    "dateCompleted"
+    "dateCompleted",
     // "comments",
     // "testedBy",
     // "testedDate",
@@ -175,7 +179,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "tmy_result",
     "tmy_spec",
     "pathogens",
-     "dateCompleted"
+    "dateCompleted",
   ],
   QA: [],
   CLIENT: [
@@ -206,7 +210,6 @@ export const MICRO_PHASE_FIELDS: Record<MicroPhase, string[]> = {
     "preliminaryResultsDate",
     "tbc_gram",
     "tbc_result",
-    
   ],
   FINAL: [
     "dateCompleted",
@@ -325,17 +328,43 @@ export async function getCorrections(reportId: string) {
   // return (await res.json()) as CorrectionItem[];
 }
 
+export type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+
+// export async function createCorrections(
+//   reportId: string,
+//   items: { fieldKey: string; message: string }[],
+//   targetStatus?: string,
+//   reason?: string,
+//   expectedVersion?: number,
+// ) {
+//   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+//   });
+// }
+
 export async function createCorrections(
   reportId: string,
-  items: { fieldKey: string; message: string }[],
+  items: { fieldKey: string; message: string; oldValue?: string | null }[],
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
+  meta?: {
+    kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
+    previousStatus?: string;
+  },
 ) {
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+    body: JSON.stringify({
+      items,
+      targetStatus,
+      reason,
+      expectedVersion,
+      meta,
+    }),
   });
 }
 
@@ -350,6 +379,9 @@ export async function resolveCorrection(
     body: JSON.stringify({ resolutionNote }),
   });
 }
+
+
+
 
 /* =======================
  * Main validation hook
