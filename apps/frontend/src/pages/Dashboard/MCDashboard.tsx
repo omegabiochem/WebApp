@@ -234,6 +234,11 @@ const MICRO_STATUSES = [
   "FINAL_APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ] as const;
 
 const STERILITY_STATUSES = [
@@ -261,6 +266,11 @@ const STERILITY_STATUSES = [
   "APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ] as const;
 
 const CHEMISTRY_STATUSES = [
@@ -288,6 +298,11 @@ const CHEMISTRY_STATUSES = [
   "APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ] as const;
 
 // ----------------------------------
@@ -922,6 +937,7 @@ export default function MCDashboard() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   type WorkspaceMode = "VIEW" | "UPDATE";
+  type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -932,6 +948,41 @@ export default function MCDashboard() {
   const [workspaceActiveId, setWorkspaceActiveId] = useState<string | null>(
     null,
   );
+
+  const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+    CorrectionLaunchKind[]
+  >([]);
+
+  const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+  const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!correctionMenuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-correction-menu]")) {
+        setCorrectionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [correctionMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (correctionCloseTimerRef.current != null) {
+        window.clearTimeout(correctionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   // -----------------------------
   // Merge into unified list
@@ -1603,7 +1654,7 @@ export default function MCDashboard() {
           nextStatus = "UNDER_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to sterility testing");
         } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-          nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+          nextStatus = "UNDER_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to sterility resubmission");
         } else if (r.status === "RESUBMISSION_BY_CLIENT") {
           nextStatus = "UNDER_TESTING_REVIEW";
@@ -1617,7 +1668,7 @@ export default function MCDashboard() {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to prelim testing");
         } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
-          nextStatus = "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW";
+          nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Move to RESUBMISSION");
         } else if (r.status === "PRELIMINARY_APPROVED") {
           nextStatus = "UNDER_FINAL_TESTING_REVIEW";
@@ -1626,7 +1677,7 @@ export default function MCDashboard() {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, "Resubmitted by client");
         } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-          nextStatus = "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+          nextStatus = "UNDER_FINAL_TESTING_REVIEW";
           await setMicroStatus(r, nextStatus, `Set by ${actor}`);
         } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
@@ -1661,7 +1712,7 @@ export default function MCDashboard() {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, "Move COA to testing");
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(
           r,
           nextStatus,
@@ -1683,7 +1734,7 @@ export default function MCDashboard() {
         nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, "Move to testing");
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-        nextStatus = "UNDER_RESUBMISSION_TESTING_REVIEW";
+        nextStatus = "UNDER_TESTING_REVIEW";
         await setChemStatus(r, nextStatus, `Set by ${actor}`);
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
@@ -2096,6 +2147,110 @@ export default function MCDashboard() {
   if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
+
+  function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
+    const selected = selectedIds
+      .map((id) => unified.find((r) => rowKey(r) === id))
+      .filter(Boolean) as UnifiedRow[];
+
+    if (!selected.length) return;
+
+  const hasBlockedStatus = selected.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
+
+  if (hasBlockedStatus) {
+    toast.error(
+      "Correction is not allowed for reports already in correction/change workflow",
+    );
+    return;
+  }
+
+    if (selected.length === 1) {
+      const r = selected[0];
+      const microSlug =
+        microFormTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+      const chemSlug =
+        chemFormTypeToSlug[(r.formType ?? "").trim()] || "chemistry-mix";
+      const returnTo = location.pathname + location.search;
+
+      const navState = {
+        correctionLaunch: true,
+        correctionKinds: kinds,
+      };
+
+      if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+        navigate(
+          `/chemistry-reports/${chemSlug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      } else {
+        navigate(
+          `/reports/${microSlug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      }
+      return;
+    }
+
+   setWorkspaceIds(selected.map((r) => rowKey(r)));
+    setWorkspaceMode("UPDATE"); // ✅ still UPDATE only
+    setWorkspaceLayout("VERTICAL");
+setWorkspaceActiveId(rowKey(selected[0]));
+    setWorkspaceCorrectionKinds(kinds);
+    setWorkspaceOpen(true);
+  }
+
+  function clearCorrectionCloseTimer() {
+    if (correctionCloseTimerRef.current != null) {
+      window.clearTimeout(correctionCloseTimerRef.current);
+      correctionCloseTimerRef.current = null;
+    }
+  }
+
+  function openCorrectionMenu() {
+    clearCorrectionCloseTimer();
+
+    if (!selectedIds.length || !correctionBtnRef.current) return;
+
+    const r = correctionBtnRef.current.getBoundingClientRect();
+    setCorrectionMenuPos({
+      top: r.bottom + 8,
+      left: r.right - 220,
+    });
+    setCorrectionMenuOpen(true);
+  }
+
+  function scheduleCloseCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    correctionCloseTimerRef.current = window.setTimeout(() => {
+      setCorrectionMenuOpen(false);
+      correctionCloseTimerRef.current = null;
+    }, 180);
+  }
+
+ function closeCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    setCorrectionMenuOpen(false);
+  }
+
+  function isCorrectionFlowStatus(status: string) {
+    const s = String(status).toUpperCase();
+
+       return (
+      s.includes("CORRECTION") ||
+      s.includes("CHANGE_REQUESTED") ||
+      s.includes("UNDER_CHANGE_UPDATE") ||
+      s.includes("VOID") ||
+      s.includes("LOCKED") ||
+      s.includes("DRAFT") ||
+      s.includes("UNDER_DRAFT_REVIEW")
+    );
+  }
+  const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2234,6 +2389,44 @@ export default function MCDashboard() {
               )}
             </div>
           )}
+
+          <div
+            className="relative"
+            data-correction-menu
+          onMouseEnter={() => {
+  if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+    openCorrectionMenu();
+  }
+}}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              ref={correctionBtnRef}
+              type="button"
+              onClick={(e) => {
+             e.stopPropagation();
+  if (!selectedIds.length || selectedHasCorrectionLockedStatus) return;
+
+                if (correctionMenuOpen) {
+                  closeCorrectionMenu();
+                } else {
+                  openCorrectionMenu();
+                }
+              }}
+              disabled={!selectedIds.length || printingBulk}
+             className={classNames(
+  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+  selectedIds.length && !selectedHasCorrectionLockedStatus
+    ? "bg-amber-600 text-white hover:bg-amber-700"
+    : "bg-slate-200 text-slate-500",
+)}
+            >
+              📝 Corrections ({selectedIds.length})
+              <span className="text-xs">▾</span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={handlePrintSelected}
@@ -2607,261 +2800,261 @@ export default function MCDashboard() {
           </div>
         )}
 
-<div className="min-h-0">
-  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
-    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-30 bg-slate-50">
-              <tr className="text-left text-slate-600">
-                <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
-                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleSelectPage}
-                  />
-                </th>
-                {selectedCols.map((k) => (
-              <th
-  key={k}
-  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
->
-                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+        <div className="min-h-0">
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectPage}
+                    />
                   </th>
-                ))}
-                <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
-  Status
-</th>
-                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Actions</span>
-
-                    <div className="relative" data-col-dropdown>
-                      <button
-                        ref={colBtnRef}
-                        type="button"
-                        onClick={() => {
-                          setColOpen((v) => {
-                            const next = !v;
-                            if (next && colBtnRef.current) {
-                              const r =
-                                colBtnRef.current.getBoundingClientRect();
-                              setColPos({
-                                top: r.bottom + 8,
-                                left: r.right - 288,
-                              });
-                            }
-                            return next;
-                          });
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                        title="Choose columns"
-                        aria-label="Choose columns"
-                      >
-                        ▾
-                      </button>
-
-                      {colOpen &&
-                        colPos &&
-                        createPortal(
-                          <div
-                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                            style={{ top: colPos.top, left: colPos.left }}
-                            data-col-dropdown
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold text-slate-600">
-                                Columns ({selectedCols.length})
-                              </div>
-                              <button
-                                type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800"
-                                onClick={() => setColOpen(false)}
-                                aria-label="Close"
-                                title="Close"
-                              >
-                                ✕
-                              </button>
-                            </div>
-
-                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                              {DASHBOARD_COLS.map((c) => {
-                                const checked = selectedCols.includes(c.key);
-
-                                return (
-                                  <label
-                                    key={c.key}
-                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleCol(c.key)}
-                                    />
-                                    <span>{c.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-slate-600 hover:underline"
-                                onClick={() => setSelectedCols(DEFAULT_COLS)}
-                              >
-                                Reset defaults
-                              </button>
-
-                              <button
-                                type="button"
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                onClick={() => setColOpen(false)}
-                              >
-                                Done
-                              </button>
-                            </div>
-                          </div>,
-                          document.body,
-                        )}
-                    </div>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading &&
-                [...Array(7)].map((_, i) => (
-                  <tr key={`skel-${i}`} className="border-t">
-                    <td className="pl-2 pr-1 py-3">
-                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
-                    </td>
-                    <td className="pl-1 pr-3 py-3">
-                      <div className="h-4 w-4 rounded bg-slate-200" />
-                    </td>
-
-                    {selectedCols.map((k) => (
-                      <td key={`${k}-${i}`} className="px-4 py-3">
-                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                      </td>
-                    ))}
-
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))}
-
-              {!loading &&
-                pageRows.map((r) => {
-                  const key = rowKey(r);
-                  const rowBusy = updatingKey === key;
-
-                  const badge =
-                    r.kind === "MICRO"
-                      ? r.formType === "STERILITY"
-                        ? STERILITY_STATUS_COLORS[
-                            r.status as SterilityReportStatus
-                          ]
-                        : STATUS_COLORS[r.status as MicroReportStatus]
-                      : r.formType === "COA"
-                        ? COA_STATUS_COLORS[r.status as ChemistryReportStatus]
-                        : CHEMISTRY_STATUS_COLORS[
-                            r.status as ChemistryReportStatus
-                          ];
-
-                  const canUpdateRow = canUpdateUnified(r, user);
-
-                  return (
-                    <tr
-                      key={r.id}
-                      className={classNames(
-                        "border-t hover:bg-slate-50",
-                        isPinned(r.id) && "bg-blue-50/40",
-                      )}
+                  {selectedCols.map((k) => (
+                    <th
+                      key={k}
+                      className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
                     >
-                      <td className="pl-2 pr-1 py-3 text-center">
+                      {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                    </th>
+                  ))}
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Actions</span>
+
+                      <div className="relative" data-col-dropdown>
                         <button
+                          ref={colBtnRef}
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            togglePin(r.id);
+                          onClick={() => {
+                            setColOpen((v) => {
+                              const next = !v;
+                              if (next && colBtnRef.current) {
+                                const r =
+                                  colBtnRef.current.getBoundingClientRect();
+                                setColPos({
+                                  top: r.bottom + 8,
+                                  left: r.right - 288,
+                                });
+                              }
+                              return next;
+                            });
                           }}
-                          className="inline-flex items-center justify-center transition hover:scale-110"
-                          aria-label={
-                            isPinned(r.id) ? "Unpin report" : "Pin report"
-                          }
-                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                          title="Choose columns"
+                          aria-label="Choose columns"
                         >
-                          <Pin
-                            className={classNames(
-                               "h-3 w-3 rotate-45 transition",
-                              isPinned(r.id)
-                                ? "text-blue-600 fill-blue-600"
-                                : "text-slate-400 hover:text-slate-600",
-                            )}
-                          />
+                          ▾
                         </button>
+
+                        {colOpen &&
+                          colPos &&
+                          createPortal(
+                            <div
+                              className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                              style={{ top: colPos.top, left: colPos.left }}
+                              data-col-dropdown
+                            >
+                              <div className="mb-2 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  Columns ({selectedCols.length})
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs text-slate-500 hover:text-slate-800"
+                                  onClick={() => setColOpen(false)}
+                                  aria-label="Close"
+                                  title="Close"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                {DASHBOARD_COLS.map((c) => {
+                                  const checked = selectedCols.includes(c.key);
+
+                                  return (
+                                    <label
+                                      key={c.key}
+                                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleCol(c.key)}
+                                      />
+                                      <span>{c.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                  onClick={() => setSelectedCols(DEFAULT_COLS)}
+                                >
+                                  Reset defaults
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                  onClick={() => setColOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>,
+                            document.body,
+                          )}
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading &&
+                  [...Array(7)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-t">
+                      <td className="pl-2 pr-1 py-3">
+                        <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(r)}
-                          onChange={() => toggleRow(r)}
-                          disabled={rowBusy}
-                        />
+                      <td className="pl-1 pr-3 py-3">
+                        <div className="h-4 w-4 rounded bg-slate-200" />
                       </td>
 
                       {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3 whitespace-nowrap">
-                          {k === "formType" ? (
-                            <span
-                              className={classNames(
-                                "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1",
-                                r.kind === "MICRO"
-                                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                                  : "bg-violet-50 text-violet-800 ring-violet-200",
-                              )}
-                            >
-                              {typeLabel(r)}
-                            </span>
-                          ) : k === "actives" ? (
-                            r.kind === "CHEMISTRY" ? (
-                              <ActivesCell
-                                selectedActives={r.selectedActives}
-                                selectedActivesText={r.selectedActivesText}
-                              />
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )
-                          ) : k === "formNumber" || k === "reportNumber" ? (
-                            <span className="font-medium">
-                              {getCellValue(r, k)}
-                            </span>
-                          ) : (
-                            getCellValue(r, k)
-                          )}
+                        <td key={`${k}-${i}`} className="px-4 py-3">
+                          <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                         </td>
                       ))}
 
                       <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                            badge ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
-                          )}
-                        >
-                          {niceStatus(String(r.status))}
-                        </span>
+                        <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    </tr>
+                  ))}
 
-                     <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
-                        <div className="flex items-center gap-2">
-                          {/* <button
+                {!loading &&
+                  pageRows.map((r) => {
+                    const key = rowKey(r);
+                    const rowBusy = updatingKey === key;
+
+                    const badge =
+                      r.kind === "MICRO"
+                        ? r.formType === "STERILITY"
+                          ? STERILITY_STATUS_COLORS[
+                              r.status as SterilityReportStatus
+                            ]
+                          : STATUS_COLORS[r.status as MicroReportStatus]
+                        : r.formType === "COA"
+                          ? COA_STATUS_COLORS[r.status as ChemistryReportStatus]
+                          : CHEMISTRY_STATUS_COLORS[
+                              r.status as ChemistryReportStatus
+                            ];
+
+                    const canUpdateRow = canUpdateUnified(r, user);
+
+                    return (
+                      <tr
+                        key={r.id}
+                        className={classNames(
+                          "border-t hover:bg-slate-50",
+                          isPinned(r.id) && "bg-blue-50/40",
+                        )}
+                      >
+                        <td className="pl-2 pr-1 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(r.id);
+                            }}
+                            className="inline-flex items-center justify-center transition hover:scale-110"
+                            aria-label={
+                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                            }
+                            title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          >
+                            <Pin
+                              className={classNames(
+                                "h-3 w-3 rotate-45 transition",
+                                isPinned(r.id)
+                                  ? "text-blue-600 fill-blue-600"
+                                  : "text-slate-400 hover:text-slate-600",
+                              )}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r)}
+                            onChange={() => toggleRow(r)}
+                            disabled={rowBusy}
+                          />
+                        </td>
+
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "formType" ? (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1",
+                                  r.kind === "MICRO"
+                                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                                    : "bg-violet-50 text-violet-800 ring-violet-200",
+                                )}
+                              >
+                                {typeLabel(r)}
+                              </span>
+                            ) : k === "actives" ? (
+                              r.kind === "CHEMISTRY" ? (
+                                <ActivesCell
+                                  selectedActives={r.selectedActives}
+                                  selectedActivesText={r.selectedActivesText}
+                                />
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )
+                            ) : k === "formNumber" || k === "reportNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                              badge ||
+                                "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                            )}
+                          >
+                            {niceStatus(String(r.status))}
+                          </span>
+                        </td>
+
+                        <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                          <div className="flex items-center gap-2">
+                            {/* <button
                             disabled={rowBusy}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
@@ -2869,85 +3062,62 @@ export default function MCDashboard() {
                             View
                           </button> */}
 
-                          <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                            onClick={() => {
-                              logUiEvent({
-                                action: "UI_VIEW",
-                                entity:
-                                  r.formType === "CHEMISTRY_MIX"
-                                    ? "ChemistryReport"
-                                    : r.formType === "COA"
-                                      ? "CoaReport"
-                                      : "Micro Report",
-                                entityId: r.id,
-                                details: `Viewed ${r.formNumber}`,
-                                meta: {
-                                  formNumber: r.formNumber,
-                                  formType: r.formType,
-                                  status: r.status,
-                                },
-                                formNumber: r.formNumber,
-                                reportNumber: r.reportNumber,
-                                formType: r.formType,
-                                clientCode: r.client || null,
-                              });
-
-                              openViewTarget(r);
-                            }}
-                            disabled={rowBusy}
-                          >
-                            View
-                          </button>
-
-                          {rowCanStartFinal(r) ? (
                             <button
-                              disabled={rowBusy}
-                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              onClick={async () => {
-                                if (rowBusy) return;
-                                setUpdatingKey(key);
-                                try {
-                                  const res = await startMicroFinal(r);
-                                  if (res.ok) {
-                                    setMicroReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: res.nextStatus }
-                                          : x,
-                                      ),
-                                    );
-                                    openUpdateTarget({
-                                      ...r,
-                                      status: res.nextStatus,
-                                    } as UnifiedRow);
-                                  }
-                                } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to start final",
-                                  );
-                                } finally {
-                                  setUpdatingKey(null);
-                                }
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                              onClick={() => {
+                                logUiEvent({
+                                  action: "UI_VIEW",
+                                  entity:
+                                    r.formType === "CHEMISTRY_MIX"
+                                      ? "ChemistryReport"
+                                      : r.formType === "COA"
+                                        ? "CoaReport"
+                                        : "Micro Report",
+                                  entityId: r.id,
+                                  details: `Viewed ${r.formNumber}`,
+                                  meta: {
+                                    formNumber: r.formNumber,
+                                    formType: r.formType,
+                                    status: r.status,
+                                  },
+                                  formNumber: r.formNumber,
+                                  reportNumber: r.reportNumber,
+                                  formType: r.formType,
+                                  clientCode: r.client || null,
+                                });
+
+                                openViewTarget(r);
                               }}
+                              disabled={rowBusy}
                             >
-                              {rowBusy ? <Spinner /> : null}
-                              {rowBusy ? "Starting..." : "Start Final"}
+                              View
                             </button>
-                          ) : (
-                            canUpdateRow && (
+
+                            {rowCanStartFinal(r) ? (
                               <button
                                 disabled={rowBusy}
-                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 onClick={async () => {
                                   if (rowBusy) return;
                                   setUpdatingKey(key);
                                   try {
-                                    await autoAdvanceAndOpen(r, "lab");
-                                    openUpdateTarget(r);
+                                    const res = await startMicroFinal(r);
+                                    if (res.ok) {
+                                      setMicroReports((prev) =>
+                                        prev.map((x) =>
+                                          x.id === r.id
+                                            ? { ...x, status: res.nextStatus }
+                                            : x,
+                                        ),
+                                      );
+                                      openUpdateTarget({
+                                        ...r,
+                                        status: res.nextStatus,
+                                      } as UnifiedRow);
+                                    }
                                   } catch (e: any) {
                                     toast.error(
-                                      e?.message || "Failed to update status",
+                                      e?.message || "Failed to start final",
                                     );
                                   } finally {
                                     setUpdatingKey(null);
@@ -2955,45 +3125,69 @@ export default function MCDashboard() {
                                 }}
                               >
                                 {rowBusy ? <Spinner /> : null}
-                                {rowBusy ? "Updating..." : "Update"}
+                                {rowBusy ? "Starting..." : "Start Final"}
                               </button>
-                            )
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                            ) : (
+                              canUpdateRow && (
+                                <button
+                                  disabled={rowBusy}
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                  onClick={async () => {
+                                    if (rowBusy) return;
+                                    setUpdatingKey(key);
+                                    try {
+                                      await autoAdvanceAndOpen(r, "lab");
+                                      openUpdateTarget(r);
+                                    } catch (e: any) {
+                                      toast.error(
+                                        e?.message || "Failed to update status",
+                                      );
+                                    } finally {
+                                      setUpdatingKey(null);
+                                    }
+                                  }}
+                                >
+                                  {rowBusy ? <Spinner /> : null}
+                                  {rowBusy ? "Updating..." : "Update"}
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-              {!loading && pageRows.length === 0 && (
-                <tr>
-                  <td
-colSpan={2 + selectedCols.length + 2}
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    No reports found
-                    {statusFilter !== "ALL" ? (
-                      <>
-                        {" "}
-                        for{" "}
-                        <span className="font-medium">
-                          {niceStatus(statusFilter)}
-                        </span>
-                      </>
-                    ) : null}
-                    {search ? (
-                      <>
-                        {" "}
-                        matching <span className="font-medium">“{search}”</span>
-                      </>
-                    ) : null}
-                    .
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={2 + selectedCols.length + 2}
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      No reports found
+                      {statusFilter !== "ALL" ? (
+                        <>
+                          {" "}
+                          for{" "}
+                          <span className="font-medium">
+                            {niceStatus(statusFilter)}
+                          </span>
+                        </>
+                      ) : null}
+                      {search ? (
+                        <>
+                          {" "}
+                          matching{" "}
+                          <span className="font-medium">“{search}”</span>
+                        </>
+                      ) : null}
+                      .
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Pagination */}
@@ -3201,17 +3395,76 @@ colSpan={2 + selectedCols.length + 2}
           </div>
         </div>
       )}
+      {correctionMenuOpen &&
+        correctionMenuPos &&
+        createPortal(
+          <div
+            className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+            style={{
+              top: correctionMenuPos.top,
+              left: correctionMenuPos.left,
+            }}
+            data-correction-menu
+            onMouseEnter={() => {
+              clearCorrectionCloseTimer();
+              setCorrectionMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["REQUEST_CHANGE"]);
+              }}
+            >
+              Request Change
+            </button>
 
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["RAISE_CORRECTION"]);
+              }}
+            >
+              Raise Correction
+            </button>
+
+            {/* <div className="my-1 border-t" /> */}
+
+            {/* <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection([
+                  "REQUEST_CHANGE",
+                  "RAISE_CORRECTION",
+                ]);
+              }}
+            >
+              Open Both
+            </button> */}
+          </div>,
+          document.body,
+        )}
       <ReportWorkspaceModal
         open={workspaceOpen}
         reports={workspaceReports}
         mode={workspaceMode}
         layout={workspaceLayout}
         activeId={workspaceActiveId}
+        correctionKinds={workspaceCorrectionKinds}
         onClose={() => {
           setWorkspaceOpen(false);
           setWorkspaceIds([]);
           setWorkspaceActiveId(null);
+          setWorkspaceCorrectionKinds([]);
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}

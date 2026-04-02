@@ -112,13 +112,13 @@ const STATUS_TRANSITIONS: Record<
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
+    next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['RESUBMISSION_BY_CLIENT'],
+    next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
@@ -238,6 +238,106 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
+
+  CHANGE_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CHANGE_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CORRECTION_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+  },
 };
 
 const EDIT_MAP: Record<UserRole, string[]> = {
@@ -282,6 +382,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'comments',
     'actives',
     'formulaContent',
+    'coaRows',
   ],
   MICRO: [],
   MC: [
@@ -421,7 +522,7 @@ export class ChemistryReportsService {
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
   ) {
-    if (!['ADMIN','CLIENT'].includes(user.role)) {
+    if (!['ADMIN', 'CLIENT'].includes(user.role)) {
       throw new ForbiddenException('Not allowed to create report');
     }
 
@@ -652,7 +753,37 @@ export class ChemistryReportsService {
         );
       }
       const targetStatus = patchIn.status as ChemistryReportStatus;
+
+      if (
+        targetStatus === 'CHANGE_REQUESTED' ||
+        targetStatus === 'CORRECTION_REQUESTED'
+      ) {
+        base.workflowReturnStatus = current.status; // 🔥 where to go back
+        base.workflowRequestKind =
+          targetStatus === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
+        base.workflowRequestedByRole = user.role;
+        base.workflowRequestedAt = new Date();
+      }
+
       const isVoid = targetStatus === 'VOID';
+
+      const CENTRAL_REQUEST_STATUSES: ChemistryReportStatus[] = [
+        'CHANGE_REQUESTED',
+        'CORRECTION_REQUESTED',
+      ];
+
+      const CENTRAL_UPDATE_STATUSES: ChemistryReportStatus[] = [
+        'UNDER_CHANGE_UPDATE',
+        'UNDER_CORRECTION_UPDATE',
+      ];
+
+      const isCentralRequestStatus =
+        CENTRAL_REQUEST_STATUSES.includes(targetStatus);
+
+      const isCentralUpdateStatus =
+        CENTRAL_UPDATE_STATUSES.includes(targetStatus);
+
+      const isCentralStatus = isCentralRequestStatus || isCentralUpdateStatus;
 
       if (isVoid) {
         if (current.status === 'VOID') {
@@ -668,6 +799,20 @@ export class ChemistryReportsService {
         if (!allowed.includes(user.role)) {
           throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
         }
+      } else if (isCentralStatus) {
+        // ✅ use centralized rule itself, not current state's rule
+        const centralRule = STATUS_TRANSITIONS[targetStatus];
+        if (!centralRule) {
+          throw new BadRequestException(
+            `No transition config for centralized status: ${targetStatus}`,
+          );
+        }
+
+        if (!centralRule.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status to ${targetStatus}`,
+          );
+        }
       } else {
         // normal transitions
         if (!trans.canSet.includes(user.role)) {
@@ -680,6 +825,20 @@ export class ChemistryReportsService {
             `Invalid transition: ${current.status} → ${targetStatus}`,
           );
         }
+      }
+
+      base.status = targetStatus;
+
+      const isReturningFromCentralizedUpdate =
+        (current.status === 'UNDER_CHANGE_UPDATE' ||
+          current.status === 'UNDER_CORRECTION_UPDATE') &&
+        targetStatus === current.workflowReturnStatus;
+
+      if (isReturningFromCentralizedUpdate) {
+        base.workflowReturnStatus = null;
+        base.workflowRequestKind = null;
+        base.workflowRequestedByRole = null;
+        base.workflowRequestedAt = null;
       }
 
       function yyyy(d: Date = new Date()): string {
@@ -746,6 +905,7 @@ export class ChemistryReportsService {
       }
 
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
+
       base.status = patchIn.status;
     }
 
@@ -1297,11 +1457,14 @@ export class ChemistryReportsService {
       'CLIENT',
       'CHEMISTRY',
       'FRONTDESK',
+      'MC',
       'QA',
       'ADMIN',
+      'SYSTEMADMIN',
     ];
-    if (!allowedResolvers.includes(user.role))
+    if (!allowedResolvers.includes(user.role)) {
       throw new ForbiddenException('Not allowed to resolve');
+    }
 
     arr[idx] = {
       ...arr[idx],
@@ -1315,7 +1478,44 @@ export class ChemistryReportsService {
       corrections: arr,
     });
 
-    this.reportsGateway.notifyReportUpdate({ id });
+    const allResolved = arr.every((c) => c.status === 'RESOLVED');
+
+    if (
+      allResolved &&
+      (report.status === 'UNDER_CHANGE_UPDATE' ||
+        report.status === 'UNDER_CORRECTION_UPDATE') &&
+      report.workflowReturnStatus
+    ) {
+      await this.prisma.chemistryReport.update({
+        where: { id },
+        data: {
+          status: report.workflowReturnStatus,
+          workflowReturnStatus: null,
+          workflowRequestKind: null,
+          workflowRequestedByRole: null,
+          workflowRequestedAt: null,
+          updatedBy: user.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await this.logChemStatusChange({
+        chemistryReportId: report.id,
+        clientCode: report.clientCode ?? null,
+        formType: report.formType,
+        formNumber: report.formNumber,
+        reportNumber: report.reportNumber ?? null,
+        from: report.status,
+        to: report.workflowReturnStatus,
+        reason: 'Returned to original status after all corrections resolved',
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+
+      this.reportsGateway.notifyStatusChange(id, report.workflowReturnStatus);
+    } else {
+      this.reportsGateway.notifyReportUpdate({ id });
+    }
 
     // this.reportsGateway.notifyReportUpdate({ id });
     return { ok: true };

@@ -27,6 +27,11 @@ model Report {
   ReportnumberAssignedAt DateTime?
   ReportnumberAssignedBy String?
 
+  workflowReturnStatus   ReportStatus?
+  workflowRequestKind    String?
+  workflowRequestedByRole UserRole?
+  workflowRequestedAt    DateTime?
+
   attachments   Attachment[]
   microMix      MicroMixDetails?
   microMixWater MicroMixWaterDetails?
@@ -405,6 +410,11 @@ model ChemistryReport {
   ReportnumberAssignedAt DateTime?
   ReportnumberAssignedBy String?
 
+  workflowReturnStatus   ChemistryReportStatus?
+  workflowRequestKind    String?
+  workflowRequestedByRole UserRole?
+  workflowRequestedAt    DateTime?
+
   
   attachments   ChemistryAttachment[]
   chemistryMix  ChemistryMixDetails?
@@ -662,6 +672,11 @@ enum ReportStatus {
   UNDER_RESUBMISSION_ADMIN_REVIEW
   UNDER_RESUBMISSION_QA_REVIEW
   APPROVED
+
+  CHANGE_REQUESTED
+  UNDER_CHANGE_UPDATE
+  CORRECTION_REQUESTED
+  UNDER_CORRECTION_UPDATE
 }
 
 enum UserRole {
@@ -707,6 +722,13 @@ enum ChemistryReportStatus {
   LOCKED
   VOID
   UNDER_RESUBMISSION_QA_REVIEW
+
+
+  CHANGE_REQUESTED
+  UNDER_CHANGE_UPDATE
+  CORRECTION_REQUESTED
+  UNDER_CORRECTION_UPDATE
+  
 }
 
 enum TestType {

@@ -23,12 +23,14 @@ type ReportItem = {
   status: string;
 };
 
+type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
 type Props = {
   open: boolean;
   reports: ReportItem[];
   mode: WorkspaceMode;
   layout: WorkspaceLayout;
   activeId?: string | null;
+  correctionKinds?: CorrectionLaunchKind[]; // ✅ add this
   onClose: () => void;
   onLayoutChange: (layout: WorkspaceLayout) => void;
   onFocus?: (id: string) => void;
@@ -48,6 +50,7 @@ export default function ReportWorkspaceModal({
   mode,
   layout,
   activeId,
+  correctionKinds = [],
   onClose,
   onLayoutChange,
   onFocus,
@@ -62,7 +65,15 @@ export default function ReportWorkspaceModal({
 
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
 
-  const showReportNumberForRoles = new Set(["MICRO", "CHEMISTRY", "MC", "QA", "FRONTDESK", "ADMIN", "SYSTEMADMIN"]);
+  const showReportNumberForRoles = new Set([
+    "MICRO",
+    "CHEMISTRY",
+    "MC",
+    "QA",
+    "FRONTDESK",
+    "ADMIN",
+    "SYSTEMADMIN",
+  ]);
 
   const useReportNumberChip = showReportNumberForRoles.has(
     String(user?.role || ""),
@@ -166,6 +177,9 @@ export default function ReportWorkspaceModal({
 
   if (!open || !reports.length) return null;
 
+  const shouldLaunchCorrectionInUpdate =
+    mode === "UPDATE" && correctionKinds.length > 0;
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-black/40 p-4"
@@ -194,7 +208,6 @@ export default function ReportWorkspaceModal({
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
 
-            
             <button
               type="button"
               onClick={() => onLayoutChange("VERTICAL")}
@@ -339,6 +352,9 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
                       />
                     )}
@@ -350,6 +366,8 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
+                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        // correctionKinds={correctionKinds}
                         onClose={() => {}}
                       />
                     )}
@@ -361,6 +379,8 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
+                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        // correctionKinds={correctionKinds}
                         onClose={() => {}}
                       />
                     )}
@@ -372,6 +392,8 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
+                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        // correctionKinds={correctionKinds}
                         onClose={() => {}}
                       />
                     )}
@@ -384,6 +406,8 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
+                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        // correctionKinds={correctionKinds}
                         onClose={() => {}}
                       />
                     )}

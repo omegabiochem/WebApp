@@ -49,7 +49,11 @@ export type COAReportStatus =
   | "UNDER_RESUBMISSION_ADMIN_REVIEW"
   | "APPROVED"
   | "LOCKED"
-  | "VOID";
+  | "VOID"
+  | "UNDER_CHANGE_UPDATE"
+  | "CORRECTION_REQUESTED"
+  | "UNDER_CORRECTION_UPDATE"
+  | "CHANGE_REQUESTED";
 
 // 🔁 Keep this in sync with backend
 export const STATUS_TRANSITIONS: Record<
@@ -87,13 +91,13 @@ export const STATUS_TRANSITIONS: Record<
   },
   CLIENT_NEEDS_CORRECTION: {
     canSet: ["CHEMISTRY", "MC", "SYSTEMADMIN"],
-    next: ["UNDER_RESUBMISSION_TESTING_REVIEW"],
+    next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
     canSet: ["CLIENT", "SYSTEMADMIN"],
-    next: ["RESUBMISSION_BY_CLIENT"],
+    next: ["UNDER_TESTING_REVIEW"],
     nextEditableBy: ["CHEMISTRY", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: ["CLIENT", "SYSTEMADMIN"],
   },
@@ -213,6 +217,106 @@ export const STATUS_TRANSITIONS: Record<
     nextEditableBy: ["SYSTEMADMIN"],
     canEdit: [],
   },
+
+  CHANGE_REQUESTED: {
+    canSet: [
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: ["UNDER_CHANGE_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: [
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: ["UNDER_CORRECTION_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "CHEMISTRY",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+  },
 };
 
 //  these are designed for readable badges on white UI
@@ -257,6 +361,12 @@ export const COA_STATUS_COLORS: Record<COAReportStatus, string> = {
   APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
   VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
+
+  CHANGE_REQUESTED: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CHANGE_UPDATE: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+  CORRECTION_REQUESTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
+  UNDER_CORRECTION_UPDATE:
+    "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
 };
 
 // Field-level permissions (frontend hint; backend is source of truth)
