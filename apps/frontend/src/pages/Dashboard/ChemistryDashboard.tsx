@@ -93,6 +93,12 @@ const CHEMISTRY_STATUSES = [
   "APPROVED",
   "LOCKED",
   "VOID",
+
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ] as const;
 
 // -----------------------------
@@ -670,6 +676,7 @@ export default function ChemistryDashboard() {
   };
 
   type WorkspaceMode = "VIEW" | "UPDATE";
+    type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -686,6 +693,43 @@ export default function ChemistryDashboard() {
       .map((id) => reports.find((r) => r.id === id))
       .filter(Boolean) as Report[];
   }, [workspaceIds, reports]);
+
+  
+    const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+      CorrectionLaunchKind[]
+    >([]);
+  
+    const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+    const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+    const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+      top: number;
+      left: number;
+    } | null>(null);
+  
+    useEffect(() => {
+      if (!correctionMenuOpen) return;
+  
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as HTMLElement;
+        if (!t.closest("[data-correction-menu]")) {
+          setCorrectionMenuOpen(false);
+        }
+      };
+  
+      window.addEventListener("mousedown", onDown);
+      return () => window.removeEventListener("mousedown", onDown);
+    }, [correctionMenuOpen]);
+  
+    useEffect(() => {
+      return () => {
+        if (correctionCloseTimerRef.current != null) {
+          window.clearTimeout(correctionCloseTimerRef.current);
+        }
+      };
+    }, []);
+  
+    const correctionCloseTimerRef = React.useRef<number | null>(null);
+  
 
   // fetch
   useEffect(() => {
@@ -1544,6 +1588,108 @@ export default function ChemistryDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
+  
+  function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return;
+
+  const hasBlockedStatus = selected.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
+
+  if (hasBlockedStatus) {
+    toast.error(
+      "Correction is not allowed for reports already in correction/change workflow",
+    );
+    return;
+  }
+
+    if (selected.length === 1) {
+      const r = selected[0];
+      const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+      const returnTo = location.pathname + location.search;
+
+      const navState = {
+        correctionLaunch: true,
+        correctionKinds: kinds,
+      };
+
+      if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+        navigate(
+          `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      } else {
+        navigate(
+          `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      }
+      return;
+    }
+
+    setWorkspaceIds(selected.map((r) => r.id));
+    setWorkspaceMode("UPDATE"); // ✅ still UPDATE only
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(selected[0].id);
+    setWorkspaceCorrectionKinds(kinds);
+    setWorkspaceOpen(true);
+  }
+
+  function clearCorrectionCloseTimer() {
+    if (correctionCloseTimerRef.current != null) {
+      window.clearTimeout(correctionCloseTimerRef.current);
+      correctionCloseTimerRef.current = null;
+    }
+  }
+
+  function openCorrectionMenu() {
+    clearCorrectionCloseTimer();
+
+    if (!selectedIds.length || !correctionBtnRef.current) return;
+
+    const r = correctionBtnRef.current.getBoundingClientRect();
+    setCorrectionMenuPos({
+      top: r.bottom + 8,
+      left: r.right - 220,
+    });
+    setCorrectionMenuOpen(true);
+  }
+
+  function scheduleCloseCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    correctionCloseTimerRef.current = window.setTimeout(() => {
+      setCorrectionMenuOpen(false);
+      correctionCloseTimerRef.current = null;
+    }, 180);
+  }
+
+ function closeCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    setCorrectionMenuOpen(false);
+  }
+
+  function isCorrectionFlowStatus(status: string) {
+    const s = String(status).toUpperCase();
+
+       return (
+      s.includes("CORRECTION") ||
+      s.includes("CHANGE_REQUESTED") ||
+      s.includes("UNDER_CHANGE_UPDATE") ||
+      s.includes("VOID") ||
+      s.includes("LOCKED") ||
+      s.includes("DRAFT") ||
+      s.includes("UNDER_DRAFT_REVIEW")
+    );
+  }
+  const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
+
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1708,6 +1854,44 @@ export default function ChemistryDashboard() {
                 </div>
               </div>
             )}
+          </div>
+
+           <div
+            className="relative"
+            data-correction-menu
+          onMouseEnter={() => {
+  if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+    openCorrectionMenu();
+  }
+}}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              ref={correctionBtnRef}
+              type="button"
+              onClick={(e) => {
+             e.stopPropagation();
+  if (!selectedIds.length || selectedHasCorrectionLockedStatus) return;
+
+                if (correctionMenuOpen) {
+                  closeCorrectionMenu();
+                } else {
+                  openCorrectionMenu();
+                }
+              }}
+              disabled={!selectedIds.length || printingBulk}
+             className={classNames(
+  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+  selectedIds.length && !selectedHasCorrectionLockedStatus
+    ? "bg-amber-600 text-white hover:bg-amber-700"
+    : "bg-slate-200 text-slate-500",
+)}
+            >
+              📝 Corrections ({selectedIds.length})
+              <span className="text-xs">▾</span>
+            </button>
           </div>
 
           <button
@@ -2450,16 +2634,77 @@ export default function ChemistryDashboard() {
           </div>
         </div>
       )}
+
+        {correctionMenuOpen &&
+              correctionMenuPos &&
+              createPortal(
+                <div
+                  className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+                  style={{
+                    top: correctionMenuPos.top,
+                    left: correctionMenuPos.left,
+                  }}
+                  data-correction-menu
+                  onMouseEnter={() => {
+                    clearCorrectionCloseTimer();
+                    setCorrectionMenuOpen(true);
+                  }}
+                  onMouseLeave={() => {
+                    scheduleCloseCorrectionMenu();
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      closeCorrectionMenu();
+                      openSelectedForCorrection(["REQUEST_CHANGE"]);
+                    }}
+                  >
+                    Request Change
+                  </button>
+      
+                  <button
+                    type="button"
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      closeCorrectionMenu();
+                      openSelectedForCorrection(["RAISE_CORRECTION"]);
+                    }}
+                  >
+                    Raise Correction
+                  </button>
+      
+                  {/* <div className="my-1 border-t" /> */}
+      
+                  {/* <button
+                    type="button"
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+                    onClick={() => {
+                      closeCorrectionMenu();
+                      openSelectedForCorrection([
+                        "REQUEST_CHANGE",
+                        "RAISE_CORRECTION",
+                      ]);
+                    }}
+                  >
+                    Open Both
+                  </button> */}
+                </div>,
+                document.body,
+              )}
       <ReportWorkspaceModal
         open={workspaceOpen}
         reports={workspaceReports}
         mode={workspaceMode}
         layout={workspaceLayout}
         activeId={workspaceActiveId}
+        correctionKinds={workspaceCorrectionKinds}
         onClose={() => {
           setWorkspaceOpen(false);
           setWorkspaceIds([]);
           setWorkspaceActiveId(null);
+          setWorkspaceCorrectionKinds([]);
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}

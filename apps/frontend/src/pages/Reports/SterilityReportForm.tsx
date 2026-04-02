@@ -82,6 +82,14 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
   APPROVED: { label: "Approve", color: "bg-green-700" },
+
+  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
+  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
+  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+  UNDER_CORRECTION_UPDATE: {
+    label: "Approve",
+    color: "bg-green-800",
+  },
 };
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
@@ -221,9 +229,10 @@ const DashStyles = () => (
     @media print { .dash::after { display:none; } }
   `}</style>
 );
+type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
 
 type SterilityReportFormProps = {
-  report?: any; // same pattern as Micro
+  report?: any;
   onClose?: () => void;
 
   embedded?: boolean;
@@ -233,6 +242,10 @@ type SterilityReportFormProps = {
   forcePageReadOnly?: boolean;
   onSaved?: (updated: any) => void;
   onStatusChanged?: (updated: any) => void;
+
+  correctionLaunch?: boolean;
+  correctionKinds?: CorrectionLaunchKind[];
+  isWorkspaceActive?: boolean;
 };
 
 const HIDE_SAVE_FOR = new Set<SterilityReportStatus>(["APPROVED", "LOCKED"]);
@@ -272,6 +285,10 @@ export default function SterilityReportForm({
   forcePageReadOnly = false,
   onSaved,
   onStatusChanged,
+
+  correctionLaunch = false,
+  correctionKinds = [],
+  isWorkspaceActive = true,
 }: SterilityReportFormProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
@@ -384,15 +401,37 @@ export default function SterilityReportForm({
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
-
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search, state } = location;
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
+  const routeCorrectionLaunch = !!state?.correctionLaunch;
+  const routeCorrectionKinds =
+    (state?.correctionKinds as CorrectionLaunchKind[]) ?? [];
+
+  const effectiveCorrectionLaunch = correctionLaunch || routeCorrectionLaunch;
+  const effectiveCorrectionKinds =
+    correctionKinds.length > 0 ? correctionKinds : routeCorrectionKinds;
+
   const returnTo = params.get("returnTo");
-  const backToDashboard = () => {
-    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-    else navigate("/clientDashboard", { replace: true });
-  };
+
+  const canShowFloatingUi = !embedded || isWorkspaceActive;
+
+const backToDashboard = () => {
+  if (returnTo)
+    return navigate(decodeURIComponent(returnTo), { replace: true });
+
+  if (role === "FRONTDESK")
+    return navigate("/frontdeskDashboard", { replace: true });
+  if (role === "MICRO") return navigate("/microDashboard", { replace: true });
+  if (role === "MC") return navigate("/mcDashboard", { replace: true });
+  if (role === "QA") return navigate("/qaDashboard", { replace: true });
+  if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+  if (role === "SYSTEMADMIN")
+    return navigate("/systemAdminDashboard", { replace: true });
+
+  return navigate("/", { replace: true });
+};
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -417,6 +456,29 @@ export default function SterilityReportForm({
     }
     setTemplateId(urlTemplateId); // works for view + edit
   }, [isAnyTemplateMode, urlTemplateId]);
+
+  useEffect(() => {
+    if (!effectiveCorrectionLaunch) return;
+    if (pageMode !== "UPDATE") return;
+    if (forceReadOnly) return;
+    if (!isWorkspaceActive) return;
+
+    const target = getCorrectionTargetStatus(
+      status as SterilityReportStatus,
+      effectiveCorrectionKinds,
+    );
+    if (!target) return;
+
+    setSelectingCorrections(true);
+    setPendingStatus(target);
+  }, [
+    effectiveCorrectionLaunch,
+    pageMode,
+    forceReadOnly,
+    isWorkspaceActive,
+    status,
+    effectiveCorrectionKinds,
+  ]);
 
   function getFieldDisplayValue(fieldKey: string) {
     const [base] = fieldKey.split(":");
@@ -503,7 +565,9 @@ export default function SterilityReportForm({
       target === "TESTING_NEEDS_CORRECTION" ||
       target === "QA_NEEDS_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION";
+      target === "CLIENT_NEEDS_CORRECTION" ||
+      target === "CHANGE_REQUESTED" ||
+      target === "CORRECTION_REQUESTED";
 
     if (isNeeds) {
       setSelectingCorrections(true);
@@ -530,7 +594,9 @@ export default function SterilityReportForm({
   async function resolveField(fieldKey: string) {
     if (!reportId) return;
     return runBusy("RESOLVE", async () => {
-      const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
+      const items = openCorrections.filter(
+        (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+      );
       if (!items.length) return;
 
       await Promise.all(
@@ -569,18 +635,35 @@ export default function SterilityReportForm({
 
   // Tiny inline pill next to a field label/badge
   function ResolveOverlay({ field }: { field: string }) {
-    if (!hasCorrection(field) || !canResolveField(field)) return null;
+    if (!hasOpenCorrection(field) || !canResolveField(field)) return null;
+
+    const disabled = !canResolveAllForFieldKey(field);
+
     return (
       <button
         type="button"
-        title="Resolve all notes for this field"
-        onClick={() => resolveField(field)}
-        className="
+        title={
+          isDirty
+            ? "Save the form before resolving"
+            : disabled
+              ? "Edit the field first before resolving"
+              : "Resolve all notes for this field"
+        }
+        onClick={() => {
+          if (disabled) return;
+          resolveField(field);
+        }}
+        disabled={disabled}
+        className={`
         absolute -top-2 -right-2 z-20
         h-5 w-5 rounded-full grid place-items-center
-        bg-emerald-600 text-white shadow
-        hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400
-      "
+        text-white shadow focus:outline-none focus:ring-2 focus:ring-emerald-400
+        ${
+          disabled
+            ? "bg-emerald-300 cursor-not-allowed opacity-60"
+            : "bg-emerald-600 hover:bg-emerald-700"
+        }
+      `}
       >
         ✓
       </button>
@@ -619,8 +702,22 @@ export default function SterilityReportForm({
 
   // const lock = (f: string) => !canEdit(role, f);
   // use:
-  const lock = (f: string) =>
-    forceReadOnly || !canEdit(role, f, status as SterilityReportStatus);
+  const correctionModeActive =
+    isCorrectionUpdateStatus(status as SterilityReportStatus) &&
+    openCorrections.length > 0;
+
+  const lock = (f: string) => {
+    if (forceReadOnly) return true;
+
+    const baseLocked = !canEdit(role, f, status as SterilityReportStatus);
+    if (baseLocked) return true;
+
+    if (correctionModeActive) {
+      return !isFieldRequestedForCorrection(f);
+    }
+
+    return false;
+  };
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
     role,
@@ -1245,6 +1342,91 @@ export default function SterilityReportForm({
     (role === "MICRO" || role === "MC") &&
     status === "SUBMITTED_BY_CLIENT";
 
+  function getCentralizedCorrectionStatus(
+    kinds: CorrectionLaunchKind[] = [],
+  ): SterilityReportStatus {
+    if (kinds.includes("RAISE_CORRECTION")) return "CORRECTION_REQUESTED";
+    if (kinds.includes("REQUEST_CHANGE")) return "CHANGE_REQUESTED";
+    return "CORRECTION_REQUESTED";
+  }
+
+  function getCorrectionTargetStatus(
+    _current: SterilityReportStatus,
+    kinds: CorrectionLaunchKind[] = [],
+  ): SterilityReportStatus {
+    return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function isCorrectionUpdateStatus(s?: SterilityReportStatus) {
+    return (
+      s === "UNDER_CORRECTION_UPDATE" ||
+      s === "UNDER_CHANGE_UPDATE" ||
+      s === "UNDER_CLIENT_CORRECTION"
+    );
+  }
+
+  function normalizeForCompare(v: any): string {
+    if (v === null || v === undefined) return "";
+
+    if (typeof v === "string") return v.trim();
+
+    if (Array.isArray(v) || typeof v === "object") {
+      try {
+        return JSON.stringify(v);
+      } catch {
+        return String(v).trim();
+      }
+    }
+
+    return String(v).trim();
+  }
+
+  function hasCorrectionBeenFixed(c: CorrectionItem): boolean {
+    const currentValue = getFieldDisplayValue(c.fieldKey);
+    const oldValue = c.oldValue;
+
+    return normalizeForCompare(currentValue) !== normalizeForCompare(oldValue);
+  }
+
+  function canResolveCorrectionItem(c: CorrectionItem): boolean {
+    return canResolveField(c.fieldKey) && hasCorrectionBeenFixed(c) && !isDirty;
+  }
+
+  function canResolveAllForFieldKey(fieldKey: string): boolean {
+    const items = openCorrections.filter(
+      (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+    if (!items.length) return false;
+
+    return items.every((c) => canResolveCorrectionItem(c));
+  }
+
+  function isFieldRequestedForCorrection(fieldKey: string) {
+    return openCorrections.some(
+      (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+  }
+
+  // function lockCorrectionField(fieldKey: string, baseField?: string) {
+  //   if (forceReadOnly) return true;
+
+  //   const fieldForPermission = baseField ?? fieldKey.split(":")[0];
+  //   const baseLocked = !canEdit(
+  //     role,
+  //     fieldForPermission,
+  //     status as SterilityReportStatus,
+  //   );
+  //   if (baseLocked) return true;
+
+  //   if (correctionModeActive) {
+  //     return !openCorrections.some(
+  //       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+  //     );
+  //   }
+
+  //   return false;
+  // }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1299,10 +1481,9 @@ export default function SterilityReportForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-        
                     role === "FRONTDESK" ||
                     isBusy ||
-                    status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                    status === "UNDER_CLIENT_REVIEW" ||
                     status === "LOCKED" ||
                     disableSaveUntilAssigned ||
                     (isTemplateMode && !templateName.trim())
@@ -1318,6 +1499,22 @@ export default function SterilityReportForm({
                       : "Save Report"}
                 </button>
               )}
+          </div>
+        )}
+
+        {canShowFloatingUi &&
+          effectiveCorrectionLaunch &&
+          pageMode === "UPDATE" &&
+          !isTemplateViewMode && (
+            <div className="no-print mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Correction selection is active. Click fields in the form to add
+              correction notes.
+            </div>
+          )}
+
+        {correctionModeActive && (
+          <div className="no-print mb-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            Only fields with requested corrections can be edited.
           </div>
         )}
 
@@ -2225,6 +2422,7 @@ export default function SterilityReportForm({
                     onChange={(e) => {
                       setTestedDate(e.target.value);
                       clearError("testedDate");
+                      markDirty();
                     }}
                     readOnly={lock("testedDate")}
                     aria-invalid={!!errors.testedDate}
@@ -2260,6 +2458,7 @@ export default function SterilityReportForm({
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
                       clearError("reviewedBy");
+                      markDirty();
                     }}
                     readOnly={lock("reviewedBy")}
                     placeholder="Name"
@@ -2297,6 +2496,7 @@ export default function SterilityReportForm({
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
                       clearError("reviewedDate");
+                      markDirty();
                     }}
                     readOnly={lock("reviewedDate")}
                     aria-invalid={!!errors.reviewedDate}
@@ -2324,48 +2524,48 @@ export default function SterilityReportForm({
                 Assign Report Number
               </button>
             )}
-            {!showAssignReportNumberButton &&STERILITY_STATUS_TRANSITIONS[
-              status as SterilityReportStatus
-            ]?.next.map((targetStatus: SterilityReportStatus) => {
-              if (
-                STERILITY_STATUS_TRANSITIONS[
-                  status as SterilityReportStatus
-                ].canSet.includes(role!) &&
-                statusButtons[targetStatus]
-              ) {
-                const { label, color } = statusButtons[targetStatus];
+            {!showAssignReportNumberButton &&
+              STERILITY_STATUS_TRANSITIONS[
+                status as SterilityReportStatus
+              ]?.next.map((targetStatus: SterilityReportStatus) => {
+                if (
+                  STERILITY_STATUS_TRANSITIONS[
+                    status as SterilityReportStatus
+                  ].canSet.includes(role!) &&
+                  statusButtons[targetStatus]
+                ) {
+                  const { label, color } = statusButtons[targetStatus];
 
-                const approveNeedsAttachment = isApproveAction(targetStatus);
-                const disableApproveForNoAttachment =
-                  approveNeedsAttachment && !hasAttachment;
+                  const approveNeedsAttachment = isApproveAction(targetStatus);
+                  const disableApproveForNoAttachment =
+                    approveNeedsAttachment && !hasAttachment;
 
-                const disabled =
-                
-                  isBusy ||
-                  attachmentsLoading ||
-                  disableApproveForNoAttachment;
+                  const disabled =
+                    isBusy ||
+                    attachmentsLoading ||
+                    disableApproveForNoAttachment;
 
-                return (
-                  <button
-                    key={targetStatus}
-                    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                    onClick={() => requestStatusChange(targetStatus)}
-                    disabled={disabled}
-                    title={
-                      disableApproveForNoAttachment
-                        ? "Upload at least 1 attachment to enable Approve"
-                        : undefined
-                    }
-                  >
-                    {busy === "STATUS" && <Spinner />}
-                    {attachmentsLoading && label === "Approve"
-                      ? "Checking..."
-                      : label}
-                  </button>
-                );
-              }
-              return null;
-            })}
+                  return (
+                    <button
+                      key={targetStatus}
+                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                      onClick={() => requestStatusChange(targetStatus)}
+                      disabled={disabled}
+                      title={
+                        disableApproveForNoAttachment
+                          ? "Upload at least 1 attachment to enable Approve"
+                          : undefined
+                      }
+                    >
+                      {busy === "STATUS" && <Spinner />}
+                      {attachmentsLoading && label === "Approve"
+                        ? "Checking..."
+                        : label}
+                    </button>
+                  );
+                }
+                return null;
+              })}
           </div>
         </div>
       )}
@@ -2439,7 +2639,7 @@ export default function SterilityReportForm({
         </div>
       )}
 
-      {!isTemplateViewMode && selectingCorrections && (
+      {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
           <div className="text-xs text-slate-600">
@@ -2493,6 +2693,10 @@ export default function SterilityReportForm({
                     pendingStatus!,
                     "Corrections requested",
                     reportVersion,
+                    {
+                      kinds: effectiveCorrectionKinds,
+                      previousStatus: status,
+                    },
                   );
 
                   setSelectingCorrections(false);
@@ -2530,7 +2734,7 @@ export default function SterilityReportForm({
         </div>
       )}
 
-      {!isTemplateViewMode && addForField && (
+      {canShowFloatingUi && !isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -2583,7 +2787,7 @@ export default function SterilityReportForm({
       )}
 
       {/* Floating Corrections button */}
-      {!isTemplateViewMode && (
+      {canShowFloatingUi && !isTemplateViewMode && (
         <div className="no-print fixed bottom-20 right-6 z-40">
           <button
             onClick={() => setShowCorrTray((s) => !s)}
@@ -2599,7 +2803,7 @@ export default function SterilityReportForm({
         </div>
       )}
 
-      {!isTemplateViewMode && showCorrTray && (
+      {canShowFloatingUi && !isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>
@@ -2635,16 +2839,53 @@ export default function SterilityReportForm({
                   )}
 
                   <div className="mt-2 flex gap-2">
+                   
                     <button
-                      className="text-xs font-medium text-emerald-700 hover:underline"
-                      onClick={() => resolveOne(c)}
+                      className={`text-xs font-medium ${
+                        canResolveCorrectionItem(c)
+                          ? "text-emerald-700 hover:underline"
+                          : "text-slate-400 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (!canResolveCorrectionItem(c)) return;
+                        resolveOne(c);
+                      }}
+                      disabled={!canResolveCorrectionItem(c)}
+                      title={
+                        isDirty
+                          ? "Save the form before resolving"
+                          : !hasCorrectionBeenFixed(c)
+                            ? "Edit the field first before resolving"
+                            : "Mark resolved"
+                      }
                     >
                       {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
                     </button>
+
                     <button
-                      className="text-xs text-slate-500 hover:underline"
-                      onClick={() => resolveField(c.fieldKey)}
-                      title="Resolve all notes for this field"
+                      className={`text-xs ${
+                        canResolveAllForFieldKey(c.fieldKey)
+                          ? "text-slate-500 hover:underline"
+                          : "text-slate-400 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (!canResolveAllForFieldKey(c.fieldKey)) return;
+                        resolveField(c.fieldKey);
+                      }}
+                      disabled={!canResolveAllForFieldKey(c.fieldKey)}
+                      title={
+                        isDirty
+                          ? "Save the form before resolving"
+                          : !openCorrections
+                                .filter(
+                                  (x) =>
+                                    x.fieldKey === c.fieldKey ||
+                                    x.fieldKey.startsWith(`${c.fieldKey}:`),
+                                )
+                                .every((x) => hasCorrectionBeenFixed(x))
+                            ? "Edit the field first before resolving"
+                            : "Resolve all notes for this field"
+                      }
                     >
                       Resolve all for field
                     </button>

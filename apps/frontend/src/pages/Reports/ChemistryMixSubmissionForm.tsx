@@ -108,8 +108,10 @@ const DashStyles = () => (
   `}</style>
 );
 
+type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+
 type ChemistryReportFormProps = {
-  report?: any; // same pattern as Micro
+  report?: any;
   onClose?: () => void;
 
   embedded?: boolean;
@@ -119,6 +121,10 @@ type ChemistryReportFormProps = {
   forcePageReadOnly?: boolean;
   onSaved?: (updated: any) => void;
   onStatusChanged?: (updated: any) => void;
+
+  correctionLaunch?: boolean;
+  correctionKinds?: CorrectionLaunchKind[];
+  isWorkspaceActive?: boolean;
 };
 
 const statusButtons: Record<string, { label: string; color: string }> = {
@@ -169,6 +175,14 @@ const statusButtons: Record<string, { label: string; color: string }> = {
   ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
   APPROVED: { label: "Approve", color: "bg-green-700" },
+
+  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
+  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
+  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+  UNDER_CORRECTION_UPDATE: {
+    label: "Approve",
+    color: "bg-green-800",
+  },
 };
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
@@ -221,6 +235,10 @@ export default function ChemistryMixSubmissionForm({
   forcePageReadOnly = false,
   onSaved,
   onStatusChanged,
+
+  correctionLaunch = false,
+  correctionKinds = [],
+  isWorkspaceActive = true,
 }: ChemistryReportFormProps) {
   const { user } = useAuth();
 
@@ -361,14 +379,84 @@ export default function ChemistryMixSubmissionForm({
     useChemistryReportValidation(role, {
       status: status as ChemistryReportStatus,
     });
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search, state } = location;
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
+  const routeCorrectionLaunch = !!state?.correctionLaunch;
+  const routeCorrectionKinds =
+    (state?.correctionKinds as CorrectionLaunchKind[]) ?? [];
+
+  const effectiveCorrectionLaunch = correctionLaunch || routeCorrectionLaunch;
+  const effectiveCorrectionKinds =
+    correctionKinds.length > 0 ? correctionKinds : routeCorrectionKinds;
+
   const returnTo = params.get("returnTo");
+
+  const canShowFloatingUi = !embedded || isWorkspaceActive;
+
   const backToDashboard = () => {
-    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-    else navigate("/clientDashboard", { replace: true });
-  };
+  if (returnTo)
+    return navigate(decodeURIComponent(returnTo), { replace: true });
+
+  if (role === "CLIENT")
+    return navigate("/clientDashboard", { replace: true });
+  if (role === "FRONTDESK")
+    return navigate("/frontdeskDashboard", { replace: true });
+  if (role === "CHEMISTRY")
+    return navigate("/chemistryDashboard", { replace: true });
+  if (role === "MC") return navigate("/mcDashboard", { replace: true });
+  if (role === "QA") return navigate("/qaDashboard", { replace: true });
+  if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+  if (role === "SYSTEMADMIN")
+    return navigate("/systemAdminDashboard", { replace: true });
+
+  return navigate("/", { replace: true });
+};
+
+  // const backToDashboard = () => {
+  //   if (returnTo)
+  //     return navigate(decodeURIComponent(returnTo), { replace: true });
+
+  //   if (role === "FRONTDESK")
+  //     return navigate("/frontdeskDashboard", { replace: true });
+  //   if (role === "CHEMISTRY")
+  //     return navigate("/chemistryDashboard", { replace: true });
+  //   if (role === "MC") return navigate("/mcDashboard", { replace: true });
+  //   if (role === "QA") return navigate("/qaDashboard", { replace: true });
+  //   if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+  //   if (role === "SYSTEMADMIN")
+  //     return navigate("/systemAdminDashboard", { replace: true });
+
+  //   return navigate("/", { replace: true });
+  // };
+  // const backToDashboard = () => {
+  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+  //   else navigate("/clientDashboard", { replace: true });
+  // };
+
+  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const openCorrections = useMemo(
+    () => corrections.filter((c) => c.status === "OPEN"),
+    [corrections],
+  );
+
+  // const corrByField = useMemo(() => {
+  //   const m: Record<string, CorrectionItem[]> = {};
+  //   for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
+  //   return m;
+  // }, [openCorrections]);
+
+  const hasCorrection = (keyOrPrefix: string) =>
+    hasOpenCorrectionKey(keyOrPrefix);
+
+  // const correctionText = (field: string) =>
+  //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
+
+  const [selectingCorrections, setSelectingCorrections] = useState(false);
+  const [pendingCorrections, setPendingCorrections] = useState<
+    { fieldKey: string; message: string; oldValue?: string | null }[]
+  >([]);
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -395,6 +483,29 @@ export default function ChemistryMixSubmissionForm({
     }
     setTemplateId(urlTemplateId); // works for view + edit
   }, [isAnyTemplateMode, urlTemplateId]);
+
+  useEffect(() => {
+    if (!effectiveCorrectionLaunch) return;
+    if (pageMode !== "UPDATE") return;
+    if (forceReadOnly) return;
+    if (!isWorkspaceActive) return;
+
+    const target = getCorrectionTargetStatus(
+      status as ChemistryReportStatus,
+      effectiveCorrectionKinds,
+    );
+    if (!target) return;
+
+    setSelectingCorrections(true);
+    setPendingStatus(target);
+  }, [
+    effectiveCorrectionLaunch,
+    pageMode,
+    forceReadOnly,
+    isWorkspaceActive,
+    status,
+    effectiveCorrectionKinds,
+  ]);
 
   function hydrateForm(r?: any) {
     // header fields
@@ -485,8 +596,22 @@ export default function ChemistryMixSubmissionForm({
     version?: number;
   };
 
-  const lock = (f: string) =>
-    forceReadOnly || !canEdit(role, f, status as ChemistryReportStatus);
+  const correctionModeActive =
+    isCorrectionUpdateStatus(status as ChemistryReportStatus) &&
+    openCorrections.length > 0;
+
+  const lock = (f: string) => {
+    if (forceReadOnly) return true;
+
+    const baseLocked = !canEdit(role, f, status as ChemistryReportStatus);
+    if (baseLocked) return true;
+
+    if (correctionModeActive) {
+      return !isFieldRequestedForCorrection(f);
+    }
+
+    return false;
+  };
 
   type ActiveRowError = {
     bulkActiveLot?: string;
@@ -649,29 +774,6 @@ export default function ChemistryMixSubmissionForm({
       .catch(() => {});
   }, [reportId]);
 
-  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
-  const openCorrections = useMemo(
-    () => corrections.filter((c) => c.status === "OPEN"),
-    [corrections],
-  );
-
-  // const corrByField = useMemo(() => {
-  //   const m: Record<string, CorrectionItem[]> = {};
-  //   for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
-  //   return m;
-  // }, [openCorrections]);
-
-  const hasCorrection = (keyOrPrefix: string) =>
-    hasOpenCorrectionKey(keyOrPrefix);
-
-  // const correctionText = (field: string) =>
-  //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
-
-  const [selectingCorrections, setSelectingCorrections] = useState(false);
-  const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string; oldValue?: string | null }[]
-  >([]);
-
   // if opening an existing template later, you will prefill these
 
   function stringify(v: any) {
@@ -762,7 +864,9 @@ export default function ChemistryMixSubmissionForm({
       target === "TESTING_NEEDS_CORRECTION" ||
       target === "QA_NEEDS_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION";
+      target === "CLIENT_NEEDS_CORRECTION" ||
+      target === "CHANGE_REQUESTED" ||
+      target === "CORRECTION_REQUESTED";
 
     if (isNeeds) {
       setSelectingCorrections(true);
@@ -812,7 +916,9 @@ export default function ChemistryMixSubmissionForm({
     if (!reportId) return;
     return runBusy("RESOLVE", async () => {
       // const token = localStorage.getItem("token")!;
-      const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
+      const items = openCorrections.filter(
+        (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+      );
       if (!items.length) return;
 
       await Promise.all(
@@ -854,17 +960,34 @@ export default function ChemistryMixSubmissionForm({
   function ResolveOverlay({ field }: { field: string }) {
     if (!hasOpenCorrection(field) || !canResolveField(field)) return null;
 
+    const disabled = !canResolveAllForFieldKey(field);
+
     return (
       <button
         type="button"
-        title="Resolve all notes for this field"
+        title={
+          isDirty
+            ? "Save the form before resolving"
+            : disabled
+              ? "Edit the field first before resolving"
+              : "Resolve all notes for this field"
+        }
         onClick={(e) => {
           e.stopPropagation();
+          if (disabled) return;
           resolveField(field);
         }}
-        className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full grid place-items-center
-                 bg-emerald-600 text-white shadow hover:bg-emerald-700 focus:outline-none
-                 focus:ring-2 focus:ring-emerald-400"
+        disabled={disabled}
+        className={`
+        absolute -top-2 -right-2 z-20
+        h-5 w-5 rounded-full grid place-items-center
+        text-white shadow focus:outline-none focus:ring-2 focus:ring-emerald-400
+        ${
+          disabled
+            ? "bg-emerald-300 cursor-not-allowed opacity-60"
+            : "bg-emerald-600 hover:bg-emerald-700"
+        }
+      `}
       >
         ✓
       </button>
@@ -1104,17 +1227,22 @@ export default function ChemistryMixSubmissionForm({
         newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
         newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        newStatus === "CHANGE_REQUESTED" ||
+        newStatus === "CORRECTION_REQUESTED" ||
+        newStatus === "UNDER_CHANGE_UPDATE" ||
+        newStatus === "UNDER_CORRECTION_UPDATE" ||
         newStatus === "LOCKED" ||
         newStatus === "APPROVED"
       ) {
-        if (!okFields) {
-          alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
-        }
-        if (!okRows) {
-          alert("⚠️ Please fix the highlighted rows before changing status.");
-          return;
-        }
+     if (!okFields) {
+  alert("⚠️ Please fix the highlighted fields before changing status.");
+  return;
+}
+
+if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
+  alert("⚠️ Please fix the highlighted rows before changing status.");
+  return;
+}
       }
 
       // if (newStatus === "SUBMITTED_BY_CLIENT") {
@@ -1353,14 +1481,17 @@ export default function ChemistryMixSubmissionForm({
 
     return runBusy("STATUS", async () => {
       try {
-        const updated = await api<any>(`/chemistry-reports/${reportId}/status`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: "UNDER_TESTING_REVIEW",
-            reason: "Assign report number / start prelim testing",
-            expectedVersion: reportVersion,
-          }),
-        });
+        const updated = await api<any>(
+          `/chemistry-reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "UNDER_TESTING_REVIEW",
+              reason: "Assign report number / start prelim testing",
+              expectedVersion: reportVersion,
+            }),
+          },
+        );
 
         const nextStatus =
           (updated?.status as ChemistryReportStatus) || "UNDER_TESTING_REVIEW";
@@ -1393,6 +1524,67 @@ export default function ChemistryMixSubmissionForm({
     embedded &&
     (role === "CHEMISTRY" || role === "MC") &&
     status === "SUBMITTED_BY_CLIENT";
+
+  function getCentralizedCorrectionStatus(
+    kinds: CorrectionLaunchKind[] = [],
+  ): ChemistryReportStatus {
+    if (kinds.includes("RAISE_CORRECTION")) return "CORRECTION_REQUESTED";
+    if (kinds.includes("REQUEST_CHANGE")) return "CHANGE_REQUESTED";
+    return "CORRECTION_REQUESTED";
+  }
+
+  function getCorrectionTargetStatus(
+    _current: ChemistryReportStatus,
+    kinds: CorrectionLaunchKind[] = [],
+  ): ChemistryReportStatus {
+    return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function isCorrectionUpdateStatus(s?: ChemistryReportStatus) {
+    return s === "UNDER_CORRECTION_UPDATE" || s === "UNDER_CHANGE_UPDATE";
+  }
+
+  function normalizeForCompare(v: any): string {
+    if (v === null || v === undefined) return "";
+
+    if (typeof v === "string") return v.trim();
+
+    if (Array.isArray(v) || typeof v === "object") {
+      try {
+        return JSON.stringify(v);
+      } catch {
+        return String(v).trim();
+      }
+    }
+
+    return String(v).trim();
+  }
+
+  function hasCorrectionBeenFixed(c: CorrectionItem): boolean {
+    const currentValue = getFieldDisplayValue(c.fieldKey);
+    const oldValue = c.oldValue;
+
+    return normalizeForCompare(currentValue) !== normalizeForCompare(oldValue);
+  }
+
+  function canResolveCorrectionItem(c: CorrectionItem): boolean {
+    return canResolveField(c.fieldKey) && hasCorrectionBeenFixed(c) && !isDirty;
+  }
+
+  function canResolveAllForFieldKey(fieldKey: string): boolean {
+    const items = openCorrections.filter(
+      (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+    if (!items.length) return false;
+
+    return items.every((c) => canResolveCorrectionItem(c));
+  }
+
+  function isFieldRequestedForCorrection(fieldKey: string) {
+    return openCorrections.some(
+      (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1442,7 +1634,6 @@ export default function ChemistryMixSubmissionForm({
                   className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleSave}
                   disabled={
-                   
                     role === "FRONTDESK" ||
                     isBusy ||
                     status === "UNDER_CLIENT_REVIEW" ||
@@ -1461,6 +1652,22 @@ export default function ChemistryMixSubmissionForm({
                       : "Save Report"}
                 </button>
               )}
+          </div>
+        )}
+
+        {canShowFloatingUi &&
+          effectiveCorrectionLaunch &&
+          pageMode === "UPDATE" &&
+          !isTemplateViewMode && (
+            <div className="no-print mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Correction selection is active. Click fields in the form to add
+              correction notes.
+            </div>
+          )}
+
+        {correctionModeActive && (
+          <div className="no-print mb-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            Only fields with requested corrections can be edited.
           </div>
         )}
 
@@ -1728,6 +1935,7 @@ export default function ChemistryMixSubmissionForm({
                     name="sampleCollected"
                     checked={sampleCollected.includes("TOP_BEG")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("sampleCollected")) return;
                       toggleSampleCollected("TOP_BEG");
                       clearError("sampleCollected");
@@ -1748,6 +1956,7 @@ export default function ChemistryMixSubmissionForm({
                     name="sampleCollected"
                     checked={sampleCollected.includes("MID")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("sampleCollected")) return;
                       toggleSampleCollected("MID");
                       clearError("sampleCollected");
@@ -1768,6 +1977,7 @@ export default function ChemistryMixSubmissionForm({
                     name="sampleCollected"
                     checked={sampleCollected.includes("BOTTOM_END")}
                     onChange={() => {
+                      if (selectingCorrections) return;
                       if (lock("sampleCollected")) return;
                       toggleSampleCollected("BOTTOM_END");
                       clearError("sampleCollected");
@@ -2776,7 +2986,6 @@ export default function ChemistryMixSubmissionForm({
                       approveNeedsAttachment && !hasAttachment;
 
                     const disabled =
-                    
                       isBusy ||
                       attachmentsLoading ||
                       disableApproveForNoAttachment;
@@ -2877,7 +3086,7 @@ export default function ChemistryMixSubmissionForm({
         </div>
       )}
 
-      {!isTemplateViewMode && selectingCorrections && (
+      {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
           <div className="text-xs text-slate-600">
@@ -2931,6 +3140,10 @@ export default function ChemistryMixSubmissionForm({
                     pendingStatus!,
                     "Corrections requested",
                     reportVersion,
+                    {
+                      kinds: effectiveCorrectionKinds,
+                      previousStatus: status,
+                    },
                   );
 
                   setSelectingCorrections(false);
@@ -2968,7 +3181,7 @@ export default function ChemistryMixSubmissionForm({
         </div>
       )}
 
-      {!isTemplateViewMode && addForField && (
+      {canShowFloatingUi && !isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-base font-semibold mb-2">Add correction</h3>
@@ -3021,7 +3234,7 @@ export default function ChemistryMixSubmissionForm({
       )}
 
       {/* Floating Corrections button */}
-      {!isTemplateViewMode && (
+      {canShowFloatingUi && !isTemplateViewMode && (
         <div className="no-print fixed bottom-20 right-6 z-40">
           <button
             onClick={() => setShowCorrTray((s) => !s)}
@@ -3037,7 +3250,7 @@ export default function ChemistryMixSubmissionForm({
         </div>
       )}
 
-      {!isTemplateViewMode && showCorrTray && (
+      {canShowFloatingUi && !isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>
@@ -3071,18 +3284,53 @@ export default function ChemistryMixSubmissionForm({
                       </span>
                     </div>
                   )}
-
                   <div className="mt-2 flex gap-2">
                     <button
-                      className="text-xs font-medium text-emerald-700 hover:underline"
-                      onClick={() => resolveOne(c)}
+                      className={`text-xs font-medium ${
+                        canResolveCorrectionItem(c)
+                          ? "text-emerald-700 hover:underline"
+                          : "text-slate-400 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (!canResolveCorrectionItem(c)) return;
+                        resolveOne(c);
+                      }}
+                      disabled={!canResolveCorrectionItem(c)}
+                      title={
+                        isDirty
+                          ? "Save the form before resolving"
+                          : !hasCorrectionBeenFixed(c)
+                            ? "Edit the field first before resolving"
+                            : "Mark resolved"
+                      }
                     >
                       {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
                     </button>
+
                     <button
-                      className="text-xs text-slate-500 hover:underline"
-                      onClick={() => resolveField(c.fieldKey)}
-                      title="Resolve all notes for this field"
+                      className={`text-xs ${
+                        canResolveAllForFieldKey(c.fieldKey)
+                          ? "text-slate-500 hover:underline"
+                          : "text-slate-400 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (!canResolveAllForFieldKey(c.fieldKey)) return;
+                        resolveField(c.fieldKey);
+                      }}
+                      disabled={!canResolveAllForFieldKey(c.fieldKey)}
+                      title={
+                        isDirty
+                          ? "Save the form before resolving"
+                          : !openCorrections
+                                .filter(
+                                  (x) =>
+                                    x.fieldKey === c.fieldKey ||
+                                    x.fieldKey.startsWith(`${c.fieldKey}:`),
+                                )
+                                .every((x) => hasCorrectionBeenFixed(x))
+                            ? "Edit the field first before resolving"
+                            : "Resolve all notes for this field"
+                      }
                     >
                       Resolve all for field
                     </button>

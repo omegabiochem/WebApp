@@ -59,7 +59,12 @@ export type ReportStatus =
   | "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW"
   | "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
   | "FINAL_APPROVED"
-  | "LOCKED" | "VOID";
+  | "LOCKED"
+  | "VOID"
+  | "UNDER_CHANGE_UPDATE"
+  | "CORRECTION_REQUESTED"
+  | "UNDER_CORRECTION_UPDATE"
+  | "CHANGE_REQUESTED";
 
 // 🔁 Keep this in sync with backend
 export const STATUS_TRANSITIONS: Record<
@@ -72,13 +77,13 @@ export const STATUS_TRANSITIONS: Record<
   }
 > = {
   DRAFT: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"],
     nextEditableBy: ["CLIENT", "FRONTDESK", "SYSTEMADMIN"],
     canEdit: ["CLIENT"],
   },
   UNDER_DRAFT_REVIEW: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["DRAFT", "SUBMITTED_BY_CLIENT"], // ✅
     nextEditableBy: ["CLIENT", "FRONTDESK", "SYSTEMADMIN"],
     canEdit: ["CLIENT"],
@@ -90,202 +95,202 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
-    canSet: ["CLIENT" ,"SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["CLIENT_NEEDS_PRELIMINARY_CORRECTION", "PRELIMINARY_APPROVED"],
-    nextEditableBy: ["CLIENT" ,"SYSTEMADMIN"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
     canEdit: [],
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: ["CLIENT"],
   },
   UNDER_CLIENT_FINAL_REVIEW: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["FINAL_APPROVED", "CLIENT_NEEDS_FINAL_CORRECTION"],
-    nextEditableBy: ["ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
-    next: ["UNDER_PRELIMINARY_TESTING_REVIEW"], 
-    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ["ADMIN", "QA", "MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   FINAL_RESUBMISSION_BY_CLIENT: {
-    canSet: ["CLIENT","SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   PRELIMINARY_APPROVED: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ["FRONTDESK" ,"SYSTEMADMIN"],
+    canSet: ["FRONTDESK", "SYSTEMADMIN"],
     next: ["UNDER_CLIENT_FINAL_REVIEW", "FRONTDESK_ON_HOLD"],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ["FRONTDESK" ,"SYSTEMADMIN"],
+    canSet: ["FRONTDESK", "SYSTEMADMIN"],
     next: ["RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["FRONTDESK" ,"SYSTEMADMIN"],
+    nextEditableBy: ["FRONTDESK", "SYSTEMADMIN"],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ["FRONTDESK", "ADMIN", "QA" ,"SYSTEMADMIN"],
-    next: ["SUBMITTED_BY_CLIENT" ],
-    nextEditableBy: ["CLIENT" ,"SYSTEMADMIN"],
+    canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
+    next: ["SUBMITTED_BY_CLIENT"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_PRELIMINARY_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: [
       "PRELIMINARY_TESTING_ON_HOLD",
       "PRELIMINARY_TESTING_NEEDS_CORRECTION",
       "UNDER_QA_PRELIMINARY_REVIEW",
     ],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
-    canEdit: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
   PRELIMINARY_TESTING_ON_HOLD: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    canSet: ["CLIENT" ,"SYSTEMADMIN"],
+    canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["UNDER_CLIENT_PRELIMINARY_CORRECTION"],
     nextEditableBy: ["CLIENT"],
     canEdit: [],
   },
   UNDER_QA_PRELIMINARY_REVIEW: {
-    canSet: ["QA" ,"SYSTEMADMIN"],
+    canSet: ["QA", "SYSTEMADMIN"],
     next: [
       "QA_NEEDS_PRELIMINARY_CORRECTION",
       "UNDER_CLIENT_PRELIMINARY_REVIEW",
     ],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
-    canEdit: ["QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: ["QA", "SYSTEMADMIN"],
   },
   QA_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ["QA","MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["QA", "MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_QA_PRELIMINARY_REVIEW"],
     nextEditableBy: ["CLIENT"],
-    canEdit: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
   PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ["QA" ,"SYSTEMADMIN"],
+    canSet: ["QA", "SYSTEMADMIN"],
     next: ["UNDER_QA_PRELIMINARY_REVIEW"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_FINAL_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: [
       "FINAL_TESTING_ON_HOLD",
       "FINAL_TESTING_NEEDS_CORRECTION",
       "UNDER_QA_FINAL_REVIEW",
     ],
-    nextEditableBy: ["QA", "ADMIN" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: ["MICRO", "MC"],
   },
   FINAL_TESTING_ON_HOLD: {
-    canSet: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["FINAL_TESTING_NEEDS_CORRECTION", "UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["CLIENT", "MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["CLIENT", "MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     next: ["UNDER_CLIENT_FINAL_CORRECTION"],
-    nextEditableBy: ["CLIENT" ,"SYSTEMADMIN"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_RESUBMISSION_QA_REVIEW"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
-    canEdit: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
   FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ["MICRO", "MC", "ADMIN", "QA" ,"SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
     next: ["UNDER_QA_FINAL_REVIEW"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
-    canEdit: ["QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["QA", "SYSTEMADMIN"],
   },
   UNDER_QA_FINAL_REVIEW: {
-    canSet: ["MICRO", "MC", "QA" , "SYSTEMADMIN"],
+    canSet: ["MICRO", "MC", "QA", "SYSTEMADMIN"],
     next: ["QA_NEEDS_FINAL_CORRECTION", "RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
-    canEdit: ["QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["QA", "SYSTEMADMIN"],
   },
   QA_NEEDS_FINAL_CORRECTION: {
-    canSet: ["QA","MICRO", "MC" ,"SYSTEMADMIN"],
+    canSet: ["QA", "MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_FINAL_TESTING_REVIEW"],
-    nextEditableBy: ["MICRO", "MC" ,"SYSTEMADMIN"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
-    canSet: ["QA" ,"SYSTEMADMIN"],
+    canSet: ["QA", "SYSTEMADMIN"],
     next: ["RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["CLIENT" ,"SYSTEMADMIN"],
-    canEdit: ["ADMIN", "QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "QA", "SYSTEMADMIN"],
   },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
-    canEdit: ["ADMIN" ,"SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_QA_FINAL_REVIEW"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
-    canEdit: ["ADMIN" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
   },
   ADMIN_REJECTED: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_QA_FINAL_REVIEW"],
-    nextEditableBy: ["QA" ,"SYSTEMADMIN"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: [],
   },
   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ["ADMIN" ,"SYSTEMADMIN"],
+    canSet: ["ADMIN", "SYSTEMADMIN"],
     next: ["RECEIVED_BY_FRONTDESK"],
-    nextEditableBy: ["CLIENT" ,"SYSTEMADMIN"],
-    canEdit: ["ADMIN" ,"SYSTEMADMIN"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
   },
   FINAL_APPROVED: {
     canSet: [],
@@ -299,11 +304,110 @@ export const STATUS_TRANSITIONS: Record<
     nextEditableBy: [],
     canEdit: [],
   },
-   VOID: {
+  VOID: {
     canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN", "QA"], // nobody can set FROM VOID (no transitions out)
     next: [],
-  nextEditableBy: [ "SYSTEMADMIN"],
+    nextEditableBy: ["SYSTEMADMIN"],
     canEdit: [],
+  },
+  CHANGE_REQUESTED: {
+    canSet: [
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: ["UNDER_CHANGE_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: [
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: ["UNDER_CORRECTION_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
   },
 };
 
@@ -380,7 +484,13 @@ export const STATUS_COLORS: Record<ReportStatus, string> = {
 
   FINAL_APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
-   VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
+  VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
+
+  CHANGE_REQUESTED: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CHANGE_UPDATE: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+  CORRECTION_REQUESTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
+  UNDER_CORRECTION_UPDATE:
+    "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
 };
 
 // Field-level permissions (frontend hint; backend is source of truth)
@@ -507,5 +617,5 @@ export const JJL_SAMPLE_TYPE_OPTIONS = [
   "Bulk Cleaning Validation",
   "Finished Goods Cleaning Validation",
   "Bulk Process Validation",
-  "Raw Materials"
+  "Raw Materials",
 ] as const;
