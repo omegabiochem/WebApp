@@ -150,8 +150,6 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
 
 export type MicroPhase = "PRELIM" | "FINAL";
 
-
-
 // Small helper you can use instead of a local canEdit()
 export function canEditBy(
   role: Role | undefined,
@@ -233,11 +231,21 @@ export async function createCorrections(
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
+  meta?: {
+    kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
+    previousStatus?: string;
+  },
 ) {
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+    body: JSON.stringify({
+      items,
+      targetStatus,
+      reason,
+      expectedVersion,
+      meta,
+    }),
   });
 }
 

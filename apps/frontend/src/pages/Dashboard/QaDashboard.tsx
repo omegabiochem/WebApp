@@ -153,6 +153,11 @@ const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "FINAL_APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ];
 
 // A status filter can be micro OR chemistry OR "ALL"
@@ -192,6 +197,11 @@ const QA_CHEM_STATUSES: DashboardStatus[] = [
   "APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ];
 
 const QA_STERILITY_STATUSES: DashboardStatus[] = [
@@ -219,6 +229,11 @@ const QA_STERILITY_STATUSES: DashboardStatus[] = [
   "APPROVED",
   "LOCKED",
   "VOID",
+
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
 ];
 
 // ---------------------------------
@@ -685,6 +700,7 @@ export default function QaDashboard() {
   });
 
   type WorkspaceMode = "VIEW" | "UPDATE";
+  type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -710,6 +726,41 @@ export default function QaDashboard() {
           r!.reportNumber != null ? String(r!.reportNumber) : undefined,
       }));
   }, [workspaceIds, reports]);
+
+  const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+    CorrectionLaunchKind[]
+  >([]);
+
+  const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+  const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!correctionMenuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-correction-menu]")) {
+        setCorrectionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [correctionMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (correctionCloseTimerRef.current != null) {
+        window.clearTimeout(correctionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   // -----------------------------
   // Bulk Change Status (QA)
@@ -1679,6 +1730,107 @@ export default function QaDashboard() {
   if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
+
+  function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    if (!selected.length) return;
+
+    const hasBlockedStatus = selected.some((r) =>
+      isCorrectionFlowStatus(String(r.status)),
+    );
+
+    if (hasBlockedStatus) {
+      toast.error(
+        "Correction is not allowed for reports already in correction/change workflow",
+      );
+      return;
+    }
+
+    if (selected.length === 1) {
+      const r = selected[0];
+      const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+      const returnTo = location.pathname + location.search;
+
+      const navState = {
+        correctionLaunch: true,
+        correctionKinds: kinds,
+      };
+
+      if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+        navigate(
+          `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      } else {
+        navigate(
+          `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      }
+      return;
+    }
+
+    setWorkspaceIds(selected.map((r) => r.id));
+    setWorkspaceMode("UPDATE"); // ✅ still UPDATE only
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(selected[0].id);
+    setWorkspaceCorrectionKinds(kinds);
+    setWorkspaceOpen(true);
+  }
+
+  function clearCorrectionCloseTimer() {
+    if (correctionCloseTimerRef.current != null) {
+      window.clearTimeout(correctionCloseTimerRef.current);
+      correctionCloseTimerRef.current = null;
+    }
+  }
+
+  function openCorrectionMenu() {
+    clearCorrectionCloseTimer();
+
+    if (!selectedIds.length || !correctionBtnRef.current) return;
+
+    const r = correctionBtnRef.current.getBoundingClientRect();
+    setCorrectionMenuPos({
+      top: r.bottom + 8,
+      left: r.right - 220,
+    });
+    setCorrectionMenuOpen(true);
+  }
+
+  function scheduleCloseCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    correctionCloseTimerRef.current = window.setTimeout(() => {
+      setCorrectionMenuOpen(false);
+      correctionCloseTimerRef.current = null;
+    }, 180);
+  }
+
+  function closeCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    setCorrectionMenuOpen(false);
+  }
+
+  function isCorrectionFlowStatus(status: string) {
+    const s = String(status).toUpperCase();
+
+       return (
+      s.includes("CORRECTION") ||
+      s.includes("CHANGE_REQUESTED") ||
+      s.includes("UNDER_CHANGE_UPDATE") ||
+      s.includes("VOID") ||
+      s.includes("LOCKED") ||
+      s.includes("DRAFT") ||
+      s.includes("UNDER_DRAFT_REVIEW")
+    );
+  }
+  const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1819,6 +1971,45 @@ export default function QaDashboard() {
               )}
             </div>
           )}
+
+          <div
+            className="relative"
+            data-correction-menu
+            onMouseEnter={() => {
+              if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+                openCorrectionMenu();
+              }
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              ref={correctionBtnRef}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!selectedIds.length || selectedHasCorrectionLockedStatus)
+                  return;
+
+                if (correctionMenuOpen) {
+                  closeCorrectionMenu();
+                } else {
+                  openCorrectionMenu();
+                }
+              }}
+              disabled={!selectedIds.length || printingBulk}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && !selectedHasCorrectionLockedStatus
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
+            >
+              📝 Corrections ({selectedIds.length})
+              <span className="text-xs">▾</span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -2103,8 +2294,8 @@ export default function QaDashboard() {
           </div>
         )}
         <div className="min-h-0">
-  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
-    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-30 bg-slate-50">
                 <tr className="text-left text-slate-600">
                   <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
@@ -2118,17 +2309,17 @@ export default function QaDashboard() {
                   </th>
 
                   {selectedCols.map((k) => (
-                   <th
-  key={k}
-  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
->
+                    <th
+                      key={k}
+                      className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+                    >
                       {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
                     </th>
                   ))}
-                 <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
-  Status
-</th>
-                  <th  className="sticky right-0 z-20 px-4 py-3 font-medium bg-slate-50 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="sticky right-0 z-20 px-4 py-3 font-medium bg-slate-50 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                     <div className="flex items-center justify-between gap-2">
                       <span>Actions</span>
 
@@ -2255,8 +2446,7 @@ export default function QaDashboard() {
                   pageRows.map((r) => {
                     const isMicro =
                       r.formType === "MICRO_MIX" ||
-                      r.formType === "MICRO_MIX_WATER" ||
-                      r.formType === "STERILITY";
+                      r.formType === "MICRO_MIX_WATER";
                     const isChemistry =
                       r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                     const rowBusy = updatingId === r.id;
@@ -2326,7 +2516,7 @@ export default function QaDashboard() {
                           </span>
                         </td>
 
-<td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                        <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                           <div className="flex items-center gap-2">
                             <button
                               className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2372,8 +2562,7 @@ export default function QaDashboard() {
                                       r.status ===
                                       "CLIENT_NEEDS_FINAL_CORRECTION"
                                     ) {
-                                      const next =
-                                        "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW";
+                                      const next = "UNDER_FINAL_TESTING_REVIEW";
                                       await setStatus(r, next, "set by qa");
                                       setReports((prev) =>
                                         prev.map((x) =>
@@ -2410,8 +2599,7 @@ export default function QaDashboard() {
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
-                                      const next =
-                                        "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                      const next = "UNDER_TESTING_REVIEW";
                                       await setStatus(r, next, "set by qa");
                                       setReports((prev) =>
                                         prev.map((x) =>
@@ -2449,8 +2637,7 @@ export default function QaDashboard() {
                                       if (
                                         r.status === "CLIENT_NEEDS_CORRECTION"
                                       ) {
-                                        const next =
-                                          "UNDER_RESUBMISSION_TESTING_REVIEW";
+                                        const next = "UNDER_TESTING_REVIEW";
                                         await setStatus(r, next, "set by qa");
                                         setReports((prev) =>
                                           prev.map((x) =>
@@ -3247,16 +3434,77 @@ export default function QaDashboard() {
         </div>
       )}
 
+      {correctionMenuOpen &&
+        correctionMenuPos &&
+        createPortal(
+          <div
+            className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+            style={{
+              top: correctionMenuPos.top,
+              left: correctionMenuPos.left,
+            }}
+            data-correction-menu
+            onMouseEnter={() => {
+              clearCorrectionCloseTimer();
+              setCorrectionMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["REQUEST_CHANGE"]);
+              }}
+            >
+              Request Change
+            </button>
+
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["RAISE_CORRECTION"]);
+              }}
+            >
+              Raise Correction
+            </button>
+
+            {/* <div className="my-1 border-t" /> */}
+
+            {/* <button
+                    type="button"
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+                    onClick={() => {
+                      closeCorrectionMenu();
+                      openSelectedForCorrection([
+                        "REQUEST_CHANGE",
+                        "RAISE_CORRECTION",
+                      ]);
+                    }}
+                  >
+                    Open Both
+                  </button> */}
+          </div>,
+          document.body,
+        )}
+
       <ReportWorkspaceModal
         open={workspaceOpen}
         reports={workspaceReports}
         mode={workspaceMode}
         layout={workspaceLayout}
         activeId={workspaceActiveId}
+        correctionKinds={workspaceCorrectionKinds}
         onClose={() => {
           setWorkspaceOpen(false);
           setWorkspaceIds([]);
           setWorkspaceActiveId(null);
+          setWorkspaceCorrectionKinds([]);
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}

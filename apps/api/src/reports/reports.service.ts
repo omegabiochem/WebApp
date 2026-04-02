@@ -166,19 +166,19 @@ const STATUS_TRANSITIONS = {
   },
   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW'],
+    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['PRELIMINARY_RESUBMISSION_BY_CLIENT'],
+    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
   UNDER_CLIENT_FINAL_CORRECTION: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['FINAL_RESUBMISSION_BY_CLIENT'],
+    next: ['UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
@@ -196,7 +196,7 @@ const STATUS_TRANSITIONS = {
   },
   CLIENT_NEEDS_FINAL_CORRECTION: {
     canSet: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_RESUBMISSION_TESTING_REVIEW'],
+    next: ['UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
@@ -374,111 +374,220 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
+
+  CHANGE_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CHANGE_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: [
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CORRECTION_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: [
+
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+  },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
 // 🔁 Keep this in sync with backend
 const STERILITY_STATUS_TRANSITIONS = {
   DRAFT: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'FRONTDESK' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
     canEdit: ['CLIENT'],
   },
   UNDER_DRAFT_REVIEW: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
-    canEdit: ['CLIENT' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
   SUBMITTED_BY_CLIENT: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_REVIEW: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
-    nextEditableBy: ['ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   CLIENT_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
-    next: ['UNDER_RESUBMISSION_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
-    next: ['RESUBMISSION_BY_CLIENT'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
-    canEdit: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
+    next: ['UNDER_TESTING_REVIEW'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
 
   RESUBMISSION_BY_CLIENT: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
     canEdit: [],
   },
   RECEIVED_BY_FRONTDESK: {
-    canSet: ['FRONTDESK'  ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
-    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
-    canSet: ['FRONTDESK'  ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK'  ,'SYSTEMADMIN'],
+    nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
   FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   TESTING_ON_HOLD: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT' ,'SYSTEMADMIN'],
+    canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   RESUBMISSION_BY_TESTING: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_QA_REVIEW: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
-    canEdit: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   QA_NEEDS_CORRECTION: {
-    canSet: ['QA' ,'SYSTEMADMIN','MC','MICRO'],
+    canSet: ['QA', 'SYSTEMADMIN', 'MC', 'MICRO'],
     next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC' ,'SYSTEMADMIN'],
+    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: [],
   },
 
@@ -486,31 +595,31 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_NEEDS_CORRECTION: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
   UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA' ,'SYSTEMADMIN'],
+    canSet: ['QA', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
-    canEdit: ['QA' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['QA', 'SYSTEMADMIN'],
   },
   UNDER_RESUBMISSION_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT' ,'SYSTEMADMIN'],
-    canEdit: ['ADMIN' ,'SYSTEMADMIN'],
+    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
   APPROVED: {
     canSet: [],
@@ -529,6 +638,106 @@ const STERILITY_STATUS_TRANSITIONS = {
     next: [],
     nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
+  },
+
+  CHANGE_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CHANGE_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    next: ['UNDER_CORRECTION_UPDATE'],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    next: [],
+    nextEditableBy: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
+    canEdit: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
   },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
@@ -869,8 +1078,6 @@ export class ReportsService {
       }
     }
 
- 
-
     const transitions = transitionsFor(current.formType);
 
     if (fieldKeys.length > 0) {
@@ -914,17 +1121,44 @@ export class ReportsService {
       }
 
       const targetStatus = patchIn.status as ReportStatus;
+
+      // 🔥 NEW: when request is created
+      if (
+        targetStatus === 'CHANGE_REQUESTED' ||
+        targetStatus === 'CORRECTION_REQUESTED'
+      ) {
+        base.workflowReturnStatus = current.status; // 🔥 where to go back
+        base.workflowRequestKind =
+          targetStatus === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
+        base.workflowRequestedByRole = user.role;
+        base.workflowRequestedAt = new Date();
+      }
       const isVoid = targetStatus === 'VOID';
+
+      const CENTRAL_REQUEST_STATUSES: ReportStatus[] = [
+        'CHANGE_REQUESTED',
+        'CORRECTION_REQUESTED',
+      ];
+
+      const CENTRAL_UPDATE_STATUSES: ReportStatus[] = [
+        'UNDER_CHANGE_UPDATE',
+        'UNDER_CORRECTION_UPDATE',
+      ];
+
+      const isCentralRequestStatus =
+        CENTRAL_REQUEST_STATUSES.includes(targetStatus);
+
+      const isCentralUpdateStatus =
+        CENTRAL_UPDATE_STATUSES.includes(targetStatus);
+
+      const isCentralStatus = isCentralRequestStatus || isCentralUpdateStatus;
 
       if (isVoid) {
         if (current.status === 'VOID') {
           throw new BadRequestException('Report is already VOID');
         }
 
-        // ✅ allow VOID only if role is allowed by VOID rule
         const voidRule = transitions.VOID;
-
-        // ✅ force the array element type to be UserRole
         const allowed: UserRole[] = (voidRule?.canSet as
           | UserRole[]
           | undefined) ?? ['ADMIN', 'SYSTEMADMIN', 'QA', 'CLIENT'];
@@ -932,13 +1166,28 @@ export class ReportsService {
         if (!allowed.includes(user.role)) {
           throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
         }
+      } else if (isCentralStatus) {
+        // ✅ use centralized rule itself, not current state's rule
+        const centralRule = transitions[targetStatus];
+        if (!centralRule) {
+          throw new BadRequestException(
+            `No transition config for centralized status: ${targetStatus}`,
+          );
+        }
+
+        if (!centralRule.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot change status to ${targetStatus}`,
+          );
+        }
       } else {
-        // normal transitions
+        // ✅ normal workflow path
         if (!trans.canSet.includes(user.role)) {
           throw new ForbiddenException(
             `Role ${user.role} cannot change status from ${current.status}`,
           );
         }
+
         if (!trans.next.includes(targetStatus)) {
           throw new BadRequestException(
             `Invalid transition: ${current.status} → ${targetStatus}`,
@@ -947,6 +1196,18 @@ export class ReportsService {
       }
 
       base.status = targetStatus;
+
+      const isReturningFromCentralizedUpdate =
+        (current.status === 'UNDER_CHANGE_UPDATE' ||
+          current.status === 'UNDER_CORRECTION_UPDATE') &&
+        targetStatus === current.workflowReturnStatus;
+
+      if (isReturningFromCentralizedUpdate) {
+        base.workflowReturnStatus = null;
+        base.workflowRequestKind = null;
+        base.workflowRequestedByRole = null;
+        base.workflowRequestedAt = null;
+      }
 
       function yyyy(d: Date = new Date()): string {
         const yyyy = String(d.getFullYear());
@@ -1015,8 +1276,6 @@ export class ReportsService {
     // write base + details
     const relationKey = DETAILS_RELATION[current.formType];
     const delegate = detailsDelegate(this.prisma, current.formType);
-
-  
 
     // ✅ Step 1: attempt base update with version check
     const baseRes = await this.prisma.report.updateMany({
@@ -1188,8 +1447,6 @@ export class ReportsService {
   ) {
     return this.update(user, id, body);
   }
-
-  
 
   async changeStatus(
     user: { userId: string; role: UserRole },
@@ -1531,24 +1788,110 @@ export class ReportsService {
       'FRONTDESK',
       'ADMIN',
       'QA',
+      'SYSTEMADMIN',
     ];
-    if (!allowedResolvers.includes(user.role))
+    if (!allowedResolvers.includes(user.role)) {
       throw new ForbiddenException('Not allowed to resolve');
+    }
+
     arr[idx] = {
       ...arr[idx],
       status: 'RESOLVED',
-      resolvedAt: new Date().toISOString(), // ✅ ISO
+      resolvedAt: new Date().toISOString(),
       resolvedByUserId: user.userId,
-      resolutionNote: body?.resolutionNote ?? null, // ✅ store note
+      resolutionNote: body?.resolutionNote ?? null,
     };
 
     await updateDetailsByType(this.prisma, report.formType, id, {
       corrections: arr,
     });
 
-    this.reportsGateway.notifyReportUpdate({ id });
+    const allResolved = arr.every((c) => c.status === 'RESOLVED');
+
+    if (
+      allResolved &&
+      (report.status === 'UNDER_CHANGE_UPDATE' ||
+        report.status === 'UNDER_CORRECTION_UPDATE') &&
+      report.workflowReturnStatus
+    ) {
+      await this.prisma.report.update({
+        where: { id },
+        data: {
+          status: report.workflowReturnStatus,
+          workflowReturnStatus: null,
+          workflowRequestKind: null,
+          workflowRequestedByRole: null,
+          workflowRequestedAt: null,
+          updatedBy: user.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await this.logStatusChange({
+        reportId: report.id,
+        clientCode: report.clientCode ?? null,
+        formType: report.formType,
+        formNumber: report.formNumber,
+        reportNumber: report.reportNumber ?? null,
+        from: report.status,
+        to: report.workflowReturnStatus,
+        reason: 'Returned to original status after all corrections resolved',
+        actorUserId: user.userId,
+        actorRole: user.role,
+      });
+
+      this.reportsGateway.notifyStatusChange(id, report.workflowReturnStatus);
+    } else {
+      this.reportsGateway.notifyReportUpdate({ id });
+    }
+
     return { ok: true };
   }
+  // async resolveCorrection(
+  //   user: { userId: string; role: UserRole },
+  //   id: string,
+  //   cid: string,
+  //   body: { resolutionNote?: string },
+  // ) {
+  //   const report = await this.prisma.report.findUnique({
+  //     where: { id },
+  //     include: {
+  //       microMix: true,
+  //       microMixWater: true,
+  //       sterility: true,
+  //     },
+  //   });
+  //   if (!report) throw new NotFoundException('Report not found');
+
+  //   const d = pickDetails(report) || { corrections: [] };
+  //   const arr = this._getCorrectionsArray(d);
+  //   const idx = arr.findIndex((c) => c.id === cid);
+  //   if (idx < 0) throw new NotFoundException('Correction not found');
+
+  //   const allowedResolvers: UserRole[] = [
+  //     'CLIENT',
+  //     'MICRO',
+  //     'FRONTDESK',
+  //     'ADMIN',
+  //     'QA',
+  //   ];
+  //   if (!allowedResolvers.includes(user.role))
+  //     throw new ForbiddenException('Not allowed to resolve');
+  //   arr[idx] = {
+  //     ...arr[idx],
+  //     status: 'RESOLVED',
+  //     resolvedAt: new Date().toISOString(), // ✅ ISO
+  //     resolvedByUserId: user.userId,
+  //     resolutionNote: body?.resolutionNote ?? null, // ✅ store note
+  //   };
+
+  //   await updateDetailsByType(this.prisma, report.formType, id, {
+  //     corrections: arr,
+  //   });
+
+  //   this.reportsGateway.notifyReportUpdate({ id });
+  //   return { ok: true };
+  // }
 
   private async findReportOrThrow(user: any, id: string) {
     // add org/tenant scoping here if you have it on MicroMixReport

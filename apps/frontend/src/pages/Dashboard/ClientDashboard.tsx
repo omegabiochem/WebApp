@@ -86,6 +86,10 @@ const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "SUBMITTED_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
   "CLIENT_NEEDS_FINAL_CORRECTION",
   "UNDER_CLIENT_PRELIMINARY_CORRECTION",
@@ -104,6 +108,10 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "UNDER_DRAFT_REVIEW",
   "UNDER_CLIENT_REVIEW",
   "SUBMITTED_BY_CLIENT",
+  "UNDER_CHANGE_UPDATE",
+  "CORRECTION_REQUESTED",
+  "UNDER_CORRECTION_UPDATE",
+  "CHANGE_REQUESTED",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
   "RESUBMISSION_BY_CLIENT",
@@ -1131,6 +1139,41 @@ export default function ClientDashboard() {
     null,
   );
 
+  const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+    CorrectionLaunchKind[]
+  >([]);
+
+  const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+  const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!correctionMenuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-correction-menu]")) {
+        setCorrectionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [correctionMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (correctionCloseTimerRef.current != null) {
+        window.clearTimeout(correctionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const correctionCloseTimerRef = React.useRef<number | null>(null);
+
   const workspaceReports = useMemo(() => {
     return workspaceIds
       .map((id) => reports.find((r) => r.id === id))
@@ -1438,6 +1481,9 @@ export default function ClientDashboard() {
   const ENABLE_BULK_STATUS = false;
 
   type WorkspaceMode = "VIEW" | "UPDATE";
+
+  type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   function getTargetsForAction(clicked: Report): Report[] {
@@ -1494,6 +1540,107 @@ export default function ClientDashboard() {
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
   }
+
+  function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
+    const selected = selectedIds
+      .map((id) => reports.find((r) => r.id === id))
+      .filter(Boolean) as Report[];
+
+    const hasBlockedStatus = selected.some((r) =>
+      isCorrectionFlowStatus(String(r.status)),
+    );
+
+    if (hasBlockedStatus) {
+      toast.error(
+        "Correction is not allowed for reports already in correction/change workflow",
+      );
+      return;
+    }
+
+    if (!selected.length) return;
+
+    if (selected.length === 1) {
+      const r = selected[0];
+      const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+      const returnTo = location.pathname + location.search;
+
+      const navState = {
+        correctionLaunch: true,
+        correctionKinds: kinds,
+      };
+
+      if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+        navigate(
+          `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      } else {
+        navigate(
+          `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+          { state: navState },
+        );
+      }
+      return;
+    }
+
+    setWorkspaceIds(selected.map((r) => r.id));
+    setWorkspaceMode("UPDATE"); // ✅ still UPDATE only
+    setWorkspaceLayout("VERTICAL");
+    setWorkspaceActiveId(selected[0].id);
+    setWorkspaceCorrectionKinds(kinds);
+    setWorkspaceOpen(true);
+  }
+
+  function clearCorrectionCloseTimer() {
+    if (correctionCloseTimerRef.current != null) {
+      window.clearTimeout(correctionCloseTimerRef.current);
+      correctionCloseTimerRef.current = null;
+    }
+  }
+
+  function openCorrectionMenu() {
+    clearCorrectionCloseTimer();
+
+    if (!selectedIds.length || !correctionBtnRef.current) return;
+
+    const r = correctionBtnRef.current.getBoundingClientRect();
+    setCorrectionMenuPos({
+      top: r.bottom + 8,
+      left: r.right - 220,
+    });
+    setCorrectionMenuOpen(true);
+  }
+
+  function scheduleCloseCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    correctionCloseTimerRef.current = window.setTimeout(() => {
+      setCorrectionMenuOpen(false);
+      correctionCloseTimerRef.current = null;
+    }, 180);
+  }
+
+  function closeCorrectionMenu() {
+    clearCorrectionCloseTimer();
+    setCorrectionMenuOpen(false);
+  }
+
+  function isCorrectionFlowStatus(status: string) {
+    const s = String(status).toUpperCase();
+
+    return (
+      s.includes("CORRECTION") ||
+      s.includes("CHANGE_REQUESTED") ||
+      s.includes("UNDER_CHANGE_UPDATE") ||
+      s.includes("VOID") ||
+      s.includes("LOCKED") ||
+      s.includes("DRAFT") ||
+      s.includes("UNDER_DRAFT_REVIEW")
+    );
+  }
+
+  const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
+    isCorrectionFlowStatus(String(r.status)),
+  );
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1633,6 +1780,48 @@ export default function ClientDashboard() {
               )}
             </div>
           )}
+
+          <div
+            className="relative"
+            data-correction-menu
+            onMouseEnter={() => {
+              if (selectedIds.length && !selectedHasCorrectionLockedStatus)
+                openCorrectionMenu();
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              ref={correctionBtnRef}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!selectedIds.length || selectedHasCorrectionLockedStatus)
+                  return;
+
+                if (correctionMenuOpen) {
+                  closeCorrectionMenu();
+                } else {
+                  openCorrectionMenu();
+                }
+              }}
+              disabled={
+                !selectedIds.length ||
+                printingBulk ||
+                selectedHasCorrectionLockedStatus
+              }
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && !selectedHasCorrectionLockedStatus
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
+            >
+              📝 Corrections ({selectedIds.length})
+              <span className="text-xs">▾</span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -1924,33 +2113,35 @@ export default function ClientDashboard() {
 
         {/* Table */}
         <div className="min-h-0">
-         <div className="max-h-[60vh] overflow-auto scrollbar-thin">
-              <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
-               <thead className="sticky top-0 z-30 bg-slate-50">
-                  <tr className="text-left text-slate-600">
-                   <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
-                    <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={allOnPageSelected}
-                        onChange={toggleSelectPage}
-                      />
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectPage}
+                    />
+                  </th>
+                  {selectedCols.map((k) => (
+                    <th
+                      key={k}
+                      className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
+                    >
+                      {COLS.find((c) => c.key === k)?.label ?? k}
                     </th>
-                    {selectedCols.map((k) => (
-                      <th
-                        key={k}
-                        className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
-                      >
-                        {COLS.find((c) => c.key === k)?.label ?? k}
-                      </th>
-                    ))}
-                    <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">Status</th>
-                    <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Actions</span>
+                  ))}
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Actions</span>
 
-                        <div className="relative" data-col-dropdown>
-                          {/* <button
+                      <div className="relative" data-col-dropdown>
+                        {/* <button
                         type="button"
                         onClick={() => setColOpen((v) => !v)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
@@ -1960,238 +2151,279 @@ export default function ClientDashboard() {
                         ▾
                       </button> */}
 
-                          <button
-                            ref={colBtnRef}
-                            type="button"
-                            onClick={() => {
-                              setColOpen((v) => {
-                                const next = !v;
-                                if (next && colBtnRef.current) {
-                                  const r =
-                                    colBtnRef.current.getBoundingClientRect();
-                                  setColPos({
-                                    top: r.bottom + 8,
-                                    left: r.right - 288,
-                                  }); // 288 = w-72
-                                }
-                                return next;
-                              });
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                            title="Choose columns"
-                            aria-label="Choose columns"
-                          >
-                            ▾
-                          </button>
-
-                          {colOpen &&
-                            colPos &&
-                            createPortal(
-                              <div
-                                className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                                style={{ top: colPos.top, left: colPos.left }}
-                                data-col-dropdown
-                              >
-                                <div className="mb-2 flex items-center justify-between">
-                                  <div className="text-xs font-semibold text-slate-600">
-                                    Columns ({selectedCols.length})
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-slate-500 hover:text-slate-800"
-                                    onClick={() => setColOpen(false)}
-                                    aria-label="Close"
-                                    title="Close"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-
-                                <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                                  {COLS.map((c) => {
-                                    const checked = selectedCols.includes(
-                                      c.key,
-                                    );
-                                    const disabled = false; // or remove variable
-
-                                    return (
-                                      <label
-                                        key={c.key}
-                                        className={classNames(
-                                          "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
-                                          disabled
-                                            ? "cursor-not-allowed opacity-50"
-                                            : "cursor-pointer hover:bg-slate-50",
-                                        )}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => toggleCol(c.key)}
-                                        />
-                                        <span>{c.label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-
-                                <div className="mt-3 flex items-center justify-between gap-2">
-                                  <button
-                                    type="button"
-                                    className="text-xs font-medium text-slate-600 hover:underline"
-                                    onClick={() =>
-                                      setSelectedCols(DEFAULT_COLS)
-                                    }
-                                  >
-                                    Reset defaults
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                    onClick={() => setColOpen(false)}
-                                  >
-                                    Done
-                                  </button>
-                                </div>
-                              </div>,
-                              document.body,
-                            )}
-                        </div>
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading &&
-                    [...Array(6)].map((_, i) => (
-                      <tr key={`skel-${i}`} className="border-t">
-                        <td className="px-3 py-3">
-                          <div className="mx-auto h-6 w-6 animate-pulse rounded bg-slate-200" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="h-4 w-4 animate-pulse rounded bg-slate-200" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
-                        </td>
-                      </tr>
-                    ))}
-
-                  {!loading &&
-                    pageRows.map((r) => {
-                      const isMicro =
-                        r.formType === "MICRO_MIX" ||
-                        r.formType === "MICRO_MIX_WATER" ||
-                        r.formType === "STERILITY";
-
-                      const isChemistry =
-                        r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-                      return (
-                        <tr
-                          key={r.id}
-                          className={classNames(
-                            "border-t hover:bg-slate-50",
-                            isPinned(r.id) && "bg-amber-50/40",
-                          )}
-                        >
-                          <td className="pl-2 pr-1 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                togglePin(r.id);
-                              }}
-                              className="inline-flex items-center justify-center transition transform hover:scale-110"
-                              aria-label={
-                                isPinned(r.id) ? "Unpin report" : "Pin report"
+                        <button
+                          ref={colBtnRef}
+                          type="button"
+                          onClick={() => {
+                            setColOpen((v) => {
+                              const next = !v;
+                              if (next && colBtnRef.current) {
+                                const r =
+                                  colBtnRef.current.getBoundingClientRect();
+                                setColPos({
+                                  top: r.bottom + 8,
+                                  left: r.right - 288,
+                                }); // 288 = w-72
                               }
-                              title={isPinned(r.id) ? "Unpin" : "Pin"}
-                            >
-                              <Pin
-                                className={classNames(
-                                  "h-3 w-3 transition rotate-45",
-                                  isPinned(r.id)
-                                    ? "text-blue-600 fill-blue-600"
-                                    : "text-slate-400 hover:text-slate-600",
-                                )}
-                              />
-                            </button>
-                          </td>
+                              return next;
+                            });
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                          title="Choose columns"
+                          aria-label="Choose columns"
+                        >
+                          ▾
+                        </button>
 
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={isRowSelected(r.id)}
-                              onChange={() => toggleRow(r.id)}
-                            />
-                          </td>
-                          {selectedCols.map((k) => (
-                            <td key={k} className="px-4 py-3 whitespace-nowrap">
-                              {k === "formNumber" ? (
-                                <span className="font-medium">
-                                  {getCellValue(r, k)}
-                                </span>
-                              ) : (
-                                getCellValue(r, k)
-                              )}
-                            </td>
-                          ))}
-                          <td className="px-4 py-3">
-                            <span
+                        {colOpen &&
+                          colPos &&
+                          createPortal(
+                            <div
+                              className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                              style={{ top: colPos.top, left: colPos.left }}
+                              data-col-dropdown
+                            >
+                              <div className="mb-2 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  Columns ({selectedCols.length})
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs text-slate-500 hover:text-slate-800"
+                                  onClick={() => setColOpen(false)}
+                                  aria-label="Close"
+                                  title="Close"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                {COLS.map((c) => {
+                                  const checked = selectedCols.includes(c.key);
+                                  const disabled = false; // or remove variable
+
+                                  return (
+                                    <label
+                                      key={c.key}
+                                      className={classNames(
+                                        "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
+                                        disabled
+                                          ? "cursor-not-allowed opacity-50"
+                                          : "cursor-pointer hover:bg-slate-50",
+                                      )}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleCol(c.key)}
+                                      />
+                                      <span>{c.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                  onClick={() => setSelectedCols(DEFAULT_COLS)}
+                                >
+                                  Reset defaults
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                  onClick={() => setColOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>,
+                            document.body,
+                          )}
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading &&
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-t">
+                      <td className="px-3 py-3">
+                        <div className="mx-auto h-6 w-6 animate-pulse rounded bg-slate-200" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-4 animate-pulse rounded bg-slate-200" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-5 w-56 animate-pulse rounded bg-slate-200" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    </tr>
+                  ))}
+
+                {!loading &&
+                  pageRows.map((r) => {
+                    const isMicro =
+                      r.formType === "MICRO_MIX" ||
+                      r.formType === "MICRO_MIX_WATER" ||
+                      r.formType === "STERILITY";
+
+                    const isChemistry =
+                      r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+                    return (
+                      <tr
+                        key={r.id}
+                        className={classNames(
+                          "border-t hover:bg-slate-50",
+                          isPinned(r.id) && "bg-amber-50/40",
+                        )}
+                      >
+                        <td className="pl-2 pr-1 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(r.id);
+                            }}
+                            className="inline-flex items-center justify-center transition transform hover:scale-110"
+                            aria-label={
+                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                            }
+                            title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          >
+                            <Pin
                               className={classNames(
-                                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                                (isChemistry
-                                  ? CHEMISTRY_STATUS_COLORS[
-                                      r.status as ChemistryReportStatus
-                                    ]
-                                  : STATUS_COLORS[r.status as ReportStatus]) ||
-                                  "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                                "h-3 w-3 transition rotate-45",
+                                isPinned(r.id)
+                                  ? "text-blue-600 fill-blue-600"
+                                  : "text-slate-400 hover:text-slate-600",
                               )}
-                            >
-                              {niceStatus(String(r.status))}
-                            </span>
-                          </td>
-                          <td className="sticky right-0 z-20 px-4 py-3 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
-                            <div className="flex items-center gap-2">
-                              <button
-                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                                onClick={() => {
-                                  logUiEvent({
-                                    action: "UI_VIEW",
-                                    entity:
-                                      r.formType === "CHEMISTRY_MIX"
-                                        ? "ChemistryReport"
-                                        : "Micro Report",
-                                    entityId: r.id,
-                                    details: `Viewed ${r.formNumber}`,
-                                    meta: {
-                                      formNumber: r.formNumber,
-                                      formType: r.formType,
-                                      status: r.status,
-                                    },
-                                    formNumber: r.formNumber || null,
-                                    reportNumber: r.reportNumber || null,
-                                    formType: r.formType || null,
-                                    clientCode: user?.clientCode || null,
-                                  });
+                            />
+                          </button>
+                        </td>
 
-                                  // setSelectedReport(r);
-                                  openViewTarget(r);
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                          />
+                        </td>
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "formNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3">
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                              (isChemistry
+                                ? CHEMISTRY_STATUS_COLORS[
+                                    r.status as ChemistryReportStatus
+                                  ]
+                                : STATUS_COLORS[r.status as ReportStatus]) ||
+                                "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                            )}
+                          >
+                            {niceStatus(String(r.status))}
+                          </span>
+                        </td>
+                        <td className="sticky right-0 z-20 px-4 py-3 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                              onClick={() => {
+                                logUiEvent({
+                                  action: "UI_VIEW",
+                                  entity:
+                                    r.formType === "CHEMISTRY_MIX"
+                                      ? "ChemistryReport"
+                                      : "Micro Report",
+                                  entityId: r.id,
+                                  details: `Viewed ${r.formNumber}`,
+                                  meta: {
+                                    formNumber: r.formNumber,
+                                    formType: r.formType,
+                                    status: r.status,
+                                  },
+                                  formNumber: r.formNumber || null,
+                                  reportNumber: r.reportNumber || null,
+                                  formType: r.formType || null,
+                                  clientCode: user?.clientCode || null,
+                                });
+
+                                // setSelectedReport(r);
+                                openViewTarget(r);
+                              }}
+                            >
+                              View
+                            </button>
+                            {isMicro && canUpdateThisReport(r, user) && (
+                              <button
+                                disabled={updatingId === r.id}
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                onClick={async () => {
+                                  if (updatingId === r.id) return; // 🚫 prevent double
+                                  setUpdatingId(r.id);
+                                  try {
+                                    if (
+                                      r.status ===
+                                      "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                    ) {
+                                      await setStatus(
+                                        r,
+                                        "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                        "Sent back to client for correction",
+                                      );
+                                      toast.success("Report status updated");
+                                    }
+                                    // else if (
+                                    //   r.status ===
+                                    //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                                    // ) {
+                                    //   await setStatus(
+                                    //     r,
+                                    //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                                    //     "Resubmission under Review",
+                                    //   );
+                                    // }
+                                    openUpdateTarget(r);
+                                  } catch (e: any) {
+                                    toast.error(
+                                      e?.message || "Failed to update status",
+                                    );
+                                  } finally {
+                                    setUpdatingId(null);
+                                  }
                                 }}
                               >
-                                View
+                                {updatingId === r.id ? <Spinner /> : null}
+                                {updatingId === r.id ? "Updating..." : "Update"}
                               </button>
-                              {isMicro && canUpdateThisReport(r, user) && (
+                            )}
+
+                            {isChemistry &&
+                              canUpdateThisChemistryReport(r, user) && (
                                 <button
                                   disabled={updatingId === r.id}
                                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
@@ -2200,26 +2432,22 @@ export default function ClientDashboard() {
                                     setUpdatingId(r.id);
                                     try {
                                       if (
-                                        r.status ===
-                                        "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                        r.status === "TESTING_NEEDS_CORRECTION"
                                       ) {
                                         await setStatus(
                                           r,
-                                          "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                                          "UNDER_CLIENT_CORRECTION",
                                           "Sent back to client for correction",
                                         );
-                                        toast.success("Report status updated");
+                                      } else if (
+                                        r.status === "RESUBMISSION_BY_TESTING"
+                                      ) {
+                                        await setStatus(
+                                          r,
+                                          "UNDER_CLIENT_REVIEW",
+                                          "Resubmission under Review",
+                                        );
                                       }
-                                      // else if (
-                                      //   r.status ===
-                                      //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                      // ) {
-                                      //   await setStatus(
-                                      //     r,
-                                      //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                      //     "Resubmission under Review",
-                                      //   );
-                                      // }
                                       openUpdateTarget(r);
                                     } catch (e: any) {
                                       toast.error(
@@ -2236,83 +2464,37 @@ export default function ClientDashboard() {
                                     : "Update"}
                                 </button>
                               )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-                              {isChemistry &&
-                                canUpdateThisChemistryReport(r, user) && (
-                                  <button
-                                    disabled={updatingId === r.id}
-                                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                                    onClick={async () => {
-                                      if (updatingId === r.id) return; // 🚫 prevent double
-                                      setUpdatingId(r.id);
-                                      try {
-                                        if (
-                                          r.status ===
-                                          "TESTING_NEEDS_CORRECTION"
-                                        ) {
-                                          await setStatus(
-                                            r,
-                                            "UNDER_CLIENT_CORRECTION",
-                                            "Sent back to client for correction",
-                                          );
-                                        } else if (
-                                          r.status === "RESUBMISSION_BY_TESTING"
-                                        ) {
-                                          await setStatus(
-                                            r,
-                                            "UNDER_CLIENT_REVIEW",
-                                            "Resubmission under Review",
-                                          );
-                                        }
-                                        openUpdateTarget(r);
-                                      } catch (e: any) {
-                                        toast.error(
-                                          e?.message ||
-                                            "Failed to update status",
-                                        );
-                                      } finally {
-                                        setUpdatingId(null);
-                                      }
-                                    }}
-                                  >
-                                    {updatingId === r.id ? <Spinner /> : null}
-                                    {updatingId === r.id
-                                      ? "Updating..."
-                                      : "Update"}
-                                  </button>
-                                )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {!loading && pageRows.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={2 + selectedCols.length + 2} // checkbox + dynamic cols + status + actions
-                        className="px-4 py-12 text-center text-slate-500"
-                      >
-                        No reports found for{" "}
-                        <span className="font-medium">
-                          {niceStatus(String(statusFilter))}
-                        </span>
-                        {search ? (
-                          <>
-                            {" "}
-                            matching{" "}
-                            <span className="font-medium">“{search}”</span>.
-                          </>
-                        ) : (
-                          "."
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-        
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={2 + selectedCols.length + 2} // checkbox + dynamic cols + status + actions
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      No reports found for{" "}
+                      <span className="font-medium">
+                        {niceStatus(String(statusFilter))}
+                      </span>
+                      {search ? (
+                        <>
+                          {" "}
+                          matching{" "}
+                          <span className="font-medium">“{search}”</span>.
+                        </>
+                      ) : (
+                        "."
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {/* Pagination */}
           {!loading && total > 0 && (
@@ -2752,16 +2934,77 @@ export default function ClientDashboard() {
           </div>,
           document.body,
         )}
+
+      {correctionMenuOpen &&
+        correctionMenuPos &&
+        createPortal(
+          <div
+            className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+            style={{
+              top: correctionMenuPos.top,
+              left: correctionMenuPos.left,
+            }}
+            data-correction-menu
+            onMouseEnter={() => {
+              clearCorrectionCloseTimer();
+              setCorrectionMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["REQUEST_CHANGE"]);
+              }}
+            >
+              Request Change
+            </button>
+
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["RAISE_CORRECTION"]);
+              }}
+            >
+              Raise Correction
+            </button>
+
+            {/* <div className="my-1 border-t" /> */}
+
+            {/* <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection([
+                  "REQUEST_CHANGE",
+                  "RAISE_CORRECTION",
+                ]);
+              }}
+            >
+              Open Both
+            </button> */}
+          </div>,
+          document.body,
+        )}
       <ReportWorkspaceModal
         open={workspaceOpen}
         reports={workspaceReports}
         mode={workspaceMode}
         layout={workspaceLayout}
         activeId={workspaceActiveId}
+        correctionKinds={workspaceCorrectionKinds}
         onClose={() => {
           setWorkspaceOpen(false);
           setWorkspaceIds([]);
           setWorkspaceActiveId(null);
+          setWorkspaceCorrectionKinds([]);
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}

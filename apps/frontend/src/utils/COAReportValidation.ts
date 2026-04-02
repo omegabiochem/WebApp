@@ -113,35 +113,25 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
     "manufactureDate", // optional by logic below
     "formulaId",
     "sampleSize",
-    "numberOfActives",
-    "sampleTypes",
-    "actives", // special rules inside isEmpty()
+    "coaRows", // special rules inside isEmpty()
   ],
 
   // CHEMISTRY fills analytical results + signatures
   CHEMISTRY: [
     "dateReceived",
-    "actives", // special rules inside isEmpty()
+    "coaRows", // special rules inside isEmpty()
+
     // "comments",
     // "testedBy",
     // "testedDate",
   ],
-  MC: [
-    "dateReceived",
-    "actives", // special rules inside isEmpty()
-  ],
+  MC: ["dateReceived", "coaRows"],
 
   // QA signs/reviews
   QA: [],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
-  ADMIN: [
-    "dateReceived",
-    "actives", // special rules inside isEmpty()
-    "comments",
-    "testedBy",
-    "testedDate",
-  ],
+  ADMIN: [],
 };
 
 /* =======================
@@ -240,7 +230,7 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
           return !v.dateReceived;
 
         case "coaRows": {
-          const rows = (v.coaRows ?? []) as any[];
+          const rows = (v.coaRows ?? []) as CoaVerificationRow[];
           if (rows.length === 0) return true;
 
           if (role === "CLIENT") {
@@ -249,8 +239,12 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
           }
 
           if (role === "CHEMISTRY" || role === "MC" || role === "ADMIN") {
-            // require all RESULT filled
-            return rows.some((r) => !String(r.result ?? "").trim());
+            // require Result only for rows where Specification has a value
+            return rows.some((r) => {
+              const spec = String(r.Specification ?? "").trim();
+              const result = String(r.result ?? "").trim();
+              return !!spec && !result;
+            });
           }
 
           return false;
@@ -283,51 +277,61 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
     (values: CoaReportFormValues): boolean => {
       const next: Record<string, string> = {};
 
-      // 1) base required fields
+      // 1) normal top-level required fields only
       requiredList.forEach((f) => {
+        if (f === "coaRows") return; // handled cell-wise below
+
         if (isEmpty(f, values)) {
-          if (f === "actives" && role === "CLIENT") {
-            next[f] = "Select at least 1 active and fill Formula Content";
-          } else if (
-            f === "actives" &&
-            (role === "CHEMISTRY" || role === "MC" || role === "ADMIN")
-          ) {
-            next[f] =
-              "Fill SOP #, Results, and Date Tested/Initial for checked actives";
-          } else if (f === "testTypes") {
+          if (f === "testTypes") {
             next[f] = "Select at least one Test Type";
-          } else if (f === "sampleTypes") {
-            next[f] = "Select at least one Sample Type";
           } else {
             next[f] = "Required";
           }
         }
       });
 
-      // 2) ✅ extra COA table rules
+      // 2) COA table cell-wise validation
       const rows = values.coaRows ?? [];
 
-      // Rule B: CLIENT must fill at least one Specification row
-      if (role === "CLIENT") {
-        const hasAtLeastOneSpecification = rows.some(
-          (r) => (r.Specification ?? "").trim().length > 0,
-        );
-        if (!hasAtLeastOneSpecification) {
-          next.coaRows = "Enter at least one Specification in the COA table.";
-        }
-      }
+      if (!rows.length) {
+        next["coaRows"] = "COA table is required";
+      } else {
+        if (role === "CLIENT") {
+          // require at least one specification somewhere
+          const hasAtLeastOneSpecification = rows.some(
+            (r) => (r.Specification ?? "").trim().length > 0,
+          );
 
-      // Rule A: OTHER rows - if Specification filled, Item must be filled
-      for (const r of rows) {
-        if (r.key?.startsWith("OTHER_")) {
-          const hasSpecification = (r.Specification ?? "").trim().length > 0;
-          const hasItem = (r.item ?? "").trim().length > 0;
-
-          if (hasSpecification && !hasItem) {
-            next.coaRows =
-              "For OTHER rows: Item is required when Specification is filled.";
-            break;
+          if (!hasAtLeastOneSpecification) {
+            next["coaRows"] =
+              "Enter at least one Specification in the COA table.";
           }
+
+          // validate each row separately
+          rows.forEach((r) => {
+            const spec = String(r.Specification ?? "").trim();
+            const item = String(r.item ?? "").trim();
+
+            // OTHER rows: if specification entered, item required
+            if (r.key?.startsWith("OTHER_")) {
+              if (spec && !item) {
+                next[`coaRows:${r.key}:item`] =
+                  "Item is required when Specification is filled.";
+              }
+            }
+          });
+        }
+
+        if (role === "CHEMISTRY" || role === "MC" || role === "ADMIN") {
+          rows.forEach((r) => {
+            const spec = String(r.Specification ?? "").trim();
+            const result = String(r.result ?? "").trim();
+
+            // require result only when specification is filled
+            if (spec && !result) {
+              next[`coaRows:${r.key}:result`] = "Result is required.";
+            }
+          });
         }
       }
 
@@ -372,11 +376,21 @@ export async function createCorrections(
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
+  meta?: {
+    kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
+    previousStatus?: string;
+  },
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+    body: JSON.stringify({
+      items,
+      targetStatus,
+      reason,
+      expectedVersion,
+      meta,
+    }),
   });
 }
 

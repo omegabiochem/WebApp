@@ -396,13 +396,7 @@ export const ROLE_FIELDS: Record<Role, string[]> = {
   QA: [],
 
   // ADMIN often just approves/rejects (keep empty unless you want to require review)
-  ADMIN: [
-    "dateReceived",
-    "actives", // special rules inside isEmpty()
-    "comments",
-    "testedBy",
-    "testedDate",
-  ],
+  ADMIN: [],
 };
 
 /* =======================
@@ -644,11 +638,21 @@ export async function createCorrections(
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
+  meta?: {
+    kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
+    previousStatus?: string;
+  },
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+    body: JSON.stringify({
+      items,
+      targetStatus,
+      reason,
+      expectedVersion,
+      meta,
+    }),
   });
 }
 
