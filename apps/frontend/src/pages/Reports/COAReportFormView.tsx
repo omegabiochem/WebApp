@@ -502,6 +502,20 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     result?: string | null;
   }>;
 
+  const isSubmissionForm =
+  status === "DRAFT" ||
+  status === "UNDER_DRAFT_REVIEW" ||
+  status === "SUBMITTED_BY_CLIENT";
+
+const coaRowsToRender = useMemo(() => {
+  if (isSubmissionForm) return coaRows;
+
+  return coaRows.filter((row) => {
+    const spec = String(row.Specification ?? "").trim();
+    return spec !== "";
+  });
+}, [coaRows, isSubmissionForm]);
+
   return (
     <>
       {!isBulk && <PrintStyles />}
@@ -718,7 +732,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 </div>
               </div>
 
-              {coaRows.map((row) => {
+            {coaRowsToRender.map((row) => {
                 const rk = coaRowKey(row.key);
                 const kStd = coaCellKey(row.key, "Specification");
                 const kRes = coaCellKey(row.key, "result");

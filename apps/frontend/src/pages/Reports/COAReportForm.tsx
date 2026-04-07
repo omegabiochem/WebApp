@@ -400,6 +400,20 @@ export default function COAReportForm({
   const [templateVersion, setTemplateVersion] = useState<number>(0);
   const [templateName, setTemplateName] = useState<string>("");
 
+  const isSubmissionForm =
+    status === "DRAFT" ||
+    status === "UNDER_DRAFT_REVIEW" ||
+    status === "SUBMITTED_BY_CLIENT";
+
+  const coaRowsToRender = useMemo(() => {
+    if (isSubmissionForm) return coaRows; // show all rows in submission form
+
+    return (coaRows ?? []).filter((row) => {
+      const spec = String(row.Specification ?? "").trim();
+      return spec !== "";
+    });
+  }, [coaRows, isSubmissionForm]);
+
   useEffect(() => {
     if (!effectiveCorrectionLaunch) return;
     if (pageMode !== "UPDATE") return;
@@ -1791,7 +1805,7 @@ export default function COAReportForm({
             <div className="p-1 flex items-center justify-center">Result</div>
           </div>
 
-          {(coaRows ?? []).map((row) => {
+          {coaRowsToRender.map((row) => {
             const kItem = coaCellKey(row.key, "item");
             const kStd = coaCellKey(row.key, "Specification");
             const kRes = coaCellKey(row.key, "result");
