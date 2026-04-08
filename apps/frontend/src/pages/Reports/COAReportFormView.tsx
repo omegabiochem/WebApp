@@ -264,6 +264,16 @@ function formatDateForInput(value: string | null) {
   return new Date(value).toISOString().split("T")[0];
 }
 
+function splitDateInitial(value?: string | null) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { date: "", initial: "" };
+
+  const parts = raw.split(" / ");
+  return {
+    date: parts[0] ?? "",
+    initial: parts.slice(1).join(" / ") ?? "",
+  };
+}
 const PrintStyles = () => (
   <style>{`
     @media print {
@@ -324,9 +334,6 @@ function canEdit(
 
 function coaRowKey(rowKey: string) {
   return `coaRows:${rowKey}`;
-}
-function coaCellKey(rowKey: string, col: "Specification" | "result") {
-  return `coaRows:${rowKey}:${col}`;
 }
 
 export default function COAReportFormView(props: COAReportFormViewProps) {
@@ -499,22 +506,31 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     key: string;
     item: string;
     Specification?: string | null;
+    sopValidatedTm?: string | null;
     result?: string | null;
+    dateTestedInitial?: string | null;
   }>;
 
+  function coaCellKey(
+    rowKey: string,
+    col: "Specification" | "sopValidatedTm" | "result" | "dateTestedInitial",
+  ) {
+    return `coaRows:${rowKey}:${col}`;
+  }
+
   const isSubmissionForm =
-  status === "DRAFT" ||
-  status === "UNDER_DRAFT_REVIEW" ||
-  status === "SUBMITTED_BY_CLIENT";
+    status === "DRAFT" ||
+    status === "UNDER_DRAFT_REVIEW" ||
+    status === "SUBMITTED_BY_CLIENT";
 
-const coaRowsToRender = useMemo(() => {
-  if (isSubmissionForm) return coaRows;
+  const coaRowsToRender = useMemo(() => {
+    if (isSubmissionForm) return coaRows;
 
-  return coaRows.filter((row) => {
-    const spec = String(row.Specification ?? "").trim();
-    return spec !== "";
-  });
-}, [coaRows, isSubmissionForm]);
+    return coaRows.filter((row) => {
+      const spec = String(row.Specification ?? "").trim();
+      return spec !== "";
+    });
+  }, [coaRows, isSubmissionForm]);
 
   return (
     <>
@@ -719,28 +735,40 @@ const coaRowsToRender = useMemo(() => {
             </div>
 
             {/* COA TABLE (same structure + correction keys like your form) */}
-            <div className={`mt-3 border text-[11px] border-black`}>
-              <div className="grid grid-cols-[42%_29%_29%] font-semibold text-center border-b border-black min-h-[24px]">
+            <div className="mt-3 border text-[11px] border-black">
+              <div className="grid grid-cols-[25%_25%_15%_15%_20%] font-semibold text-center border-b border-black min-h-[24px]">
                 <div className="p-1 border-r border-black flex items-center justify-center">
                   Item
                 </div>
                 <div className="p-1 border-r border-black flex items-center justify-center">
                   Specification
                 </div>
-                <div className="p-1 flex items-center justify-center">
+                <div className="p-1 border-r border-black flex items-center justify-center">
+                  SOP # / VALIDATED TM
+                </div>
+                <div className="p-1 border-r border-black flex items-center justify-center">
                   Result
+                </div>
+                <div className="p-1 flex items-center justify-center">
+                  DATE TESTED / INITIAL
                 </div>
               </div>
 
-            {coaRowsToRender.map((row) => {
+              {coaRowsToRender.map((row) => {
                 const rk = coaRowKey(row.key);
                 const kStd = coaCellKey(row.key, "Specification");
+                const kSop = coaCellKey(row.key, "sopValidatedTm");
                 const kRes = coaCellKey(row.key, "result");
+                const kDateInit = coaCellKey(row.key, "dateTestedInitial");
+
+                const { date, initial } = splitDateInitial(
+                  row.dateTestedInitial,
+                );
 
                 return (
                   <div
                     key={row.key}
-                    className="grid grid-cols-[42%_29%_29%] border-b last:border-b-0 border-black relative"
+                    className="grid grid-cols-[25%_25%_15%_15%_20%] border-b last:border-b-0 border-black relative"
                   >
                     <div
                       className={`p-1 border-r border-black font-medium ${dashClass(rk)} relative`}
@@ -750,23 +778,38 @@ const coaRowsToRender = useMemo(() => {
                     </div>
 
                     <div
-                      className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words relative ${dashClass(kStd)}`}
+                      className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kStd)}`}
                     >
                       <ResolveOverlay field={kStd} />
                       {row.Specification ?? ""}
                     </div>
 
                     <div
-                      className={`px-1 py-1 whitespace-pre-wrap break-words relative ${dashClass(kRes)}`}
+                      className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kSop)}`}
+                    >
+                      <ResolveOverlay field={kSop} />
+                      {row.sopValidatedTm ?? ""}
+                    </div>
+
+                    <div
+                      className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kRes)}`}
                     >
                       <ResolveOverlay field={kRes} />
                       {row.result ?? ""}
+                    </div>
+
+                    <div
+                      className={`px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kDateInit)}`}
+                    >
+                      <ResolveOverlay field={kDateInit} />
+                      {date || initial
+                        ? `${date}${date && initial ? " / " : ""}${initial}`
+                        : ""}
                     </div>
                   </div>
                 );
               })}
             </div>
-
             {/* Comments + signatures */}
             <div className="mt-2 text-[12px]">
               <div className="flex items-start gap-2 mb-2">
