@@ -498,7 +498,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     { src: pjla, alt: "FDA Registered" },
     { src: ilacmra, alt: "ISO Certified" },
   ];
-  const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
+  const FOOTER_NOTE = "Rev-02 [Date Effective : 04/08/2026]";
 
   const isBulk = isBulkPrint === true;
 

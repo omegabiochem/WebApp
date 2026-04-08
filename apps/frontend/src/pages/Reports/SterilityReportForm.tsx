@@ -1309,7 +1309,7 @@ const backToDashboard = () => {
           method: "PATCH",
           body: JSON.stringify({
             status: "UNDER_TESTING_REVIEW",
-            reason: "Assign report number / start prelim testing",
+            reason: "Assign report number / start testing",
             expectedVersion: reportVersion,
           }),
         });
@@ -1330,7 +1330,7 @@ const backToDashboard = () => {
         }
 
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to  testing.");
       } catch (err: any) {
         console.error(err);
         alert(

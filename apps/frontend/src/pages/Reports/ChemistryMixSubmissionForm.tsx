@@ -1197,6 +1197,7 @@ export default function ChemistryMixSubmissionForm({
     status?: ChemistryReportStatus;
     reportNumber?: number | string;
     version?: number;
+      dateReceived?: string | null;
   };
 
   async function handleStatusChange(
@@ -1490,7 +1491,7 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
             method: "PATCH",
             body: JSON.stringify({
               status: "UNDER_TESTING_REVIEW",
-              reason: "Assign report number / start prelim testing",
+              reason: "Assign report number / start testing",
               expectedVersion: reportVersion,
             }),
           },
@@ -1511,8 +1512,13 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           setReportNumber(String(updated.reportNumber));
         }
 
+           if (updated?.dateReceived) {
+        setDateReceived(updated.dateReceived);
+      }
+
+
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to testing.");
       } catch (err: any) {
         console.error(err);
         alert(

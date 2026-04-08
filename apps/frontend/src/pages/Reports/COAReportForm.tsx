@@ -990,6 +990,7 @@ export default function COAReportForm({
     status?: COAReportStatus;
     reportNumber?: number | string;
     version?: number;
+    dateReceived?: string | null;
   };
 
   async function handleStatusChange(
@@ -1272,7 +1273,7 @@ export default function COAReportForm({
             method: "PATCH",
             body: JSON.stringify({
               status: "UNDER_TESTING_REVIEW",
-              reason: "Assign report number / start prelim testing",
+              reason: "Assign report number / start testing",
               expectedVersion: reportVersion,
             }),
           },
@@ -1293,8 +1294,13 @@ export default function COAReportForm({
           setReportNumber(String(updated.reportNumber));
         }
 
+           if (updated?.dateReceived) {
+        setDateReceived(updated.dateReceived);
+      }
+
+
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to  testing.");
       } catch (err: any) {
         console.error(err);
         alert(
