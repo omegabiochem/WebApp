@@ -1238,6 +1238,9 @@ export default function ChemistryMixSubmissionForm({
   alert("⚠️ Please fix the highlighted fields before changing status.");
   return;
 }
+  if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
 
 if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
   alert("⚠️ Please fix the highlighted rows before changing status.");
@@ -1584,6 +1587,22 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
     return openCorrections.some(
       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
     );
+  }
+
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true; // ✅ block
+    }
+
+    return false; // ✅ allow
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

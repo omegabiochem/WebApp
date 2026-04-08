@@ -1016,6 +1016,10 @@ export default function COAReportForm({
       //   markDirty(); // ✅ IMPORTANT so handleSave runs
       // }
 
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
+
       // 3) Ensure latest edits are saved
       if (!reportId || isDirty) {
         const saved = await handleSave(); // <-- your COA save (POST/PATCH /reports)
@@ -1333,6 +1337,22 @@ export default function COAReportForm({
     if (!items.length) return false;
 
     return items.every((c) => canResolveCorrectionItem(c));
+  }
+
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true; // ✅ block
+    }
+
+    return false; // ✅ allow
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
