@@ -646,6 +646,9 @@ export default function AdminDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
     null,
@@ -947,6 +950,46 @@ export default function AdminDashboard() {
     dateTo,
     pinnedIds,
   ]);
+
+  useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -1736,7 +1779,7 @@ export default function AdminDashboard() {
   function isCorrectionFlowStatus(status: string) {
     const s = String(status).toUpperCase();
 
-       return (
+    return (
       s.includes("CORRECTION") ||
       s.includes("CHANGE_REQUESTED") ||
       s.includes("UNDER_CHANGE_UPDATE") ||
@@ -2367,6 +2410,9 @@ export default function AdminDashboard() {
                     return (
                       <tr
                         key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
                           isPinned(r.id) && "bg-blue-50/40",
