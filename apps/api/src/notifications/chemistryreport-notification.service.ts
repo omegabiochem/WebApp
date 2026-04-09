@@ -32,25 +32,42 @@ function normalizeEmails(emails: string[]) {
 
 // ✅ Option C policy for Chemistry
 function isUrgentChemStatus(s: ChemistryReportStatus) {
-  // human action right now
-  // if (s === ChemistryReportStatus.SUBMITTED_BY_CLIENT) return true;
+  const str = String(s);
 
-  // any NEEDS_CORRECTION
-  if (String(s).includes('NEEDS_CORRECTION')) return true;
-
-  // client must act (review/approve)
-  // if (s === ChemistryReportStatus.UNDER_CLIENT_REVIEW) return true;
+  if (
+    str.includes('NEEDS_CORRECTION') ||
+    str === 'CORRECTION_REQUESTED' ||
+    str === 'CHANGE_REQUESTED'
+  ) {
+    return true;
+  }
 
   return false;
 }
 
 function highlightForStatus(status: string) {
-  if (status.includes('NEEDS_CORRECTION')) {
+  if (
+    status.includes('NEEDS_CORRECTION') ||
+    status === 'CORRECTION_REQUESTED' ||
+    status === 'CHANGE_REQUESTED'
+  ) {
     return {
-      badgeText: 'Correction Required',
+      badgeText: 'Action Required',
       badgeTone: 'RED' as const,
       priorityLine:
-        'Action required: Please open the report and resolve the requested corrections.',
+        'Action required: Please review and address the requested changes or corrections.',
+    };
+  }
+
+  if (
+    status === 'UNDER_CORRECTION_UPDATE' ||
+    status === 'UNDER_CHANGE_UPDATE'
+  ) {
+    return {
+      badgeText: 'Update in Progress',
+      badgeTone: 'ORANGE' as const,
+      priorityLine:
+        'Update is in progress based on requested corrections or changes.',
     };
   }
 
@@ -493,6 +510,39 @@ export class ChemistryReportNotificationsService {
     // CHEMISTRY && COA STATUS ROUTING
     // =========================
 
+    const actorUser = args.actorUserId
+      ? await this.prisma.user.findUnique({
+          where: { id: args.actorUserId },
+          select: { id: true, role: true, clientCode: true },
+        })
+      : null;
+
+    const actorRole = actorUser?.role ?? null;
+    const actorIsClient = actorRole === 'CLIENT';
+    const actorKnown = !!actorRole;
+
+    const notifyOppositeSideForChangeFlow = async (
+      titleFromClientToLab: string,
+      titleFromLabToClient: string,
+      tagClientToLab: string,
+      tagLabToClient: string,
+    ) => {
+      if (!actorKnown) {
+        this.log.warn(
+          `[CHEM NOTIFY] actor role not found for actorUserId=${args.actorUserId}; defaulting to LAB notification for ${args.formNumber}`,
+        );
+        await notifyLab(titleFromClientToLab, tagClientToLab);
+        return;
+      }
+
+      if (actorIsClient) {
+        await notifyLab(titleFromClientToLab, tagClientToLab);
+        return;
+      }
+
+      await notifyClient(titleFromLabToClient, tagLabToClient);
+    };
+
     // ✅ SUBMITTED_BY_CLIENT (client -> lab)
     if (newStatus === ChemistryReportStatus.SUBMITTED_BY_CLIENT) {
       await notifyLab(
@@ -560,6 +610,62 @@ export class ChemistryReportNotificationsService {
         formLabelText === 'COA'
           ? 'coa-lab-to-client-approved'
           : 'chem-lab-to-client-approved',
+      );
+      return;
+    }
+
+    if (newStatus === ChemistryReportStatus.CHANGE_REQUESTED) {
+      await notifyOppositeSideForChangeFlow(
+        `${formLabelText}: Change Requested by Client`,
+        `${formLabelText}: Change Requested by Lab`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-change-requested'
+          : 'chem-client-to-lab-change-requested',
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-change-requested'
+          : 'chem-lab-to-client-change-requested',
+      );
+      return;
+    }
+
+    if (newStatus === ChemistryReportStatus.CORRECTION_REQUESTED) {
+      await notifyOppositeSideForChangeFlow(
+        `${formLabelText}: Correction Requested by Client`,
+        `${formLabelText}: Correction Requested by Lab`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-correction-requested'
+          : 'chem-client-to-lab-correction-requested',
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-correction-requested'
+          : 'chem-lab-to-client-correction-requested',
+      );
+      return;
+    }
+
+    if (newStatus === ChemistryReportStatus.UNDER_CHANGE_UPDATE) {
+      await notifyOppositeSideForChangeFlow(
+        `${formLabelText}: Change Update in Progress`,
+        `${formLabelText}: Change Update in Progress`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-under-change-update'
+          : 'chem-client-to-lab-under-change-update',
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-under-change-update'
+          : 'chem-lab-to-client-under-change-update',
+      );
+      return;
+    }
+
+    if (newStatus === ChemistryReportStatus.UNDER_CORRECTION_UPDATE) {
+      await notifyOppositeSideForChangeFlow(
+        `${formLabelText}: Correction Update in Progress`,
+        `${formLabelText}: Correction Update in Progress`,
+        formLabelText === 'COA'
+          ? 'coa-client-to-lab-under-correction-update'
+          : 'chem-client-to-lab-under-correction-update',
+        formLabelText === 'COA'
+          ? 'coa-lab-to-client-under-correction-update'
+          : 'chem-lab-to-client-under-correction-update',
       );
       return;
     }

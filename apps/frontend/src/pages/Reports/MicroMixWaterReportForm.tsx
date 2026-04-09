@@ -1526,6 +1526,11 @@ export default function MicroMixWaterReportForm({
           return;
         }
       }
+
+
+        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
       //   if (newStatus === "SUBMITTED_BY_CLIENT") {
       //   const sent = todayISO();
       //   setDateSent(sent);
@@ -1959,6 +1964,23 @@ export default function MicroMixWaterReportForm({
     }
 
     return false;
+  }
+
+
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true; // ✅ block
+    }
+
+    return false; // ✅ allow
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

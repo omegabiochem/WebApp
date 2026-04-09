@@ -88,7 +88,6 @@ type Report = {
 // -----------------------------
 // Micro + Micro Water (prelim/final workflow)
 const MICRO_ONLY_STATUSES = [
-
   "ALL",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
@@ -537,6 +536,9 @@ export default function MicroDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(COL_STORAGE_KEY);
@@ -740,7 +742,7 @@ export default function MicroDashboard() {
   const navigate = useNavigate();
 
   type WorkspaceMode = "VIEW" | "UPDATE";
-    type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+  type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -784,43 +786,40 @@ export default function MicroDashboard() {
     };
   }, []);
 
+  const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+    CorrectionLaunchKind[]
+  >([]);
 
-  
-    const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
-      CorrectionLaunchKind[]
-    >([]);
-  
-    const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
-    const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
-    const [correctionMenuPos, setCorrectionMenuPos] = useState<{
-      top: number;
-      left: number;
-    } | null>(null);
-  
-    useEffect(() => {
-      if (!correctionMenuOpen) return;
-  
-      const onDown = (e: MouseEvent) => {
-        const t = e.target as HTMLElement;
-        if (!t.closest("[data-correction-menu]")) {
-          setCorrectionMenuOpen(false);
-        }
-      };
-  
-      window.addEventListener("mousedown", onDown);
-      return () => window.removeEventListener("mousedown", onDown);
-    }, [correctionMenuOpen]);
-  
-    useEffect(() => {
-      return () => {
-        if (correctionCloseTimerRef.current != null) {
-          window.clearTimeout(correctionCloseTimerRef.current);
-        }
-      };
-    }, []);
-  
-    const correctionCloseTimerRef = React.useRef<number | null>(null);
-  
+  const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+  const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!correctionMenuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-correction-menu]")) {
+        setCorrectionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [correctionMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (correctionCloseTimerRef.current != null) {
+        window.clearTimeout(correctionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   const statusOptions = useMemo(() => {
     if (formFilter === "STERILITY") return STERILITY_ONLY_STATUSES;
@@ -948,6 +947,46 @@ export default function MicroDashboard() {
       setStatusFilter("ALL");
     }
   }, [statusOptions, statusFilter]);
+
+  useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   // pagination
   const total = processed.length;
@@ -1656,8 +1695,6 @@ export default function MicroDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-
-  
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
     const selected = selectedIds
       .map((id) => reports.find((r) => r.id === id))
@@ -1665,16 +1702,16 @@ export default function MicroDashboard() {
 
     if (!selected.length) return;
 
-  const hasBlockedStatus = selected.some((r) =>
-    isCorrectionFlowStatus(String(r.status)),
-  );
-
-  if (hasBlockedStatus) {
-    toast.error(
-      "Correction is not allowed for reports already in correction/change workflow",
+    const hasBlockedStatus = selected.some((r) =>
+      isCorrectionFlowStatus(String(r.status)),
     );
-    return;
-  }
+
+    if (hasBlockedStatus) {
+      toast.error(
+        "Correction is not allowed for reports already in correction/change workflow",
+      );
+      return;
+    }
 
     if (selected.length === 1) {
       const r = selected[0];
@@ -1736,7 +1773,7 @@ export default function MicroDashboard() {
     }, 180);
   }
 
- function closeCorrectionMenu() {
+  function closeCorrectionMenu() {
     clearCorrectionCloseTimer();
     setCorrectionMenuOpen(false);
   }
@@ -1744,7 +1781,7 @@ export default function MicroDashboard() {
   function isCorrectionFlowStatus(status: string) {
     const s = String(status).toUpperCase();
 
-       return (
+    return (
       s.includes("CORRECTION") ||
       s.includes("CHANGE_REQUESTED") ||
       s.includes("UNDER_CHANGE_UPDATE") ||
@@ -1930,14 +1967,14 @@ export default function MicroDashboard() {
             </div>
           )}
 
-           <div
+          <div
             className="relative"
             data-correction-menu
-          onMouseEnter={() => {
-  if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
-    openCorrectionMenu();
-  }
-}}
+            onMouseEnter={() => {
+              if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+                openCorrectionMenu();
+              }
+            }}
             onMouseLeave={() => {
               scheduleCloseCorrectionMenu();
             }}
@@ -1946,8 +1983,9 @@ export default function MicroDashboard() {
               ref={correctionBtnRef}
               type="button"
               onClick={(e) => {
-             e.stopPropagation();
-  if (!selectedIds.length || selectedHasCorrectionLockedStatus) return;
+                e.stopPropagation();
+                if (!selectedIds.length || selectedHasCorrectionLockedStatus)
+                  return;
 
                 if (correctionMenuOpen) {
                   closeCorrectionMenu();
@@ -1956,12 +1994,12 @@ export default function MicroDashboard() {
                 }
               }}
               disabled={!selectedIds.length || printingBulk}
-             className={classNames(
-  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
-  selectedIds.length && !selectedHasCorrectionLockedStatus
-    ? "bg-amber-600 text-white hover:bg-amber-700"
-    : "bg-slate-200 text-slate-500",
-)}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && !selectedHasCorrectionLockedStatus
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
             >
               📝 Corrections ({selectedIds.length})
               <span className="text-xs">▾</span>
@@ -2227,245 +2265,248 @@ export default function MicroDashboard() {
       </div>
 
       {/* Content card */}
-    <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
+      <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-    <div className="min-h-0">
-  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
-    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
-          <thead className="sticky top-0 z-30 bg-slate-50">
-              <tr className="text-left text-slate-600">
-                <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
-                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleSelectPage}
-                  />
-                </th>
-                {selectedCols.map((k) => (
-               <th
-  key={k}
-  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
->
-                    {COLS.find((c) => c.key === k)?.label ?? k}
+        <div className="min-h-0">
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectPage}
+                    />
                   </th>
-                ))}
-               <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
-  Status
-</th>
-                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Actions</span>
-
-                    <div className="relative" data-col-dropdown>
-                      <button
-                        ref={colBtnRef}
-                        type="button"
-                        onClick={() => {
-                          setColOpen((v) => {
-                            const next = !v;
-                            if (next && colBtnRef.current) {
-                              const r =
-                                colBtnRef.current.getBoundingClientRect();
-                              setColPos({
-                                top: r.bottom + 8,
-                                left: r.right - 288,
-                              });
-                            }
-                            return next;
-                          });
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                        title="Choose columns"
-                        aria-label="Choose columns"
-                      >
-                        ▾
-                      </button>
-
-                      {colOpen &&
-                        colPos &&
-                        createPortal(
-                          <div
-                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                            style={{ top: colPos.top, left: colPos.left }}
-                            data-col-dropdown
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold text-slate-600">
-                                Columns ({selectedCols.length})
-                              </div>
-                              <button
-                                type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800"
-                                onClick={() => setColOpen(false)}
-                                aria-label="Close"
-                                title="Close"
-                              >
-                                ✕
-                              </button>
-                            </div>
-
-                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                              {COLS.map((c) => {
-                                const checked = selectedCols.includes(c.key);
-
-                                return (
-                                  <label
-                                    key={c.key}
-                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleCol(c.key)}
-                                    />
-                                    <span>{c.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-slate-600 hover:underline"
-                                onClick={() => setSelectedCols(DEFAULT_COLS)}
-                              >
-                                Reset defaults
-                              </button>
-
-                              <button
-                                type="button"
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                onClick={() => setColOpen(false)}
-                              >
-                                Done
-                              </button>
-                            </div>
-                          </div>,
-                          document.body,
-                        )}
-                    </div>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading &&
-                [...Array(7)].map((_, i) => (
-                  <tr key={`skel-${i}`} className="border-t">
-                    <td className="pl-2 pr-1 py-3">
-                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
-                    </td>
-                    <td className="pl-1 pr-3 py-3">
-                      <div className="h-4 w-4 rounded bg-slate-200" />
-                    </td>
-
-                    {selectedCols.map((k) => (
-                      <td key={`${k}-${i}`} className="px-4 py-3">
-                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                      </td>
-                    ))}
-
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))}
-
-              {!loading &&
-                pageRows.map((r) => {
-                  const rowBusy = updatingId === r.id;
-
-                  const showStartFinal =
-                    r.formType !== "STERILITY" &&
-                    (r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-                      r.status === "PRELIMINARY_APPROVED");
-
-                  const badgeClass =
-                    r.formType === "STERILITY"
-                      ? (STERILITY_STATUS_COLORS[
-                          r.status as SterilityReportStatus
-                        ] ??
-                        "bg-slate-100 text-slate-800 ring-1 ring-slate-200")
-                      : (STATUS_COLORS[r.status as ReportStatus] ??
-                        "bg-slate-100 text-slate-800 ring-1 ring-slate-200");
-
-                  return (
-                     <tr
-                      key={r.id}
-                      className={classNames(
-                        "border-t hover:bg-slate-50",
-                        isPinned(r.id) && "bg-blue-50/40",
-                      )}
+                  {selectedCols.map((k) => (
+                    <th
+                      key={k}
+                      className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
                     >
-                      <td className="pl-2 pr-1 py-3 text-center">
+                      {COLS.find((c) => c.key === k)?.label ?? k}
+                    </th>
+                  ))}
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Actions</span>
+
+                      <div className="relative" data-col-dropdown>
                         <button
+                          ref={colBtnRef}
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            togglePin(r.id);
+                          onClick={() => {
+                            setColOpen((v) => {
+                              const next = !v;
+                              if (next && colBtnRef.current) {
+                                const r =
+                                  colBtnRef.current.getBoundingClientRect();
+                                setColPos({
+                                  top: r.bottom + 8,
+                                  left: r.right - 288,
+                                });
+                              }
+                              return next;
+                            });
                           }}
-                          className="inline-flex items-center justify-center transition hover:scale-110"
-                          aria-label={
-                            isPinned(r.id) ? "Unpin report" : "Pin report"
-                          }
-                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                          title="Choose columns"
+                          aria-label="Choose columns"
                         >
-                          <Pin
-                            className={classNames(
-                               "h-3 w-3 rotate-45 transition",
-                              isPinned(r.id)
-                                ? "text-blue-600 fill-blue-600"
-                                : "text-slate-400 hover:text-slate-600",
-                            )}
-                          />
+                          ▾
                         </button>
+
+                        {colOpen &&
+                          colPos &&
+                          createPortal(
+                            <div
+                              className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                              style={{ top: colPos.top, left: colPos.left }}
+                              data-col-dropdown
+                            >
+                              <div className="mb-2 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  Columns ({selectedCols.length})
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs text-slate-500 hover:text-slate-800"
+                                  onClick={() => setColOpen(false)}
+                                  aria-label="Close"
+                                  title="Close"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                {COLS.map((c) => {
+                                  const checked = selectedCols.includes(c.key);
+
+                                  return (
+                                    <label
+                                      key={c.key}
+                                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleCol(c.key)}
+                                      />
+                                      <span>{c.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                  onClick={() => setSelectedCols(DEFAULT_COLS)}
+                                >
+                                  Reset defaults
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                  onClick={() => setColOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>,
+                            document.body,
+                          )}
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading &&
+                  [...Array(7)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-t">
+                      <td className="pl-2 pr-1 py-3">
+                        <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(r.id)}
-                          onChange={() => toggleRow(r.id)}
-                          disabled={rowBusy}
-                        />
+                      <td className="pl-1 pr-3 py-3">
+                        <div className="h-4 w-4 rounded bg-slate-200" />
                       </td>
 
                       {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3 whitespace-nowrap">
-                          {k === "formNumber" || k === "reportNumber" ? (
-                            <span className="font-medium">
-                              {getCellValue(r, k)}
-                            </span>
-                          ) : (
-                            getCellValue(r, k)
-                          )}
+                        <td key={`${k}-${i}`} className="px-4 py-3">
+                          <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                         </td>
                       ))}
 
                       <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                            badgeClass,
-                          )}
-                        >
-                          {niceStatus(String(r.status))}
-                        </span>
+                        <div className="h-8 w-28 animate-pulse rounded bg-slate-200" />
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    </tr>
+                  ))}
 
-                      <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
-                        <div className="flex items-center gap-2">
-                          {/* <button
+                {!loading &&
+                  pageRows.map((r) => {
+                    const rowBusy = updatingId === r.id;
+
+                    const showStartFinal =
+                      r.formType !== "STERILITY" &&
+                      (r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
+                        r.status === "PRELIMINARY_APPROVED");
+
+                    const badgeClass =
+                      r.formType === "STERILITY"
+                        ? (STERILITY_STATUS_COLORS[
+                            r.status as SterilityReportStatus
+                          ] ??
+                          "bg-slate-100 text-slate-800 ring-1 ring-slate-200")
+                        : (STATUS_COLORS[r.status as ReportStatus] ??
+                          "bg-slate-100 text-slate-800 ring-1 ring-slate-200");
+
+                    return (
+                      <tr
+                        key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
+                        className={classNames(
+                          "border-t hover:bg-slate-50",
+                          isPinned(r.id) && "bg-blue-50/40",
+                        )}
+                      >
+                        <td className="pl-2 pr-1 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(r.id);
+                            }}
+                            className="inline-flex items-center justify-center transition hover:scale-110"
+                            aria-label={
+                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                            }
+                            title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          >
+                            <Pin
+                              className={classNames(
+                                "h-3 w-3 rotate-45 transition",
+                                isPinned(r.id)
+                                  ? "text-blue-600 fill-blue-600"
+                                  : "text-slate-400 hover:text-slate-600",
+                              )}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                            disabled={rowBusy}
+                          />
+                        </td>
+
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "formNumber" || k === "reportNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                              badgeClass,
+                            )}
+                          >
+                            {niceStatus(String(r.status))}
+                          </span>
+                        </td>
+
+                        <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                          <div className="flex items-center gap-2">
+                            {/* <button
                             disabled={rowBusy}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
@@ -2473,68 +2514,45 @@ export default function MicroDashboard() {
                             View
                           </button> */}
 
-                          <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                            onClick={() => {
-                              logUiEvent({
-                                action: "UI_VIEW",
-                                entity: "Micro Report",
-                                entityId: r.id,
-                                details: `Viewed ${r.formNumber}`,
-                                meta: {
-                                  formNumber: r.formNumber,
-                                  formType: r.formType,
-                                  status: r.status,
-                                },
-                                formNumber: r.formNumber,
-                                reportNumber: r.reportNumber,
-                                formType: r.formType,
-                                clientCode: r.client || null,
-                              });
-
-                              // setSelectedReport(r);
-                              openViewTarget(r);
-                            }}
-                            disabled={rowBusy}
-                          >
-                            View
-                          </button>
-
-                          {showStartFinal ? (
                             <button
-                              disabled={rowBusy}
-                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              onClick={async () => {
-                                if (rowBusy) return;
-                                setUpdatingId(r.id);
-                                try {
-                                  await startFinal(r);
-                                } catch (e: any) {
-                                  toast.error(
-                                    e?.message || "Failed to start final",
-                                  );
-                                } finally {
-                                  setUpdatingId(null);
-                                }
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                              onClick={() => {
+                                logUiEvent({
+                                  action: "UI_VIEW",
+                                  entity: "Micro Report",
+                                  entityId: r.id,
+                                  details: `Viewed ${r.formNumber}`,
+                                  meta: {
+                                    formNumber: r.formNumber,
+                                    formType: r.formType,
+                                    status: r.status,
+                                  },
+                                  formNumber: r.formNumber,
+                                  reportNumber: r.reportNumber,
+                                  formType: r.formType,
+                                  clientCode: r.client || null,
+                                });
+
+                                // setSelectedReport(r);
+                                openViewTarget(r);
                               }}
+                              disabled={rowBusy}
                             >
-                              {rowBusy ? <Spinner /> : null}
-                              {rowBusy ? "Starting..." : "Start Final"}
+                              View
                             </button>
-                          ) : (
-                            canUpdateThisReportLocal(r, user) && (
+
+                            {showStartFinal ? (
                               <button
                                 disabled={rowBusy}
-                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 onClick={async () => {
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
                                   try {
-                                    await autoAdvanceAndOpen(r, "micro");
-                                    openUpdateTarget(r);
+                                    await startFinal(r);
                                   } catch (e: any) {
                                     toast.error(
-                                      e?.message || "Failed to update status",
+                                      e?.message || "Failed to start final",
                                     );
                                   } finally {
                                     setUpdatingId(null);
@@ -2542,42 +2560,65 @@ export default function MicroDashboard() {
                                 }}
                               >
                                 {rowBusy ? <Spinner /> : null}
-                                {rowBusy ? "Updating..." : "Update"}
+                                {rowBusy ? "Starting..." : "Start Final"}
                               </button>
-                            )
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                            ) : (
+                              canUpdateThisReportLocal(r, user) && (
+                                <button
+                                  disabled={rowBusy}
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                  onClick={async () => {
+                                    if (rowBusy) return;
+                                    setUpdatingId(r.id);
+                                    try {
+                                      await autoAdvanceAndOpen(r, "micro");
+                                      openUpdateTarget(r);
+                                    } catch (e: any) {
+                                      toast.error(
+                                        e?.message || "Failed to update status",
+                                      );
+                                    } finally {
+                                      setUpdatingId(null);
+                                    }
+                                  }}
+                                >
+                                  {rowBusy ? <Spinner /> : null}
+                                  {rowBusy ? "Updating..." : "Update"}
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-              {!loading && pageRows.length === 0 && (
-                <tr>
-                  <td
-colSpan={2 + selectedCols.length + 2}
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    No reports found for{" "}
-                    <span className="font-medium">
-                      {niceStatus(String(statusFilter))}
-                    </span>
-                    {searchText ? (
-                      <>
-                        {" "}
-                        matching{" "}
-                        <span className="font-medium">“{searchText}”</span>.
-                      </>
-                    ) : (
-                      "."
-                    )}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={2 + selectedCols.length + 2}
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      No reports found for{" "}
+                      <span className="font-medium">
+                        {niceStatus(String(statusFilter))}
+                      </span>
+                      {searchText ? (
+                        <>
+                          {" "}
+                          matching{" "}
+                          <span className="font-medium">“{searchText}”</span>.
+                        </>
+                      ) : (
+                        "."
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
         {/* Pagination */}
         {!loading && total > 0 && (
@@ -2748,49 +2789,49 @@ colSpan={2 + selectedCols.length + 2}
         </div>
       )}
 
-        {correctionMenuOpen &&
-              correctionMenuPos &&
-              createPortal(
-                <div
-                  className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
-                  style={{
-                    top: correctionMenuPos.top,
-                    left: correctionMenuPos.left,
-                  }}
-                  data-correction-menu
-                  onMouseEnter={() => {
-                    clearCorrectionCloseTimer();
-                    setCorrectionMenuOpen(true);
-                  }}
-                  onMouseLeave={() => {
-                    scheduleCloseCorrectionMenu();
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                    onClick={() => {
-                      closeCorrectionMenu();
-                      openSelectedForCorrection(["REQUEST_CHANGE"]);
-                    }}
-                  >
-                    Request Change
-                  </button>
-      
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                    onClick={() => {
-                      closeCorrectionMenu();
-                      openSelectedForCorrection(["RAISE_CORRECTION"]);
-                    }}
-                  >
-                    Raise Correction
-                  </button>
-      
-                  {/* <div className="my-1 border-t" /> */}
-      
-                  {/* <button
+      {correctionMenuOpen &&
+        correctionMenuPos &&
+        createPortal(
+          <div
+            className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+            style={{
+              top: correctionMenuPos.top,
+              left: correctionMenuPos.left,
+            }}
+            data-correction-menu
+            onMouseEnter={() => {
+              clearCorrectionCloseTimer();
+              setCorrectionMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["REQUEST_CHANGE"]);
+              }}
+            >
+              Request Change
+            </button>
+
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["RAISE_CORRECTION"]);
+              }}
+            >
+              Raise Correction
+            </button>
+
+            {/* <div className="my-1 border-t" /> */}
+
+            {/* <button
                     type="button"
                     className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
                     onClick={() => {
@@ -2803,16 +2844,16 @@ colSpan={2 + selectedCols.length + 2}
                   >
                     Open Both
                   </button> */}
-                </div>,
-                document.body,
-              )}
+          </div>,
+          document.body,
+        )}
       <ReportWorkspaceModal
         open={workspaceOpen}
         reports={workspaceReports}
         mode={workspaceMode}
         layout={workspaceLayout}
         activeId={workspaceActiveId}
-          correctionKinds={workspaceCorrectionKinds}
+        correctionKinds={workspaceCorrectionKinds}
         onClose={() => {
           setWorkspaceOpen(false);
           setWorkspaceIds([]);

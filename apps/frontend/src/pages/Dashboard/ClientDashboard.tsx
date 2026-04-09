@@ -675,6 +675,9 @@ export default function ClientDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
   type StatusActionModalState = {
     open: boolean;
     action: "VOID_SELECTED" | null;
@@ -909,6 +912,46 @@ export default function ClientDashboard() {
     reportNoTo,
     pinnedIds,
   ]);
+
+  useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   // Pagination
   const total = processed.length;
@@ -2286,9 +2329,12 @@ export default function ClientDashboard() {
                     return (
                       <tr
                         key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
-                          isPinned(r.id) && "bg-amber-50/40",
+                          isPinned(r.id) && "bg-blue-50/40",
                         )}
                       >
                         <td className="pl-2 pr-1 py-3 text-center">

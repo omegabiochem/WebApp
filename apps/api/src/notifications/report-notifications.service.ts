@@ -42,24 +42,70 @@ function normalizeEmails(emails: string[]) {
 }
 
 // ✅ your Option C policy
+// function isUrgentStatus(s: ReportStatus) {
+//   // “requires human action right now”
+//   // if (s === 'SUBMITTED_BY_CLIENT') return true;
+
+//   // anything “needs correction”
+//   if (String(s).includes('NEEDS_CORRECTION')) return true;
+
+//   // you can add more if needed (optional)
+//   return false;
+// }
+
+// add near top helpers
+function isCorrectionOrChangeRequestedStatus(status: string) {
+  return (
+    status === 'CHANGE_REQUESTED' ||
+    status === 'CORRECTION_REQUESTED' ||
+    status.includes('NEEDS_CORRECTION')
+  );
+}
+
+function isCorrectionOrChangeUpdateStatus(status: string) {
+  return (
+    status === 'UNDER_CHANGE_UPDATE' || status === 'UNDER_CORRECTION_UPDATE'
+  );
+}
+
+// replace isUrgentStatus
 function isUrgentStatus(s: ReportStatus) {
-  // “requires human action right now”
-  // if (s === 'SUBMITTED_BY_CLIENT') return true;
+  const str = String(s);
 
-  // anything “needs correction”
-  if (String(s).includes('NEEDS_CORRECTION')) return true;
+  if (
+    str.includes('NEEDS_CORRECTION') ||
+    str === 'CORRECTION_REQUESTED' ||
+    str === 'CHANGE_REQUESTED'
+  ) {
+    return true;
+  }
 
-  // you can add more if needed (optional)
   return false;
 }
 
 function highlightForStatus(status: string) {
-  if (status.includes('NEEDS_CORRECTION')) {
+  if (
+    status.includes('NEEDS_CORRECTION') ||
+    status === 'CORRECTION_REQUESTED' ||
+    status === 'CHANGE_REQUESTED'
+  ) {
     return {
-      badgeText: 'Correction Required',
+      badgeText: 'Action Required',
       badgeTone: 'RED' as const,
       priorityLine:
-        'Action required: Please open the report and resolve the requested corrections.',
+        'Action required: Please review and address the requested changes or corrections.',
+    };
+  }
+
+  if (
+    status === 'UNDER_CORRECTION_UPDATE' ||
+    status === 'UNDER_CHANGE_UPDATE'
+  ) {
+    return {
+      badgeText: 'Update in Progress',
+      badgeTone: 'ORANGE' as const,
+      priorityLine:
+        'Update is in progress based on requested corrections or changes.',
     };
   }
 
@@ -584,6 +630,39 @@ export class ReportNotificationsService {
     // STATUS ROUTING
     // =========================
 
+    const actorUser = args.actorUserId
+      ? await this.prisma.user.findUnique({
+          where: { id: args.actorUserId },
+          select: { id: true, role: true, clientCode: true },
+        })
+      : null;
+
+    const actorRole = actorUser?.role ?? null;
+    const actorIsClient = actorRole === 'CLIENT';
+    const actorKnown = !!actorRole;
+
+    const notifyOppositeSideForChangeFlow = async (
+      titleFromClientToLab: string,
+      titleFromLabToClient: string,
+      tagClientToLab: string,
+      tagLabToClient: string,
+    ) => {
+      if (!actorKnown) {
+        this.log.warn(
+          `[MIC NOTIFY] actor role not found for actorUserId=${args.actorUserId}; defaulting to LAB notification for ${args.formNumber}`,
+        );
+        await notifyLab(titleFromClientToLab, tagClientToLab);
+        return;
+      }
+
+      if (actorIsClient) {
+        await notifyLab(titleFromClientToLab, tagClientToLab);
+        return;
+      }
+
+      await notifyClient(titleFromLabToClient, tagLabToClient);
+    };
+
     // ✅ SUBMITTED_BY_CLIENT (client -> lab)
     if (newStatus === 'SUBMITTED_BY_CLIENT') {
       await notifyLab('New Submission from Client', 'client-to-lab-submitted');
@@ -724,6 +803,46 @@ export class ReportNotificationsService {
       await notifyLab('Approved (Client Action)', 'client-to-lab-approved');
       return;
     }
+
+    if (newStatus === 'CHANGE_REQUESTED') {
+      await notifyOppositeSideForChangeFlow(
+        'Change Requested by Client',
+        'Change Requested by Lab',
+        'client-to-lab-change-requested',
+        'lab-to-client-change-requested',
+      );
+      return;
+    }
+
+    if (newStatus === 'CORRECTION_REQUESTED') {
+      await notifyOppositeSideForChangeFlow(
+        'Correction Requested by Client',
+        'Correction Requested by Lab',
+        'client-to-lab-correction-requested',
+        'lab-to-client-correction-requested',
+      );
+      return;
+    }
+
+    if (newStatus === 'UNDER_CHANGE_UPDATE') {
+  await notifyOppositeSideForChangeFlow(
+    'Change Update in Progress',
+    'Change Update in Progress',
+    'client-to-lab-under-change-update',
+    'lab-to-client-under-change-update',
+  );
+  return;
+}
+
+if (newStatus === 'UNDER_CORRECTION_UPDATE') {
+  await notifyOppositeSideForChangeFlow(
+    'Correction Update in Progress',
+    'Correction Update in Progress',
+    'client-to-lab-under-correction-update',
+    'lab-to-client-under-correction-update',
+  );
+  return;
+}
 
     // =========================
     // FRONTDESK IN-APP ONLY

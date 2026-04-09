@@ -23,8 +23,11 @@ type DigestHighlight = {
 };
 
 function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
-  const hasCorrection = statuses.some((s) =>
-    String(s).includes('NEEDS_CORRECTION'),
+  const hasCorrection = statuses.some(
+    (s) =>
+      String(s).includes('NEEDS_CORRECTION') ||
+      String(s).includes('CORRECTION_REQUESTED') ||
+      String(s).includes('CHANGE_REQUESTED'),
   );
   if (hasCorrection) {
     return {
@@ -32,6 +35,20 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
       badgeTone: 'RED',
       priorityLine:
         'Action required: This digest includes one or more reports needing correction.',
+    };
+  }
+
+  const hasUpdateInProgress = statuses.some((s) => {
+    const v = String(s);
+    return v === 'UNDER_CORRECTION_UPDATE' || v === 'UNDER_CHANGE_UPDATE';
+  });
+
+  if (hasUpdateInProgress) {
+    return {
+      badgeText: 'Updates In Progress',
+      badgeTone: 'ORANGE',
+      priorityLine:
+        'This digest includes reports currently being updated based on requested corrections or changes.',
     };
   }
 
@@ -122,7 +139,17 @@ function digestBucketForStatus(status: string): string {
   if (s === 'UNDER_CLIENT_FINAL_REVIEW') return 'FINAL_RESULTS';
   if (s === 'UNDER_CLIENT_REVIEW') return 'RESULTS';
 
-  if (s.includes('NEEDS_CORRECTION')) return 'CORRECTION';
+  if (
+    s.includes('NEEDS_CORRECTION') ||
+    s === 'CORRECTION_REQUESTED' ||
+    s === 'CHANGE_REQUESTED'
+  ) {
+    return 'CORRECTION';
+  }
+
+  if (s === 'UNDER_CORRECTION_UPDATE' || s === 'UNDER_CHANGE_UPDATE') {
+    return 'UPDATE_IN_PROGRESS';
+  }
   if (s === 'SUBMITTED_BY_CLIENT') return 'SUBMISSION';
   if (s === 'APPROVED' || s === 'FINAL_APPROVED') return 'APPROVED';
 
