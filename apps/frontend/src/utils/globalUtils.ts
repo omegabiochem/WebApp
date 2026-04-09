@@ -124,3 +124,38 @@ export const DashboardCOLS: Array<{ key: DashboardColKey; label: string }> = [
   { key: "updatedAt", label: "updatedAt" },
 ];
 export const MAX_COLS = 4;
+
+
+export const ROW_STATUS_COLORS: Record<string, string> = {
+  DRAFT: "bg-slate-50",
+  SUBMITTED_BY_CLIENT: "bg-amber-50",
+  UNDER_DRAFT_REVIEW: "bg-sky-50",
+  UNDER_TESTING_REVIEW: "bg-cyan-50",
+  UNDER_RESUBMISSION_TESTING_REVIEW: "bg-cyan-50",
+  UNDER_QA_REVIEW: "bg-violet-50",
+  UNDER_ADMIN_REVIEW: "bg-fuchsia-50",
+  UNDER_CLIENT_REVIEW: "bg-emerald-50",
+
+  CLIENT_NEEDS_CORRECTION: "bg-yellow-50",
+  FRONTDESK_NEEDS_CORRECTION: "bg-yellow-50",
+  TESTING_NEEDS_CORRECTION: "bg-yellow-50",
+  QA_NEEDS_CORRECTION: "bg-yellow-50",
+  ADMIN_NEEDS_CORRECTION: "bg-yellow-50",
+
+  CHANGE_REQUESTED: "bg-orange-50",
+  CORRECTION_REQUESTED: "bg-rose-50",
+  UNDER_CHANGE_UPDATE: "bg-orange-50",
+  UNDER_CORRECTION_UPDATE: "bg-rose-50",
+
+  APPROVED: "bg-green-50",
+  FINAL_APPROVED: "bg-green-50",
+  PRELIMINARY_APPROVED: "bg-green-50",
+
+  LOCKED: "bg-zinc-100",
+  VOID: "bg-red-50",
+
+  FRONTDESK_ON_HOLD: "bg-neutral-50",
+  TESTING_ON_HOLD: "bg-neutral-50",
+  PRELIMINARY_TESTING_ON_HOLD: "bg-neutral-50",
+  FINAL_TESTING_ON_HOLD: "bg-neutral-50",
+};

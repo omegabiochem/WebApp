@@ -919,6 +919,10 @@ export default function MCDashboard() {
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
+
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<UnifiedRow | null>(
     null,
@@ -1360,6 +1364,46 @@ export default function MCDashboard() {
     reportNoTo,
     pinnedIds,
   ]);
+
+  useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   // Pagination
   const total = processed.length;
@@ -2155,16 +2199,16 @@ export default function MCDashboard() {
 
     if (!selected.length) return;
 
-  const hasBlockedStatus = selected.some((r) =>
-    isCorrectionFlowStatus(String(r.status)),
-  );
-
-  if (hasBlockedStatus) {
-    toast.error(
-      "Correction is not allowed for reports already in correction/change workflow",
+    const hasBlockedStatus = selected.some((r) =>
+      isCorrectionFlowStatus(String(r.status)),
     );
-    return;
-  }
+
+    if (hasBlockedStatus) {
+      toast.error(
+        "Correction is not allowed for reports already in correction/change workflow",
+      );
+      return;
+    }
 
     if (selected.length === 1) {
       const r = selected[0];
@@ -2193,10 +2237,10 @@ export default function MCDashboard() {
       return;
     }
 
-   setWorkspaceIds(selected.map((r) => rowKey(r)));
+    setWorkspaceIds(selected.map((r) => rowKey(r)));
     setWorkspaceMode("UPDATE"); // ✅ still UPDATE only
     setWorkspaceLayout("VERTICAL");
-setWorkspaceActiveId(rowKey(selected[0]));
+    setWorkspaceActiveId(rowKey(selected[0]));
     setWorkspaceCorrectionKinds(kinds);
     setWorkspaceOpen(true);
   }
@@ -2229,7 +2273,7 @@ setWorkspaceActiveId(rowKey(selected[0]));
     }, 180);
   }
 
- function closeCorrectionMenu() {
+  function closeCorrectionMenu() {
     clearCorrectionCloseTimer();
     setCorrectionMenuOpen(false);
   }
@@ -2237,7 +2281,7 @@ setWorkspaceActiveId(rowKey(selected[0]));
   function isCorrectionFlowStatus(status: string) {
     const s = String(status).toUpperCase();
 
-       return (
+    return (
       s.includes("CORRECTION") ||
       s.includes("CHANGE_REQUESTED") ||
       s.includes("UNDER_CHANGE_UPDATE") ||
@@ -2393,11 +2437,11 @@ setWorkspaceActiveId(rowKey(selected[0]));
           <div
             className="relative"
             data-correction-menu
-          onMouseEnter={() => {
-  if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
-    openCorrectionMenu();
-  }
-}}
+            onMouseEnter={() => {
+              if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+                openCorrectionMenu();
+              }
+            }}
             onMouseLeave={() => {
               scheduleCloseCorrectionMenu();
             }}
@@ -2406,8 +2450,9 @@ setWorkspaceActiveId(rowKey(selected[0]));
               ref={correctionBtnRef}
               type="button"
               onClick={(e) => {
-             e.stopPropagation();
-  if (!selectedIds.length || selectedHasCorrectionLockedStatus) return;
+                e.stopPropagation();
+                if (!selectedIds.length || selectedHasCorrectionLockedStatus)
+                  return;
 
                 if (correctionMenuOpen) {
                   closeCorrectionMenu();
@@ -2416,12 +2461,12 @@ setWorkspaceActiveId(rowKey(selected[0]));
                 }
               }}
               disabled={!selectedIds.length || printingBulk}
-             className={classNames(
-  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
-  selectedIds.length && !selectedHasCorrectionLockedStatus
-    ? "bg-amber-600 text-white hover:bg-amber-700"
-    : "bg-slate-200 text-slate-500",
-)}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && !selectedHasCorrectionLockedStatus
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
             >
               📝 Corrections ({selectedIds.length})
               <span className="text-xs">▾</span>
@@ -2971,6 +3016,9 @@ setWorkspaceActiveId(rowKey(selected[0]));
                     return (
                       <tr
                         key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
                           isPinned(r.id) && "bg-blue-50/40",
