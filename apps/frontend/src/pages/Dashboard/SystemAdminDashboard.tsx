@@ -181,7 +181,6 @@ const ALL_STATUSES: (
   "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
 
-
   "UNDER_CHANGE_UPDATE",
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
@@ -647,6 +646,9 @@ export default function SystemAdminDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
     null,
@@ -675,7 +677,7 @@ export default function SystemAdminDashboard() {
   const [colsHydrated, setColsHydrated] = useState(false);
 
   type WorkspaceMode = "VIEW" | "UPDATE";
-    type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+  type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -702,43 +704,40 @@ export default function SystemAdminDashboard() {
       }));
   }, [workspaceIds, reports]);
 
+  const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
+    CorrectionLaunchKind[]
+  >([]);
 
-  
-    const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
-      CorrectionLaunchKind[]
-    >([]);
-  
-    const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
-    const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
-    const [correctionMenuPos, setCorrectionMenuPos] = useState<{
-      top: number;
-      left: number;
-    } | null>(null);
-  
-    useEffect(() => {
-      if (!correctionMenuOpen) return;
-  
-      const onDown = (e: MouseEvent) => {
-        const t = e.target as HTMLElement;
-        if (!t.closest("[data-correction-menu]")) {
-          setCorrectionMenuOpen(false);
-        }
-      };
-  
-      window.addEventListener("mousedown", onDown);
-      return () => window.removeEventListener("mousedown", onDown);
-    }, [correctionMenuOpen]);
-  
-    useEffect(() => {
-      return () => {
-        if (correctionCloseTimerRef.current != null) {
-          window.clearTimeout(correctionCloseTimerRef.current);
-        }
-      };
-    }, []);
-  
-    const correctionCloseTimerRef = React.useRef<number | null>(null);
-  
+  const [correctionMenuOpen, setCorrectionMenuOpen] = useState(false);
+  const correctionBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [correctionMenuPos, setCorrectionMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!correctionMenuOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-correction-menu]")) {
+        setCorrectionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [correctionMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (correctionCloseTimerRef.current != null) {
+        window.clearTimeout(correctionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   type StatusActionModalState = {
     open: boolean;
@@ -951,6 +950,47 @@ export default function SystemAdminDashboard() {
     dateTo,
     pinnedIds,
   ]);
+
+
+    useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   const total = processed.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -1654,7 +1694,6 @@ export default function SystemAdminDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
     const selected = selectedIds
       .map((id) => reports.find((r) => r.id === id))
@@ -1662,16 +1701,16 @@ export default function SystemAdminDashboard() {
 
     if (!selected.length) return;
 
-  const hasBlockedStatus = selected.some((r) =>
-    isCorrectionFlowStatus(String(r.status)),
-  );
-
-  if (hasBlockedStatus) {
-    toast.error(
-      "Correction is not allowed for reports already in correction/change workflow",
+    const hasBlockedStatus = selected.some((r) =>
+      isCorrectionFlowStatus(String(r.status)),
     );
-    return;
-  }
+
+    if (hasBlockedStatus) {
+      toast.error(
+        "Correction is not allowed for reports already in correction/change workflow",
+      );
+      return;
+    }
 
     if (selected.length === 1) {
       const r = selected[0];
@@ -1733,7 +1772,7 @@ export default function SystemAdminDashboard() {
     }, 180);
   }
 
- function closeCorrectionMenu() {
+  function closeCorrectionMenu() {
     clearCorrectionCloseTimer();
     setCorrectionMenuOpen(false);
   }
@@ -1741,7 +1780,7 @@ export default function SystemAdminDashboard() {
   function isCorrectionFlowStatus(status: string) {
     const s = String(status).toUpperCase();
 
-       return (
+    return (
       s.includes("CORRECTION") ||
       s.includes("CHANGE_REQUESTED") ||
       s.includes("UNDER_CHANGE_UPDATE") ||
@@ -1754,7 +1793,6 @@ export default function SystemAdminDashboard() {
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
-
 
 
 
@@ -1896,14 +1934,14 @@ export default function SystemAdminDashboard() {
             )}
           </div>
 
-           <div
+          <div
             className="relative"
             data-correction-menu
-          onMouseEnter={() => {
-  if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
-    openCorrectionMenu();
-  }
-}}
+            onMouseEnter={() => {
+              if (selectedIds.length && !selectedHasCorrectionLockedStatus) {
+                openCorrectionMenu();
+              }
+            }}
             onMouseLeave={() => {
               scheduleCloseCorrectionMenu();
             }}
@@ -1912,8 +1950,9 @@ export default function SystemAdminDashboard() {
               ref={correctionBtnRef}
               type="button"
               onClick={(e) => {
-             e.stopPropagation();
-  if (!selectedIds.length || selectedHasCorrectionLockedStatus) return;
+                e.stopPropagation();
+                if (!selectedIds.length || selectedHasCorrectionLockedStatus)
+                  return;
 
                 if (correctionMenuOpen) {
                   closeCorrectionMenu();
@@ -1922,12 +1961,12 @@ export default function SystemAdminDashboard() {
                 }
               }}
               disabled={!selectedIds.length || printingBulk}
-             className={classNames(
-  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
-  selectedIds.length && !selectedHasCorrectionLockedStatus
-    ? "bg-amber-600 text-white hover:bg-amber-700"
-    : "bg-slate-200 text-slate-500",
-)}
+              className={classNames(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed",
+                selectedIds.length && !selectedHasCorrectionLockedStatus
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-slate-200 text-slate-500",
+              )}
             >
               📝 Corrections ({selectedIds.length})
               <span className="text-xs">▾</span>
@@ -2374,8 +2413,18 @@ export default function SystemAdminDashboard() {
                     const rowBusy = updatingId === r.id;
 
                     return (
+                      // <tr
+                      //   key={r.id}
+                      //   className={classNames(
+                      //     "border-t hover:bg-slate-50",
+                      //     isPinned(r.id) && "bg-blue-50/40",
+                      //   )}
+                      // >
                       <tr
                         key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
                           isPinned(r.id) && "bg-blue-50/40",
@@ -2479,8 +2528,7 @@ export default function SystemAdminDashboard() {
                                       r.status ===
                                       "CLIENT_NEEDS_FINAL_CORRECTION"
                                     ) {
-                                      const next =
-                                        "UNDER_FINAL_TESTING_REVIEW";
+                                      const next = "UNDER_FINAL_TESTING_REVIEW";
                                       await setStatus(
                                         r,
                                         next,
@@ -2521,8 +2569,7 @@ export default function SystemAdminDashboard() {
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
-                                      const next =
-                                        "UNDER_TESTING_REVIEW";
+                                      const next = "UNDER_TESTING_REVIEW";
                                       await setStatus(r, next, "set by qa");
                                       setReports((prev) =>
                                         prev.map((x) =>
@@ -2559,8 +2606,7 @@ export default function SystemAdminDashboard() {
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
-                                      const next =
-                                        "UNDER_TESTING_REVIEW";
+                                      const next = "UNDER_TESTING_REVIEW";
                                       await setStatus(
                                         r,
                                         next,
@@ -3344,49 +3390,49 @@ export default function SystemAdminDashboard() {
         </div>
       )}
 
-        {correctionMenuOpen &&
-              correctionMenuPos &&
-              createPortal(
-                <div
-                  className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
-                  style={{
-                    top: correctionMenuPos.top,
-                    left: correctionMenuPos.left,
-                  }}
-                  data-correction-menu
-                  onMouseEnter={() => {
-                    clearCorrectionCloseTimer();
-                    setCorrectionMenuOpen(true);
-                  }}
-                  onMouseLeave={() => {
-                    scheduleCloseCorrectionMenu();
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                    onClick={() => {
-                      closeCorrectionMenu();
-                      openSelectedForCorrection(["REQUEST_CHANGE"]);
-                    }}
-                  >
-                    Request Change
-                  </button>
-      
-                  <button
-                    type="button"
-                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                    onClick={() => {
-                      closeCorrectionMenu();
-                      openSelectedForCorrection(["RAISE_CORRECTION"]);
-                    }}
-                  >
-                    Raise Correction
-                  </button>
-      
-                  {/* <div className="my-1 border-t" /> */}
-      
-                  {/* <button
+      {correctionMenuOpen &&
+        correctionMenuPos &&
+        createPortal(
+          <div
+            className="fixed z-[9999] w-56 rounded-xl border bg-white p-1 shadow-lg ring-1 ring-black/5"
+            style={{
+              top: correctionMenuPos.top,
+              left: correctionMenuPos.left,
+            }}
+            data-correction-menu
+            onMouseEnter={() => {
+              clearCorrectionCloseTimer();
+              setCorrectionMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              scheduleCloseCorrectionMenu();
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["REQUEST_CHANGE"]);
+              }}
+            >
+              Request Change
+            </button>
+
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                closeCorrectionMenu();
+                openSelectedForCorrection(["RAISE_CORRECTION"]);
+              }}
+            >
+              Raise Correction
+            </button>
+
+            {/* <div className="my-1 border-t" /> */}
+
+            {/* <button
                     type="button"
                     className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
                     onClick={() => {
@@ -3399,9 +3445,9 @@ export default function SystemAdminDashboard() {
                   >
                     Open Both
                   </button> */}
-                </div>,
-                document.body,
-              )}
+          </div>,
+          document.body,
+        )}
 
       <ReportWorkspaceModal
         open={workspaceOpen}

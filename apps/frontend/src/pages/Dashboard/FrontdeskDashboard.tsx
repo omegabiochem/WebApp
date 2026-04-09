@@ -540,6 +540,9 @@ export default function FrontDeskDashboard() {
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
+
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
@@ -759,6 +762,46 @@ export default function FrontDeskDashboard() {
     reportNoTo,
     pinnedIds,
   ]);
+
+  useEffect(() => {
+    const map: Record<string, DOMRect> = {};
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      if (el) {
+        map[r.id] = el.getBoundingClientRect();
+      }
+    }
+    prevPositions.current = map;
+  }, [processed.length, page, perPage]);
+
+  useEffect(() => {
+    for (const r of processed) {
+      const el = rowRefs.current[r.id];
+      const prev = prevPositions.current[r.id];
+      if (!el || !prev) continue;
+
+      const next = el.getBoundingClientRect();
+      const dy = prev.top - next.top;
+
+      if (dy !== 0) {
+        el.style.transition = "none";
+        el.style.transform = `translateY(${dy}px)`;
+
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 280ms ease";
+          el.style.transform = "translateY(0)";
+        });
+
+        const cleanup = () => {
+          el.style.transition = "";
+          el.style.transform = "";
+          el.removeEventListener("transitionend", cleanup);
+        };
+
+        el.addEventListener("transitionend", cleanup);
+      }
+    }
+  }, [processed]);
 
   // Pagination
   const total = processed.length;
@@ -1880,234 +1923,237 @@ export default function FrontDeskDashboard() {
             {error}
           </div>
         )}
-<div className="min-h-0">
-  <div className="max-h-[60vh] overflow-auto scrollbar-thin">
-    <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
-           <thead className="sticky top-0 z-30 bg-slate-50">
-              <tr className="text-left text-slate-600">
-              <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
-                <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleSelectPage}
-                    disabled={printingBulk}
-                  />
-                </th>
-                {selectedCols.map((k) => (
-                 <th
-  key={k}
-  className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
->
-                    {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+        <div className="min-h-0">
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectPage}
+                      disabled={printingBulk}
+                    />
                   </th>
-                ))}
-               <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
-  Status
-</th>
-                <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Actions</span>
-
-                    <div className="relative" data-col-dropdown>
-                      <button
-                        ref={colBtnRef}
-                        type="button"
-                        onClick={() => {
-                          setColOpen((v) => {
-                            const next = !v;
-                            if (next && colBtnRef.current) {
-                              const r =
-                                colBtnRef.current.getBoundingClientRect();
-                              setColPos({
-                                top: r.bottom + 8,
-                                left: r.right - 288,
-                              });
-                            }
-                            return next;
-                          });
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
-                        title="Choose columns"
-                        aria-label="Choose columns"
-                      >
-                        ▾
-                      </button>
-
-                      {colOpen &&
-                        colPos &&
-                        createPortal(
-                          <div
-                            className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
-                            style={{ top: colPos.top, left: colPos.left }}
-                            data-col-dropdown
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <div className="text-xs font-semibold text-slate-600">
-                                Columns ({selectedCols.length})
-                              </div>
-                              <button
-                                type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800"
-                                onClick={() => setColOpen(false)}
-                                aria-label="Close"
-                                title="Close"
-                              >
-                                ✕
-                              </button>
-                            </div>
-
-                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
-                              {DASHBOARD_COLS.map((c) => {
-                                const checked = selectedCols.includes(c.key);
-
-                                return (
-                                  <label
-                                    key={c.key}
-                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleCol(c.key)}
-                                    />
-                                    <span>{c.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-slate-600 hover:underline"
-                                onClick={() => setSelectedCols(DEFAULT_COLS)}
-                              >
-                                Reset defaults
-                              </button>
-
-                              <button
-                                type="button"
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                                onClick={() => setColOpen(false)}
-                              >
-                                Done
-                              </button>
-                            </div>
-                          </div>,
-                          document.body,
-                        )}
-                    </div>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading &&
-                [...Array(6)].map((_, i) => (
-                  <tr key={`skel-${i}`} className="border-t">
-                    <td className="pl-2 pr-1 py-3">
-                      <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
-                    </td>
-                    <td className="pl-1 pr-3 py-3">
-                      <div className="h-4 w-4 rounded bg-slate-200" />
-                    </td>
-
-                    {selectedCols.map((k) => (
-                      <td key={`${k}-${i}`} className="px-4 py-3">
-                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                      </td>
-                    ))}
-
-                    <td className="px-4 py-3">
-                      <div className="h-5 w-28 animate-pulse rounded bg-slate-200" />
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))}
-
-              {!loading &&
-                pageRows.map((r) => {
-                  const isChemistry =
-                    r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-                  const rowBusy = updatingId === r.id;
-
-                  const rowUploading = uploadingId === r.id;
-
-                  return (
-                   <tr
-                      key={r.id}
-                      className={classNames(
-                        "border-t hover:bg-slate-50",
-                        isPinned(r.id) && "bg-blue-50/40",
-                      )}
+                  {selectedCols.map((k) => (
+                    <th
+                      key={k}
+                      className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap"
                     >
-                      <td className="pl-2 pr-1 py-3 text-center">
+                      {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
+                    </th>
+                  ))}
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="sticky top-0 right-0 z-40 bg-slate-50 px-4 py-3 font-medium shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Actions</span>
+
+                      <div className="relative" data-col-dropdown>
                         <button
+                          ref={colBtnRef}
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            togglePin(r.id);
+                          onClick={() => {
+                            setColOpen((v) => {
+                              const next = !v;
+                              if (next && colBtnRef.current) {
+                                const r =
+                                  colBtnRef.current.getBoundingClientRect();
+                                setColPos({
+                                  top: r.bottom + 8,
+                                  left: r.right - 288,
+                                });
+                              }
+                              return next;
+                            });
                           }}
-                          className="inline-flex items-center justify-center transition hover:scale-110"
-                          aria-label={
-                            isPinned(r.id) ? "Unpin report" : "Pin report"
-                          }
-                          title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-slate-600 hover:bg-slate-100"
+                          title="Choose columns"
+                          aria-label="Choose columns"
                         >
-                          <Pin
-                            className={classNames(
-                              "h-3 w-3 rotate-45 transition",
-                              isPinned(r.id)
-                                ? "text-blue-600 fill-blue-600"
-                                : "text-slate-400 hover:text-slate-600",
-                            )}
-                          />
+                          ▾
                         </button>
+
+                        {colOpen &&
+                          colPos &&
+                          createPortal(
+                            <div
+                              className="fixed z-[9999] w-72 rounded-xl border bg-white p-3 shadow-lg"
+                              style={{ top: colPos.top, left: colPos.left }}
+                              data-col-dropdown
+                            >
+                              <div className="mb-2 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  Columns ({selectedCols.length})
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs text-slate-500 hover:text-slate-800"
+                                  onClick={() => setColOpen(false)}
+                                  aria-label="Close"
+                                  title="Close"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto pr-1">
+                                {DASHBOARD_COLS.map((c) => {
+                                  const checked = selectedCols.includes(c.key);
+
+                                  return (
+                                    <label
+                                      key={c.key}
+                                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleCol(c.key)}
+                                      />
+                                      <span>{c.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                  onClick={() => setSelectedCols(DEFAULT_COLS)}
+                                >
+                                  Reset defaults
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                  onClick={() => setColOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>,
+                            document.body,
+                          )}
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading &&
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-t">
+                      <td className="pl-2 pr-1 py-3">
+                        <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(r.id)}
-                          onChange={() => toggleRow(r.id)}
-                          disabled={rowBusy}
-                        />
+                      <td className="pl-1 pr-3 py-3">
+                        <div className="h-4 w-4 rounded bg-slate-200" />
                       </td>
 
                       {selectedCols.map((k) => (
-                        <td key={k} className="px-4 py-3 whitespace-nowrap">
-                          {k === "reportNumber" || k === "formNumber" ? (
-                            <span className="font-medium">
-                              {getCellValue(r, k)}
-                            </span>
-                          ) : (
-                            getCellValue(r, k)
-                          )}
+                        <td key={`${k}-${i}`} className="px-4 py-3">
+                          <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                         </td>
                       ))}
 
                       <td className="px-4 py-3">
-                        <span
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                            (isChemistry
-                              ? CHEMISTRY_STATUS_COLORS[
-                                  r.status as ChemistryReportStatus
-                                ]
-                              : STATUS_COLORS[r.status as ReportStatus]) ||
-                              "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
-                          )}
-                        >
-                          {niceStatus(String(r.status))}
-                        </span>
+                        <div className="h-5 w-28 animate-pulse rounded bg-slate-200" />
                       </td>
 
-                     <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {/* <button
+                      <td className="px-4 py-3">
+                        <div className="h-8 w-40 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    </tr>
+                  ))}
+
+                {!loading &&
+                  pageRows.map((r) => {
+                    const isChemistry =
+                      r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
+                    const rowBusy = updatingId === r.id;
+
+                    const rowUploading = uploadingId === r.id;
+
+                    return (
+                      <tr
+                        key={r.id}
+                        ref={(el) => {
+                          rowRefs.current[r.id] = el;
+                        }}
+                        className={classNames(
+                          "border-t hover:bg-slate-50",
+                          isPinned(r.id) && "bg-blue-50/40",
+                        )}
+                      >
+                        <td className="pl-2 pr-1 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePin(r.id);
+                            }}
+                            className="inline-flex items-center justify-center transition hover:scale-110"
+                            aria-label={
+                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                            }
+                            title={isPinned(r.id) ? "Unpin" : "Pin"}
+                          >
+                            <Pin
+                              className={classNames(
+                                "h-3 w-3 rotate-45 transition",
+                                isPinned(r.id)
+                                  ? "text-blue-600 fill-blue-600"
+                                  : "text-slate-400 hover:text-slate-600",
+                              )}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                            disabled={rowBusy}
+                          />
+                        </td>
+
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "reportNumber" || k === "formNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                              (isChemistry
+                                ? CHEMISTRY_STATUS_COLORS[
+                                    r.status as ChemistryReportStatus
+                                  ]
+                                : STATUS_COLORS[r.status as ReportStatus]) ||
+                                "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                            )}
+                          >
+                            {niceStatus(String(r.status))}
+                          </span>
+                        </td>
+
+                        <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* <button
                             disabled={rowBusy}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             onClick={() => setSelectedReport(r)}
@@ -2115,103 +2161,11 @@ export default function FrontDeskDashboard() {
                             View
                           </button> */}
 
-                          <button
-                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-                            onClick={() => {
-                              logUiEvent({
-                                action: "UI_VIEW",
-                                entity:
-                                  r.formType === "CHEMISTRY_MIX"
-                                    ? "ChemistryReport"
-                                    : r.formType === "COA"
-                                      ? "CoaReport"
-                                      : r.formType === "STERILITY"
-                                        ? "SterilityReport"
-                                        : "Micro Report",
-                                entityId: r.id,
-                                details: `Viewed ${r.formNumber}`,
-                                meta: {
-                                  formNumber: r.formNumber,
-                                  formType: r.formType,
-                                  status: r.status,
-                                },
-                                formNumber: r.formNumber,
-                                reportNumber: r.reportNumber,
-                                formType: r.formType,
-                                clientCode: user?.clientCode || null,
-                              });
-                                setModalPane("ATTACHMENTS");
-
-                              openViewTarget(r);
-                            }}
-                            disabled={rowBusy}
-                          >
-                            View
-                          </button>
-
-                          <button
-                            disabled={rowBusy}
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                            onClick={async () => {
-                              if (rowBusy) return;
-                              setUpdatingId(r.id);
-
-                              try {
-                                // Your existing transition:
-                                // PRELIMINARY_TESTING_NEEDS_CORRECTION -> UNDER_CLIENT_PRELIMINARY_CORRECTION
-                                if (
-                                  r.status ===
-                                  "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                                ) {
-                                  const newStatus =
-                                    "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                                  await setStatus(
-                                    r,
-                                    newStatus,
-                                    "Sent back to client for correction",
-                                  );
-                                  setReports((prev) =>
-                                    prev.map((x) =>
-                                      x.id === r.id
-                                        ? { ...x, status: newStatus }
-                                        : x,
-                                    ),
-                                  );
-                                }
-
-                                openUpdateTarget(r);
-                              } catch (e: any) {
-                                alert(e?.message || "Failed to update status");
-                              } finally {
-                                setUpdatingId(null);
-                              }
-                            }}
-                          >
-                            {rowBusy ? <Spinner /> : null}
-                            {rowBusy ? "Updating..." : "Update"}
-                          </button>
-
-                          <>
-                            {/* Hidden input */}
-                            <input
-                              type="file"
-                              accept=".pdf,image/*"
-                              className="hidden"
-                              ref={(el) => {
-                                if (el) fileInputs.current[r.id] = el;
-                                else delete fileInputs.current[r.id]; // cleanup on unmount
-                              }}
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                e.target.value = ""; // allow re-upload same file again
-                                if (!file) return;
-
-                                if (rowUploading) return;
-                                setUploadingId(r.id);
-
-                                // ✅ AUDIT
+                            <button
+                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                              onClick={() => {
                                 logUiEvent({
-                                  action: "UI_UPLOAD_ATTACHMENT",
+                                  action: "UI_VIEW",
                                   entity:
                                     r.formType === "CHEMISTRY_MIX"
                                       ? "ChemistryReport"
@@ -2219,86 +2173,182 @@ export default function FrontDeskDashboard() {
                                         ? "CoaReport"
                                         : r.formType === "STERILITY"
                                           ? "SterilityReport"
-                                          : "MicroReport",
+                                          : "Micro Report",
                                   entityId: r.id,
-                                  details: `Uploaded attachment for ${r.formNumber}`,
+                                  details: `Viewed ${r.formNumber}`,
                                   meta: {
-                                    filename: file.name,
-                                    size: file.size,
-                                    type: file.type,
+                                    formNumber: r.formNumber,
+                                    formType: r.formType,
+                                    status: r.status,
                                   },
                                   formNumber: r.formNumber,
                                   reportNumber: r.reportNumber,
                                   formType: r.formType,
                                   clientCode: user?.clientCode || null,
                                 });
+                                setModalPane("ATTACHMENTS");
+
+                                openViewTarget(r);
+                              }}
+                              disabled={rowBusy}
+                            >
+                              View
+                            </button>
+
+                            <button
+                              disabled={rowBusy}
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                              onClick={async () => {
+                                if (rowBusy) return;
+                                setUpdatingId(r.id);
 
                                 try {
-                                  await uploadAttachmentForReport(r, file);
-                                  alert("✅ Uploaded!");
-                                  // optional: if modal open for same report, switch pane
-                                  if (selectedReport?.id === r.id)
-                                    setModalPane("ATTACHMENTS");
-                                } catch (err: any) {
-                                  if (err?.status === 409) {
-                                    alert(
-                                      "ℹ️ Duplicate attachment already exists.",
+                                  // Your existing transition:
+                                  // PRELIMINARY_TESTING_NEEDS_CORRECTION -> UNDER_CLIENT_PRELIMINARY_CORRECTION
+                                  if (
+                                    r.status ===
+                                    "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                                  ) {
+                                    const newStatus =
+                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION";
+                                    await setStatus(
+                                      r,
+                                      newStatus,
+                                      "Sent back to client for correction",
                                     );
-                                  } else if (err?.status === 403) {
-                                    alert(
-                                      "⚠️ Forbidden. Check role/scopes for attachment upload.",
+                                    setReports((prev) =>
+                                      prev.map((x) =>
+                                        x.id === r.id
+                                          ? { ...x, status: newStatus }
+                                          : x,
+                                      ),
                                     );
-                                  } else {
-                                    alert(err?.message || "Upload failed");
                                   }
+
+                                  openUpdateTarget(r);
+                                } catch (e: any) {
+                                  alert(
+                                    e?.message || "Failed to update status",
+                                  );
                                 } finally {
-                                  setUploadingId(null);
+                                  setUpdatingId(null);
                                 }
                               }}
-                            />
-
-                            {/* Upload Button */}
-                            <button
-                              type="button"
-                              disabled={rowBusy || rowUploading}
-                              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                              onClick={() => fileInputs.current[r.id]?.click()}
                             >
-                              {rowUploading ? <Spinner /> : "⬆️"}
-                              {rowUploading ? "Uploading..." : "Upload"}
+                              {rowBusy ? <Spinner /> : null}
+                              {rowBusy ? "Updating..." : "Update"}
                             </button>
-                          </>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
 
-              {!loading && pageRows.length === 0 && (
-                <tr>
-                  <td
-colSpan={2 + selectedCols.length + 2}
-                    className="px-4 py-12 text-center text-slate-500"
-                  >
-                    No reports found for{" "}
-                    <span className="font-medium">
-                      {niceStatus(String(statusFilter))}
-                    </span>
-                    {search ? (
-                      <>
-                        {" "}
-                        matching <span className="font-medium">“{search}”</span>
-                        .
-                      </>
-                    ) : (
-                      "."
-                    )}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                            <>
+                              {/* Hidden input */}
+                              <input
+                                type="file"
+                                accept=".pdf,image/*"
+                                className="hidden"
+                                ref={(el) => {
+                                  if (el) fileInputs.current[r.id] = el;
+                                  else delete fileInputs.current[r.id]; // cleanup on unmount
+                                }}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = ""; // allow re-upload same file again
+                                  if (!file) return;
+
+                                  if (rowUploading) return;
+                                  setUploadingId(r.id);
+
+                                  // ✅ AUDIT
+                                  logUiEvent({
+                                    action: "UI_UPLOAD_ATTACHMENT",
+                                    entity:
+                                      r.formType === "CHEMISTRY_MIX"
+                                        ? "ChemistryReport"
+                                        : r.formType === "COA"
+                                          ? "CoaReport"
+                                          : r.formType === "STERILITY"
+                                            ? "SterilityReport"
+                                            : "MicroReport",
+                                    entityId: r.id,
+                                    details: `Uploaded attachment for ${r.formNumber}`,
+                                    meta: {
+                                      filename: file.name,
+                                      size: file.size,
+                                      type: file.type,
+                                    },
+                                    formNumber: r.formNumber,
+                                    reportNumber: r.reportNumber,
+                                    formType: r.formType,
+                                    clientCode: user?.clientCode || null,
+                                  });
+
+                                  try {
+                                    await uploadAttachmentForReport(r, file);
+                                    alert("✅ Uploaded!");
+                                    // optional: if modal open for same report, switch pane
+                                    if (selectedReport?.id === r.id)
+                                      setModalPane("ATTACHMENTS");
+                                  } catch (err: any) {
+                                    if (err?.status === 409) {
+                                      alert(
+                                        "ℹ️ Duplicate attachment already exists.",
+                                      );
+                                    } else if (err?.status === 403) {
+                                      alert(
+                                        "⚠️ Forbidden. Check role/scopes for attachment upload.",
+                                      );
+                                    } else {
+                                      alert(err?.message || "Upload failed");
+                                    }
+                                  } finally {
+                                    setUploadingId(null);
+                                  }
+                                }}
+                              />
+
+                              {/* Upload Button */}
+                              <button
+                                type="button"
+                                disabled={rowBusy || rowUploading}
+                                className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                                onClick={() =>
+                                  fileInputs.current[r.id]?.click()
+                                }
+                              >
+                                {rowUploading ? <Spinner /> : "⬆️"}
+                                {rowUploading ? "Uploading..." : "Upload"}
+                              </button>
+                            </>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={2 + selectedCols.length + 2}
+                      className="px-4 py-12 text-center text-slate-500"
+                    >
+                      No reports found for{" "}
+                      <span className="font-medium">
+                        {niceStatus(String(statusFilter))}
+                      </span>
+                      {search ? (
+                        <>
+                          {" "}
+                          matching{" "}
+                          <span className="font-medium">“{search}”</span>.
+                        </>
+                      ) : (
+                        "."
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Pagination */}

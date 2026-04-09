@@ -400,6 +400,20 @@ export default function COAReportForm({
   const [templateVersion, setTemplateVersion] = useState<number>(0);
   const [templateName, setTemplateName] = useState<string>("");
 
+  const isSubmissionForm =
+    status === "DRAFT" ||
+    status === "UNDER_DRAFT_REVIEW" ||
+    status === "SUBMITTED_BY_CLIENT";
+
+  const coaRowsToRender = useMemo(() => {
+    if (isSubmissionForm) return coaRows; // show all rows in submission form
+
+    return (coaRows ?? []).filter((row) => {
+      const spec = String(row.Specification ?? "").trim();
+      return spec !== "";
+    });
+  }, [coaRows, isSubmissionForm]);
+
   useEffect(() => {
     if (!effectiveCorrectionLaunch) return;
     if (pageMode !== "UPDATE") return;
@@ -581,7 +595,12 @@ export default function COAReportForm({
 
   const coaCellKey = (
     rowKey: string,
-    col: "item" | "Specification" | "result",
+    col:
+      | "item"
+      | "Specification"
+      | "sopValidatedTm"
+      | "result"
+      | "dateTestedInitial",
   ) => `coaRows:${rowKey}:${col}`;
 
   function getFieldDisplayValue(fieldKey: string) {
@@ -628,6 +647,27 @@ export default function COAReportForm({
       default:
         return "";
     }
+  }
+
+  function splitDateInitial(value?: string | null) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return { date: "", initial: "" };
+
+    const parts = raw.split(" / ");
+    return {
+      date: parts[0] ?? "",
+      initial: parts.slice(1).join(" / ") ?? "",
+    };
+  }
+
+  function joinDateInitial(date?: string, initial?: string) {
+    const d = String(date ?? "").trim();
+    const i = String(initial ?? "").trim();
+
+    if (d && i) return `${d} / ${i}`;
+    if (d) return d;
+    if (i) return i;
+    return "";
   }
 
   const [addForField, setAddForField] = useState<string | null>(null);
@@ -950,6 +990,7 @@ export default function COAReportForm({
     status?: COAReportStatus;
     reportNumber?: number | string;
     version?: number;
+    dateReceived?: string | null;
   };
 
   async function handleStatusChange(
@@ -1001,6 +1042,10 @@ export default function COAReportForm({
       //   setDateSent(sent);
       //   markDirty(); // ✅ IMPORTANT so handleSave runs
       // }
+
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
 
       // 3) Ensure latest edits are saved
       if (!reportId || isDirty) {
@@ -1228,7 +1273,7 @@ export default function COAReportForm({
             method: "PATCH",
             body: JSON.stringify({
               status: "UNDER_TESTING_REVIEW",
-              reason: "Assign report number / start prelim testing",
+              reason: "Assign report number / start testing",
               expectedVersion: reportVersion,
             }),
           },
@@ -1249,8 +1294,13 @@ export default function COAReportForm({
           setReportNumber(String(updated.reportNumber));
         }
 
+           if (updated?.dateReceived) {
+        setDateReceived(updated.dateReceived);
+      }
+
+
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to  testing.");
       } catch (err: any) {
         console.error(err);
         alert(
@@ -1319,6 +1369,22 @@ export default function COAReportForm({
     if (!items.length) return false;
 
     return items.every((c) => canResolveCorrectionItem(c));
+  }
+
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true; // ✅ block
+    }
+
+    return false; // ✅ allow
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1777,31 +1843,41 @@ export default function COAReportForm({
           }`}
         >
           <FieldErrorBadge name="coaRows" errors={errors} />
-
-          {/* ✅ show message text */}
           <FieldErrorText name="coaRows" errors={errors} className="px-2" />
 
-          <div className="grid grid-cols-[42%_29%_29%] font-semibold text-center border-b border-black min-h-[24px]">
-            <div className="p-1 border-r border-black flex items-center justify-center">
+          <div className="grid grid-cols-[25%_25%_15%_15%_18%_2%] font-semibold text-center border-b border-black min-h-[24px]">
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
               Item
             </div>
-            <div className="p-1 border-r border-black flex items-center justify-center">
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
               Specification
             </div>
-            <div className="p-1 flex items-center justify-center">Result</div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              SOP # / VALIDATED TM
+            </div>
+            <div className="p-1 border-r border-black h-full flex items-center justify-center">
+              Result
+            </div>
+            <div className="p-1 h-full flex items-center justify-center">
+              DATE TESTED / INITIAL
+            </div>
           </div>
 
-          {(coaRows ?? []).map((row) => {
+          {coaRowsToRender.map((row) => {
             const kItem = coaCellKey(row.key, "item");
             const kStd = coaCellKey(row.key, "Specification");
+            const kSop = coaCellKey(row.key, "sopValidatedTm");
             const kRes = coaCellKey(row.key, "result");
+            const { date, initial } = splitDateInitial(
+              (row as any).dateTestedInitial,
+            );
 
             return (
               <div
                 key={row.key}
-                className="grid grid-cols-[42%_29%_29%] border-b last:border-b-0 border-black relative"
+                className="grid grid-cols-[25%_25%_15%_15%_18%_2%] border-b last:border-b-0 border-black relative"
               >
-                {/* ITEM (editable for ALL rows when coaRows is editable) */}
+                {/* ITEM */}
                 <div
                   id={`f-${kItem}`}
                   className={`p-1 border-r border-black font-medium relative ${dashClass(kItem)} ${
@@ -1818,7 +1894,10 @@ export default function COAReportForm({
                 >
                   <ResolveOverlay field={kItem} />
                   <FieldErrorBadge name={kItem} errors={errors} />
-                  {!lock("coaRows") && !selectingCorrections ? (
+
+                  {!lock("coaRows") &&
+                  role === "CLIENT" &&
+                  !selectingCorrections ? (
                     <input
                       className={`w-full border-0 bg-transparent outline-none text-[11px] ${
                         errors[kItem] ? "ring-1 ring-red-500" : ""
@@ -1843,7 +1922,7 @@ export default function COAReportForm({
                   )}
                 </div>
 
-                {/* Specification (client only) */}
+                {/* SPECIFICATION */}
                 <div
                   id={`f-${kStd}`}
                   className={`border-r border-black px-1 relative ${dashClass(kStd)} ${
@@ -1860,6 +1939,7 @@ export default function COAReportForm({
                 >
                   <ResolveOverlay field={kStd} />
                   <FieldErrorBadge name={kStd} errors={errors} />
+
                   <CellTextarea
                     value={row.Specification ?? ""}
                     readOnly={
@@ -1874,6 +1954,7 @@ export default function COAReportForm({
                         selectingCorrections
                       )
                         return;
+
                       setCoaRows((prev) =>
                         prev.map((r) =>
                           r.key === row.key ? { ...r, Specification: v } : r,
@@ -1885,10 +1966,54 @@ export default function COAReportForm({
                   />
                 </div>
 
-                {/* RESULT (lab only) */}
+                {/* SOP */}
+                <div
+                  id={`f-${kSop}`}
+                  className={`border-r border-black px-1 relative ${dashClass(kSop)} ${
+                    errors[kSop] ? "ring-1 ring-red-500" : ""
+                  } ${corrCursor}`}
+                  title={
+                    !selectingCorrections ? correctionTextFor(kSop) : undefined
+                  }
+                  onClick={(e) => {
+                    if (!selectingCorrections) return;
+                    e.stopPropagation();
+                    pickCorrection(kSop);
+                  }}
+                >
+                  <ResolveOverlay field={kSop} />
+                  <FieldErrorBadge name={kSop} errors={errors} />
+
+                  <CellTextarea
+                    value={(row as any).sopValidatedTm ?? ""}
+                    readOnly={
+                      lock("coaRows") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
+                    }
+                    onChange={(v) => {
+                      if (
+                        lock("coaRows") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+
+                      setCoaRows((prev) =>
+                        prev.map((r) =>
+                          r.key === row.key ? { ...r, sopValidatedTm: v } : r,
+                        ),
+                      );
+                      clearError(kSop);
+                      markDirty();
+                    }}
+                  />
+                </div>
+
+                {/* RESULT */}
                 <div
                   id={`f-${kRes}`}
-                  className={`px-1 relative ${dashClass(kRes)} ${
+                  className={`border-r border-black px-1 relative ${dashClass(kRes)} ${
                     errors[kRes] ? "ring-1 ring-red-500" : ""
                   } ${corrCursor}`}
                   title={
@@ -1902,6 +2027,7 @@ export default function COAReportForm({
                 >
                   <ResolveOverlay field={kRes} />
                   <FieldErrorBadge name={kRes} errors={errors} />
+
                   <CellTextarea
                     value={row.result ?? ""}
                     readOnly={
@@ -1916,12 +2042,96 @@ export default function COAReportForm({
                         selectingCorrections
                       )
                         return;
+
                       setCoaRows((prev) =>
                         prev.map((r) =>
                           r.key === row.key ? { ...r, result: v } : r,
                         ),
                       );
                       clearError(kRes);
+                      markDirty();
+                    }}
+                  />
+                </div>
+
+                {/* DATE TESTED / INITIAL */}
+                <div
+                  className={`px-1 flex items-center gap-1 min-w-0 overflow-hidden border ${
+                    errors[`coaRows:${row.key}:dateTestedInitial`]
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-transparent"
+                  }`}
+                >
+                  <input
+                    type="date"
+                    className="min-w-0 flex-1 border-none outline-none text-[11px]"
+                    value={date}
+                    readOnly={
+                      lock("coaRows") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
+                    }
+                    onChange={(e) => {
+                      if (
+                        lock("coaRows") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+
+                      setCoaRows((prev) =>
+                        prev.map((r) =>
+                          r.key === row.key
+                            ? {
+                                ...r,
+                                dateTestedInitial: joinDateInitial(
+                                  e.target.value,
+                                  initial,
+                                ),
+                              }
+                            : r,
+                        ),
+                      );
+                      clearError(`coaRows:${row.key}:dateTestedInitial` as any);
+                      markDirty();
+                    }}
+                  />
+
+                  <span className="text-[11px] shrink-0">/</span>
+
+                  <input
+                    type="text"
+                    maxLength={3}
+                    placeholder="AB"
+                    className="w-[22px] shrink-0 border-0 border-b border-black/60 bg-transparent text-[11px] text-center outline-none"
+                    value={initial}
+                    readOnly={
+                      lock("coaRows") ||
+                      role === "CLIENT" ||
+                      selectingCorrections
+                    }
+                    onChange={(e) => {
+                      if (
+                        lock("coaRows") ||
+                        role === "CLIENT" ||
+                        selectingCorrections
+                      )
+                        return;
+
+                      setCoaRows((prev) =>
+                        prev.map((r) =>
+                          r.key === row.key
+                            ? {
+                                ...r,
+                                dateTestedInitial: joinDateInitial(
+                                  date,
+                                  e.target.value.toUpperCase(),
+                                ),
+                              }
+                            : r,
+                        ),
+                      );
+                      clearError(`coaRows:${row.key}:dateTestedInitial` as any);
                       markDirty();
                     }}
                   />

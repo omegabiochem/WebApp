@@ -1085,6 +1085,10 @@ const backToDashboard = () => {
       //   markDirty(); // ✅ IMPORTANT so handleSave runs
       // }
 
+        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
+
       // ensure latest edits are saved
       if (!reportId || isDirty) {
         const saved = await handleSave();
@@ -1305,7 +1309,7 @@ const backToDashboard = () => {
           method: "PATCH",
           body: JSON.stringify({
             status: "UNDER_TESTING_REVIEW",
-            reason: "Assign report number / start prelim testing",
+            reason: "Assign report number / start testing",
             expectedVersion: reportVersion,
           }),
         });
@@ -1326,7 +1330,7 @@ const backToDashboard = () => {
         }
 
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to  testing.");
       } catch (err: any) {
         console.error(err);
         alert(
@@ -1405,6 +1409,22 @@ const backToDashboard = () => {
     return openCorrections.some(
       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
     );
+  }
+
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true; // ✅ block
+    }
+
+    return false; // ✅ allow
   }
 
   // function lockCorrectionField(fieldKey: string, baseField?: string) {

@@ -5,9 +5,11 @@ import { api } from "../lib/api";
 
 export type CoaVerificationRow = {
   key: string;
-  item: string; // fixed label
-  Specification: string; // filled by CLIENT
-  result: string; // filled by LAB
+  item: string;
+  Specification: string;
+  sopValidatedTm?: string;
+  result: string;
+  dateTestedInitial?: string;
 };
 
 export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
@@ -15,46 +17,156 @@ export const DEFAULT_COA_ROWS: CoaVerificationRow[] = [
     key: "IDENTIFICATION",
     item: "Identification",
     Specification: "",
+    sopValidatedTm: "",
     result: "",
+    dateTestedInitial: "",
   },
   {
     key: "SPECIFIC_ROTATION",
     item: "Specific Rotation",
     Specification: "",
+    sopValidatedTm: "",
     result: "",
+    dateTestedInitial: "",
   },
   {
     key: "REFRACTIVE_INDEX",
     item: "Refractive Index",
     Specification: "",
+    sopValidatedTm: "",
     result: "",
+    dateTestedInitial: "",
   },
-  { key: "WATER", item: "Water Content", Specification: "", result: "" },
+  {
+    key: "WATER",
+    item: "Water Content",
+    Specification: "",
+    sopValidatedTm: "",
+    result: "",
+    dateTestedInitial: "",
+  },
   {
     key: "RESIDUE_ON_IGNITION",
     item: "Residue on Ignition",
     Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+
     result: "",
   },
   {
     key: "ASSAY",
     item: "Assay",
     Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+
     result: "",
   },
-  { key: "PH_5", item: "PH %", Specification: "", result: "" },
-  { key: "OTHER_1", item: "OTHER 1", Specification: "", result: "" },
-  { key: "OTHER_2", item: "OTHER 2", Specification: "", result: "" },
-  { key: "OTHER_3", item: "OTHER 3", Specification: "", result: "" },
-  { key: "OTHER_4", item: "OTHER 4", Specification: "", result: "" },
-  { key: "OTHER_5", item: "OTHER 5", Specification: "", result: "" },
-  { key: "OTHER_6", item: "OTHER 6", Specification: "", result: "" },
-  { key: "OTHER_7", item: "OTHER 7", Specification: "", result: "" },
-  { key: "OTHER_8", item: "OTHER 8", Specification: "", result: "" },
-  { key: "OTHER_9", item: "OTHER 9", Specification: "", result: "" },
-  { key: "OTHER_10", item: "OTHER 10", Specification: "", result: "" },
-  { key: "OTHER_11", item: "OTHER 11", Specification: "", result: "" },
-  { key: "OTHER_12", item: "OTHER 12", Specification: "", result: "" },
+  {
+    key: "PH_5",
+    item: "PH %",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_1",
+    item: "OTHER 1",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_2",
+    item: "OTHER 2",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_3",
+    item: "OTHER 3",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_4",
+    item: "OTHER 4",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_5",
+    item: "OTHER 5",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_6",
+    item: "OTHER 6",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_7",
+    item: "OTHER 7",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_8",
+    item: "OTHER 8",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_9",
+    item: "OTHER 9",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_10",
+    item: "OTHER 10",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_11",
+    item: "OTHER 11",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
+  {
+    key: "OTHER_12",
+    item: "OTHER 12",
+    Specification: "",
+    sopValidatedTm: "",
+    dateTestedInitial: "",
+    result: "",
+  },
 ];
 
 export type Role =
@@ -325,11 +437,19 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
         if (role === "CHEMISTRY" || role === "MC" || role === "ADMIN") {
           rows.forEach((r) => {
             const spec = String(r.Specification ?? "").trim();
+            const sop = String(r.sopValidatedTm ?? "").trim();
             const result = String(r.result ?? "").trim();
+            const dateInit = String(r.dateTestedInitial ?? "").trim();
 
-            // require result only when specification is filled
+            if (spec && !sop) {
+              next[`coaRows:${r.key}:sopValidatedTm`] = "SOP is required.";
+            }
             if (spec && !result) {
               next[`coaRows:${r.key}:result`] = "Result is required.";
+            }
+            if (spec && !dateInit) {
+              next[`coaRows:${r.key}:dateTestedInitial`] =
+                "Date Tested / Initial is required.";
             }
           });
         }
