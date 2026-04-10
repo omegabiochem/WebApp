@@ -192,7 +192,7 @@ const createSchema = z
     ),
     userId: z
       .string()
-      .min(4, "User ID must be at least 4 chars")
+      .min(8, "User ID must be at least 8 chars")
       .max(20, "User ID max 20 chars")
       .regex(
         /^[a-z0-9._-]+$/,
@@ -266,7 +266,7 @@ export default function UsersAdmin() {
   const isAdmin = user?.role === "ADMIN" || user?.role === "SYSTEMADMIN";
 
   const [tab, setTab] = useState<
-    "USERS" | "NOTIFICATIONS"  | "CLIENTS" | "COMMON_ACCOUNTS"
+    "USERS" | "NOTIFICATIONS" | "CLIENTS" | "COMMON_ACCOUNTS"
   >("USERS");
 
   /* -------------------- create user state -------------------- */
@@ -639,7 +639,7 @@ export default function UsersAdmin() {
                   placeholder="frontdesk01"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  4–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
+                  8–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
                 </p>
                 {createErrors.userId && (
                   <p className="text-rose-600 text-xs mt-1">
@@ -676,7 +676,14 @@ export default function UsersAdmin() {
                   </label>
                   <input
                     className={inputBase}
-                    {...register("clientCode")}
+                    maxLength={3}
+                    {...register("clientCode", {
+                      setValueAs: (v) =>
+                        typeof v === "string" ? v.toUpperCase().slice(0, 3) : v,
+                    })}
+                    onChange={(e) => {
+                      e.target.value = e.target.value.toUpperCase().slice(0, 3);
+                    }}
                     placeholder="ABC"
                   />
                   {createErrors.clientCode && (
@@ -1271,8 +1278,9 @@ export default function UsersAdmin() {
                       "opacity-60 cursor-not-allowed bg-slate-100",
                   )}
                   value={editClientCode}
+                  maxLength={3}
                   onChange={(e) =>
-                    setEditClientCode(e.target.value.toUpperCase())
+                    setEditClientCode(e.target.value.toUpperCase().slice(0, 3))
                   }
                   placeholder={editRole === "CLIENT" ? "ABC" : "N/A"}
                 />
@@ -1767,7 +1775,6 @@ function NotificationsAllClients() {
     </div>
   );
 }
-
 
 /* ==================== CLIENTS TAB ==================== */
 
