@@ -192,7 +192,7 @@ const createSchema = z
     ),
     userId: z
       .string()
-      .min(4, "User ID must be at least 4 chars")
+      .min(8, "User ID must be at least 8 chars")
       .max(20, "User ID max 20 chars")
       .regex(
         /^[a-z0-9._-]+$/,
@@ -266,7 +266,7 @@ export default function UsersAdmin() {
   const isAdmin = user?.role === "ADMIN" || user?.role === "SYSTEMADMIN";
 
   const [tab, setTab] = useState<
-    "USERS" | "NOTIFICATIONS"  | "CLIENTS" | "COMMON_ACCOUNTS"
+    "USERS" | "NOTIFICATIONS" | "CLIENTS" | "COMMON_ACCOUNTS"
   >("USERS");
 
   /* -------------------- create user state -------------------- */
@@ -485,6 +485,16 @@ export default function UsersAdmin() {
     setPageSize(20);
   };
 
+  const clientCodeReg = register("clientCode", {
+    setValueAs: (v) =>
+      typeof v === "string"
+        ? v
+            .replace(/[^a-zA-Z]/g, "")
+            .toUpperCase()
+            .slice(0, 3)
+        : v,
+  });
+
   if (!user) return <p className="p-6 text-slate-700">Please log in.</p>;
   if (!isAdmin)
     return (
@@ -639,7 +649,7 @@ export default function UsersAdmin() {
                   placeholder="frontdesk01"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  4–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
+                  8–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
                 </p>
                 {createErrors.userId && (
                   <p className="text-rose-600 text-xs mt-1">
@@ -676,9 +686,22 @@ export default function UsersAdmin() {
                   </label>
                   <input
                     className={inputBase}
-                    {...register("clientCode")}
+                    maxLength={3}
+                    {...clientCodeReg}
+                    onChange={(e) => {
+                      const cleaned = e.target.value
+                        .replace(/[^a-zA-Z]/g, "") // ❌ remove numbers/symbols
+                        .toUpperCase() // ✅ uppercase
+                        .slice(0, 3); // ✅ limit to 3
+
+                      e.target.value = cleaned;
+                      clientCodeReg.onChange(e); // ✅ sync with react-hook-form
+                    }}
                     placeholder="ABC"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    3 chars; uppercase A–Z only.
+                  </p>
                   {createErrors.clientCode && (
                     <p className="text-rose-600 text-xs mt-1">
                       {createErrors.clientCode.message}
@@ -1271,9 +1294,15 @@ export default function UsersAdmin() {
                       "opacity-60 cursor-not-allowed bg-slate-100",
                   )}
                   value={editClientCode}
-                  onChange={(e) =>
-                    setEditClientCode(e.target.value.toUpperCase())
-                  }
+                  maxLength={3}
+                  onChange={(e) => {
+                    const cleaned = e.target.value
+                      .replace(/[^a-zA-Z]/g, "")
+                      .toUpperCase()
+                      .slice(0, 3);
+
+                    setEditClientCode(cleaned);
+                  }}
                   placeholder={editRole === "CLIENT" ? "ABC" : "N/A"}
                 />
                 <p className="text-xs text-slate-500 mt-1">
@@ -1767,7 +1796,6 @@ function NotificationsAllClients() {
     </div>
   );
 }
-
 
 /* ==================== CLIENTS TAB ==================== */
 

@@ -3,7 +3,6 @@ import { createBrowserRouter } from "react-router-dom";
 import App from "./App";
 import Login from "./pages/Auth/Login";
 import Home from "./pages/Home";
-import CreateCredentials from "./pages/Admin/CreateCredentials";
 import ChangePassword from "./pages/Auth/ChangePassword";
 import Root from "./Routes/Root";
 import SystemAdminDashboard from "./pages/Dashboard/SystemAdminDashboard";
@@ -85,16 +84,16 @@ export const router = createBrowserRouter([
       },
 
       // Admin tools
-      {
-        path: "admin",
-        element: (
-          <RequireAuth>
-            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
-              <CreateCredentials />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
+      // {
+      //   path: "admin",
+      //   element: (
+      //     <RequireAuth>
+      //       <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+      //         <CreateCredentials />
+      //       </RequireRole>
+      //     </RequireAuth>
+      //   ),
+      // },
 
       // Dashboards
       {
