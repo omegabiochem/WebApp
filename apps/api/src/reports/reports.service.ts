@@ -401,11 +401,7 @@ const STATUS_TRANSITIONS = {
   },
 
   UNDER_CHANGE_UPDATE: {
-    canSet: [
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: [],
     nextEditableBy: [
       'CLIENT',
@@ -455,12 +451,7 @@ const STATUS_TRANSITIONS = {
   },
 
   UNDER_CORRECTION_UPDATE: {
-    canSet: [
-
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: [],
     nextEditableBy: [
       'CLIENT',
@@ -1427,6 +1418,42 @@ export class ReportsService {
     ]);
   }
 
+  private async logCorrectionAudit(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+    actorUserId: string;
+    actorRole: UserRole;
+    action:
+      | 'CORRECTION_CREATED'
+      | 'CORRECTION_RESOLVED'
+      | 'CORRECTION_RESOLVED_ALL';
+    details: string;
+    changes?: Record<string, any> | null;
+  }) {
+    const ctx = getRequestContext();
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: args.action,
+        entity: args.formType,
+        entityId: args.reportId,
+        userId: args.actorUserId,
+        role: args.actorRole,
+        ipAddress: ctx?.ip ?? null,
+        clientCode: args.clientCode ?? null,
+        details: args.details,
+        changes: args.changes ?? {},
+        formNumber: args.formNumber,
+        reportNumber: args.reportNumber ?? null,
+        formType: args.formType,
+      },
+    });
+  }
+
   // async updateStatus(
   //   user: { userId: string; role: UserRole },
   //   id: string,
@@ -1735,6 +1762,29 @@ export class ReportsService {
     await updateDetailsByType(this.prisma, report.formType, id, {
       corrections: nextCorrections,
     });
+    await this.logCorrectionAudit({
+      reportId: report.id,
+      clientCode: report.clientCode ?? null,
+      formType: report.formType,
+      formNumber: report.formNumber,
+      reportNumber: report.reportNumber ?? null,
+      actorUserId: user.userId,
+      actorRole: user.role,
+      action: 'CORRECTION_CREATED',
+      details: `Created ${toAdd.length} correction item(s)`,
+      changes: {
+        targetStatus: body.targetStatus ?? null,
+        reason: body.reason ?? null,
+        items: toAdd.map((c) => ({
+          id: c.id,
+          fieldKey: c.fieldKey,
+          message: c.message,
+          oldValue: c.oldValue ?? null,
+          requestedByRole: c.requestedByRole,
+          createdAt: c.createdAt,
+        })),
+      },
+    });
 
     if (body.targetStatus) {
       await this.update(user, id, {
@@ -1806,6 +1856,29 @@ export class ReportsService {
       corrections: arr,
     });
 
+    const resolvedItem = arr[idx];
+
+    await this.logCorrectionAudit({
+      reportId: report.id,
+      clientCode: report.clientCode ?? null,
+      formType: report.formType,
+      formNumber: report.formNumber,
+      reportNumber: report.reportNumber ?? null,
+      actorUserId: user.userId,
+      actorRole: user.role,
+      action: 'CORRECTION_RESOLVED',
+      details: `Resolved correction for field ${resolvedItem.fieldKey}`,
+      changes: {
+        correctionId: resolvedItem.id,
+        fieldKey: resolvedItem.fieldKey,
+        message: resolvedItem.message,
+        oldValue: resolvedItem.oldValue ?? null,
+        resolvedAt: resolvedItem.resolvedAt ?? null,
+        resolvedByUserId: resolvedItem.resolvedByUserId ?? null,
+        resolutionNote: resolvedItem.resolutionNote ?? null,
+      },
+    });
+
     const allResolved = arr.every((c) => c.status === 'RESOLVED');
 
     if (
@@ -1824,6 +1897,23 @@ export class ReportsService {
           workflowRequestedAt: null,
           updatedBy: user.userId,
           version: { increment: 1 },
+        },
+      });
+
+      await this.logCorrectionAudit({
+        reportId: report.id,
+        clientCode: report.clientCode ?? null,
+        formType: report.formType,
+        formNumber: report.formNumber,
+        reportNumber: report.reportNumber ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+        action: 'CORRECTION_RESOLVED_ALL',
+        details: 'All correction items resolved',
+        changes: {
+          returnedFromStatus: report.status,
+          returnedToStatus: report.workflowReturnStatus,
+          totalCorrections: arr.length,
         },
       });
 
