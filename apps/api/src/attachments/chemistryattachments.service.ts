@@ -8,6 +8,7 @@ import * as path from 'path';
 import type { Express } from 'express';
 import { ReadStream } from 'fs';
 import { randomUUID } from 'crypto';
+import { getRequestContext } from 'src/common/request-context';
 
 type CreateInput = {
   chemistryId: string;
@@ -101,6 +102,18 @@ export class ChemistryAttachmentsService {
           meta: input.meta ?? {},
         },
       });
+      try {
+        await this.logAttachmentAudit({
+          action: 'ATTACHMENT_UPLOADED',
+          reportId: input.chemistryId,
+          attachmentId: attachment.id,
+          filename: input.file.originalname,
+          checksum,
+          createdBy: input.createdBy ?? null,
+        });
+      } catch (e) {
+        console.error('Attachment audit failed', e);
+      }
       return { ok: true, id: attachment.id };
     } catch (e: any) {
       // Handle duplicate checksum (unique on [chemistryId, checksum])
@@ -167,21 +180,91 @@ export class ChemistryAttachmentsService {
     return { stream: stream as any, mime, filename: a.filename };
   }
 
+  async remove(id: string) {
+    const a = await this.prisma.chemistryAttachment.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        storageKey: true,
+        filename: true,
+        checksum: true,
+        chemistryId: true,
+        createdBy: true,
+      },
+    });
 
-async remove(id: string) {
-  const a = await this.prisma.chemistryAttachment.findUnique({
-    where: { id },
-    select: { id: true, storageKey: true },
-  });
+    if (!a) throw new NotFoundException('Attachment not found');
+    try {
+      await this.logAttachmentAudit({
+        action: 'ATTACHMENT_DELETED',
+        reportId: a.chemistryId,
+        attachmentId: a.id,
+        filename: a.filename,
+        checksum: a.checksum ?? null,
+        createdBy: a.createdBy ?? null,
+      });
+    } catch (e) {
+      console.error('Attachment audit failed', e);
+    }
 
-  if (!a) throw new NotFoundException('Attachment not found');
+    await this.prisma.chemistryAttachment.delete({
+      where: { id },
+    });
 
-  await this.prisma.chemistryAttachment.delete({
-    where: { id },
-  });
+    await this.storage.delete(a.storageKey).catch(() => {});
 
-  await this.storage.delete(a.storageKey).catch(() => {});
+    return { ok: true, id };
+  }
 
-  return { ok: true, id };
-}
+  private async logAttachmentAudit(args: {
+    action: 'ATTACHMENT_UPLOADED' | 'ATTACHMENT_DELETED';
+    reportId: string;
+    attachmentId?: string | null;
+    filename: string;
+    checksum?: string | null;
+    createdBy?: string | null;
+  }) {
+    const ctx = getRequestContext() || {};
+
+    const report = await this.prisma.chemistryReport.findUnique({
+      where: { id: args.reportId },
+      select: {
+        id: true,
+        formNumber: true,
+        reportNumber: true,
+        formType: true,
+        clientCode: true,
+      },
+    });
+    const rawUserId = (ctx as any).userId;
+    const auditUserId =
+      rawUserId && !String(rawUserId).startsWith('m2m:') ? rawUserId : null;
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: args.action,
+        entity: 'ChemistryAttachment',
+        entityId: args.attachmentId ?? report?.id ?? args.reportId,
+        details:
+          args.action === 'ATTACHMENT_UPLOADED'
+            ? `Attachment uploaded: ${args.filename}`
+            : `Attachment deleted: ${args.filename}`,
+        changes: {
+          filename: args.filename,
+          checksum: args.checksum ?? null,
+          reportId: args.reportId,
+          attachmentId: args.attachmentId ?? null,
+          createdBy: args.createdBy ?? null,
+          actor: rawUserId ?? null,
+        },
+        userId: auditUserId,
+        role: (ctx as any).role ?? 'SYSTEMADMIN',
+        ipAddress: (ctx as any).ip ?? null,
+        clientCode: report?.clientCode ?? null,
+        formNumber: report?.formNumber ?? null,
+        reportNumber: report?.reportNumber ?? null,
+        formType: report?.formType ?? null,
+      },
+    });
+  }
 }

@@ -88,13 +88,21 @@ export class AuditService {
       where.clientCode = clientCode;
     }
 
-    if (formNumber) {
-      where.formNumber = { contains: formNumber, mode: 'insensitive' };
-    }
+if (formNumber || reportNumber) {
+  where.OR = [];
 
-    if (reportNumber) {
-      where.reportNumber = { contains: reportNumber, mode: 'insensitive' };
-    }
+  if (formNumber) {
+    where.OR.push({
+      formNumber: { contains: formNumber, mode: 'insensitive' },
+    });
+  }
+
+  if (reportNumber) {
+    where.OR.push({
+      reportNumber: { contains: reportNumber, mode: 'insensitive' },
+    });
+  }
+}
 
     if (from || to) {
       where.createdAt = {};

@@ -6,7 +6,14 @@ import { getRequestContext } from 'src/common/request-context';
 type AnyObj = Record<string, any>;
 
 const OMIT_FIELDS = new Set(['updatedAt']); // reduce noise in diffs
-const SKIP_MODELS = new Set(['AuditTrail']); // never audit the audit table itself
+const SKIP_MODELS = new Set([
+  'AuditTrail',
+  'StatusHistory',
+  'ChemistryReportStatusHistory',
+  'Notification',
+  'NotificationOutbox',
+  'MessageNotificationOutbox',
+]); // never audit the audit table itself
 
 function isPlainObject(x: unknown): x is AnyObj {
   return (
@@ -305,6 +312,270 @@ async function resolveAuditRef(
   };
 }
 
+function resolveAction(
+  entity: string,
+  action: string,
+  before: any,
+  after: any,
+  patch: any,
+  auditRef?: { reportNumber?: string | null; formNumber?: string | null },
+) {
+  if (entity === 'User') {
+    if (action === 'create') return 'ACCOUNT_CREATED';
+
+    if (action === 'update') {
+      if ('passwordHash' in patch) return 'PASSWORD_RESET';
+      if ('role' in patch) return 'USER_ROLE_CHANGED';
+      if ('active' in patch)
+        return patch.active ? 'USER_ENABLED' : 'USER_DISABLED';
+      if ('passwordVersion' in patch) return 'FORCE_SIGNOUT';
+      return 'USER_UPDATED';
+    }
+
+    if (action === 'delete') return 'ACCOUNT_DELETED';
+  }
+
+  const isReportFamily =
+    entity === 'Report' ||
+    entity === 'ChemistryReport' ||
+    entity === 'MicroMixDetails' ||
+    entity === 'MicroMixWaterDetails' ||
+    entity === 'sterilityDetails' ||
+    entity === 'ChemistryMixDetails' ||
+    entity === 'COADetails';
+
+  if (isReportFamily) {
+    const hasReportNumber =
+      !!auditRef?.reportNumber ||
+      !!before?.reportNumber ||
+      !!after?.reportNumber ||
+      !!patch?.reportNumber;
+
+    if (action === 'create') {
+      return hasReportNumber ? 'REPORT_CREATED' : 'FORM_CREATED';
+    }
+
+    if (action === 'update') {
+      if ('status' in patch) {
+        const next = patch.status;
+
+        if (next === 'CHANGE_REQUESTED') return 'CHANGE_REQUESTED';
+        if (next === 'CORRECTION_REQUESTED') return 'CORRECTION_REQUESTED';
+        if (next === 'FINAL_APPROVED' || next === 'APPROVED')
+          return 'REPORT_APPROVED';
+        if (next === 'VOID') return 'REPORT_VOIDED';
+        if (next === 'LOCKED') return 'REPORT_LOCKED';
+
+        return 'STATUS_CHANGED';
+      }
+
+      return hasReportNumber ? 'REPORT_UPDATED' : 'FORM_UPDATED';
+    }
+
+    if (action === 'delete') {
+      return hasReportNumber ? 'REPORT_DELETED' : 'FORM_DELETED';
+    }
+  }
+
+  if (entity === 'Notification') {
+    if (action === 'create') return 'NOTIFICATION_CREATED';
+    if (action === 'update') {
+      if ('readAt' in patch) return 'NOTIFICATION_READ';
+      return 'NOTIFICATION_UPDATED';
+    }
+    if (action === 'delete') return 'NOTIFICATION_DELETED';
+  }
+
+  if (entity === 'NotificationOutbox') {
+    if (action === 'create') return 'NOTIFICATION_QUEUED';
+
+    if (action === 'update') {
+      if ('sentAt' in patch && patch.sentAt) return 'NOTIFICATION_SENT';
+      if ('claimedAt' in patch) return 'NOTIFICATION_CLAIMED';
+      if ('attempts' in patch) return 'NOTIFICATION_RETRY';
+      return 'NOTIFICATION_OUTBOX_UPDATED';
+    }
+
+    if (action === 'delete') return 'NOTIFICATION_OUTBOX_DELETED';
+  }
+
+  if (entity === 'Attachment' || entity === 'ChemistryAttachment') {
+    if (action === 'create') return 'ATTACHMENT_UPLOADED';
+    if (action === 'delete') return 'ATTACHMENT_DELETED';
+    if (action === 'update') return 'ATTACHMENT_UPDATED';
+  }
+
+  return action.toUpperCase();
+}
+
+function resolveDetails(
+  entity: string,
+  action: string,
+  before: any,
+  after: any,
+  patch: any,
+  auditRef?: { reportNumber?: string | null; formNumber?: string | null },
+) {
+  if (entity === 'User') {
+    const name =
+      after?.name || after?.userId || after?.email || before?.name || 'User';
+
+    if (action === 'ACCOUNT_CREATED') {
+      return `Created user ${name}`;
+    }
+
+    if (action === 'PASSWORD_RESET') {
+      return `Reset password for user ${name}`;
+    }
+
+    if (action === 'USER_ROLE_CHANGED') {
+      return `Changed role for ${name} from ${before?.role} → ${after?.role}`;
+    }
+
+    if (action === 'USER_DISABLED') {
+      return `Disabled user ${name}`;
+    }
+
+    if (action === 'USER_ENABLED') {
+      return `Enabled user ${name}`;
+    }
+
+    if (action === 'FORCE_SIGNOUT') {
+      return `Forced signout for ${name}`;
+    }
+  }
+  const isReportFamily =
+    entity === 'Report' ||
+    entity === 'ChemistryReport' ||
+    entity === 'MicroMixDetails' ||
+    entity === 'MicroMixWaterDetails' ||
+    entity === 'sterilityDetails' ||
+    entity === 'ChemistryMixDetails' ||
+    entity === 'COADetails';
+
+  if (isReportFamily) {
+    const hasReportNumber =
+      !!auditRef?.reportNumber ||
+      !!before?.reportNumber ||
+      !!after?.reportNumber ||
+      !!patch?.reportNumber;
+
+    const label = hasReportNumber
+      ? auditRef?.reportNumber ||
+        after?.reportNumber ||
+        before?.reportNumber ||
+        auditRef?.formNumber ||
+        after?.formNumber ||
+        before?.formNumber ||
+        ''
+      : auditRef?.formNumber || after?.formNumber || before?.formNumber || '';
+
+    if (patch?.status) {
+      return `Status changed from ${before?.status} → ${patch.status}`;
+    }
+
+    if (action === 'FORM_CREATED') {
+      return `Created form ${label}`;
+    }
+
+    if (action === 'FORM_UPDATED') {
+      return `Updated form ${label}`;
+    }
+
+    if (action === 'FORM_DELETED') {
+      return `Deleted form ${label}`;
+    }
+
+    if (action === 'REPORT_CREATED') {
+      return `Created report ${label}`;
+    }
+
+    if (action === 'REPORT_UPDATED') {
+      return `Updated report ${label}`;
+    }
+
+    if (action === 'REPORT_DELETED') {
+      return `Deleted report ${label}`;
+    }
+  }
+
+  if (entity === 'Notification') {
+    const label =
+      after?.title ||
+      before?.title ||
+      after?.kind ||
+      before?.kind ||
+      'notification';
+
+    if (action === 'NOTIFICATION_CREATED') {
+      return `Notification created: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_READ') {
+      return `Notification read: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_UPDATED') {
+      return `Notification updated: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_DELETED') {
+      return `Notification deleted: ${label}`;
+    }
+  }
+
+  if (entity === 'NotificationOutbox') {
+    const label =
+      after?.formNumber ||
+      before?.formNumber ||
+      after?.newStatus ||
+      before?.newStatus ||
+      'notification';
+
+    if (action === 'NOTIFICATION_QUEUED') {
+      return `Notification queued: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_SENT') {
+      return `Notification sent: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_CLAIMED') {
+      return `Notification claimed: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_RETRY') {
+      return `Notification retry: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_OUTBOX_UPDATED') {
+      return `Notification outbox updated: ${label}`;
+    }
+
+    if (action === 'NOTIFICATION_OUTBOX_DELETED') {
+      return `Notification outbox deleted: ${label}`;
+    }
+  }
+
+  if (entity === 'Attachment' || entity === 'ChemistryAttachment') {
+    const label = after?.filename || before?.filename || 'attachment';
+
+    if (action === 'ATTACHMENT_UPLOADED') {
+      return `Attachment uploaded: ${label}`;
+    }
+
+    if (action === 'ATTACHMENT_DELETED') {
+      return `Attachment deleted: ${label}`;
+    }
+
+    if (action === 'ATTACHMENT_UPDATED') {
+      return `Attachment updated: ${label}`;
+    }
+  }
+
+  return `${action} ${entity}`;
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   async onModuleInit() {
@@ -331,6 +602,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     (this as any).$use(async (params: any, next: any) => {
       const entity = params.model as string | undefined;
       const action = params.action as string;
+      if (entity === 'Attachment' || entity === 'ChemistryAttachment') {
+        return next(params);
+      }
 
       if (!entity || SKIP_MODELS.has(entity)) {
         return next(params);
@@ -409,32 +683,39 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       let details = '';
 
       try {
+        const patch = params.args?.data || {};
+
         if (action === 'create') {
           changes = { after: prune(result) };
-          details = `Created ${entity} ${entityId ?? ''}`.trim();
         }
 
         if (action === 'update') {
-          const patch = params.args?.data || {};
           const diff = computeDiff(before || {}, patch);
           changes = diff || {};
-          details = `Updated ${entity} ${entityId ?? ''}`.trim();
         }
 
         if (action === 'delete') {
           changes = { before: prune(before) };
-          details = `Deleted ${entity} ${entityId ?? ''}`.trim();
         }
 
         if (action === 'upsert') {
           changes = before
             ? { before: prune(before), after: prune(result) }
             : { after: prune(result) };
-          details = `Upserted ${entity} ${entityId ?? ''}`.trim();
         }
+
+        // const resolvedAction = resolveAction(
+        //   entity,
+        //   action,
+        //   before,
+        //   result,
+        //   patch,
+        // );
+        // details = resolveDetails(entity, resolvedAction, before, result, patch);
       } catch {
         changes = changes ?? {};
-        details = `${details} (audit probe failed)`.trim();
+        details =
+          `${action.toUpperCase()} ${entity} (audit probe failed)`.trim();
       }
 
       if ((ctx as any).reason) {
@@ -442,40 +723,95 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       }
 
       // ✅ If saving report + details together, skip base Report audit (keep details audit)
+      const isAttachment =
+        entity === 'Attachment' || entity === 'ChemistryAttachment';
+
+      // Skip only base report metadata updates (not attachments)
       if (
-        entity === 'Report' ||
-        (entity === 'ChemistryReport' && action === 'update')
+        !isAttachment &&
+        (entity === 'Report' ||
+          (entity === 'ChemistryReport' && action === 'update'))
       ) {
         const patch = params.args?.data || {};
         const keys = Object.keys(patch);
 
-        // your ReportsService always sets updatedBy in base update
         const onlyMeta = keys.length === 1 && keys[0] === 'updatedBy';
 
-        // If the base update is just "updatedBy", it's a split-save bookkeeping update.
-        // We skip its audit so you only see MicroMixDetails audit.
         if (onlyMeta) {
           return result;
         }
       }
 
+      if (entity === 'User' && action === 'update') {
+        const patch = params.args?.data || {};
+
+        const keys = Object.keys(patch).sort();
+
+        const authOnlyKeys = [
+          'failedLoginCount',
+          'lockedUntil',
+          'lastFailedLoginAt',
+          'lastLoginAt',
+          'lastActivityAt',
+          'refreshTokenHash',
+          'refreshTokenExpAt',
+          'refreshTokenRotatedAt',
+          'twoFactorCodeHash',
+          'twoFactorExpiresAt',
+          'twoFactorAttempts',
+        ].sort();
+
+        const isAuthBookkeeping =
+          keys.length > 0 && keys.every((k) => authOnlyKeys.includes(k));
+
+        if (isAuthBookkeeping) {
+          return result;
+        }
+      }
+      const patch = params.args?.data || {};
+      const auditRefMeta = { reportNumber, formNumber };
+
+      const resolvedAction = resolveAction(
+        entity,
+        action,
+        before,
+        result,
+        patch,
+        auditRefMeta,
+      );
+
+      const resolvedDetails = resolveDetails(
+        entity,
+        resolvedAction,
+        before,
+        result,
+        patch,
+        auditRefMeta,
+      );
+
       // -------- WRITE AUDIT (BEST EFFORT) --------
+
+      const rawUserId = (ctx as any).userId;
+      const auditUserId =
+        rawUserId && !String(rawUserId).startsWith('m2m:') ? rawUserId : null;
       try {
         await (this as any).auditTrail.create({
           data: {
-            action: action.toUpperCase(),
+            action: resolvedAction,
             entity: String(entity),
             entityId,
             changes,
-            details,
+            details: (ctx as any).reason
+              ? `${resolvedDetails} | reason: ${(ctx as any).reason}`
+              : resolvedDetails,
 
             formNumber,
             reportNumber,
             formType,
             clientCode,
 
-            role: (ctx as any).role ?? null,
-            userId: (ctx as any).userId ?? null,
+            role: (ctx as any).role ?? 'SYSTEMADMIN',
+            userId: auditUserId,
             ipAddress: (ctx as any).ip ?? null,
           },
         });
@@ -504,8 +840,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
                 from: prevStatus,
                 to: nextStatus,
                 reason,
-                userId: (ctx as any).userId ?? null,
-                role: (ctx as any).role ?? null,
+                userId: auditUserId,
+                role: (ctx as any).role ?? 'SYSTEMADMIN',
                 ipAddress: (ctx as any).ip ?? null,
               },
             });
@@ -536,8 +872,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
                 from: prevStatus,
                 to: nextStatus,
                 reason,
-                userId: (ctx as any).userId ?? null,
-                role: (ctx as any).role ?? null,
+                userId: auditUserId,
+                role: (ctx as any).role ?? 'SYSTEMADMIN',
                 ipAddress: (ctx as any).ip ?? null,
               },
             });
