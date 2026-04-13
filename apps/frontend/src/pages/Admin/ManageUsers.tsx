@@ -485,6 +485,16 @@ export default function UsersAdmin() {
     setPageSize(20);
   };
 
+  const clientCodeReg = register("clientCode", {
+    setValueAs: (v) =>
+      typeof v === "string"
+        ? v
+            .replace(/[^a-zA-Z]/g, "")
+            .toUpperCase()
+            .slice(0, 3)
+        : v,
+  });
+
   if (!user) return <p className="p-6 text-slate-700">Please log in.</p>;
   if (!isAdmin)
     return (
@@ -677,15 +687,21 @@ export default function UsersAdmin() {
                   <input
                     className={inputBase}
                     maxLength={3}
-                    {...register("clientCode", {
-                      setValueAs: (v) =>
-                        typeof v === "string" ? v.toUpperCase().slice(0, 3) : v,
-                    })}
+                    {...clientCodeReg}
                     onChange={(e) => {
-                      e.target.value = e.target.value.toUpperCase().slice(0, 3);
+                      const cleaned = e.target.value
+                        .replace(/[^a-zA-Z]/g, "") // ❌ remove numbers/symbols
+                        .toUpperCase() // ✅ uppercase
+                        .slice(0, 3); // ✅ limit to 3
+
+                      e.target.value = cleaned;
+                      clientCodeReg.onChange(e); // ✅ sync with react-hook-form
                     }}
                     placeholder="ABC"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    3 chars; uppercase A–Z only.
+                  </p>
                   {createErrors.clientCode && (
                     <p className="text-rose-600 text-xs mt-1">
                       {createErrors.clientCode.message}
@@ -1279,9 +1295,14 @@ export default function UsersAdmin() {
                   )}
                   value={editClientCode}
                   maxLength={3}
-                  onChange={(e) =>
-                    setEditClientCode(e.target.value.toUpperCase().slice(0, 3))
-                  }
+                  onChange={(e) => {
+                    const cleaned = e.target.value
+                      .replace(/[^a-zA-Z]/g, "")
+                      .toUpperCase()
+                      .slice(0, 3);
+
+                    setEditClientCode(cleaned);
+                  }}
                   placeholder={editRole === "CLIENT" ? "ABC" : "N/A"}
                 />
                 <p className="text-xs text-slate-500 mt-1">
