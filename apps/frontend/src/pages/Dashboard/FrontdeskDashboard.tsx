@@ -326,7 +326,7 @@ const DEFAULT_FRONTDESK_FILTERS = {
   formNoTo: "",
   reportNoFrom: "",
   reportNoTo: "",
-  sortBy: "dateSent" as "dateSent" | "reportNumber",
+  sortBy: "dateSent" as "dateSent" | "reportNumber" | "createdAt" | "updatedAt",
   sortDir: "desc" as "asc" | "desc",
   perPage: 10,
   page: 1,
@@ -442,8 +442,11 @@ function getInitialFrontDeskFilters(searchParams: URLSearchParams) {
         reportNoFrom: spReportFrom || DEFAULT_FRONTDESK_FILTERS.reportNoFrom,
         reportNoTo: spReportTo || DEFAULT_FRONTDESK_FILTERS.reportNoTo,
         sortBy:
-          (spSortBy as "dateSent" | "reportNumber") ||
-          DEFAULT_FRONTDESK_FILTERS.sortBy,
+          (spSortBy as
+            | "dateSent"
+            | "reportNumber"
+            | "createdAt"
+            | "updatedAt") || DEFAULT_FRONTDESK_FILTERS.sortBy,
         sortDir:
           (spSortDir as "asc" | "desc") || DEFAULT_FRONTDESK_FILTERS.sortDir,
         perPage: parseIntSafe(spPp, DEFAULT_FRONTDESK_FILTERS.perPage),
@@ -498,9 +501,9 @@ export default function FrontDeskDashboard() {
 
   const [search, setSearch] = useState(initialFilters.searchText);
 
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    initialFilters.sortBy,
-  );
+  const [sortBy, setSortBy] = useState<
+    "dateSent" | "reportNumber" | "createdAt" | "updatedAt"
+  >(initialFilters.sortBy);
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initialFilters.sortDir,
@@ -720,9 +723,19 @@ export default function FrontDeskDashboard() {
               ),
             )
           : bySearch;
+    const dateField =
+      sortBy === "createdAt"
+        ? "createdAt"
+        : sortBy === "updatedAt"
+          ? "updatedAt"
+          : "dateSent";
 
     const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+      matchesDateRange(
+        (r as any)[dateField] ?? null,
+        fromDate || undefined,
+        toDate || undefined,
+      ),
     );
 
     const sorted = [...byDate].sort((a, b) => {
@@ -736,6 +749,18 @@ export default function FrontDeskDashboard() {
         const aN = a.reportNumber.toLowerCase();
         const bN = b.reportNumber.toLowerCase();
         return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
+      }
+
+      if (sortBy === "createdAt") {
+        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "updatedAt") {
+        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
       }
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
@@ -838,6 +863,8 @@ export default function FrontDeskDashboard() {
 
     if (sortBy !== "dateSent") sp.set("sb", sortBy);
     if (sortDir !== "desc") sp.set("sd", sortDir);
+
+    if (sortBy !== "dateSent") sp.set("sb", sortBy);
 
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
@@ -1470,6 +1497,9 @@ export default function FrontDeskDashboard() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   return (
     <div className="p-6">
@@ -1745,7 +1775,6 @@ export default function FrontDeskDashboard() {
       </div>
 
       {/* Controls Card */}
-      {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {FRONTDESK_STATUSES.map((s) => (
@@ -1766,58 +1795,31 @@ export default function FrontDeskDashboard() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as "ALL" | ReportStatus)
+            }
+            className="w-100 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          >
+            {FRONTDESK_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {niceStatus(String(s))}
+              </option>
+            ))}
+          </select>
           <input
             placeholder="Search form #, report #, lot/batch #, formula, description, status..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
-
-          <div className="flex items-center gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                setSortBy(e.target.value as "dateSent" | "reportNumber")
-              }
-              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="dateSent">Date Sent</option>
-              <option value="reportNumber">Report #</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-              aria-label="Toggle sort direction"
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label htmlFor="perPage" className="text-sm text-slate-600">
-              Rows:
-            </label>
-            <select
-              id="perPage"
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
 
           <div className="flex gap-3 flex-wrap">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-56 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -1897,6 +1899,28 @@ export default function FrontDeskDashboard() {
               }}
               className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(e.target.value as "dateSent" | "reportNumber")
+              }
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="dateSent">Date Sent</option>
+              <option value="reportNumber">Report #</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              aria-label="Toggle sort direction"
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
           </div>
 
           <button
@@ -2360,6 +2384,21 @@ export default function FrontDeskDashboard() {
               <span className="font-medium"> {total}</span>
             </div>
             <div className="flex items-center gap-2">
+              <label htmlFor="perPage" className="text-sm text-slate-600">
+                Rows:
+              </label>
+              <select
+                id="perPage"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}

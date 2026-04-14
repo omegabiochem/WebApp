@@ -55,7 +55,6 @@ export const COLS: Array<{ key: ColKey; label: string }> = [
   { key: "updatedAt", label: "updatedAt" },
 ];
 
-
 export type ChemistryColKey =
   | "reportNumber"
   | "formNumber"
@@ -69,6 +68,7 @@ export type ChemistryColKey =
   | "lotNo"
   | "manufactureDate"
   | "actives"
+  | "dateReceived"
   | "createdAt"
   | "updatedAt";
 
@@ -103,6 +103,8 @@ export type DashboardColKey =
   | "lotNo"
   | "manufactureDate"
   | "actives"
+  | "dateReceived"
+  | "dateTested"
   | "createdAt"
   | "updatedAt";
 
@@ -120,11 +122,12 @@ export const DashboardCOLS: Array<{ key: DashboardColKey; label: string }> = [
   { key: "lotNo", label: "lotNo" },
   { key: "manufactureDate", label: "manufactureDate" },
   { key: "actives", label: "actives" },
+  { key: "dateReceived", label: "dateReceived" },
+  { key: "dateTested", label: "dateTested" },
   { key: "createdAt", label: "createdAt" },
   { key: "updatedAt", label: "updatedAt" },
 ];
 export const MAX_COLS = 4;
-
 
 export const ROW_STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-slate-50",
