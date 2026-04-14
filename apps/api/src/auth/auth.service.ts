@@ -530,7 +530,7 @@ export class AuthService {
         code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
         message: shouldLock
           ? 'Too many failed attempts. Account locked for 15 minutes.'
-          : 'Invalid user ID or password.',
+          : 'Invalid password.',
         lockedUntil,
         remaining: Math.max(0, LOCK_AFTER_FAILED - nextCount),
       });
@@ -758,7 +758,25 @@ export class AuthService {
     });
 
     // Missing or inactive
-    if (!user || !user.active) {
+    // if (!user || !user.active) {
+    //   await this.logAuthEvent({
+    //     action: 'LOGIN_FAILED',
+    //     userId: null,
+    //     role: null,
+    //     clientCode: null,
+    //     ip,
+    //     entityId: userId,
+    //     details: 'Invalid credentials (user missing or inactive)',
+    //     meta: { userAgent: ua },
+    //   });
+
+    //   throw new UnauthorizedException({
+    //     code: 'INVALID_CREDENTIALS',
+    //     message: 'Invalid user ID or password.',
+    //   });
+    // }
+
+    if (!user) {
       await this.logAuthEvent({
         action: 'LOGIN_FAILED',
         userId: null,
@@ -766,13 +784,49 @@ export class AuthService {
         clientCode: null,
         ip,
         entityId: userId,
-        details: 'Invalid credentials (user missing or inactive)',
+        details: 'Invalid user ID',
         meta: { userAgent: ua },
       });
 
       throw new UnauthorizedException({
-        code: 'INVALID_CREDENTIALS',
-        message: 'Invalid user ID or password.',
+        code: 'INVALID_USERID',
+        message: 'Invalid user ID.',
+      });
+    }
+
+    if (!user.active) {
+      await this.logAuthEvent({
+        action: 'LOGIN_FAILED',
+        userId: user.id,
+        role: user.role as any,
+        clientCode: user.clientCode ?? null,
+        ip,
+        entityId: user.userId ?? user.email,
+        details: 'Inactive user login attempt',
+        meta: { userAgent: ua },
+      });
+
+      throw new UnauthorizedException({
+        code: 'USER_INACTIVE',
+        message: 'User account is inactive.',
+      });
+    }
+
+    if (!user.active) {
+      await this.logAuthEvent({
+        action: 'LOGIN_FAILED',
+        userId: user.id,
+        role: user.role as any,
+        clientCode: user.clientCode ?? null,
+        ip,
+        entityId: user.userId ?? user.email,
+        details: 'Inactive user login attempt',
+        meta: { userAgent: ua },
+      });
+
+      throw new UnauthorizedException({
+        code: 'USER_INACTIVE',
+        message: 'User account is inactive.',
       });
     }
 
@@ -828,10 +882,10 @@ export class AuthService {
       });
 
       throw new UnauthorizedException({
-        code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
+        code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_PASSWORD',
         message: shouldLock
           ? 'Too many failed attempts. Account locked for 15 minutes.'
-          : 'Invalid user ID or password.',
+          : 'Invalid password.',
         lockedUntil,
         remaining: Math.max(0, LOCK_AFTER_FAILED - nextCount),
       });
@@ -1034,8 +1088,8 @@ export class AuthService {
     }
 
     throw new UnauthorizedException({
-      code: 'INVALID_CREDENTIALS',
-      message: 'Invalid user ID or password.',
+      code: 'INVALID_USERID',
+      message: 'Invalid user ID.',
     });
   }
 
