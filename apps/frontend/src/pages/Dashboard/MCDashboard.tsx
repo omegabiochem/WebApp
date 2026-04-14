@@ -73,6 +73,8 @@ type MicroReport = {
   createdAt?: string | null;
   updatedAt?: string | null;
 
+  dateTested?: string | null;
+
   typeOfTest?: string | null;
   sampleType?: string | null;
   formulaNo?: string | null;
@@ -899,9 +901,14 @@ export default function MCDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    initialFilters.sortBy,
-  );
+  const [sortBy, setSortBy] = useState<
+    | "dateSent"
+    | "reportNumber"
+    | "dateTested"
+    | "dateReceived"
+    | "createdAt"
+    | "updatedAt"
+  >(initialFilters.sortBy as any);
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initialFilters.sortDir,
@@ -1319,10 +1326,28 @@ export default function MCDashboard() {
     }
 
     // 7) date range
-    rows = rows.filter((r) =>
-      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
-    );
+    rows = rows.filter((r) => {
+      const dateValue =
+        sortBy === "dateTested"
+          ? r.kind === "MICRO"
+            ? r.dateTested
+            : null
+          : sortBy === "dateReceived"
+            ? r.kind === "CHEMISTRY"
+              ? r.dateReceived
+              : null
+            : sortBy === "createdAt"
+              ? r.createdAt
+              : sortBy === "updatedAt"
+                ? r.updatedAt
+                : r.dateSent;
 
+      return matchesDateRange(
+        dateValue ?? null,
+        fromDate || undefined,
+        toDate || undefined,
+      );
+    });
     // 4) sort
     const sorted = [...rows].sort((a, b) => {
       const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
@@ -1331,11 +1356,49 @@ export default function MCDashboard() {
       if (aPinned !== bPinned) {
         return bPinned - aPinned; // pinned first
       }
+
       if (sortBy === "reportNumber") {
         const aK = (a.reportNumber || "").toLowerCase();
         const bK = (b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
+
+      if (sortBy === "dateTested") {
+        const aT =
+          a.kind === "MICRO" && a.dateTested
+            ? new Date(a.dateTested).getTime()
+            : 0;
+
+        const bT =
+          b.kind === "MICRO" && b.dateTested
+            ? new Date(b.dateTested).getTime()
+            : 0;
+
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "dateReceived") {
+        const aT = (a as any).dateReceived
+          ? new Date((a as any).dateReceived).getTime()
+          : 0;
+        const bT = (b as any).dateReceived
+          ? new Date((b as any).dateReceived).getTime()
+          : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "createdAt") {
+        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "updatedAt") {
+        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
       const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
@@ -2656,6 +2719,17 @@ export default function MCDashboard() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-100 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          >
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>
+                {niceStatus(String(s))}
+              </option>
+            ))}
+          </select>
           {/* Global search */}
           <input
             placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
@@ -2664,47 +2738,6 @@ export default function MCDashboard() {
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
 
-          {/* Sort */}
-          <div className="flex items-center gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                setSortBy(e.target.value as "dateSent" | "reportNumber")
-              }
-              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="dateSent">Date Sent</option>
-              <option value="reportNumber">Report #</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
-          </div>
-
-          {/* Rows */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="perPage" className="text-sm text-slate-600">
-              Rows:
-            </label>
-            <select
-              id="perPage"
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
 
           {/* Date preset + custom */}
           <div className="flex gap-3 flex-wrap">
@@ -2818,6 +2851,39 @@ export default function MCDashboard() {
               </option>
             ))}
           </select>
+
+             {/* Sort */}
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as
+                    | "dateSent"
+                    | "reportNumber"
+                    | "dateTested"
+                    | "dateReceived",
+                )
+              }
+              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="dateSent">Date Sent</option>
+              <option value="reportNumber">Report #</option>
+              <option value="dateTested">Date Tested</option>
+              <option value="dateReceived">Date Received</option>
+              <option value="createdAt">Created At</option>
+              <option value="updatedAt">Updated At</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
 
           {/* Clear */}
           <button
@@ -3248,6 +3314,21 @@ export default function MCDashboard() {
             </div>
 
             <div className="flex items-center gap-2">
+              <label htmlFor="perPage" className="text-sm text-slate-600">
+                Rows:
+              </label>
+              <select
+                id="perPage"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}

@@ -53,6 +53,8 @@ type Report = {
   createdAt?: string | null;
   updatedAt?: string | null;
 
+  dateTested?: string | null;
+
   typeOfTest?: string | null;
   sampleType?: string | null;
   formulaNo?: string | null;
@@ -402,7 +404,12 @@ export default function MicroDashboard() {
     formNoTo: "",
     reportNoFrom: "",
     reportNoTo: "",
-    sortBy: "dateSent" as "dateSent" | "reportNumber",
+    sortBy: "dateSent" as
+      | "dateSent"
+      | "reportNumber"
+      | "dateTested"
+      | "createdAt"
+      | "updatedAt",
     sortDir: "desc" as "asc" | "desc",
     perPage: 10,
     page: 1,
@@ -468,8 +475,12 @@ export default function MicroDashboard() {
           reportNoFrom: spReportFrom || DEFAULT_MICRO_FILTERS.reportNoFrom,
           reportNoTo: spReportTo || DEFAULT_MICRO_FILTERS.reportNoTo,
           sortBy:
-            (spSortBy as "dateSent" | "reportNumber") ||
-            DEFAULT_MICRO_FILTERS.sortBy,
+            (spSortBy as
+              | "dateSent"
+              | "reportNumber"
+              | "dateTested"
+              | "createdAt"
+              | "updatedAt") || DEFAULT_MICRO_FILTERS.sortBy,
           sortDir:
             (spSortDir as "asc" | "desc") || DEFAULT_MICRO_FILTERS.sortDir,
           perPage: parseIntSafe(spPp, DEFAULT_MICRO_FILTERS.perPage),
@@ -695,9 +706,9 @@ export default function MicroDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
-  const [sortBy, setSortBy] = useState<"dateSent" | "reportNumber">(
-    initialFilters.sortBy,
-  );
+  const [sortBy, setSortBy] = useState<
+    "dateSent" | "reportNumber" | "dateTested" | "createdAt" | "updatedAt"
+  >(initialFilters.sortBy as any);
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initialFilters.sortDir,
@@ -902,8 +913,25 @@ export default function MicroDashboard() {
             )
           : bySearchText;
 
+    // const byDate = byNumberRange.filter((r) =>
+    //   matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+    // );
+
+    const dateField =
+      sortBy === "dateTested"
+        ? "dateTested"
+        : sortBy === "createdAt"
+          ? "createdAt"
+          : sortBy === "updatedAt"
+            ? "updatedAt"
+            : "dateSent";
+
     const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
+      matchesDateRange(
+        (r as any)[dateField] ?? null,
+        fromDate || undefined,
+        toDate || undefined,
+      ),
     );
 
     return [...byDate].sort((a, b) => {
@@ -917,6 +945,24 @@ export default function MicroDashboard() {
         const aK = String(a.reportNumber || "").toLowerCase();
         const bK = String(b.reportNumber || "").toLowerCase();
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
+      }
+
+      if (sortBy === "dateTested") {
+        const aT = a.dateTested ? new Date(a.dateTested).getTime() : 0;
+        const bT = b.dateTested ? new Date(b.dateTested).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "createdAt") {
+        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
+      }
+
+      if (sortBy === "updatedAt") {
+        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return sortDir === "asc" ? aT - bT : bT - aT;
       }
 
       const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
@@ -1472,10 +1518,12 @@ export default function MicroDashboard() {
     const nextClient = searchParams.get("client") || "";
     const nextReport = searchParams.get("report") || "";
     const nextQ = searchParams.get("q") || "";
-
     const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
       | "dateSent"
-      | "reportNumber";
+      | "reportNumber"
+      | "dateTested"
+      | "createdAt"
+      | "updatedAt";
     const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
       | "asc"
       | "desc";
@@ -2090,7 +2138,20 @@ export default function MicroDashboard() {
 
         {/* Row 1: Search Client | Sort | Rows */}
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <div className="relative lg:col-span-5">
+          <div className="lg:col-span-4">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              {statusOptions.map((s) => (
+                <option key={String(s)} value={String(s)}>
+                  {niceStatus(String(s))}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="relative lg:col-span-8">
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -2106,49 +2167,6 @@ export default function MicroDashboard() {
                 ✕
               </button>
             )}
-          </div>
-
-          <div className="flex items-center gap-2 lg:col-span-4">
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                setSortBy(e.target.value as "dateSent" | "reportNumber")
-              }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="dateSent">Sort: Date Sent</option>
-              <option value="reportNumber">Sort: Report #</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 lg:col-span-3 lg:justify-end">
-            <label
-              htmlFor="perPage"
-              className="text-sm text-slate-600 whitespace-nowrap"
-            >
-              Rows
-            </label>
-            <select
-              id="perPage"
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -2246,7 +2264,39 @@ export default function MicroDashboard() {
         </div>
 
         {/* Row 3: Clear */}
-        <div className="mt-3 flex justify-end">
+
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 lg:col-span-6">
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as
+                    | "dateSent"
+                    | "reportNumber"
+                    | "dateTested"
+                    | "createdAt"
+                    | "updatedAt",
+                )
+              }
+              className="w-full rounded-lg border bg-white px-5 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="dateSent"> Date Sent</option>
+              <option value="reportNumber"> Report #</option>
+              <option value="dateTested"> Date Tested</option>
+              <option value="createdAt"> Created At</option>
+              <option value="updatedAt"> Updated At</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
           <button
             type="button"
             onClick={clearAllFilters}
@@ -2628,7 +2678,26 @@ export default function MicroDashboard() {
               <span className="font-medium">{Math.min(end, total)}</span> of
               <span className="font-medium"> {total}</span>
             </div>
+
             <div className="flex items-center gap-2">
+              <label
+                htmlFor="perPage"
+                className="text-sm text-slate-600 whitespace-nowrap"
+              >
+                Rows
+              </label>
+              <select
+                id="perPage"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p: number) => Math.max(1, p - 1))}
