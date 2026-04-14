@@ -67,6 +67,9 @@ type Report = {
   // optional searchable fields
   updatedAt?: string | null;
 
+  dateTested?: string | null;
+  dateReceived?: string | null;
+
   typeOfTest?: string | null;
   sampleType?: string | null;
   formulaNo?: string | null;
@@ -456,6 +459,12 @@ const DEFAULT_ADMIN_FILTERS = {
   reportNoTo: "",
   perPage: 10,
   page: 1,
+  dateField: "createdAt" as
+    | "dateSent"
+    | "dateTested"
+    | "dateReceived"
+    | "createdAt"
+    | "updatedAt",
 };
 
 function extractYearAndSequence(value?: string | number | null): {
@@ -541,6 +550,14 @@ export default function SystemAdminDashboard() {
         searchParams.get("reportTo") || DEFAULT_ADMIN_FILTERS.reportNoTo,
       perPage: getInt(searchParams, "pp", DEFAULT_ADMIN_FILTERS.perPage),
       page: getInt(searchParams, "p", DEFAULT_ADMIN_FILTERS.page),
+      dateField:
+        (searchParams.get("dateField") as
+          | "dateSent"
+          | "dateTested"
+          | "dateReceived"
+          | "createdAt"
+          | "updatedAt") || DEFAULT_ADMIN_FILTERS.dateField,
+      sortOrder: (searchParams.get("sort") as "asc" | "desc") || "desc",
     };
   }
 
@@ -568,6 +585,10 @@ export default function SystemAdminDashboard() {
   const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+  const [dateField, setDateField] = useState<
+    "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
+  >(initialFilters.dateField);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const allowedPP = [10, 20, 50] as const;
   const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
@@ -919,20 +940,45 @@ export default function SystemAdminDashboard() {
         })
       : bySearchText;
 
+    const getDateValue = (r: Report): string | null => {
+      switch (dateField) {
+        case "dateTested":
+          return r.dateTested ?? null;
+        case "dateReceived":
+          return r.dateReceived ?? null;
+        case "createdAt":
+          return r.createdAt ?? null;
+        case "updatedAt":
+          return r.updatedAt ?? null;
+        default:
+          return r.dateSent ?? null;
+      }
+    };
+
     const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(r.createdAt, dateFrom || undefined, dateTo || undefined),
+      matchesDateRange(
+        getDateValue(r),
+        dateFrom || undefined,
+        dateTo || undefined,
+      ),
     );
+
+    const getTime = (r: Report) => {
+      const val = getDateValue(r);
+      return val ? new Date(val).getTime() : 0;
+    };
 
     return [...byDate].sort((a, b) => {
       const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
       const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
       if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
+        return bPinned - aPinned;
       }
-      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bT - aT;
+
+      const diff = getTime(a) - getTime(b);
+
+      return sortOrder === "asc" ? diff : -diff;
     });
   }, [
     reportsWithSearch,
@@ -949,10 +995,11 @@ export default function SystemAdminDashboard() {
     dateFrom,
     dateTo,
     pinnedIds,
+    dateField,
+    sortOrder,
   ]);
 
-
-    useEffect(() => {
+  useEffect(() => {
     const map: Record<string, DOMRect> = {};
     for (const r of processed) {
       const el = rowRefs.current[r.id];
@@ -1027,6 +1074,9 @@ export default function SystemAdminDashboard() {
     if (searchClient.trim()) sp.set("client", searchClient.trim());
     if (searchReport.trim()) sp.set("report", searchReport.trim());
     if (searchText.trim()) sp.set("q", searchText.trim());
+
+    sp.set("dateField", dateField);
+    sp.set("sort", sortOrder);
 
     sp.set("dp", datePreset);
     if (dateFrom) sp.set("from", dateFrom);
@@ -1311,7 +1361,8 @@ export default function SystemAdminDashboard() {
       formNoTo !== "" ||
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
-      perPage !== 10
+      perPage !== 10 ||
+      dateField !== DEFAULT_ADMIN_FILTERS.dateField
     );
   }, [
     formFilter,
@@ -1327,6 +1378,7 @@ export default function SystemAdminDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
+    dateField,
   ]);
   const clearFilters = () => {
     setSearchClient("");
@@ -1344,6 +1396,7 @@ export default function SystemAdminDashboard() {
     setReportNoTo("");
     setPerPage(10);
     setPage(1);
+    setDateField(DEFAULT_ADMIN_FILTERS.dateField);
   };
   function niceFormType(ft?: string) {
     switch (ft) {
@@ -1655,6 +1708,11 @@ export default function SystemAdminDashboard() {
 
       case "dateSent":
         return formatDate(r.dateSent);
+      case "dateTested":
+        return formatDate(r.dateTested ?? null);
+
+      case "dateReceived":
+        return formatDate(r.dateReceived ?? null);
 
       case "manufactureDate":
         return formatDate(r.manufactureDate ?? null);
@@ -1793,8 +1851,6 @@ export default function SystemAdminDashboard() {
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
-
-
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2228,6 +2284,27 @@ export default function SystemAdminDashboard() {
               className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          <select
+            value={dateField}
+            onChange={(e) => setDateField(e.target.value as any)}
+            className="w-44 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="dateSent">Date Sent</option>
+            <option value="dateReceived">Date Received</option>
+            <option value="dateTested">Date Tested</option>
+            <option value="createdAt">Created At</option>
+            <option value="updatedAt">Updated At</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder((d) => (d === "asc" ? "desc" : "asc"))}
+            className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+            title={sortOrder === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortOrder === "asc" ? "↑" : "↓"}
+          </button>
 
           <button
             type="button"

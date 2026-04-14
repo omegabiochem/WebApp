@@ -65,6 +65,9 @@ type Report = {
   // optional searchable fields
   updatedAt?: string | null;
 
+  dateTested?: string | null;
+  dateReceived?: string | null;
+
   typeOfTest?: string | null;
   sampleType?: string | null;
   formulaNo?: string | null;
@@ -429,6 +432,12 @@ const DEFAULT_QA_FILTERS = {
   reportNoTo: "",
   perPage: 10,
   page: 1,
+  dateField: "dateSent" as
+    | "dateSent"
+    | "dateTested"
+    | "dateReceived"
+    | "createdAt"
+    | "updatedAt",
 };
 
 function extractYearAndSequence(value?: string | number | null): {
@@ -544,6 +553,8 @@ export default function QaDashboard() {
       const spReportFrom = searchParams.get("reportFrom");
       const spReportTo = searchParams.get("reportTo");
       const spRangeType = searchParams.get("rangeType");
+      const spDateField = searchParams.get("dateField");
+      const spSort = searchParams.get("sort");
 
       const hasUrlFilters =
         spForm ||
@@ -560,7 +571,8 @@ export default function QaDashboard() {
         spFormTo ||
         spReportFrom ||
         spReportTo ||
-        spRangeType;
+        spRangeType ||
+        spDateField;
 
       if (hasUrlFilters) {
         return {
@@ -578,6 +590,15 @@ export default function QaDashboard() {
           formNoTo: spFormTo || DEFAULT_QA_FILTERS.formNoTo,
           reportNoFrom: spReportFrom || DEFAULT_QA_FILTERS.reportNoFrom,
           reportNoTo: spReportTo || DEFAULT_QA_FILTERS.reportNoTo,
+          dateField:
+            (spDateField as
+              | "dateSent"
+              | "dateTested"
+              | "dateReceived"
+              | "createdAt"
+              | "updatedAt") || DEFAULT_QA_FILTERS.dateField,
+          sortOrder: (spSort as "asc" | "desc") || "desc",
+
           numberRangeType:
             (spRangeType as "FORM" | "REPORT") ||
             DEFAULT_QA_FILTERS.numberRangeType,
@@ -626,6 +647,11 @@ export default function QaDashboard() {
   const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+
+  const [dateField, setDateField] = useState<
+    "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
+  >(initialFilters.dateField);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -938,21 +964,56 @@ export default function QaDashboard() {
       : bySearchText;
 
     // keep your behavior: filter/sort using dateSent
+    const getDateValue = (r: Report): string | null => {
+      switch (dateField) {
+        case "dateTested":
+          return r.dateTested ?? null;
+        case "dateReceived":
+          return r.dateReceived ?? null;
+        case "createdAt":
+          return r.createdAt ?? null;
+        case "updatedAt":
+          return r.updatedAt ?? null;
+        default:
+          return r.dateSent ?? null;
+      }
+    };
+
     const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(r.dateSent, dateFrom || undefined, dateTo || undefined),
+      matchesDateRange(
+        getDateValue(r),
+        dateFrom || undefined,
+        dateTo || undefined,
+      ),
     );
+
+    const getTime = (r: Report) => {
+      const val = getDateValue(r);
+      return val ? new Date(val).getTime() : 0;
+    };
 
     return [...byDate].sort((a, b) => {
       const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
       const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
-      }
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return bT - aT;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+
+      const diff = getTime(a) - getTime(b);
+
+      return sortOrder === "asc" ? diff : -diff;
     });
+
+    // return [...byDate].sort((a, b) => {
+    //   const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+    //   const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+    //   if (aPinned !== bPinned) {
+    //     return bPinned - aPinned; // pinned first
+    //   }
+    //   const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+    //   const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+    //   return bT - aT;
+    // });
   }, [
     reportsWithSearch,
     formFilter,
@@ -968,6 +1029,8 @@ export default function QaDashboard() {
     dateFrom,
     dateTo,
     pinnedIds,
+    dateField,
+    sortOrder,
   ]);
 
   useEffect(() => {
@@ -1064,6 +1127,9 @@ export default function QaDashboard() {
     if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
     sp.set("rangeType", numberRangeType);
+
+    sp.set("dateField", dateField);
+    sp.set("sort", sortOrder);
 
     setSearchParams(sp, { replace: true });
   }, [
@@ -1334,7 +1400,8 @@ export default function QaDashboard() {
       formNoTo !== "" ||
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
-      perPage !== 10
+      perPage !== 10 ||
+      dateField !== DEFAULT_QA_FILTERS.dateField
     );
   }, [
     formFilter,
@@ -1350,6 +1417,7 @@ export default function QaDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
+    dateField,
   ]);
 
   const clearFilters = () => {
@@ -1368,6 +1436,7 @@ export default function QaDashboard() {
     setReportNoFrom("");
     setReportNoTo("");
     setNumberRangeType("FORM");
+    setDateField(DEFAULT_QA_FILTERS.dateField);
 
     try {
       localStorage.setItem(
@@ -1735,6 +1804,11 @@ export default function QaDashboard() {
 
       case "dateSent":
         return formatDate(r.dateSent);
+      case "dateTested":
+        return formatDate(r.dateTested ?? null);
+
+      case "dateReceived":
+        return formatDate(r.dateReceived ?? null);
 
       case "manufactureDate":
         return formatDate(r.manufactureDate ?? null);
@@ -2310,6 +2384,27 @@ export default function QaDashboard() {
               className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          <select
+            value={dateField}
+            onChange={(e) => setDateField(e.target.value as any)}
+            className="w-44 rounded-lg border px-3 py-2 text-sm"
+          >
+            <option value="dateSent">Date Sent</option>
+            <option value="dateReceived">Date Received</option>
+            <option value="dateTested">Date Tested</option>
+            <option value="createdAt">Created At</option>
+            <option value="updatedAt">Updated At</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder((d) => (d === "asc" ? "desc" : "asc"))}
+            className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+            title={sortOrder === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortOrder === "asc" ? "↑" : "↓"}
+          </button>
 
           {/* Clear */}
           <button
