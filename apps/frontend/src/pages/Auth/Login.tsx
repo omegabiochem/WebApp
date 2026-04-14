@@ -204,12 +204,30 @@ export default function Login() {
       const code = err?.body?.code;
       const remaining = err?.body?.remaining;
 
+      // const msg =
+      //   code === "ACCOUNT_LOCKED"
+      //     ? "Too many failed attempts. Your account is temporarily locked."
+      //     : code === "INVALID_CREDENTIALS" && typeof remaining === "number"
+      //       ? `Invalid user ID or password. Attempts left: ${remaining}`
+      //       : "Invalid user ID or password.";
+
       const msg =
-        code === "ACCOUNT_LOCKED"
-          ? "Too many failed attempts. Your account is temporarily locked."
-          : code === "INVALID_CREDENTIALS" && typeof remaining === "number"
-            ? `Invalid user ID or password. Attempts left: ${remaining}`
-            : "Invalid user ID or password.";
+        code === "INVALID_USERID"
+          ? "Invalid User ID."
+          : code === "INVALID_PASSWORD" && typeof remaining === "number"
+            ? `Invalid Password. Attempts left: ${remaining}`
+            : code === "INVALID_PASSWORD"
+              ? "Invalid Password."
+              : code === "USER_INACTIVE"
+                ? "This user account is inactive."
+                : code === "ACCOUNT_LOCKED"
+                  ? "Too many failed attempts. Your account is temporarily locked."
+                  : code === "INVALID_CREDENTIALS" &&
+                      typeof remaining === "number"
+                    ? `Invalid user ID or password. Attempts left: ${remaining}`
+                    : code === "INVALID_CREDENTIALS"
+                      ? "Invalid user ID or password."
+                      : "Login failed.";
 
       setBanner({ type: "error", text: msg });
       setError("password", { type: "server", message: msg });

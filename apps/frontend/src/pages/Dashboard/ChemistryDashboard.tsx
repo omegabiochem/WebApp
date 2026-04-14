@@ -277,7 +277,12 @@ const DEFAULT_CHEM_FILTERS = {
   formNoTo: "",
   reportNoFrom: "",
   reportNoTo: "",
-  sortBy: "createdAt" as "createdAt" | "reportNumber",
+  sortBy: "dateSent" as
+    | "dateSent"
+    | "reportNumber"
+    | "createdAt"
+    | "updatedAt"
+    | "dateReceived",
   sortDir: "desc" as "asc" | "desc",
   perPage: 10,
   page: 1,
@@ -396,8 +401,12 @@ function getInitialChemistryFilters(
         reportNoFrom: spReportFrom || DEFAULT_CHEM_FILTERS.reportNoFrom,
         reportNoTo: spReportTo || DEFAULT_CHEM_FILTERS.reportNoTo,
         sortBy:
-          (spSortBy as "createdAt" | "reportNumber") ||
-          DEFAULT_CHEM_FILTERS.sortBy,
+          (spSortBy as
+            | "dateSent"
+            | "reportNumber"
+            | "createdAt"
+            | "updatedAt"
+            | "dateReceived") || DEFAULT_CHEM_FILTERS.sortBy,
         sortDir: (spSortDir as "asc" | "desc") || DEFAULT_CHEM_FILTERS.sortDir,
         perPage: parseIntSafe(spPp, DEFAULT_CHEM_FILTERS.perPage),
         page: parseIntSafe(spP, DEFAULT_CHEM_FILTERS.page),
@@ -471,9 +480,9 @@ export default function ChemistryDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
-  const [sortBy, setSortBy] = useState<"createdAt" | "reportNumber">(
-    initialFilters.sortBy,
-  );
+  const [sortBy, setSortBy] = useState<
+    "dateSent" | "createdAt" | "updatedAt" | "dateReceived" | "reportNumber"
+  >(initialFilters.sortBy);
 
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initialFilters.sortDir,
@@ -651,10 +660,13 @@ export default function ChemistryDashboard() {
         return niceFormType(r.formType);
 
       case "dateSent":
-        return formatDate(r.createdAt);
+        return formatDate(r.dateSent ?? null);
 
       case "manufactureDate":
         return formatDate(r.manufactureDate ?? null);
+
+      case "dateReceived":
+        return formatDate(r.dateReceived ?? null);
 
       case "createdAt":
         return formatDate(r.createdAt ?? null);
@@ -843,9 +855,21 @@ export default function ChemistryDashboard() {
 
             return list.includes(activeFilter);
           });
+    const dateField =
+      sortBy === "dateReceived"
+        ? "dateReceived"
+        : sortBy === "updatedAt"
+          ? "updatedAt"
+          : sortBy === "createdAt"
+            ? "createdAt"
+            : "dateSent";
 
     const byDate = byActive.filter((r) =>
-      matchesDateRange(r.createdAt, fromDate || undefined, toDate || undefined),
+      matchesDateRange(
+        (r as any)[dateField] ?? null,
+        fromDate || undefined,
+        toDate || undefined,
+      ),
     );
 
     return [...byDate].sort((a, b) => {
@@ -861,8 +885,26 @@ export default function ChemistryDashboard() {
         return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
       }
 
-      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (sortBy === "dateReceived") {
+        const aK = a.dateReceived ? new Date(a.dateReceived).getTime() : 0;
+        const bK = b.dateReceived ? new Date(b.dateReceived).getTime() : 0;
+        return sortDir === "asc" ? aK - bK : bK - aK;
+      }
+
+      if (sortBy === "updatedAt") {
+        const aK = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bK = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return sortDir === "asc" ? aK - bK : bK - aK;
+      }
+
+      if (sortBy === "createdAt") {
+        const aK = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bK = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return sortDir === "asc" ? aK - bK : bK - aK;
+      }
+
+      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
       return sortDir === "asc" ? aT - bT : bT - aT;
     });
   }, [
@@ -1038,8 +1080,11 @@ export default function ChemistryDashboard() {
     const nextReportFrom = searchParams.get("reportFrom") || "";
     const nextReportTo = searchParams.get("reportTo") || "";
 
-    const nextSortBy = ((searchParams.get("sortBy") as any) || "createdAt") as
+    const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
+      | "dateSent"
       | "createdAt"
+      | "updatedAt"
+      | "dateReceived"
       | "reportNumber";
     const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
       | "asc"
@@ -1309,7 +1354,7 @@ export default function ChemistryDashboard() {
       formNoTo !== "" ||
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
-      sortBy !== "createdAt" ||
+      sortBy !== "dateSent" ||
       sortDir !== "desc" ||
       perPage !== 10 ||
       activeFilter !== "ALL" ||
@@ -2017,7 +2062,25 @@ export default function ChemistryDashboard() {
 
         {/* Row 1: Search Client | Sort | Rows */}
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <div className="relative lg:col-span-5">
+          <div className="lg:col-span-4">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as (typeof CHEMISTRY_STATUSES)[number],
+                )
+              }
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              {CHEMISTRY_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {niceStatus(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative lg:col-span-8">
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -2033,49 +2096,6 @@ export default function ChemistryDashboard() {
                 ✕
               </button>
             )}
-          </div>
-
-          <div className="flex items-center gap-2 lg:col-span-4">
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                setSortBy(e.target.value as "createdAt" | "reportNumber")
-              }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="createdAt">Sort: Date Sent</option>
-              <option value="reportNumber">Sort: Report #</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 lg:col-span-3 lg:justify-end">
-            <label
-              htmlFor="perPage"
-              className="text-sm text-slate-600 whitespace-nowrap"
-            >
-              Rows
-            </label>
-            <select
-              id="perPage"
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            >
-              {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -2187,9 +2207,39 @@ export default function ChemistryDashboard() {
                 </option>
               ))}
             </select>
-          </div>
+          </div>{" "}
+          <div className="flex items-center gap-2 lg:col-span-4">
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as
+                    | "createdAt"
+                    | "updatedAt"
+                    | "dateReceived"
+                    | "reportNumber"
+                    | "dateSent",
+                )
+              }
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="dateSent"> Date Sent</option>
+              <option value="reportNumber"> Report #</option>
+              <option value="createdAt"> Created At</option>
+              <option value="updatedAt"> Updated At</option>
+              <option value="dateReceived"> Date Received</option>
+            </select>
 
-          <div className="lg:col-span-8 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
+          <div className="lg:col-span-4 flex justify-end">
             <button
               type="button"
               onClick={clearAllFilters}
@@ -2548,6 +2598,24 @@ export default function ChemistryDashboard() {
               <span className="font-medium"> {total}</span>
             </div>
             <div className="flex items-center gap-2">
+              <label
+                htmlFor="perPage"
+                className="text-sm text-slate-600 whitespace-nowrap"
+              >
+                Rows
+              </label>
+              <select
+                id="perPage"
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() => setPage((p: number) => Math.max(1, p - 1))}
