@@ -1992,53 +1992,65 @@ export default function ClientDashboard() {
         </nav>
       </div>
 
-      
+      {/* Controls Card */}
       {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
-        {/* Status filter chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {statusOptions.map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={classNames(
-                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
-                statusFilter === s
-                  ? "bg-blue-600 text-white ring-blue-600"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
-              )}
-              aria-pressed={statusFilter === s}
-            >
-              {niceStatus(String(s))}
-            </button>
-          ))}
+        {/* Status chips */}
+        <div className="mb-4">
+          <div className="flex min-h-[42px] items-center gap-2 overflow-x-auto pb-2">
+            {statusOptions.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={classNames(
+                  "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition",
+                  statusFilter === s
+                    ? "bg-blue-600 text-white ring-blue-600"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 ring-slate-200",
+                )}
+                aria-pressed={statusFilter === s}
+              >
+                {niceStatus(String(s))}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-            className="w-120 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          >
-            {statusOptions.map((s) => (
-              <option key={s} value={s}>
-                {niceStatus(String(s))}
-              </option>
-            ))}
-          </select>
-          
-          <input
-            placeholder="Search form #, report #, lot #, formula, description, client, status…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          />
+        {/* Row 1 */}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as DashboardStatus)
+              }
+              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            >
+              {statusOptions.map((s) => (
+                <option key={s} value={s}>
+                  {niceStatus(String(s))}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <div className="flex gap-3 flex-wrap">
+          <div className="lg:col-span-8">
+            <input
+              placeholder="Search form #, report #, lot #, formula, description, client, status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Row 2 */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-2">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2051,7 +2063,9 @@ export default function ClientDashboard() {
               <option value="LAST_YEAR">Last year</option>
               <option value="CUSTOM">Custom range</option>
             </select>
+          </div>
 
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={fromDate}
@@ -2061,11 +2075,13 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
+          </div>
 
+          <div className="lg:col-span-2">
             <input
               type="date"
               value={toDate}
@@ -2075,60 +2091,60 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                "h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="lg:col-span-2">
             <select
               value={numberRangeType}
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
             </select>
+          </div>
 
+          <div className="lg:col-span-2">
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # from`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # from`}
               value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
               onChange={(e) => {
                 if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
                 else setReportNoFrom(e.target.value);
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
+          </div>
 
+          <div className="lg:col-span-2">
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # to`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # to`}
               value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
               onChange={(e) => {
                 if (numberRangeType === "FORM") setFormNoTo(e.target.value);
                 else setReportNoTo(e.target.value);
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+        </div>
 
+        {/* Row 3 */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="sortBy">
-              Sort by
-            </label>
             <select
               id="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="h-10 min-w-[180px] rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="dateSent">Date Sent</option>
               <option value="formNumber">Form #</option>
@@ -2139,11 +2155,11 @@ export default function ClientDashboard() {
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
               aria-label="Toggle sort direction"
               title="Toggle sort direction"
             >
-              {sortDir === "asc" ? "↑" : "↓"}
+              {sortDir === "asc" ? "↓" : "↑"}
             </button>
           </div>
 
@@ -2152,10 +2168,10 @@ export default function ClientDashboard() {
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
             className={classNames(
-              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              "inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold shadow-sm transition",
               hasActiveFilters
-                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
-                : "border bg-slate-100 text-slate-400 cursor-not-allowed",
+                ? "bg-rose-600 text-white hover:bg-rose-700"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed border",
             )}
             title={hasActiveFilters ? "Clear filters" : "No filters applied"}
           >
