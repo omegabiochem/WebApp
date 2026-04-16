@@ -221,7 +221,7 @@ export default function Login() {
               : code === "USER_INACTIVE"
                 ? "This user account is inactive."
                 : code === "ACCOUNT_LOCKED"
-                  ? "Too many failed attempts. Your account is temporarily locked."
+                  ? "Too many failed attempts. Your account is temporarily locked.Please contact support."
                   : code === "INVALID_CREDENTIALS" &&
                       typeof remaining === "number"
                     ? `Invalid user ID or password. Attempts left: ${remaining}`

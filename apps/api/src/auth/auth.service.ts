@@ -1268,15 +1268,20 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
     // ✅ update password + clear mustChangePassword
-    await this.prisma.user.update({
-      where: { id: userDbId },
-      data: {
-        passwordHash,
-        passwordUpdatedAt: new Date(),
-        passwordVersion: { increment: 1 },
-        mustChangePassword: false,
-      },
-    });
+  await this.prisma.user.update({
+    where: { id: userDbId },
+    data: {
+      passwordHash,
+      passwordUpdatedAt: new Date(),
+      passwordVersion: { increment: 1 },
+      mustChangePassword: false,
+
+      // clear lockout after successful password reset
+      failedLoginCount: 0,
+      lockedUntil: null,
+      lastFailedLoginAt: null,
+    } as any,
+  });
 
     await this.logAuthEvent({
       action: 'PASSWORD_CHANGE',
