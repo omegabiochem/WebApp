@@ -218,16 +218,18 @@ export default function Login() {
             ? `Invalid Password. Attempts left: ${remaining}`
             : code === "INVALID_PASSWORD"
               ? "Invalid Password."
-              : code === "USER_INACTIVE"
-                ? "This user account is inactive."
-                : code === "ACCOUNT_LOCKED"
-                  ? "Too many failed attempts. Your account is temporarily locked.Please contact support."
-                  : code === "INVALID_CREDENTIALS" &&
-                      typeof remaining === "number"
-                    ? `Invalid user ID or password. Attempts left: ${remaining}`
-                    : code === "INVALID_CREDENTIALS"
-                      ? "Invalid user ID or password."
-                      : "Login failed.";
+              : code === "TEMP_PASSWORD_EXPIRED"
+                ? "Credentials expired. Please contact admin for new credentials."
+                : code === "USER_INACTIVE"
+                  ? "This user account is inactive."
+                  : code === "ACCOUNT_LOCKED"
+                    ? "Too many failed attempts. Your account is temporarily locked.Please contact support."
+                    : code === "INVALID_CREDENTIALS" &&
+                        typeof remaining === "number"
+                      ? `Invalid user ID or password. Attempts left: ${remaining}`
+                      : code === "INVALID_CREDENTIALS"
+                        ? "Invalid user ID or password."
+                        : "Login failed.";
 
       setBanner({ type: "error", text: msg });
       setError("password", { type: "server", message: msg });
