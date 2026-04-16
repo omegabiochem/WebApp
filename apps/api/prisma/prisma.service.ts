@@ -384,11 +384,43 @@ function resolveAction(
     }
   }
 
+  // if (isDetailReport) {
+  //   if (action === 'create') return 'DETAILS_CREATED';
+  //   if (action === 'update') return 'DETAILS_UPDATED';
+  //   if (action === 'delete') return 'DETAILS_DELETED';
+  // }
+
   if (isDetailReport) {
-    if (action === 'create') return 'DETAILS_CREATED';
-    if (action === 'update') return 'DETAILS_UPDATED';
-    if (action === 'delete') return 'DETAILS_DELETED';
+  const hasReportNumber =
+    !!auditRef?.reportNumber ||
+    !!before?.reportNumber ||
+    !!after?.reportNumber ||
+    !!patch?.reportNumber;
+
+  if (action === 'create') {
+    return hasReportNumber ? 'REPORT_CREATED' : 'FORM_CREATED';
   }
+
+  if (action === 'update') {
+    return hasReportNumber ? 'REPORT_UPDATED' : 'FORM_UPDATED';
+  }
+
+  if (action === 'delete') {
+    return hasReportNumber ? 'REPORT_DELETED' : 'FORM_DELETED';
+  }
+}
+
+  if (entity === 'ClientSequence') {
+  if (action === 'upsert' || action === 'create' || action === 'update') {
+    return 'FORM_NUMBER_ASSIGNED';
+  }
+}
+
+if (entity === 'LabReportSequence') {
+  if (action === 'upsert' || action === 'create' || action === 'update') {
+    return 'REPORT_NUMBER_ASSIGNED';
+  }
+}
 
   if (entity === 'Notification') {
     if (action === 'create') return 'NOTIFICATION_CREATED';
@@ -496,20 +528,66 @@ function resolveDetails(
     if (action === 'REPORT_DELETED') return `Deleted report ${label}`;
   }
 
-  if (isDetailReport) {
-    const label =
-      auditRef?.reportNumber ||
-      auditRef?.formNumber ||
-      after?.reportNumber ||
-      after?.formNumber ||
-      before?.reportNumber ||
-      before?.formNumber ||
-      '';
+  // if (isDetailReport) {
+  //   const label =
+  //     auditRef?.reportNumber ||
+  //     auditRef?.formNumber ||
+  //     after?.reportNumber ||
+  //     after?.formNumber ||
+  //     before?.reportNumber ||
+  //     before?.formNumber ||
+  //     '';
 
-    if (action === 'DETAILS_CREATED') return `Created details for ${label}`;
-    if (action === 'DETAILS_UPDATED') return `Updated details for ${label}`;
-    if (action === 'DETAILS_DELETED') return `Deleted details for ${label}`;
-  }
+  //   if (action === 'DETAILS_CREATED') return `Created details for ${label}`;
+  //   if (action === 'DETAILS_UPDATED') return `Updated details for ${label}`;
+  //   if (action === 'DETAILS_DELETED') return `Deleted details for ${label}`;
+  // }
+
+  if (isDetailReport) {
+  const hasReportNumber =
+    !!auditRef?.reportNumber ||
+    !!before?.reportNumber ||
+    !!after?.reportNumber ||
+    !!patch?.reportNumber;
+
+  const label = hasReportNumber
+    ? auditRef?.reportNumber ||
+      after?.reportNumber ||
+      before?.reportNumber ||
+      auditRef?.formNumber ||
+      after?.formNumber ||
+      before?.formNumber ||
+      ''
+    : auditRef?.formNumber || after?.formNumber || before?.formNumber || '';
+
+  if (action === 'FORM_CREATED') return `Created form ${label}`;
+  if (action === 'FORM_UPDATED') return `Updated form ${label}`;
+  if (action === 'FORM_DELETED') return `Deleted form ${label}`;
+
+  if (action === 'REPORT_CREATED') return `Created report ${label}`;
+  if (action === 'REPORT_UPDATED') return `Updated report ${label}`;
+  if (action === 'REPORT_DELETED') return `Deleted report ${label}`;
+}
+
+  if (entity === 'ClientSequence') {
+  const client =
+    after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
+
+  const assigned =
+    after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
+
+  return `Assigned form number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
+}
+
+if (entity === 'LabReportSequence') {
+  const client =
+    after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
+
+  const assigned =
+    after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
+
+  return `Assigned report number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
+}
 
   if (entity === 'Notification') {
     const label =
@@ -613,17 +691,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
     (this as any).$use(async (params: any, next: any) => {
       const entity = params.model as string | undefined;
-      const SKIP_DETAIL_AUDIT = new Set([
-        'MicroMixDetails',
-        'MicroMixWaterDetails',
-        'sterilityDetails',
-        'ChemistryMixDetails',
-        'COADetails',
-      ]);
+      // const SKIP_DETAIL_AUDIT = new Set([
+      //   'MicroMixDetails',
+      //   'MicroMixWaterDetails',
+      //   'sterilityDetails',
+      //   'ChemistryMixDetails',
+      //   'COADetails',
+      // ]);
 
-      if (entity && SKIP_DETAIL_AUDIT.has(entity)) {
-        return next(params);
-      }
+      // if (entity && SKIP_DETAIL_AUDIT.has(entity)) {
+      //   return next(params);
+      // }
       const action = params.action as string;
       if (entity === 'Attachment' || entity === 'ChemistryAttachment') {
         return next(params);
