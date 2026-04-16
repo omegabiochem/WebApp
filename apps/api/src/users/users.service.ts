@@ -281,6 +281,10 @@ export class UsersService {
         passwordVersion: { increment: 1 },
         passwordUpdatedAt: new Date(),
         tempPasswordExpiresAt: expiresAt,
+
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastFailedLoginAt: null,
       },
     });
 
@@ -314,6 +318,10 @@ export class UsersService {
         mustChangePassword: false,
         passwordVersion: { increment: 1 },
         passwordUpdatedAt: new Date(),
+
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastFailedLoginAt: null,
       },
     });
     return { ok: true };
