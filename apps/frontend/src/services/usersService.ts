@@ -83,7 +83,7 @@ export async function fetchUsers(params: {
  * ------------------------------------------------------------------ */
 
 export async function setUserName(id: string, name: string | null) {
-  return api(`/users/${id}}/name`, {
+  return api(`/users/${id}/name`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
@@ -135,10 +135,36 @@ export async function forceUserSignout(id: string) {
  * SELF SERVICE (already exists)
  * ------------------------------------------------------------------ */
 
+// export async function changeUserPassword(input: {
+//   currentPassword: string;
+//   newPassword: string;
+// }): Promise<{ ok: boolean }> {
+//   return api("/auth/change-password", {
+//     method: "POST",
+//     body: JSON.stringify(input),
+//   });
+// }
+
+
 export async function changeUserPassword(input: {
   currentPassword: string;
   newPassword: string;
-}): Promise<{ ok: boolean }> {
+}): Promise<{
+  accessToken: string;
+  user: {
+    id: string;
+    email: string;
+    role: Role;
+    name?: string;
+    mustChangePassword?: boolean;
+    clientCode?: string | null;
+    authMode?: "NORMAL" | "COMMON";
+    commonAccountId?: string | null;
+    commonAccountUserId?: string | null;
+    actingAsUserId?: string | null;
+    actingAsName?: string | null;
+  };
+}> {
   return api("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(input),

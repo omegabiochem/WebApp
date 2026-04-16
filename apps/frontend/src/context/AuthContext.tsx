@@ -36,13 +36,13 @@ type User = {
   role: Role;
   name?: string;
   mustChangePassword?: boolean;
-  clientCode?: string;
+  clientCode?: string | null;
 
   authMode?: "NORMAL" | "COMMON";
-  commonAccountId?: string;
-  commonAccountUserId?: string;
-  actingAsUserId?: string;
-  actingAsName?: string;
+  commonAccountId?: string | null;
+  commonAccountUserId?: string | null;
+  actingAsUserId?: string | null;
+  actingAsName?: string | null;
 } | null;
 
 type AuthContextType = {

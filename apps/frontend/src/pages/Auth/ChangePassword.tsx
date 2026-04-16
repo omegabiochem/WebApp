@@ -1,15 +1,19 @@
-
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod"; // <- optional but recommended
 import { changeUserPassword } from "../../services/usersService";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
-
-type Role = "SYSTEMADMIN" | "ADMIN" | "FRONTDESK" | "MICRO" | "CHEMISTRY" | "QA" | "CLIENT";
+type Role =
+  | "SYSTEMADMIN"
+  | "ADMIN"
+  | "FRONTDESK"
+  | "MICRO"
+  | "CHEMISTRY"
+  | "QA"
+  | "CLIENT";
 
 const roleHomePath: Record<Role, string> = {
   ADMIN: "/adminDashboard",
@@ -21,19 +25,21 @@ const roleHomePath: Record<Role, string> = {
   FRONTDESK: "/frontdeskDashboard",
 };
 
-const schema = z.object({
-  currentPassword: z.string().min(1, "Required"),
-  newPassword: z.string().min(8, "Minimum 8 characters"),
-  confirm: z.string().min(8, "Minimum 8 characters"),
-}).refine(d => d.newPassword === d.confirm, {
-  message: "Passwords do not match",
-  path: ["confirm"],
-});
+const schema = z
+  .object({
+    currentPassword: z.string().min(1, "Required"),
+    newPassword: z.string().min(8, "Minimum 8 characters"),
+    confirm: z.string().min(8, "Minimum 8 characters"),
+  })
+  .refine((d) => d.newPassword === d.confirm, {
+    message: "Passwords do not match",
+    path: ["confirm"],
+  });
 
 type FormData = z.infer<typeof schema>;
 
 export default function ChangePassword() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const nav = useNavigate();
 
   // visibility toggles
@@ -43,7 +49,11 @@ export default function ChangePassword() {
     confirm: false,
   });
 
-  if (!user) return <p>Please log in.</p>;
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user.mustChangePassword) {
+    return <Navigate to={roleHomePath[user.role as Role] ?? "/home"} replace />;
+  }
 
   const {
     register,
@@ -55,16 +65,35 @@ export default function ChangePassword() {
     mode: "onSubmit",
   });
 
+  // const onSubmit = async (data: FormData) => {
+  //   await changeUserPassword({
+  //     currentPassword: data.currentPassword,
+  //     newPassword: data.newPassword,
+  //   });
+  //   reset();
+  //   alert("Password changed. You can continue.");
+  //   // Use the current user's role for navigation
+  //   nav(roleHomePath[user.role as Role] ?? "/home", { replace: true });
+
+  // };
+
   const onSubmit = async (data: FormData) => {
-    await changeUserPassword({
+    const res = await changeUserPassword({
       currentPassword: data.currentPassword,
       newPassword: data.newPassword,
     });
+
+    // 🔥 THIS IS THE FIX
+    if (res?.accessToken && res?.user) {
+      login(res.accessToken, res.user);
+    }
+
     reset();
     alert("Password changed. You can continue.");
-    // Use the current user's role for navigation
-    nav(roleHomePath[user.role as Role] ?? "/home", { replace: true });
 
+    nav(roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home", {
+      replace: true,
+    });
   };
 
   const fieldClass =
@@ -89,14 +118,18 @@ export default function ChangePassword() {
           />
           <button
             type="button"
-            aria-label={show.current ? "Hide current password" : "Show current password"}
-            onClick={() => setShow(s => ({ ...s, current: !s.current }))}
+            aria-label={
+              show.current ? "Hide current password" : "Show current password"
+            }
+            onClick={() => setShow((s) => ({ ...s, current: !s.current }))}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600"
           >
             {show.current ? "Hide" : "Show"}
           </button>
           {errors.currentPassword && (
-            <p className="text-xs text-red-600 mt-1">{errors.currentPassword.message as string}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {errors.currentPassword.message as string}
+            </p>
           )}
         </div>
 
@@ -112,13 +145,15 @@ export default function ChangePassword() {
           <button
             type="button"
             aria-label={show.next ? "Hide new password" : "Show new password"}
-            onClick={() => setShow(s => ({ ...s, next: !s.next }))}
+            onClick={() => setShow((s) => ({ ...s, next: !s.next }))}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600"
           >
             {show.next ? "Hide" : "Show"}
           </button>
           {errors.newPassword && (
-            <p className="text-xs text-red-600 mt-1">{errors.newPassword.message as string}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {errors.newPassword.message as string}
+            </p>
           )}
         </div>
 
@@ -133,14 +168,18 @@ export default function ChangePassword() {
           />
           <button
             type="button"
-            aria-label={show.confirm ? "Hide confirm password" : "Show confirm password"}
-            onClick={() => setShow(s => ({ ...s, confirm: !s.confirm }))}
+            aria-label={
+              show.confirm ? "Hide confirm password" : "Show confirm password"
+            }
+            onClick={() => setShow((s) => ({ ...s, confirm: !s.confirm }))}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-600"
           >
             {show.confirm ? "Hide" : "Show"}
           </button>
           {errors.confirm && (
-            <p className="text-xs text-red-600 mt-1">{errors.confirm.message as string}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {errors.confirm.message as string}
+            </p>
           )}
         </div>
 
@@ -154,4 +193,3 @@ export default function ChangePassword() {
     </div>
   );
 }
-
