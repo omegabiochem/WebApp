@@ -364,7 +364,13 @@ export class TemplatesService {
           updatedBy: user.userId,
           chemistryMix: { create: clean },
         },
-        select: { id: true },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
       });
 
       return { route: `/chemistry-reports/chemistry-mix/${created.id}` };
@@ -385,7 +391,13 @@ export class TemplatesService {
           // ChemistryReport.coa -> COADetails
           coa: { create: clean },
         },
-        select: { id: true },
+        select: {
+          id: true,
+          formNumber: true,
+          reportNumber: true,
+          formType: true,
+          clientCode: true,
+        },
       });
 
       return { route: `/chemistry-reports/coa/${created.id}` };
@@ -418,7 +430,13 @@ export class TemplatesService {
 
     const created = await this.prisma.report.create({
       data,
-      select: { id: true, formType: true },
+      select: {
+        id: true,
+        formNumber: true,
+        reportNumber: true,
+        formType: true,
+        clientCode: true,
+      },
     });
 
     const route =
