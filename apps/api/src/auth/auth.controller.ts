@@ -37,15 +37,57 @@ export class AuthController {
     return this.auth.loginWithUserId(body.userId, body.password, req, res);
   }
   // ✅ Who am I?
+  // @UseGuards(JwtAuthGuard)
+  // @Get('me')
+  // // async getMe(@Req() req: any) {
+  // //   const dbId = req.user?.userId as string; // JwtStrategy maps sub → userId
+  // //   if (!dbId) throw new BadRequestException('Unauthenticated');
+  // //   return this.auth.getMe(dbId);
+  // // }
+  // getMe(@Req() req) {
+  //   return req.user; // sub, role, uid, etc.
+  // }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  // async getMe(@Req() req: any) {
-  //   const dbId = req.user?.userId as string; // JwtStrategy maps sub → userId
-  //   if (!dbId) throw new BadRequestException('Unauthenticated');
-  //   return this.auth.getMe(dbId);
-  // }
-  getMe(@Req() req) {
-    return req.user; // sub, role, uid, etc.
+  async getMe(@Req() req: any) {
+    const dbId = req.user?.sub as string; // JWT subject = DB user id
+    if (!dbId) throw new BadRequestException('Unauthenticated');
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: dbId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        name: true,
+        userId: true,
+        clientCode: true,
+        mustChangePassword: true,
+        active: true,
+      },
+    });
+
+    if (!dbUser || !dbUser.active) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    return {
+      id: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role,
+      name: dbUser.name ?? undefined,
+      userId: dbUser.userId ?? undefined,
+      uid: dbUser.userId ?? undefined,
+      clientCode: dbUser.clientCode ?? null,
+      mustChangePassword: dbUser.mustChangePassword,
+
+      authMode: req.user?.authMode ?? 'NORMAL',
+      commonAccountId: req.user?.commonAccountId ?? null,
+      commonAccountUserId: req.user?.commonAccountUserId ?? null,
+      actingAsUserId: req.user?.actingAsUserId ?? null,
+      actingAsName: req.user?.actingAsName ?? null,
+    };
   }
 
   // ✅ First login: set userId + new password by invite token
