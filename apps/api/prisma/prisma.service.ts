@@ -335,16 +335,16 @@ function resolveAction(
     if (action === 'delete') return 'ACCOUNT_DELETED';
   }
 
-  const isReportFamily =
-    entity === 'Report' ||
-    entity === 'ChemistryReport' ||
+  const isRootReport = entity === 'Report' || entity === 'ChemistryReport';
+
+  const isDetailReport =
     entity === 'MicroMixDetails' ||
     entity === 'MicroMixWaterDetails' ||
     entity === 'sterilityDetails' ||
     entity === 'ChemistryMixDetails' ||
     entity === 'COADetails';
 
-  if (isReportFamily) {
+  if (isRootReport) {
     const hasReportNumber =
       !!auditRef?.reportNumber ||
       !!before?.reportNumber ||
@@ -356,6 +356,13 @@ function resolveAction(
     }
 
     if (action === 'update') {
+      const reportNumberWasEmpty =
+        !before?.reportNumber && !!(patch?.reportNumber || after?.reportNumber);
+
+      if (reportNumberWasEmpty) {
+        return 'REPORT_CREATED';
+      }
+
       if ('status' in patch) {
         const next = patch.status;
 
@@ -375,6 +382,12 @@ function resolveAction(
     if (action === 'delete') {
       return hasReportNumber ? 'REPORT_DELETED' : 'FORM_DELETED';
     }
+  }
+
+  if (isDetailReport) {
+    if (action === 'create') return 'DETAILS_CREATED';
+    if (action === 'update') return 'DETAILS_UPDATED';
+    if (action === 'delete') return 'DETAILS_DELETED';
   }
 
   if (entity === 'Notification') {
@@ -444,16 +457,16 @@ function resolveDetails(
       return `Forced signout for ${name}`;
     }
   }
-  const isReportFamily =
-    entity === 'Report' ||
-    entity === 'ChemistryReport' ||
+  const isRootReport = entity === 'Report' || entity === 'ChemistryReport';
+
+  const isDetailReport =
     entity === 'MicroMixDetails' ||
     entity === 'MicroMixWaterDetails' ||
     entity === 'sterilityDetails' ||
     entity === 'ChemistryMixDetails' ||
     entity === 'COADetails';
 
-  if (isReportFamily) {
+  if (isRootReport) {
     const hasReportNumber =
       !!auditRef?.reportNumber ||
       !!before?.reportNumber ||
@@ -474,29 +487,28 @@ function resolveDetails(
       return `Status changed from ${before?.status} → ${patch.status}`;
     }
 
-    if (action === 'FORM_CREATED') {
-      return `Created form ${label}`;
-    }
+    if (action === 'FORM_CREATED') return `Created form ${label}`;
+    if (action === 'FORM_UPDATED') return `Updated form ${label}`;
+    if (action === 'FORM_DELETED') return `Deleted form ${label}`;
 
-    if (action === 'FORM_UPDATED') {
-      return `Updated form ${label}`;
-    }
+    if (action === 'REPORT_CREATED') return `Created report ${label}`;
+    if (action === 'REPORT_UPDATED') return `Updated report ${label}`;
+    if (action === 'REPORT_DELETED') return `Deleted report ${label}`;
+  }
 
-    if (action === 'FORM_DELETED') {
-      return `Deleted form ${label}`;
-    }
+  if (isDetailReport) {
+    const label =
+      auditRef?.reportNumber ||
+      auditRef?.formNumber ||
+      after?.reportNumber ||
+      after?.formNumber ||
+      before?.reportNumber ||
+      before?.formNumber ||
+      '';
 
-    if (action === 'REPORT_CREATED') {
-      return `Created report ${label}`;
-    }
-
-    if (action === 'REPORT_UPDATED') {
-      return `Updated report ${label}`;
-    }
-
-    if (action === 'REPORT_DELETED') {
-      return `Deleted report ${label}`;
-    }
+    if (action === 'DETAILS_CREATED') return `Created details for ${label}`;
+    if (action === 'DETAILS_UPDATED') return `Updated details for ${label}`;
+    if (action === 'DETAILS_DELETED') return `Deleted details for ${label}`;
   }
 
   if (entity === 'Notification') {
@@ -601,6 +613,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
     (this as any).$use(async (params: any, next: any) => {
       const entity = params.model as string | undefined;
+      const SKIP_DETAIL_AUDIT = new Set([
+        'MicroMixDetails',
+        'MicroMixWaterDetails',
+        'sterilityDetails',
+        'ChemistryMixDetails',
+        'COADetails',
+      ]);
+
+      if (entity && SKIP_DETAIL_AUDIT.has(entity)) {
+        return next(params);
+      }
       const action = params.action as string;
       if (entity === 'Attachment' || entity === 'ChemistryAttachment') {
         return next(params);
