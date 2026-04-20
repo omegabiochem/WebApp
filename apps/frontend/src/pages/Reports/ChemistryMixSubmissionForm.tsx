@@ -1611,6 +1611,10 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
     return false; // ✅ allow
   }
 
+  function formatStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3016,22 +3020,30 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
                       disableApproveForNoAttachment;
 
                     return (
-                      <button
-                        key={targetStatus}
-                        className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                        onClick={() => requestStatusChange(targetStatus)}
-                        disabled={disabled}
-                        title={
-                          disableApproveForNoAttachment
-                            ? "Upload at least 1 attachment to enable Approve"
-                            : undefined
-                        }
-                      >
-                        {busy === "STATUS" && <Spinner />}
-                        {attachmentsLoading && label === "Approve"
-                          ? "Checking..."
-                          : label}
-                      </button>
+                   <div key={targetStatus} className="relative group">
+  <button
+    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+    onClick={() => requestStatusChange(targetStatus)}
+    disabled={disabled}
+    title={
+      disableApproveForNoAttachment
+        ? "Upload at least 1 attachment to enable Approve"
+        : undefined
+    }
+  >
+    {busy === "STATUS" && <Spinner />}
+    {attachmentsLoading && label === "Approve"
+      ? "Checking..."
+      : label}
+  </button>
+
+  {/* 🔥 HOVER TOOLTIP */}
+  {!disableApproveForNoAttachment && (
+    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+      {label} → {formatStatus(targetStatus)}
+    </div>
+  )}
+</div>
                     );
                   }
                   return null;
