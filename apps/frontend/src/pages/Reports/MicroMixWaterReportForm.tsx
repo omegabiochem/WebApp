@@ -1998,6 +1998,12 @@ export default function MicroMixWaterReportForm({
         <PrintStyles />
         <DashStyles />
 
+            {isTemplateViewMode && (
+          <div className="no-print mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Viewing template: <b>{templateName || "Untitled"}</b> (read-only)
+          </div>
+        )}
+
         {/* Header + print controls */}
         {!hideTopActions && (
           <div className="no-print mb-4 flex justify-end gap-2">

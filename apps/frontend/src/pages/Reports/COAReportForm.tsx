@@ -1407,6 +1407,12 @@ export default function COAReportForm({
       <PrintStyles />
       <DashStyles />
 
+          {isTemplateViewMode && (
+          <div className="no-print mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Viewing template: <b>{templateName || "Untitled"}</b> (read-only)
+          </div>
+        )}
+
       <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
         {/* Top buttons */}
         {!hideTopActions && (
