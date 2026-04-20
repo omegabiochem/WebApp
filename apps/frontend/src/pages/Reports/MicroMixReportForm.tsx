@@ -1526,7 +1526,7 @@ export default function MicroMixReportForm({
         }
       }
 
-        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
         return;
       }
 
@@ -1975,7 +1975,6 @@ export default function MicroMixReportForm({
     return false;
   }
 
-
   function shouldBlockStatusChangeForUnresolvedCorrections() {
     const pending = openCorrections.filter(
       (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
@@ -1990,6 +1989,10 @@ export default function MicroMixReportForm({
     }
 
     return false; // ✅ allow
+  }
+
+  function formatStatusText(status: string) {
+    return status.replaceAll("_", " ");
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2753,7 +2756,7 @@ export default function MicroMixReportForm({
                 onChange={(e) => {
                   set_tbc_gram(e.target.value);
                   clearError("tbc_gram");
-                    markDirty();
+                  markDirty();
                 }}
                 readOnly={lock("tbc_gram")}
                 aria-invalid={!!errors.tbc_gram}
@@ -2788,7 +2791,7 @@ export default function MicroMixReportForm({
                 onChange={(e) => {
                   set_tbc_result(e.target.value);
                   clearError("tbc_result");
-                    markDirty();
+                  markDirty();
                 }}
                 readOnly={lock("tbc_result")}
                 placeholder="CFU/ml/g"
@@ -2892,7 +2895,6 @@ export default function MicroMixReportForm({
                   set_tmy_gram(e.target.value);
                   clearError("tmy_gram");
                   markDirty();
-
                 }}
                 readOnly={lock("tmy_gram")}
                 aria-invalid={!!errors.tmy_gram}
@@ -2927,7 +2929,7 @@ export default function MicroMixReportForm({
                 onChange={(e) => {
                   set_tmy_result(e.target.value);
                   clearError("tmy_result");
-                    markDirty();
+                  markDirty();
                 }}
                 readOnly={lock("tmy_result")}
                 placeholder="CFU/ml/g"
@@ -3050,7 +3052,7 @@ export default function MicroMixReportForm({
                     setAddMessage("");
                   }}
                   className={`py-[2px] px-2 border-r border-black flex items-center gap-2 ${
-                   hasOpenCorrection(`pathogens:${p.key}`)
+                    hasOpenCorrection(`pathogens:${p.key}`)
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   }${dashClass(`pathogens:${p.key}:checked`)}`}
@@ -3351,7 +3353,7 @@ export default function MicroMixReportForm({
                     onChange={(e) => {
                       setTestedDate(e.target.value);
                       clearError("testedDate");
-                        markDirty();
+                      markDirty();
                     }}
                     readOnly={lock("testedDate")}
                     aria-invalid={!!errors.testedDate}
@@ -3489,17 +3491,24 @@ export default function MicroMixReportForm({
                       disableApproveForNoAttachment;
 
                     return (
-                      <button
-                        key={targetStatus}
-                        className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                        onClick={() => requestStatusChange(targetStatus)}
-                        disabled={disabled}
-                      >
-                        {busy === "STATUS" && <Spinner />}
-                        {attachmentsLoading && label === "Approve"
-                          ? "Checking..."
-                          : label}
-                      </button>
+                      <div key={targetStatus} className="relative group">
+                        <button
+                          className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                          onClick={() => requestStatusChange(targetStatus)}
+                          disabled={disabled}
+                          title={formatStatusText(targetStatus)} // browser tooltip
+                        >
+                          {busy === "STATUS" && <Spinner />}
+                          {attachmentsLoading && label === "Approve"
+                            ? "Checking..."
+                            : label}
+                        </button>
+
+                        {/* custom hover tooltip */}
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          {label} → {formatStatusText(targetStatus)}
+                        </div>
+                      </div>
                     );
                   }
 

@@ -30,7 +30,7 @@ function cn(...xs: Array<string | false | null | undefined>) {
 }
 
 const OTP_WINDOW_SECONDS = 10 * 60; // 10 minutes
-const RESEND_COOLDOWN_SECONDS = 30;
+const RESEND_COOLDOWN_SECONDS = 120;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -39,6 +39,23 @@ function pad2(n: number) {
 // storage keys
 const OTP_EXPIRES_AT_KEY = "otpExpiresAt";
 const OTP_COOLDOWN_UNTIL_KEY = "otpCooldownUntil";
+
+const OTP_ATTEMPTS_KEY = "otpAttempts";
+const MAX_OTP_ATTEMPTS = 5;
+
+function getOtpAttempts() {
+  const raw = sessionStorage.getItem(OTP_ATTEMPTS_KEY);
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function setOtpAttempts(n: number) {
+  sessionStorage.setItem(OTP_ATTEMPTS_KEY, String(n));
+}
+
+function clearOtpAttempts() {
+  sessionStorage.removeItem(OTP_ATTEMPTS_KEY);
+}
 
 function secondsUntil(ts: number) {
   return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
@@ -54,6 +71,7 @@ function readNumber(key: string): number | null {
 function clearOtpStorage() {
   sessionStorage.removeItem(OTP_EXPIRES_AT_KEY);
   sessionStorage.removeItem(OTP_COOLDOWN_UNTIL_KEY);
+  clearOtpAttempts();
 }
 
 function initOtpWindow(now = Date.now()) {
@@ -173,8 +191,42 @@ export default function Verify2FA() {
     sessionStorage.setItem(OTP_EXPIRES_AT_KEY, String(nextExpiresAt));
     setSecondsLeft(secondsUntil(nextExpiresAt));
 
+    clearOtpAttempts();
     hasTypedRef.current = false;
     setCode("");
+  };
+
+  // const resetOtpWindow = () => {
+  //   const nextExpiresAt = Date.now() + OTP_WINDOW_SECONDS * 1000;
+  //   sessionStorage.setItem(OTP_EXPIRES_AT_KEY, String(nextExpiresAt));
+  //   setSecondsLeft(secondsUntil(nextExpiresAt));
+
+  //   hasTypedRef.current = false;
+  //   setCode("");
+  // };
+
+  const resendOtpNow = async (reason?: string) => {
+    await api("/auth/resend-2fa", {
+      method: "POST",
+      body: JSON.stringify(
+        pendingCommonToken
+          ? { pendingToken: pendingCommonToken }
+          : { userId: pendingUserId },
+      ),
+    });
+
+    const until = Date.now() + RESEND_COOLDOWN_SECONDS * 1000;
+    sessionStorage.setItem(OTP_COOLDOWN_UNTIL_KEY, String(until));
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+
+    resetOtpWindow();
+
+    setBanner({
+      type: "success",
+      text:
+        reason ??
+        "A new verification code has been sent. Please wait 2 minutes before requesting another one.",
+    });
   };
 
   const onVerify = async () => {
@@ -236,80 +288,170 @@ export default function Verify2FA() {
 
       setBanner({ type: "success", text: "Verified. Signing you in…" });
       nav(roleHomePath[res.user.role] ?? "/home", { replace: true });
-    } catch (err: any) {
-      const codeErr = err?.body?.code;
+  } catch (err: any) {
+  const codeErr = err?.body?.code;
 
-      const msg =
-        codeErr === "OTP_EXPIRED"
-          ? "This code has expired. Please sign in again to get a new one."
-          : codeErr === "OTP_INVALID"
-            ? "That code doesn’t match. Please try again."
-            : codeErr === "OTP_LOCKED"
-              ? "Too many incorrect attempts. Please sign in again."
-              : "We couldn’t verify that code. Please try again.";
+  if (codeErr === "OTP_INVALID") {
+    const nextAttempts = getOtpAttempts() + 1;
+    setOtpAttempts(nextAttempts);
 
-      setBanner({ type: "error", text: msg });
+    if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+      try {
+        if (cooldown > 0) {
+          setBanner({
+            type: "error",
+            text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
+          });
+          return;
+        }
 
-      // If expired/locked, force restart sign-in and clear storage
-      if (codeErr === "OTP_EXPIRED" || codeErr === "OTP_LOCKED") {
-        clearAllPendingAuth();
-        nav("/home", { replace: true });
+        await resendOtpNow(
+          "You entered the wrong code 5 times. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
+        );
+        return;
+      } catch (e: any) {
+        const resendCode = e?.body?.code;
+        const resendMsg =
+          resendCode === "OTP_RESEND_THROTTLED"
+            ? "Too many incorrect attempts. Please wait before requesting another code."
+            : "Too many incorrect attempts. Unable to auto-send a new code right now.";
+        setBanner({ type: "error", text: resendMsg });
+        return;
       }
-    } finally {
-      setBusy(false);
     }
-  };
 
-  const onResend = async () => {
-    setBanner(null);
+    setBanner({
+      type: "error",
+      text: `That code doesn’t match. Please try again. Attempts left: ${
+        MAX_OTP_ATTEMPTS - nextAttempts
+      }.`,
+    });
+    return;
+  }
 
-    if (!hasPendingSession) {
+  if (codeErr === "OTP_LOCKED") {
+    try {
+      if (cooldown > 0) {
+        setBanner({
+          type: "error",
+          text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
+        });
+        return;
+      }
+
+      await resendOtpNow(
+        "Too many incorrect attempts. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
+      );
+      return;
+    } catch {
       setBanner({
         type: "error",
-        text: "Please sign in again to resend a code.",
+        text: "Too many incorrect attempts. Please sign in again.",
       });
       clearAllPendingAuth();
       nav("/home", { replace: true });
       return;
     }
+  }
 
-    if (cooldown > 0) return;
+  const msg =
+    codeErr === "OTP_EXPIRED"
+      ? "This code has expired. Please sign in again to get a new one."
+      : "We couldn’t verify that code. Please try again.";
 
-    try {
-      setBusy(true);
+  setBanner({ type: "error", text: msg });
 
-      await api("/auth/resend-2fa", {
-        method: "POST",
-        body: JSON.stringify(
-          pendingCommonToken
-            ? { pendingToken: pendingCommonToken }
-            : { userId: pendingUserId },
-        ),
-      });
-
-      setBanner({
-        type: "success",
-        text: "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine.",
-      });
-
-      // start cooldown
-      const until = Date.now() + RESEND_COOLDOWN_SECONDS * 1000;
-      sessionStorage.setItem(OTP_COOLDOWN_UNTIL_KEY, String(until));
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-
-      // reset 10-min window for new code
-      resetOtpWindow();
-    } catch (e: any) {
-      const codeErr = e?.body?.code;
-      const msg =
-        codeErr === "OTP_RESEND_THROTTLED"
-          ? "Please wait a few seconds and try again."
-          : "Unable to resend. Please try again.";
-      setBanner({ type: "error", text: msg });
-    } finally {
+  if (codeErr === "OTP_EXPIRED") {
+    clearAllPendingAuth();
+    nav("/home", { replace: true });
+  }
+} finally {
       setBusy(false);
     }
   };
+
+  const onResend = async () => {
+  setBanner(null);
+
+  if (!hasPendingSession) {
+    setBanner({
+      type: "error",
+      text: "Please sign in again to resend a code.",
+    });
+    clearAllPendingAuth();
+    nav("/home", { replace: true });
+    return;
+  }
+
+  if (cooldown > 0) return;
+
+  try {
+    setBusy(true);
+    await resendOtpNow(
+      "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine. Please wait 2 minutes before requesting another one.",
+    );
+  } catch (e: any) {
+    const codeErr = e?.body?.code;
+    const msg =
+      codeErr === "OTP_RESEND_THROTTLED"
+        ? "Please wait 2 minutes before requesting a new code."
+        : "Unable to resend. Please try again.";
+    setBanner({ type: "error", text: msg });
+  } finally {
+    setBusy(false);
+  }
+};
+
+  // const onResend = async () => {
+  //   setBanner(null);
+
+  //   if (!hasPendingSession) {
+  //     setBanner({
+  //       type: "error",
+  //       text: "Please sign in again to resend a code.",
+  //     });
+  //     clearAllPendingAuth();
+  //     nav("/home", { replace: true });
+  //     return;
+  //   }
+
+  //   if (cooldown > 0) return;
+
+  //   try {
+  //     setBusy(true);
+
+  //     await api("/auth/resend-2fa", {
+  //       method: "POST",
+  //       body: JSON.stringify(
+  //         pendingCommonToken
+  //           ? { pendingToken: pendingCommonToken }
+  //           : { userId: pendingUserId },
+  //       ),
+  //     });
+
+  //     setBanner({
+  //       type: "success",
+  //       text: "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine.",
+  //     });
+
+  //     // start cooldown
+  //     const until = Date.now() + RESEND_COOLDOWN_SECONDS * 1000;
+  //     sessionStorage.setItem(OTP_COOLDOWN_UNTIL_KEY, String(until));
+  //     setCooldown(RESEND_COOLDOWN_SECONDS);
+
+  //     // reset 10-min window for new code
+  //     resetOtpWindow();
+  //   } catch (e: any) {
+  //     const codeErr = e?.body?.code;
+  //     const msg =
+  //       codeErr === "OTP_RESEND_THROTTLED"
+  //         ? "Please wait a few seconds and try again."
+  //         : "Unable to resend. Please try again.";
+  //     setBanner({ type: "error", text: msg });
+  //   } finally {
+  //     setBusy(false);
+  //   }
+  // };
 
   const mm = Math.floor(secondsLeft / 60);
   const ss = secondsLeft % 60;
@@ -385,8 +527,24 @@ export default function Verify2FA() {
           <input
             value={code}
             onChange={(e) => {
-              const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+              const raw = e.target.value;
+
+              if (/[^0-9]/.test(raw)) {
+                setBanner({
+                  type: "error",
+                  text: "Only numeric characters are allowed.",
+                });
+              } else {
+                setBanner((prev) =>
+                  prev?.text === "Only numeric characters are allowed."
+                    ? null
+                    : prev,
+                );
+              }
+
+              const next = raw.replace(/\D/g, "").slice(0, 6);
               setCode(next);
+
               if (next.length > 0) hasTypedRef.current = true;
             }}
             onKeyDown={(e) => {

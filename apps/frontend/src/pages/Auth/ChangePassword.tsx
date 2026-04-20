@@ -58,6 +58,7 @@ export default function ChangePassword() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { isSubmitting, errors },
     reset,
   } = useForm<FormData>({
@@ -77,23 +78,61 @@ export default function ChangePassword() {
 
   // };
 
+  // const onSubmit = async (data: FormData) => {
+  //   const res = await changeUserPassword({
+  //     currentPassword: data.currentPassword,
+  //     newPassword: data.newPassword,
+  //   });
+
+  //   // 🔥 THIS IS THE FIX
+  //   if (res?.accessToken && res?.user) {
+  //     login(res.accessToken, res.user);
+  //   }
+
+  //   reset();
+  //   alert("Password changed. You can continue.");
+
+  //   nav(roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home", {
+  //     replace: true,
+  //   });
+  // };
+
   const onSubmit = async (data: FormData) => {
-    const res = await changeUserPassword({
-      currentPassword: data.currentPassword,
-      newPassword: data.newPassword,
-    });
+    try {
+      const res = await changeUserPassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
 
-    // 🔥 THIS IS THE FIX
-    if (res?.accessToken && res?.user) {
-      login(res.accessToken, res.user);
+      if (res?.accessToken && res?.user) {
+        login(res.accessToken, res.user);
+      }
+
+      reset();
+      alert("Password changed. You can continue.");
+
+      nav(roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home", {
+        replace: true,
+      });
+    } catch (err: any) {
+      const msg =
+        err?.body?.message || err?.message || "Unable to change password.";
+
+      // 👉 Show ONLY under current password field
+      if (msg.toLowerCase().includes("current password")) {
+        setError("currentPassword", {
+          type: "server",
+          message: "Current password is incorrect.",
+        });
+        return;
+      }
+
+      // fallback (optional)
+      setError("currentPassword", {
+        type: "server",
+        message: msg,
+      });
     }
-
-    reset();
-    alert("Password changed. You can continue.");
-
-    nav(roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home", {
-      replace: true,
-    });
   };
 
   const fieldClass =

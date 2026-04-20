@@ -441,6 +441,145 @@ export class AuthService {
     return { method: 'EMAIL' as const, expiresAt };
   }
 
+  // private async loginCommonAccount(
+  //   userIdRaw: string,
+  //   password: string,
+  //   req?: any,
+  // ) {
+  //   const userId = (userIdRaw ?? '').trim().toLowerCase();
+  //   const ip = this.getIp(req);
+  //   const ua = this.getUA(req);
+
+  //   const common = await this.prisma.commonAccount.findUnique({
+  //     where: { userId },
+  //     include: {
+  //       members: {
+  //         where: { active: true },
+  //         include: {
+  //           user: {
+  //             select: {
+  //               id: true,
+  //               name: true,
+  //               email: true,
+  //               active: true,
+  //             },
+  //           },
+  //         },
+  //       },
+  //     },
+  //   });
+
+  //   if (!common || !common.active) {
+  //     await this.logAuthEvent({
+  //       action: 'LOGIN_FAILED',
+  //       userId: null,
+  //       role: null,
+  //       clientCode: null,
+  //       ip,
+  //       entityId: userId,
+  //       details: 'Invalid common account credentials',
+  //       meta: { userAgent: ua },
+  //     });
+
+  //     throw new UnauthorizedException({
+  //       code: 'INVALID_CREDENTIALS',
+  //       message: 'Invalid user ID or password.',
+  //     });
+  //   }
+
+  //   if (common.lockedUntil && common.lockedUntil > new Date()) {
+  //     throw new UnauthorizedException({
+  //       code: 'ACCOUNT_LOCKED',
+  //       message: 'Too many failed attempts. Account is temporarily locked.',
+  //       lockedUntil: common.lockedUntil,
+  //     });
+  //   }
+
+  //   const ok = await bcrypt.compare(password, common.passwordHash);
+  //   if (!ok) {
+  //     const now = new Date();
+  //     const nextCount = (common.failedLoginCount ?? 0) + 1;
+  //     const shouldLock = nextCount >= LOCK_AFTER_FAILED;
+  //     const lockedUntil = shouldLock
+  //       ? new Date(now.getTime() + LOCK_DURATION_MS)
+  //       : null;
+
+  //     await this.prisma.commonAccount.update({
+  //       where: { id: common.id },
+  //       data: {
+  //         failedLoginCount: nextCount,
+  //         lastFailedLoginAt: now,
+  //         ...(shouldLock ? { lockedUntil } : {}),
+  //       },
+  //     });
+
+  //     await this.logAuthEvent({
+  //       action: 'LOGIN_FAILED',
+  //       userId: null,
+  //       role: null,
+  //       clientCode: null,
+  //       ip,
+  //       entityId: common.userId,
+  //       details: shouldLock
+  //         ? 'Bad password on common account; locked'
+  //         : 'Bad password on common account',
+  //       meta: { userAgent: ua, failedLoginCount: nextCount, lockedUntil },
+  //     });
+
+  //     throw new UnauthorizedException({
+  //       code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
+  //       message: shouldLock
+  //         ? 'Too many failed attempts. Account locked for 15 minutes.'
+  //         : 'Invalid password.',
+  //       lockedUntil,
+  //       remaining: Math.max(0, LOCK_AFTER_FAILED - nextCount),
+  //     });
+  //   }
+
+  //   await this.prisma.commonAccount.update({
+  //     where: { id: common.id },
+  //     data: {
+  //       failedLoginCount: 0,
+  //       lockedUntil: null,
+  //       lastFailedLoginAt: null,
+  //     },
+  //   });
+
+  //   const challengeToken = randomBytes(24).toString('base64url');
+  //   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  //   await this.prisma.commonAuthChallenge.create({
+  //     data: {
+  //       challengeToken,
+  //       commonAccountId: common.id,
+  //       stage: 'PASSWORD_VERIFIED',
+  //       expiresAt,
+  //       ipAddress: ip,
+  //       userAgent: ua,
+  //     },
+  //   });
+
+  //   const people = common.members
+  //     .filter((m) => m.user?.active)
+  //     .map((m) => ({
+  //       id: m.user.id,
+  //       name: m.user.name || m.user.email,
+  //       emailMasked: this.maskEmail(m.user.email),
+  //       roles: m.allowedRoles,
+  //     }));
+
+  //   return {
+  //     requiresCommonSelection: true,
+  //     challengeToken,
+  //     commonAccount: {
+  //       id: common.id,
+  //       label: common.label,
+  //     },
+  //     people,
+  //     expiresAt: expiresAt.toISOString(),
+  //   };
+  // }
+
   private async loginCommonAccount(
     userIdRaw: string,
     password: string,
@@ -487,29 +626,19 @@ export class AuthService {
       });
     }
 
-    if (common.lockedUntil && common.lockedUntil > new Date()) {
-      throw new UnauthorizedException({
-        code: 'ACCOUNT_LOCKED',
-        message: 'Too many failed attempts. Account is temporarily locked.',
-        lockedUntil: common.lockedUntil,
-      });
-    }
-
     const ok = await bcrypt.compare(password, common.passwordHash);
+
     if (!ok) {
       const now = new Date();
       const nextCount = (common.failedLoginCount ?? 0) + 1;
-      const shouldLock = nextCount >= LOCK_AFTER_FAILED;
-      const lockedUntil = shouldLock
-        ? new Date(now.getTime() + LOCK_DURATION_MS)
-        : null;
+      const reachedWarningThreshold = nextCount >= LOCK_AFTER_FAILED;
 
       await this.prisma.commonAccount.update({
         where: { id: common.id },
         data: {
           failedLoginCount: nextCount,
           lastFailedLoginAt: now,
-          ...(shouldLock ? { lockedUntil } : {}),
+          lockedUntil: null, // never lock common accounts
         },
       });
 
@@ -520,18 +649,22 @@ export class AuthService {
         clientCode: null,
         ip,
         entityId: common.userId,
-        details: shouldLock
-          ? 'Bad password on common account; locked'
+        details: reachedWarningThreshold
+          ? 'Bad password on common account; admin-contact warning threshold reached'
           : 'Bad password on common account',
-        meta: { userAgent: ua, failedLoginCount: nextCount, lockedUntil },
+        meta: {
+          userAgent: ua,
+          failedLoginCount: nextCount,
+        },
       });
 
       throw new UnauthorizedException({
-        code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
-        message: shouldLock
-          ? 'Too many failed attempts. Account locked for 15 minutes.'
+        code: reachedWarningThreshold
+          ? 'COMMON_ACCOUNT_ADMIN_CONTACT'
+          : 'INVALID_CREDENTIALS',
+        message: reachedWarningThreshold
+          ? 'Too many incorrect attempts. Please contact admin to verify the correct user ID and password.'
           : 'Invalid password.',
-        lockedUntil,
         remaining: Math.max(0, LOCK_AFTER_FAILED - nextCount),
       });
     }
@@ -1155,10 +1288,10 @@ export class AuthService {
     if (user.twoFactorExpiresAt) {
       const issuedAtApprox =
         new Date(user.twoFactorExpiresAt).getTime() - 10 * 60 * 1000; // since you set expiry = now+10m
-      if (now - issuedAtApprox < 30_000) {
+      if (now - issuedAtApprox < 120_000) {
         throw new BadRequestException({
           code: 'OTP_RESEND_THROTTLED',
-          message: 'Please wait a few seconds before requesting a new code.',
+          message: 'Please wait 2 minutes before requesting a new code.',
         });
       }
     }
@@ -1268,20 +1401,20 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
     // ✅ update password + clear mustChangePassword
-  await this.prisma.user.update({
-    where: { id: userDbId },
-    data: {
-      passwordHash,
-      passwordUpdatedAt: new Date(),
-      passwordVersion: { increment: 1 },
-      mustChangePassword: false,
+    await this.prisma.user.update({
+      where: { id: userDbId },
+      data: {
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        passwordVersion: { increment: 1 },
+        mustChangePassword: false,
 
-      // clear lockout after successful password reset
-      failedLoginCount: 0,
-      lockedUntil: null,
-      lastFailedLoginAt: null,
-    } as any,
-  });
+        // clear lockout after successful password reset
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastFailedLoginAt: null,
+      } as any,
+    });
 
     await this.logAuthEvent({
       action: 'PASSWORD_CHANGE',
@@ -1719,6 +1852,14 @@ export class AuthService {
       });
     }
 
+    if (member.user.mustChangePassword) {
+  throw new ForbiddenException({
+    code: 'PERSONAL_PASSWORD_CHANGE_REQUIRED',
+    message:
+      'Please change your temporary password by logging into your personal account and then try logging in common account.if your temporary password has expired, contact your administrator.',
+  });
+}
+
     await this.prisma.commonAuthChallenge.update({
       where: { id: challenge.id },
       data: {
@@ -1974,10 +2115,10 @@ export class AuthService {
     if (challenge.twoFactorExpiresAt) {
       const issuedAtApprox =
         new Date(challenge.twoFactorExpiresAt).getTime() - 10 * 60 * 1000;
-      if (Date.now() - issuedAtApprox < 30_000) {
+      if (Date.now() - issuedAtApprox < 120_000) {
         throw new BadRequestException({
           code: 'OTP_RESEND_THROTTLED',
-          message: 'Please wait a few seconds before requesting a new code.',
+          message: 'Please wait 2 minutes before requesting a new code.',
         });
       }
     }

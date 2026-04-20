@@ -417,21 +417,21 @@ export default function SterilityReportForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-const backToDashboard = () => {
-  if (returnTo)
-    return navigate(decodeURIComponent(returnTo), { replace: true });
+  const backToDashboard = () => {
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
 
-  if (role === "FRONTDESK")
-    return navigate("/frontdeskDashboard", { replace: true });
-  if (role === "MICRO") return navigate("/microDashboard", { replace: true });
-  if (role === "MC") return navigate("/mcDashboard", { replace: true });
-  if (role === "QA") return navigate("/qaDashboard", { replace: true });
-  if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
-  if (role === "SYSTEMADMIN")
-    return navigate("/systemAdminDashboard", { replace: true });
+    if (role === "FRONTDESK")
+      return navigate("/frontdeskDashboard", { replace: true });
+    if (role === "MICRO") return navigate("/microDashboard", { replace: true });
+    if (role === "MC") return navigate("/mcDashboard", { replace: true });
+    if (role === "QA") return navigate("/qaDashboard", { replace: true });
+    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+    if (role === "SYSTEMADMIN")
+      return navigate("/systemAdminDashboard", { replace: true });
 
-  return navigate("/", { replace: true });
-};
+    return navigate("/", { replace: true });
+  };
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1085,7 +1085,7 @@ const backToDashboard = () => {
       //   markDirty(); // ✅ IMPORTANT so handleSave runs
       // }
 
-        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
         return;
       }
 
@@ -1427,25 +1427,9 @@ const backToDashboard = () => {
     return false; // ✅ allow
   }
 
-  // function lockCorrectionField(fieldKey: string, baseField?: string) {
-  //   if (forceReadOnly) return true;
-
-  //   const fieldForPermission = baseField ?? fieldKey.split(":")[0];
-  //   const baseLocked = !canEdit(
-  //     role,
-  //     fieldForPermission,
-  //     status as SterilityReportStatus,
-  //   );
-  //   if (baseLocked) return true;
-
-  //   if (correctionModeActive) {
-  //     return !openCorrections.some(
-  //       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
-  //     );
-  //   }
-
-  //   return false;
-  // }
+function formatStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2566,22 +2550,30 @@ const backToDashboard = () => {
                     disableApproveForNoAttachment;
 
                   return (
-                    <button
-                      key={targetStatus}
-                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                      onClick={() => requestStatusChange(targetStatus)}
-                      disabled={disabled}
-                      title={
-                        disableApproveForNoAttachment
-                          ? "Upload at least 1 attachment to enable Approve"
-                          : undefined
-                      }
-                    >
-                      {busy === "STATUS" && <Spinner />}
-                      {attachmentsLoading && label === "Approve"
-                        ? "Checking..."
-                        : label}
-                    </button>
+                    <div key={targetStatus} className="relative group">
+                      <button
+                        className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                        onClick={() => requestStatusChange(targetStatus)}
+                        disabled={disabled}
+                        title={
+                          disableApproveForNoAttachment
+                            ? "Upload at least 1 attachment to enable Approve"
+                            : undefined
+                        }
+                      >
+                        {busy === "STATUS" && <Spinner />}
+                        {attachmentsLoading && label === "Approve"
+                          ? "Checking..."
+                          : label}
+                      </button>
+
+                      {/* 🔥 HOVER TOOLTIP */}
+                      {!disableApproveForNoAttachment && (
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          {label} → {formatStatus(targetStatus)}
+                        </div>
+                      )}
+                    </div>
                   );
                 }
                 return null;
@@ -2859,7 +2851,6 @@ const backToDashboard = () => {
                   )}
 
                   <div className="mt-2 flex gap-2">
-                   
                     <button
                       className={`text-xs font-medium ${
                         canResolveCorrectionItem(c)

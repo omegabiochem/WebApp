@@ -36,6 +36,8 @@ import {
   Mail,
   Trash2,
   Settings2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 /* -------------------- helpers -------------------- */
@@ -1965,10 +1967,12 @@ function CommonAccountsAdminTab() {
   const [createLabel, setCreateLabel] = useState("");
   const [createUserId, setCreateUserId] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [showCommonPassword, setShowCommonPassword] = useState(false);
 
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRoles, setMemberRoles] = useState<CommonRole[]>([]);
   const [memberActive, setMemberActive] = useState(true);
+  const [memberUserError, setMemberUserError] = useState("");
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.id === selectedAccountId) ?? null,
@@ -2098,7 +2102,7 @@ function CommonAccountsAdminTab() {
       return;
     }
     if (!memberUserId) {
-      toast.error("Select a user");
+      setMemberUserError("Please select a user.");
       return;
     }
     if (memberRoles.length === 0) {
@@ -2205,6 +2209,11 @@ function CommonAccountsAdminTab() {
                 value={createUserId}
                 onChange={(e) => setCreateUserId(e.target.value)}
                 placeholder="lab.common"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                name="common-account-userid"
               />
             </div>
 
@@ -2212,13 +2221,37 @@ function CommonAccountsAdminTab() {
               <label className="block text-xs text-slate-600 mb-1">
                 Password
               </label>
-              <input
-                className={inputBase}
-                type="password"
-                value={createPassword}
-                onChange={(e) => setCreatePassword(e.target.value)}
-                placeholder="Enter common password"
-              />
+
+              <div className="relative">
+                <input
+                  className={cx(inputBase, "pr-10")}
+                  type={showCommonPassword ? "text" : "password"}
+                  value={createPassword}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  placeholder="Enter common password"
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  name="common-account-password"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowCommonPassword((v) => !v)}
+                  className="absolute inset-y-0 right-2 flex items-center text-slate-500 hover:text-slate-700"
+                  aria-label={
+                    showCommonPassword ? "Hide password" : "Show password"
+                  }
+                  title={showCommonPassword ? "Hide password" : "Show password"}
+                >
+                  {showCommonPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-end">
@@ -2322,9 +2355,17 @@ function CommonAccountsAdminTab() {
                     User
                   </label>
                   <select
-                    className={cx(inputBase, "cursor-pointer")}
+                    className={cx(
+                      inputBase,
+                      "cursor-pointer",
+                      memberUserError &&
+                        "border-rose-300 focus:ring-rose-200 focus:border-rose-300",
+                    )}
                     value={memberUserId}
-                    onChange={(e) => setMemberUserId(e.target.value)}
+                    onChange={(e) => {
+                      setMemberUserId(e.target.value);
+                      if (e.target.value) setMemberUserError("");
+                    }}
                   >
                     <option value="">Select user</option>
                     {availableUsers.map((u) => (
@@ -2337,6 +2378,11 @@ function CommonAccountsAdminTab() {
                       </option>
                     ))}
                   </select>
+                  {memberUserError && (
+                    <p className="text-rose-600 text-xs mt-1">
+                      {memberUserError}
+                    </p>
+                  )}
                 </div>
 
                 <div>
