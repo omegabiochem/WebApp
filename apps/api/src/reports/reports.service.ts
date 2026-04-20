@@ -1489,9 +1489,9 @@ export class ReportsService {
 
     const prevStatus = current.status;
 
-    if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO','MC'].includes(user.role)) {
       throw new ForbiddenException(
-        'Only ADMIN/SYSTEMADMIN/QA/MICRO can Change Status this directly',
+        'Only ADMIN/SYSTEMADMIN/QA/MICRO/MC can Change Status this directly',
       );
     }
 
