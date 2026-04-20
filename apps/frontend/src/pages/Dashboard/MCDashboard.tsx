@@ -1046,7 +1046,11 @@ export default function MCDashboard() {
 
         if (abort) return;
 
-        const keepMicro = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
+        // const keepMicro = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
+        const keepMicro = new Set<string>([
+  ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
+  ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
+]);
         const keepChem = new Set<string>([
           ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
           ...Object.keys(COA_STATUS_COLORS), // ✅ include all COA statuses
@@ -1134,17 +1138,7 @@ export default function MCDashboard() {
     }
   }, [datePreset]);
 
-  // Which status chips to show?
-  // const statusOptions = useMemo(() => {
-  //   if (category === "MICRO") return MICRO_STATUSES as unknown as string[];
-  //   if (category === "CHEMISTRY")
-  //     return CHEMISTRY_STATUSES as unknown as string[];
-  //   // ALL: union, but keep it tidy:
-  //   const set = new Set<string>(["ALL"]);
-  //   MICRO_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
-  //   CHEMISTRY_STATUSES.forEach((s) => s !== "ALL" && set.add(String(s)));
-  //   return Array.from(set);
-  // }, [category]);
+ 
   const statusOptions = useMemo(() => {
     // MICRO tab
     if (category === "MICRO") {
@@ -1990,9 +1984,10 @@ export default function MCDashboard() {
         }),
       );
 
-      const keepMicro = new Set(
-        MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
-      );
+    const keepMicro = new Set<string>([
+  ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
+  ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
+]);
 
       const keepChem = new Set<string>([
         ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
