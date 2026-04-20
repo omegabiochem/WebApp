@@ -40,6 +40,8 @@ import {
 } from "../../utils/clientDashboardutils";
 import COAReportFormView from "../Reports/COAReportFormView";
 import {
+  canShowSterilityUpdateButton,
+  STERILITY_STATUS_COLORS,
   STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
@@ -201,13 +203,38 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
-  const isMicro =
-    r.formType === "MICRO_MIX" ||
-    r.formType === "MICRO_MIX_WATER" ||
-    r.formType === "STERILITY";
-  if (!isMicro) return false;
+  // const isMicro =
+  //   r.formType === "MICRO_MIX" ||
+  //   r.formType === "MICRO_MIX_WATER" ||
+  //   r.formType === "STERILITY";
+  // if (!isMicro) return false;
   if (user?.role !== "CLIENT") return false;
   if (getFormPrefix(r.formNumber) !== user?.clientCode) return false;
+
+  if (r.formType === "STERILITY") {
+    const sterilityFieldsUsedOnForm = [
+      "client",
+      "dateSent",
+      "typeOfTest",
+      "sampleType",
+      "formulaNo",
+      "description",
+      "lotNo",
+      "manufactureDate",
+      "comments",
+    ];
+
+    return canShowSterilityUpdateButton(
+      user?.role,
+      r.status as SterilityReportStatus,
+      sterilityFieldsUsedOnForm,
+    );
+  }
+
+  const isMicro =
+    r.formType === "MICRO_MIX" || r.formType === "MICRO_MIX_WATER";
+
+  if (!isMicro) return false;
 
   const fieldsUsedOnForm = [
     "client",
@@ -2418,11 +2445,15 @@ export default function ClientDashboard() {
                           <span
                             className={classNames(
                               "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                              (isChemistry
-                                ? CHEMISTRY_STATUS_COLORS[
-                                    r.status as ChemistryReportStatus
+                              (r.formType === "STERILITY"
+                                ? STERILITY_STATUS_COLORS[
+                                    r.status as SterilityReportStatus
                                   ]
-                                : STATUS_COLORS[r.status as ReportStatus]) ||
+                                : isChemistry
+                                  ? CHEMISTRY_STATUS_COLORS[
+                                      r.status as ChemistryReportStatus
+                                    ]
+                                  : STATUS_COLORS[r.status as ReportStatus]) ||
                                 "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
                             )}
                           >
