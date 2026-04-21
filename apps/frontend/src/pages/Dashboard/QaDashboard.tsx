@@ -45,7 +45,7 @@ import {
   COLS,
   type DashboardColKey,
 } from "../../utils/globalUtils";
-import { Pin } from "lucide-react";
+import { Eye, EyeOff, Pin } from "lucide-react";
 
 // ---------------------------------
 // Types
@@ -854,6 +854,9 @@ export default function QaDashboard() {
     const chemistryReports = await api<Report[]>("/chemistry-reports");
     return [...microReports, ...chemistryReports];
   };
+
+  const [showESignPassword, setShowESignPassword] = useState(false);
+  const [showVoidPassword, setShowVoidPassword] = useState(false);
 
   useEffect(() => {
     let abort = false;
@@ -2139,6 +2142,7 @@ export default function QaDashboard() {
                 submitting: false,
                 error: null,
               });
+              setShowVoidPassword(false);
             }}
             disabled={!voidableCount || printingBulk}
             className={classNames(
@@ -2828,6 +2832,7 @@ export default function QaDashboard() {
                                 setReason("");
                                 setESignPassword("");
                                 setESignError("");
+                                setShowESignPassword(false);
                               }}
                             >
                               Change Status
@@ -3095,19 +3100,50 @@ export default function QaDashboard() {
       {/* Change Status Dialog */}
       {changeStatusReport && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-label="Change status"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) {
+              setChangeStatusReport(null);
+              setReason("");
+              setESignPassword("");
+              setESignError("");
+              setShowESignPassword(false);
+            }
+          }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">
-              Change Status of {changeStatusReport.formType}
-            </h2>
-            <p className="mb-3 text-sm text-slate-600">
-              <strong>Current:</strong>{" "}
-              {niceStatus(String(changeStatusReport.status))}
-            </p>
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            {/* Header */}
+            <div className="border-b bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Change Status</h2>
+                  <p className="mt-1 text-sm text-white/85">
+                    {niceFormType(changeStatusReport.formType)} report workflow
+                    update
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (saving) return;
+                    setChangeStatusReport(null);
+                    setReason("");
+                    setESignPassword("");
+                    setESignError("");
+                    setShowESignPassword(false);
+                  }}
+                  className="rounded-md px-2 py-1 text-white/80 hover:bg-white/10 hover:text-white"
+                  aria-label="Close"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
 
             <form
               autoComplete="off"
@@ -3117,112 +3153,164 @@ export default function QaDashboard() {
                 e.preventDefault();
                 handleChangeStatus(changeStatusReport, newStatus);
               }}
+              className="px-5 py-4"
             >
-              <select
-                value={newStatus}
-                onChange={(e) => {
-                  setNewStatus(e.target.value);
-                  setESignError("");
-                }}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              >
-                {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
-                changeStatusReport.formType === "COA"
-                  ? QA_CHEM_STATUSES
-                  : changeStatusReport.formType === "STERILITY"
-                    ? QA_STERILITY_STATUSES
-                    : QA_MICRO_STATUSES
-                )
-                  .filter((s) => s !== "ALL")
-                  .map((s) => (
-                    <option key={String(s)} value={String(s)}>
-                      {niceStatus(String(s))}
-                    </option>
-                  ))}
-              </select>
-
-              <input
-                type="text"
-                placeholder="Reason for change"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              />
-
-              {needsESign(newStatus) && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                    <span>E-signature password</span>
+              {/* Report summary */}
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Form Number
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-800">
+                      {changeStatusReport.formNumber || "-"}
+                    </div>
                   </div>
 
-                  {/* decoys */}
-                  <input
-                    type="text"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      opacity: 0,
-                      height: 0,
-                      width: 0,
-                    }}
-                  />
-                  <input
-                    type="password"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      opacity: 0,
-                      height: 0,
-                      width: 0,
-                    }}
-                  />
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Report Number
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-800">
+                      {changeStatusReport.reportNumber || "-"}
+                    </div>
+                  </div>
 
-                  <div className="mb-2 flex items-stretch gap-2">
+                  <div className="col-span-2">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Current Status
+                    </div>
+                    <div className="mt-1">
+                      <span
+                        className={classNames(
+                          "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1",
+                          badgeClasses(changeStatusReport),
+                        )}
+                      >
+                        {niceStatus(String(changeStatusReport.status))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next status */}
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  New Status
+                </label>
+                <select
+                  value={newStatus}
+                  onChange={(e) => {
+                    setNewStatus(e.target.value);
+                    setESignError("");
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500"
+                >
+                  {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
+                  changeStatusReport.formType === "COA"
+                    ? QA_CHEM_STATUSES
+                    : changeStatusReport.formType === "STERILITY"
+                      ? QA_STERILITY_STATUSES
+                      : QA_MICRO_STATUSES
+                  )
+                    .filter((s) => s !== "ALL")
+                    .map((s) => (
+                      <option key={String(s)} value={String(s)}>
+                        {niceStatus(String(s))}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Reason */}
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Reason for Change
+                </label>
+                <textarea
+                  placeholder="Explain why this status is being changed..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  This reason will be used for audit and e-sign review.
+                </p>
+              </div>
+
+              {/* E-sign */}
+              {needsESign(newStatus) && (
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    E-signature Password
+                  </label>
+
+                  <div className="relative">
                     <input
-                      type="password"
+                      type={showESignPassword ? "text" : "password"}
                       placeholder="Enter e-signature password"
                       value={eSignPassword}
                       onChange={(e) => {
                         setESignPassword(e.target.value);
                         setESignError("");
                       }}
-                      className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-                      aria-invalid={!!eSignError}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-11 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500"
                       autoComplete="off"
-                      name="esign_pwd_manual_only"
-                      inputMode="text"
-                      spellCheck={false}
-                      autoCapitalize="off"
-                      autoCorrect="off"
-                      data-1p-ignore="true"
-                      data-lpignore="true"
-                      data-bwignore="true"
-                      data-form-type="other"
+                      aria-invalid={!!eSignError}
                     />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowESignPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                      title={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showESignPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
 
-                  {eSignError && (
-                    <p className="mb-2 text-xs text-rose-600">{eSignError}</p>
+                  {eSignError ? (
+                    <p className="mt-2 text-xs text-rose-600">{eSignError}</p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Required for controlled workflow transitions.
+                    </p>
                   )}
                 </div>
               )}
 
-              <div className="mt-4 flex justify-end gap-2">
+              {/* Footer */}
+              <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4">
                 <button
                   type="button"
-                  className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-                  onClick={() => setChangeStatusReport(null)}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => {
+                    if (saving) return;
+                    setChangeStatusReport(null);
+                    setReason("");
+                    setESignPassword("");
+                    setESignError("");
+                    setShowESignPassword(false);
+                  }}
                   disabled={saving}
                 >
                   Cancel
                 </button>
+
                 <button
                   type="submit"
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
                   disabled={
                     saving ||
                     !reason.trim() ||
@@ -3230,7 +3318,7 @@ export default function QaDashboard() {
                   }
                 >
                   {saving ? <Spinner /> : null}
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? "Saving..." : "Save Change"}
                 </button>
               </div>
             </form>
@@ -3241,7 +3329,7 @@ export default function QaDashboard() {
       {statusModal.open &&
         createPortal(
           <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
             role="dialog"
             aria-modal="true"
             aria-label="Void selected reports"
@@ -3254,75 +3342,95 @@ export default function QaDashboard() {
                   password: "",
                   error: null,
                 }));
+                setShowVoidPassword(false);
               }
             }}
           >
-            <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
               {/* Header */}
-              <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    Void selected reports
+              <div className="border-b bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      Void Selected Reports
+                    </h2>
+                    <p className="mt-1 text-sm text-white/85">
+                      {selectedReportObjects.length} selected report(s) will be
+                      marked VOID
+                    </p>
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    {selectedIds.length} report(s) will be marked{" "}
-                    <span className="font-medium text-slate-700">VOID</span>.
-                  </div>
-                </div>
 
-                <button
-                  type="button"
-                  className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                  disabled={statusModal.submitting}
-                  onClick={() =>
-                    setStatusModal((s) => ({
-                      ...s,
-                      open: false,
-                      reason: "",
-                      password: "",
-                      error: null,
-                    }))
-                  }
-                  aria-label="Close"
-                  title="Close"
-                >
-                  ✕
-                </button>
+                  <button
+                    type="button"
+                    className="rounded-md px-2 py-1 text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"
+                    disabled={statusModal.submitting}
+                    onClick={() => {
+                      setStatusModal((s) => ({
+                        ...s,
+                        open: false,
+                        reason: "",
+                        password: "",
+                        error: null,
+                      }));
+                      setShowVoidPassword(false);
+                    }}
+                    aria-label="Close"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              {/* Body */}
               <form
-                className="space-y-3 px-4 py-3"
+                className="px-5 py-4"
                 autoComplete="off"
-                onSubmit={(e) => e.preventDefault()}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                }}
               >
-                {/* Selected reports (compact) */}
-                <div className="rounded-lg border bg-slate-50 p-2">
-                  <div className="mb-1 flex items-center justify-between">
-                    <div className="text-[11px] font-semibold text-slate-700">
-                      Selected
+                {/* Selected reports summary */}
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Selected Reports
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-xs font-medium text-slate-600">
                       {selectedReportObjects.length}
                     </div>
                   </div>
 
-                  <div className="max-h-28 overflow-auto rounded-md bg-white ring-1 ring-slate-200">
-                    <table className="w-full text-[11px]">
+                  <div className="max-h-44 overflow-auto rounded-lg bg-white ring-1 ring-slate-200">
+                    <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
                         <tr className="text-left text-slate-600">
-                          <th className="px-2 py-1.5 font-medium">Form #</th>
-                          <th className="px-2 py-1.5 font-medium">Type</th>
+                          <th className="px-3 py-2 font-medium">Form #</th>
+                          <th className="px-3 py-2 font-medium">Report #</th>
+                          <th className="px-3 py-2 font-medium">Type</th>
+                          <th className="px-3 py-2 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedReportObjects.map((r) => (
                           <tr key={r.id} className="border-t">
-                            <td className="px-2 py-1.5 font-medium text-slate-900">
-                              {r.formNumber}
+                            <td className="px-3 py-2 font-medium text-slate-900">
+                              {r.formNumber || "-"}
                             </td>
-                            <td className="px-2 py-1.5 text-slate-700">
+                            <td className="px-3 py-2 text-slate-700">
+                              {r.reportNumber || "-"}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
                               {niceFormType(r.formType)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1",
+                                  badgeClasses(r),
+                                )}
+                              >
+                                {niceStatus(String(r.status))}
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -3332,9 +3440,9 @@ export default function QaDashboard() {
                 </div>
 
                 {/* Reason */}
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-700">
-                    Reason <span className="text-rose-600">*</span>
+                <div className="mb-4">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Reason for Void
                   </label>
                   <textarea
                     value={statusModal.reason}
@@ -3345,116 +3453,150 @@ export default function QaDashboard() {
                         error: null,
                       }))
                     }
-                    rows={2}
-                    placeholder="Reason for voiding…"
-                    className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-rose-500"
+                    rows={3}
+                    placeholder="Explain why these reports are being voided..."
+                    className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
                     disabled={statusModal.submitting}
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    This reason will be recorded in the audit trail.
+                  </p>
                 </div>
 
                 {/* Password */}
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-700">
-                    E-sign password <span className="text-rose-600">*</span>
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    E-signature Password
                   </label>
-                  <input
-                    type="password"
-                    value={statusModal.password}
-                    onChange={(e) =>
-                      setStatusModal((s) => ({
-                        ...s,
-                        password: e.target.value,
-                        error: null,
-                      }))
-                    }
-                    name="void_esign_password"
-                    autoComplete="new-password"
-                    placeholder="Password…"
-                    className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-rose-500"
-                    disabled={statusModal.submitting}
-                  />
-                  <div className="mt-1 text-[10px] text-slate-500">
-                    Required for 21 CFR Part 11.
+
+                  <div className="relative">
+                    <input
+                      type={showVoidPassword ? "text" : "password"}
+                      value={statusModal.password}
+                      onChange={(e) =>
+                        setStatusModal((s) => ({
+                          ...s,
+                          password: e.target.value,
+                          error: null,
+                        }))
+                      }
+                      name="void_esign_password"
+                      autoComplete="new-password"
+                      placeholder="Enter e-signature password"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-11 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                      disabled={statusModal.submitting}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowVoidPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showVoidPassword ? "Hide password" : "Show password"
+                      }
+                      title={
+                        showVoidPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showVoidPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
+
+                  {statusModal.error ? (
+                    <p className="mt-2 text-xs text-rose-600">
+                      {statusModal.error}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Required for 21 CFR Part 11 controlled actions.
+                    </p>
+                  )}
                 </div>
 
-                {statusModal.error && (
-                  <div className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-700">
-                    {statusModal.error}
-                  </div>
-                )}
-              </form>
-
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
-                <button
-                  type="button"
-                  className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-                  disabled={statusModal.submitting}
-                  onClick={() =>
-                    setStatusModal((s) => ({
-                      ...s,
-                      open: false,
-                      reason: "",
-                      password: "",
-                      error: null,
-                    }))
-                  }
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-                  disabled={statusModal.submitting}
-                  onClick={async () => {
-                    const reason = statusModal.reason.trim();
-                    const pwd = statusModal.password.trim();
-
-                    if (!reason) {
-                      setStatusModal((s) => ({
-                        ...s,
-                        error: "Reason is required.",
-                      }));
-                      return;
-                    }
-                    if (!pwd) {
-                      setStatusModal((s) => ({
-                        ...s,
-                        error: "E-sign password is required.",
-                      }));
-                      return;
-                    }
-
-                    setStatusModal((s) => ({
-                      ...s,
-                      submitting: true,
-                      error: null,
-                    }));
-                    try {
-                      await handleVoidSelected(reason, pwd);
+                {/* Footer */}
+                <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4">
+                  <button
+                    type="button"
+                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={statusModal.submitting}
+                    onClick={() => {
                       setStatusModal((s) => ({
                         ...s,
                         open: false,
-                        submitting: false,
                         reason: "",
                         password: "",
                         error: null,
                       }));
-                    } catch (e: any) {
+                      setShowVoidPassword(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-60"
+                    disabled={
+                      statusModal.submitting ||
+                      !statusModal.reason.trim() ||
+                      !statusModal.password.trim()
+                    }
+                    onClick={async () => {
+                      const reason = statusModal.reason.trim();
+                      const pwd = statusModal.password.trim();
+
+                      if (!reason) {
+                        setStatusModal((s) => ({
+                          ...s,
+                          error: "Reason is required.",
+                        }));
+                        return;
+                      }
+
+                      if (!pwd) {
+                        setStatusModal((s) => ({
+                          ...s,
+                          error: "E-sign password is required.",
+                        }));
+                        return;
+                      }
+
                       setStatusModal((s) => ({
                         ...s,
-                        submitting: false,
-                        error: e?.message || "Failed to void selected reports.",
+                        submitting: true,
+                        error: null,
                       }));
-                    }
-                  }}
-                >
-                  {statusModal.submitting ? <SpinnerDark /> : null}
-                  {statusModal.submitting ? "Voiding..." : "Confirm"}
-                </button>
-              </div>
+
+                      try {
+                        await handleVoidSelected(reason, pwd);
+                        setStatusModal((s) => ({
+                          ...s,
+                          open: false,
+                          submitting: false,
+                          reason: "",
+                          password: "",
+                          error: null,
+                        }));
+                        setShowVoidPassword(false);
+                      } catch (e: any) {
+                        setStatusModal((s) => ({
+                          ...s,
+                          submitting: false,
+                          error:
+                            e?.message || "Failed to void selected reports.",
+                        }));
+                      }
+                    }}
+                  >
+                    {statusModal.submitting ? <Spinner /> : null}
+                    {statusModal.submitting ? "Voiding..." : "Confirm Void"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>,
           document.body,
