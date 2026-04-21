@@ -2430,7 +2430,7 @@ export default function MCDashboard() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Lab Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">MC Dashboard</h1>
           <p className="text-sm text-slate-500">
             Combined queue for Micro + Chemistry reports.
           </p>
