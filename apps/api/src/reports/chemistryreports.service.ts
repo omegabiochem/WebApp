@@ -890,7 +890,8 @@ export class ChemistryReportsService {
       // e-sign requirements
       if (
         patchIn.status === 'UNDER_CLIENT_REVIEW' ||
-        patchIn.status === 'LOCKED'
+        patchIn.status === 'LOCKED' ||
+        patchIn.status === 'VOID'
       ) {
         const password =
           _pwdFromBody ||
