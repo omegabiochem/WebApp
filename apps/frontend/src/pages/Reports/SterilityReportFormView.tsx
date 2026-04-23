@@ -725,14 +725,27 @@ export default function SterilityReportFormView(
 
           {/* Comments + Signatures */}
           <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-            <div className="p2 col-span-2 flex">
-              <div className="mb-1 font-medium">Comments:</div>
-              <input
-                className="flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none pl-2"
-                value={report?.comments || ""}
-                readOnly
-                disabled
-              />
+            <div className="col-span-2">
+              <div className="flex items-start gap-2">
+                <div className="font-medium pt-[2px] whitespace-nowrap">
+                  Comments :
+                </div>
+
+                <div className="relative flex-1 h-[48px]">
+                  {/* printable lines */}
+                  <div className="pointer-events-none absolute inset-0">
+                    <div className="absolute left-0 right-0 top-[23px] border-b border-black/70" />
+                    <div className="absolute left-0 right-0 top-[47px] border-b border-black/70" />
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    className="relative z-10 w-full h-[48px] resize-none bg-transparent text-[12px] leading-[24px] border-0 outline-none focus:ring-0 pl-2 pt-0 pb-0 overflow-hidden"
+                    value={report?.comments || ""}
+                    readOnly
+                  />
+                </div>
+              </div>
             </div>
 
             {showSignatures && (

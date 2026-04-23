@@ -1404,10 +1404,18 @@ export default function COAReportForm({
   // ---------------- RENDER ----------------
   return (
     <>
-      <PrintStyles />
-      <DashStyles />
+      {" "}
+      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+        <PrintStyles />
+        <DashStyles />
 
-      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
+        {isTemplateViewMode && (
+          <div className="no-print mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Viewing template: <b>{templateName || "Untitled"}</b> (read-only)
+          </div>
+        )}
+
+        {/* <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4"> */}
         {/* Top buttons */}
         {!hideTopActions && (
           <div className="no-print mb-4 flex justify-end gap-2">
@@ -2340,7 +2348,6 @@ export default function COAReportForm({
           )}
         </div>
       </div>
-
       {/* Actions row: submit/reject on left, close on right */}
       {!hideBottomActions && !isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
@@ -2411,7 +2418,6 @@ export default function COAReportForm({
           </div>
         </div>
       )}
-
       {showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -2481,7 +2487,6 @@ export default function COAReportForm({
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
@@ -2552,21 +2557,22 @@ export default function COAReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "CHEMISTRY") {
-                    navigate("/chemistryDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >
@@ -2576,7 +2582,6 @@ export default function COAReportForm({
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -2630,7 +2635,6 @@ export default function COAReportForm({
           </div>
         </div>
       )}
-
       {/* Floating Corrections button */}
       {canShowFloatingUi && !isTemplateViewMode && (
         <div className="no-print fixed bottom-20 right-6 z-40">
@@ -2647,7 +2651,6 @@ export default function COAReportForm({
           </button>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">

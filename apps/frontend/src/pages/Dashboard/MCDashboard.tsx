@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
@@ -826,6 +826,7 @@ function getInitialMCFilters(searchParams: URLSearchParams) {
 // ----------------------------------
 export default function MCDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const userKey =
@@ -929,6 +930,11 @@ export default function MCDashboard() {
 
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
+  const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<UnifiedRow | null>(
@@ -1048,9 +1054,9 @@ export default function MCDashboard() {
 
         // const keepMicro = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
         const keepMicro = new Set<string>([
-  ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
-  ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
-]);
+          ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
+          ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
+        ]);
         const keepChem = new Set<string>([
           ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
           ...Object.keys(COA_STATUS_COLORS), // ✅ include all COA statuses
@@ -1138,7 +1144,6 @@ export default function MCDashboard() {
     }
   }, [datePreset]);
 
- 
   const statusOptions = useMemo(() => {
     // MICRO tab
     if (category === "MICRO") {
@@ -1207,6 +1212,51 @@ export default function MCDashboard() {
       setStatusFilter("ALL");
     }
   }, [statusOptions, statusFilter]);
+
+  const handleStatusChange = React.useCallback((nextStatus: string) => {
+    setStatusFilter(nextStatus);
+    setPage(1);
+  }, []);
+
+  // useEffect(() => {
+  //   const chip = statusChipRefs.current[statusFilter];
+  //   if (!chip) return;
+
+  //   chip.scrollIntoView({
+  //     behavior: "smooth",
+  //     inline: "center",
+  //     block: "nearest",
+  //   });
+  // }, [statusFilter, statusOptions]);
+
+  useEffect(() => {
+  statusChipRefs.current = {};
+}, [category, allTypeFilter, microFormFilter, chemFormFilter]);
+
+useEffect(() => {
+  if (!hydratedFromUrlRef.current) return;
+
+  const tid = window.setTimeout(() => {
+    const chip = statusChipRefs.current[statusFilter];
+    if (!chip) return;
+
+    chip.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, 80);
+
+  return () => window.clearTimeout(tid);
+}, [
+  statusFilter,
+  statusOptions,
+  category,
+  allTypeFilter,
+  microFormFilter,
+  chemFormFilter,
+  location.search,
+]);
 
   // -----------------------------
   // Filtering + sorting
@@ -1487,85 +1537,184 @@ export default function MCDashboard() {
   ]);
 
   // Keep statusFilter valid when switching category
-  const didMount = React.useRef(false);
+  // const didMount = React.useRef(false);
+
+  // useEffect(() => {
+  //   if (!didMount.current) {
+  //     didMount.current = true;
+  //     return; // ✅ skip initial run
+  //   }
+
+  //   // runs only for real category changes after mount
+  //   setSelectedIds([]);
+  //   setStatusFilter("ALL");
+
+  //   if (category === "ALL") {
+  //     setMicroFormFilter("ALL");
+  //     setChemFormFilter("ALL");
+  //     setActiveFilter("ALL");
+  //   } else if (category === "MICRO") {
+  //     setChemFormFilter("ALL");
+  //     setActiveFilter("ALL");
+  //   } else if (category === "CHEMISTRY") {
+  //     setMicroFormFilter("ALL");
+  //   }
+  // }, [category]);
+
+  // useEffect(() => {
+  //   const sp = new URLSearchParams();
+
+  //   sp.set("cat", category);
+  //   sp.set("status", statusFilter);
+
+  //   if (searchClient.trim()) sp.set("client", searchClient.trim());
+  //   if (searchReport.trim()) sp.set("report", searchReport.trim());
+  //   if (search.trim()) sp.set("q", search.trim());
+
+  //   sp.set("type", allTypeFilter);
+  //   sp.set("mtype", microFormFilter);
+  //   sp.set("ctype", chemFormFilter);
+  //   sp.set("active", activeFilter);
+
+  //   sp.set("dp", datePreset);
+  //   if (fromDate) sp.set("from", fromDate);
+  //   if (toDate) sp.set("to", toDate);
+
+  //   sp.set("rangeType", numberRangeType);
+  //   if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+  //   if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+  //   if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+  //   if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
+  //   sp.set("sortBy", sortBy);
+  //   sp.set("sortDir", sortDir);
+  //   sp.set("pp", String(perPage));
+  //   sp.set("p", String(pageClamped));
+
+  //   setSearchParams(sp, { replace: true });
+  // }, [
+  //   category,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   search,
+  //   allTypeFilter,
+  //   microFormFilter,
+  //   chemFormFilter,
+  //   activeFilter,
+  //   datePreset,
+  //   fromDate,
+  //   toDate,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   sortBy,
+  //   sortDir,
+  //   perPage,
+  //   pageClamped,
+  //   setSearchParams,
+  // ]);
+
+
+  const hydratedFromUrlRef = React.useRef(false);
+
+useEffect(() => {
+  const next = getInitialMCFilters(searchParams);
+
+  setCategory(next.category);
+  setStatusFilter(next.statusFilter);
+  setSearchClient(next.searchClient);
+  setSearchReport(next.searchReport);
+  setSearch(next.searchText);
+
+  setAllTypeFilter(next.allTypeFilter);
+  setMicroFormFilter(next.microFormFilter);
+  setChemFormFilter(next.chemFormFilter);
+  setActiveFilter(next.activeFilter);
+
+  setDatePreset(next.datePreset);
+  setFromDate(next.fromDate);
+  setToDate(next.toDate);
+
+  setNumberRangeType(next.numberRangeType);
+  setFormNoFrom(next.formNoFrom);
+  setFormNoTo(next.formNoTo);
+  setReportNoFrom(next.reportNoFrom);
+  setReportNoTo(next.reportNoTo);
+
+  setSortBy(next.sortBy as any);
+  setSortDir(next.sortDir);
+  setPerPage(next.perPage);
+  setPage(next.page);
+
+  hydratedFromUrlRef.current = true;
+}, [location.search]);
+
+
+
 
   useEffect(() => {
-    if (!didMount.current) {
-      didMount.current = true;
-      return; // ✅ skip initial run
-    }
+  if (!hydratedFromUrlRef.current) return;
 
-    // runs only for real category changes after mount
-    setSelectedIds([]);
-    setStatusFilter("ALL");
+  const sp = new URLSearchParams();
 
-    if (category === "ALL") {
-      setMicroFormFilter("ALL");
-      setChemFormFilter("ALL");
-      setActiveFilter("ALL");
-    } else if (category === "MICRO") {
-      setChemFormFilter("ALL");
-      setActiveFilter("ALL");
-    } else if (category === "CHEMISTRY") {
-      setMicroFormFilter("ALL");
-    }
-  }, [category]);
+  sp.set("cat", category);
+  sp.set("status", statusFilter);
 
-  useEffect(() => {
-    const sp = new URLSearchParams();
+  if (searchClient.trim()) sp.set("client", searchClient.trim());
+  if (searchReport.trim()) sp.set("report", searchReport.trim());
+  if (search.trim()) sp.set("q", search.trim());
 
-    sp.set("cat", category);
-    sp.set("status", statusFilter);
+  sp.set("type", allTypeFilter);
+  sp.set("mtype", microFormFilter);
+  sp.set("ctype", chemFormFilter);
+  sp.set("active", activeFilter);
 
-    if (searchClient.trim()) sp.set("client", searchClient.trim());
-    if (searchReport.trim()) sp.set("report", searchReport.trim());
-    if (search.trim()) sp.set("q", search.trim());
+  sp.set("dp", datePreset);
+  if (fromDate) sp.set("from", fromDate);
+  if (toDate) sp.set("to", toDate);
 
-    sp.set("type", allTypeFilter);
-    sp.set("mtype", microFormFilter);
-    sp.set("ctype", chemFormFilter);
-    sp.set("active", activeFilter);
+  sp.set("rangeType", numberRangeType);
+  if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+  if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+  if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+  if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
-    sp.set("dp", datePreset);
-    if (fromDate) sp.set("from", fromDate);
-    if (toDate) sp.set("to", toDate);
+  sp.set("sortBy", sortBy);
+  sp.set("sortDir", sortDir);
+  sp.set("pp", String(perPage));
+  sp.set("p", String(pageClamped));
 
-    sp.set("rangeType", numberRangeType);
-    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
-
-    sp.set("sortBy", sortBy);
-    sp.set("sortDir", sortDir);
-    sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped));
-
+  if (sp.toString() !== searchParams.toString()) {
     setSearchParams(sp, { replace: true });
-  }, [
-    category,
-    statusFilter,
-    searchClient,
-    searchReport,
-    search,
-    allTypeFilter,
-    microFormFilter,
-    chemFormFilter,
-    activeFilter,
-    datePreset,
-    fromDate,
-    toDate,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    sortBy,
-    sortDir,
-    perPage,
-    pageClamped,
-    setSearchParams,
-  ]);
+  }
+}, [
+  category,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  allTypeFilter,
+  microFormFilter,
+  chemFormFilter,
+  activeFilter,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+  perPage,
+  pageClamped,
+  searchParams,
+  setSearchParams,
+]);
 
   // -----------------------------
   // Helpers: permissions + nav
@@ -1647,15 +1796,21 @@ export default function MCDashboard() {
   }
 
   function goToEditor(r: UnifiedRow) {
+    const returnTo = location.pathname + location.search;
+
     if (r.kind === "MICRO") {
       const slug = microFormTypeToSlug[r.formType] || "micro-mix";
-      navigate(`/reports/${slug}/${r.id}`);
+      navigate(
+        `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+      );
       return;
     }
-    const slug = chemFormTypeToSlug[r.formType] || "chemistry-mix";
-    navigate(`/chemistry-reports/${slug}/${r.id}`);
-  }
 
+    const slug = chemFormTypeToSlug[r.formType] || "chemistry-mix";
+    navigate(
+      `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  }
   // -----------------------------
   // Selection
   // -----------------------------
@@ -1984,10 +2139,10 @@ export default function MCDashboard() {
         }),
       );
 
-    const keepMicro = new Set<string>([
-  ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
-  ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
-]);
+      const keepMicro = new Set<string>([
+        ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
+        ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
+      ]);
 
       const keepChem = new Set<string>([
         ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
@@ -2430,7 +2585,7 @@ export default function MCDashboard() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Lab Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">MC Dashboard</h1>
           <p className="text-sm text-slate-500">
             Combined queue for Micro + Chemistry reports.
           </p>
@@ -2696,13 +2851,20 @@ export default function MCDashboard() {
       {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <div
+          ref={statusScrollerRef}
+          className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+        >
           {statusOptions.map((s) => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              ref={(el) => {
+                statusChipRefs.current[String(s)] = el;
+              }}
+              type="button"
+              onClick={() => handleStatusChange(String(s))}
               className={classNames(
-                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
+                "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition-all duration-200",
                 statusFilter === s
                   ? "bg-blue-600 text-white ring-blue-600"
                   : "bg-slate-50 text-slate-700 hover:bg-slate-100 ring-slate-200",
@@ -2716,7 +2878,7 @@ export default function MCDashboard() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleStatusChange(e.target.value)}
             className="w-100 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           >
             {statusOptions.map((s) => (
@@ -2732,7 +2894,6 @@ export default function MCDashboard() {
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
           />
-
 
           {/* Date preset + custom */}
           <div className="flex gap-3 flex-wrap">
@@ -2847,7 +3008,7 @@ export default function MCDashboard() {
             ))}
           </select>
 
-             {/* Sort */}
+          {/* Sort */}
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
@@ -2857,7 +3018,9 @@ export default function MCDashboard() {
                     | "dateSent"
                     | "reportNumber"
                     | "dateTested"
-                    | "dateReceived",
+                    | "dateReceived"
+                    | "createdAt"
+                    | "updatedAt",
                 )
               }
               className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"

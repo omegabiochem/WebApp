@@ -396,23 +396,23 @@ export default function ChemistryMixSubmissionForm({
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
   const backToDashboard = () => {
-  if (returnTo)
-    return navigate(decodeURIComponent(returnTo), { replace: true });
+    if (returnTo)
+      return navigate(decodeURIComponent(returnTo), { replace: true });
 
-  if (role === "CLIENT")
-    return navigate("/clientDashboard", { replace: true });
-  if (role === "FRONTDESK")
-    return navigate("/frontdeskDashboard", { replace: true });
-  if (role === "CHEMISTRY")
-    return navigate("/chemistryDashboard", { replace: true });
-  if (role === "MC") return navigate("/mcDashboard", { replace: true });
-  if (role === "QA") return navigate("/qaDashboard", { replace: true });
-  if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
-  if (role === "SYSTEMADMIN")
-    return navigate("/systemAdminDashboard", { replace: true });
+    if (role === "CLIENT")
+      return navigate("/clientDashboard", { replace: true });
+    if (role === "FRONTDESK")
+      return navigate("/frontdeskDashboard", { replace: true });
+    if (role === "CHEMISTRY")
+      return navigate("/chemistryDashboard", { replace: true });
+    if (role === "MC") return navigate("/mcDashboard", { replace: true });
+    if (role === "QA") return navigate("/qaDashboard", { replace: true });
+    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+    if (role === "SYSTEMADMIN")
+      return navigate("/systemAdminDashboard", { replace: true });
 
-  return navigate("/", { replace: true });
-};
+    return navigate("/", { replace: true });
+  };
 
   // const backToDashboard = () => {
   //   if (returnTo)
@@ -1197,7 +1197,7 @@ export default function ChemistryMixSubmissionForm({
     status?: ChemistryReportStatus;
     reportNumber?: number | string;
     version?: number;
-      dateReceived?: string | null;
+    dateReceived?: string | null;
   };
 
   async function handleStatusChange(
@@ -1235,18 +1235,23 @@ export default function ChemistryMixSubmissionForm({
         newStatus === "LOCKED" ||
         newStatus === "APPROVED"
       ) {
-     if (!okFields) {
-  alert("⚠️ Please fix the highlighted fields before changing status.");
-  return;
-}
-  if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return;
-      }
+        if (!okFields) {
+          alert("⚠️ Please fix the highlighted fields before changing status.");
+          return;
+        }
+        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+          return;
+        }
 
-if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
-  alert("⚠️ Please fix the highlighted rows before changing status.");
-  return;
-}
+        if (
+          role !== "QA" &&
+          role !== "ADMIN" &&
+          role !== "SYSTEMADMIN" &&
+          !okRows
+        ) {
+          alert("⚠️ Please fix the highlighted rows before changing status.");
+          return;
+        }
       }
 
       // if (newStatus === "SUBMITTED_BY_CLIENT") {
@@ -1288,14 +1293,16 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
-        // navigate per role (same as micro)
-        if (role === "CLIENT") backToDashboard();
-        else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
-        else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
-        else if (role === "MC") navigate("/mcDashboard");
-        else if (role === "QA") navigate("/qaDashboard");
-        else if (role === "ADMIN") navigate("/adminDashboard");
-        else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        // // navigate per role (same as micro)
+        // if (role === "CLIENT") backToDashboard();
+        // else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
+        // else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
+        // else if (role === "MC") navigate("/mcDashboard");
+        // else if (role === "QA") navigate("/qaDashboard");
+        // else if (role === "ADMIN") navigate("/adminDashboard");
+        // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        if (embedded) return;
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -1512,10 +1519,9 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           setReportNumber(String(updated.reportNumber));
         }
 
-           if (updated?.dateReceived) {
-        setDateReceived(updated.dateReceived);
-      }
-
+        if (updated?.dateReceived) {
+          setDateReceived(updated.dateReceived);
+        }
 
         onStatusChanged?.(updated);
         alert("✅ Report number assigned and moved to testing.");
@@ -1612,8 +1618,8 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
   }
 
   function formatStatus(status: string) {
-  return status.replaceAll("_", " ");
-}
+    return status.replaceAll("_", " ");
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1624,10 +1630,18 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
   // ---------------- RENDER ----------------
   return (
     <>
-      <PrintStyles />
-      <DashStyles />
+      {" "}
+      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+        <PrintStyles />
+        <DashStyles />
 
-      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4">
+        {isTemplateViewMode && (
+          <div className="no-print mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Viewing template: <b>{templateName || "Untitled"}</b> (read-only)
+          </div>
+        )}
+        {/* 
+      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow p-4"> */}
         {/* Top buttons */}
         {!hideTopActions && (
           <div className="no-print mb-4 flex justify-end gap-2">
@@ -2980,7 +2994,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           )}
         </div>
       </div>
-
       {/* Actions row: submit/reject on left, close on right */}
       {!hideBottomActions && !isAnyTemplateMode && (
         <div className="no-print mt-4 flex items-center justify-between">
@@ -3020,30 +3033,30 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
                       disableApproveForNoAttachment;
 
                     return (
-                   <div key={targetStatus} className="relative group">
-  <button
-    className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-    onClick={() => requestStatusChange(targetStatus)}
-    disabled={disabled}
-    title={
-      disableApproveForNoAttachment
-        ? "Upload at least 1 attachment to enable Approve"
-        : undefined
-    }
-  >
-    {busy === "STATUS" && <Spinner />}
-    {attachmentsLoading && label === "Approve"
-      ? "Checking..."
-      : label}
-  </button>
+                      <div key={targetStatus} className="relative group">
+                        <button
+                          className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                          onClick={() => requestStatusChange(targetStatus)}
+                          disabled={disabled}
+                          title={
+                            disableApproveForNoAttachment
+                              ? "Upload at least 1 attachment to enable Approve"
+                              : undefined
+                          }
+                        >
+                          {busy === "STATUS" && <Spinner />}
+                          {attachmentsLoading && label === "Approve"
+                            ? "Checking..."
+                            : label}
+                        </button>
 
-  {/* 🔥 HOVER TOOLTIP */}
-  {!disableApproveForNoAttachment && (
-    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-      {label} → {formatStatus(targetStatus)}
-    </div>
-  )}
-</div>
+                        {/* 🔥 HOVER TOOLTIP */}
+                        {!disableApproveForNoAttachment && (
+                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                            {label} → {formatStatus(targetStatus)}
+                          </div>
+                        )}
+                      </div>
                     );
                   }
                   return null;
@@ -3052,7 +3065,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           </div>
         </div>
       )}
-
       {showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -3122,7 +3134,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
@@ -3193,21 +3204,22 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "CHEMISTRY") {
-                    navigate("/chemistryDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >
@@ -3217,7 +3229,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && addForField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -3269,7 +3280,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           </div>
         </div>
       )}
-
       {/* Floating Corrections button */}
       {canShowFloatingUi && !isTemplateViewMode && (
         <div className="no-print fixed bottom-20 right-6 z-40">
@@ -3286,7 +3296,6 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
           </button>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
@@ -3381,6 +3390,3 @@ if ((role !== "QA" && role !== "ADMIN" && role !== "SYSTEMADMIN") && !okRows) {
     </>
   );
 }
-
-
-

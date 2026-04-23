@@ -64,7 +64,7 @@ const TEMPLATE_VIEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
   MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=templateView",
   STERILITY: "/reports/sterility/new?mode=templateView",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=templateView",
-  COA: "/reports/coa/new?mode=template",
+  COA: "/reports/coa/new?mode=templateView",
 };
 
 function templateViewPath(t: TemplateRow) {
