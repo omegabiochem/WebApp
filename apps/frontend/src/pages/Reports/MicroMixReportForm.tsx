@@ -1357,6 +1357,7 @@ export default function MicroMixReportForm({
             "tbc_spec",
             "tmy_spec",
             "pathogens",
+            "comments",
           ],
         };
 
@@ -1565,23 +1566,26 @@ export default function MicroMixReportForm({
         setIsDirty(false);
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
+        // if (embedded) return;
+        // if (role === "CLIENT") {
+        //   backToDashboard();
+        // } else if (role === "FRONTDESK") {
+        //   navigate("/frontdeskDashboard");
+        // } else if (role === "MICRO") {
+        //   // navigate("/microDashboard");
+        //   backToDashboard();
+        // } else if (role === "MC") {
+        //   navigate("/mcDashboard");
+        // } else if (role === "QA") {
+        //   navigate("/qaDashboard");
+        // } else if (role === "ADMIN") {
+        //   navigate("/adminDashboard");
+        // } else if (role === "SYSTEMADMIN") {
+        //   navigate("/systemAdminDashboard");
+        // }
+
         if (embedded) return;
-        if (role === "CLIENT") {
-          backToDashboard();
-        } else if (role === "FRONTDESK") {
-          navigate("/frontdeskDashboard");
-        } else if (role === "MICRO") {
-          // navigate("/microDashboard");
-          backToDashboard();
-        } else if (role === "MC") {
-          navigate("/mcDashboard");
-        } else if (role === "QA") {
-          navigate("/qaDashboard");
-        } else if (role === "ADMIN") {
-          navigate("/adminDashboard");
-        } else if (role === "SYSTEMADMIN") {
-          navigate("/systemAdminDashboard");
-        }
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -3266,31 +3270,45 @@ export default function MicroMixReportForm({
               setAddForField("comments");
               setAddMessage("");
             }}
-            className={`p2 col-span-2 flex relative ${dashClass("comments")}`}
+            className={`col-span-2 relative ${dashClass("comments")}`}
           >
-            <div className=" font-medium  mb-1 flex items-center gap-5">
-              Comments :{" "}
+            <div className="flex items-start gap-2">
+              {/* Label */}
+              <div className="font-medium pt-1 whitespace-nowrap">
+                Comments :
+              </div>
+
+              {/* Textarea with 2 lines */}
+              <div className="flex-1">
+                <textarea
+                  rows={2}
+                  className={`w-full resize-none text-[12px] leading-6 min-h-[48px] border-0 outline-none focus:ring-0 pl-2 pt-1 pb-1 bg-transparent ${
+                    hasCorrection("comments")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
+                  style={{
+                    backgroundImage: errors.comments
+                      ? "linear-gradient(to bottom, transparent calc(100% - 1px), #ef4444 1px), linear-gradient(to bottom, transparent calc(100% - 1px), #ef4444 1px)"
+                      : "linear-gradient(to bottom, transparent calc(100% - 1px), rgba(0,0,0,0.7) 1px), linear-gradient(to bottom, transparent calc(100% - 1px), rgba(0,0,0,0.7) 1px)",
+                    backgroundSize: "100% 24px, 100% 24px",
+                    backgroundPosition: "0 0, 0 24px",
+                    backgroundRepeat: "no-repeat",
+                  }}
+                  value={comments}
+                  onChange={(e) => {
+                    setComments(e.target.value);
+                    clearError("comments");
+                    markDirty();
+                  }}
+                  aria-invalid={!!errors.comments}
+                  readOnly={lock("comments")}
+                />
+              </div>
             </div>
+
             <FieldErrorBadge name="comments" errors={errors} />
             <ResolveOverlay field="comments" />
-            <input
-              className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 pl-2 ${
-                errors.comments ? "border-b-red-500" : "border-b-black/70"
-              } ${
-                hasCorrection("comments")
-                  ? "ring-2 ring-rose-500 animate-pulse"
-                  : ""
-              }`}
-              value={comments}
-              onChange={(e) => {
-                setComments(e.target.value);
-                clearError("comments");
-                markDirty();
-              }}
-              aria-invalid={!!errors.comments}
-              readOnly={lock("comments")}
-              placeholder="Comments"
-            />
           </div>
 
           {showSignatures && (
@@ -3664,21 +3682,22 @@ export default function MicroMixReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "MICRO") {
-                    backToDashboard();
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "MICRO") {
+                  //   backToDashboard();
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >

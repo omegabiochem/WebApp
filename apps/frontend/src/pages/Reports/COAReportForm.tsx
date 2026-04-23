@@ -2557,21 +2557,22 @@ export default function COAReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "CHEMISTRY") {
-                    navigate("/chemistryDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >

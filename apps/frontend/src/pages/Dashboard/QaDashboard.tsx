@@ -1,6 +1,6 @@
 // QaDashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 
@@ -498,6 +498,7 @@ export default function QaDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
@@ -572,6 +573,7 @@ export default function QaDashboard() {
         spReportFrom ||
         spReportTo ||
         spRangeType ||
+        spSort ||
         spDateField;
 
       if (hasUrlFilters) {
@@ -651,7 +653,9 @@ export default function QaDashboard() {
   const [dateField, setDateField] = useState<
     "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
   >(initialFilters.dateField);
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(
+    (initialFilters as any).sortOrder || "desc",
+  );
 
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -694,6 +698,13 @@ export default function QaDashboard() {
 
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
+  const hydratedFromUrlRef = React.useRef(false);
+
+  const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
@@ -1103,38 +1114,36 @@ export default function QaDashboard() {
   ]);
 
   useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
+
     const sp = new URLSearchParams();
 
-    // form + status
     if (formFilter && formFilter !== "ALL") sp.set("form", formFilter);
     sp.set("status", String(statusFilter));
 
-    // search
     if (searchClient.trim()) sp.set("client", searchClient.trim());
     if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (searchText.trim()) sp.set("q", searchText.trim());
 
-    // date
     sp.set("dp", datePreset);
     if (dateFrom) sp.set("from", dateFrom);
     if (dateTo) sp.set("to", dateTo);
 
-    // paging
     sp.set("pp", String(perPage));
     sp.set("p", String(pageClamped));
 
-    if (searchText.trim()) sp.set("q", searchText.trim());
-
     if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
     if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-
     if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
-    sp.set("rangeType", numberRangeType);
 
+    sp.set("rangeType", numberRangeType);
     sp.set("dateField", dateField);
     sp.set("sort", sortOrder);
 
-    setSearchParams(sp, { replace: true });
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
   }, [
     formFilter,
     statusFilter,
@@ -1150,8 +1159,53 @@ export default function QaDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    numberRangeType,
+    dateField,
+    sortOrder,
+    searchParams,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    const next = getInitialQaFilters();
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setDatePreset(next.datePreset);
+    setDateFrom(next.dateFrom);
+    setDateTo(next.dateTo);
+    setPerPage(next.perPage);
+    setPage(next.page);
+    setSearchText(next.searchText);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+    setNumberRangeType(next.numberRangeType);
+    setDateField(next.dateField);
+    setSortOrder((next as any).sortOrder || "desc");
+
+    hydratedFromUrlRef.current = true;
+  }, [searchParams, FILTER_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
+
+    const tid = window.setTimeout(() => {
+      const chip = statusChipRefs.current[String(statusFilter)];
+      if (!chip) return;
+
+      chip.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(tid);
+  }, [statusFilter, statusOptions, searchParams]);
 
   const allOnPageSelectedNow =
     pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
@@ -1308,10 +1362,12 @@ export default function QaDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "micro-mix";
+    const returnTo = encodeURIComponent(location.pathname + location.search);
+
     if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(`/chemistry-reports/${slug}/${r.id}`);
+      navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
     } else {
-      navigate(`/reports/${slug}/${r.id}`);
+      navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
     }
   }
 
@@ -1404,7 +1460,9 @@ export default function QaDashboard() {
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
       perPage !== 10 ||
-      dateField !== DEFAULT_QA_FILTERS.dateField
+      numberRangeType !== "FORM" ||
+      dateField !== DEFAULT_QA_FILTERS.dateField ||
+      sortOrder !== "desc"
     );
   }, [
     formFilter,
@@ -1420,7 +1478,9 @@ export default function QaDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
+    numberRangeType,
     dateField,
+    sortOrder,
   ]);
 
   const clearFilters = () => {
@@ -1433,18 +1493,22 @@ export default function QaDashboard() {
     setFormFilter(DEFAULT_QA_FILTERS.formFilter);
     setPerPage(DEFAULT_QA_FILTERS.perPage);
     setPage(DEFAULT_QA_FILTERS.page);
-    setSearchText("");
-    setFormNoFrom("");
-    setFormNoTo("");
-    setReportNoFrom("");
-    setReportNoTo("");
-    setNumberRangeType("FORM");
+    setSearchText(DEFAULT_QA_FILTERS.searchText);
+    setFormNoFrom(DEFAULT_QA_FILTERS.formNoFrom);
+    setFormNoTo(DEFAULT_QA_FILTERS.formNoTo);
+    setReportNoFrom(DEFAULT_QA_FILTERS.reportNoFrom);
+    setReportNoTo(DEFAULT_QA_FILTERS.reportNoTo);
+    setNumberRangeType(DEFAULT_QA_FILTERS.numberRangeType);
     setDateField(DEFAULT_QA_FILTERS.dateField);
+    setSortOrder("desc");
 
     try {
       localStorage.setItem(
         FILTER_STORAGE_KEY,
-        JSON.stringify(DEFAULT_QA_FILTERS),
+        JSON.stringify({
+          ...DEFAULT_QA_FILTERS,
+          sortOrder: "desc",
+        }),
       );
     } catch {
       // ignore
@@ -1622,6 +1686,8 @@ export default function QaDashboard() {
           reportNoTo,
           perPage,
           page,
+          dateField,
+          sortOrder,
         }),
       );
     } catch {
@@ -1633,16 +1699,19 @@ export default function QaDashboard() {
     statusFilter,
     searchClient,
     searchReport,
+    searchText,
     datePreset,
     dateFrom,
     dateTo,
-    perPage,
-    page,
-    searchText,
+    numberRangeType,
     formNoFrom,
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    perPage,
+    page,
+    dateField,
+    sortOrder,
   ]);
 
   function getTargetsForAction(clicked: Report): Report[] {
@@ -2239,10 +2308,16 @@ export default function QaDashboard() {
 
       {/* Status chips */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <div
+          ref={statusScrollerRef}
+          className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+        >
           {statusOptions.map((s) => (
             <button
               key={String(s)}
+              ref={(el) => {
+                statusChipRefs.current[String(s)] = el;
+              }}
               onClick={() => setStatusFilter(s)}
               className={classNames(
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
@@ -2682,7 +2757,10 @@ export default function QaDashboard() {
                                     status: r.status,
                                   },
                                   formNumber: r.formNumber,
-                                  reportNumber: String(r.reportNumber),
+                                  reportNumber:
+                                    r.reportNumber != null
+                                      ? String(r.reportNumber)
+                                      : null,
                                   formType: r.formType,
                                   clientCode: r.client || null,
                                 });
