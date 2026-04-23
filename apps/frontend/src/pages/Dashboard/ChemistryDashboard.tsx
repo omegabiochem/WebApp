@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
@@ -445,6 +445,8 @@ export default function ChemistryDashboard() {
 
   const { user } = useAuth();
 
+  const location = useLocation();
+
   const userKey =
     (user as any)?.id ||
     (user as any)?.userId ||
@@ -496,9 +498,11 @@ export default function ChemistryDashboard() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   // selection & printing
-  const [selectedIds, setSelectedIds] = useState<string[]>(
-    (searchParams.get("sel") || "").split(",").filter(Boolean),
-  );
+  // const [selectedIds, setSelectedIds] = useState<string[]>(
+  //   (searchParams.get("sel") || "").split(",").filter(Boolean),
+  // );
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
     ? `clientDashboardPinned:user:${userKey}`
@@ -509,6 +513,12 @@ export default function ChemistryDashboard() {
 
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
+  const hydratedFromUrlRef = React.useRef(false);
+  const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
@@ -526,12 +536,19 @@ export default function ChemistryDashboard() {
   // ✅ Modal update guard
   const [modalUpdating, setModalUpdating] = useState(false);
 
+  // const [datePreset, setDatePreset] = useState<DatePreset>(
+  //   (searchParams.get("dp") as any) || "ALL",
+  // );
+
+  // const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
+  // const [toDate, setToDate] = useState(searchParams.get("to") || "");
+
   const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get("dp") as any) || "ALL",
+    initialFilters.datePreset,
   );
 
-  const [fromDate, setFromDate] = useState(searchParams.get("from") || "");
-  const [toDate, setToDate] = useState(searchParams.get("to") || "");
+  const [fromDate, setFromDate] = useState(initialFilters.fromDate);
+  const [toDate, setToDate] = useState(initialFilters.toDate);
 
   const navigate = useNavigate();
 
@@ -766,9 +783,7 @@ export default function ChemistryDashboard() {
     };
   }, []);
 
-  const statusOptions = useMemo(() => {
-    return CHEMISTRY_STATUSES;
-  }, [formFilter]);
+  const statusOptions = useMemo(() => CHEMISTRY_STATUSES, []);
 
   const reportsWithSearch = useMemo(() => {
     return reports.map((r) => ({
@@ -1003,12 +1018,13 @@ export default function ChemistryDashboard() {
     pageClamped,
   ]);
 
-  useEffect(() => {
-    const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
-    if (nextForm !== formFilter) setFormFilter(nextForm);
-  }, [searchParams]);
+  // useEffect(() => {
+  //   const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
+  //   if (nextForm !== formFilter) setFormFilter(nextForm);
+  // }, [searchParams]);
 
   useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
     const sp = new URLSearchParams();
 
     if (formFilter !== "ALL") sp.set("form", formFilter);
@@ -1037,9 +1053,11 @@ export default function ChemistryDashboard() {
       sp.set("active", activeFilter);
     }
 
-    if (selectedIds.length) sp.set("sel", selectedIds.join(","));
+    // if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
-    setSearchParams(sp, { replace: true });
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
   }, [
     formFilter,
     statusFilter,
@@ -1064,65 +1082,127 @@ export default function ChemistryDashboard() {
   ]);
 
   useEffect(() => {
-    const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
-    const nextStatus =
-      (searchParams.get("status") as (typeof CHEMISTRY_STATUSES)[number]) ||
-      "ALL";
+    if (!hydratedFromUrlRef.current) return;
 
-    const nextClient = searchParams.get("client") || "";
-    const nextReport = searchParams.get("report") || "";
-    const nextQ = searchParams.get("q") || "";
+    const tid = window.setTimeout(() => {
+      const chip = statusChipRefs.current[String(statusFilter)];
+      if (!chip) return;
 
-    const nextRangeType =
-      (searchParams.get("rangeType") as "FORM" | "REPORT") || "FORM";
-    const nextFormFrom = searchParams.get("formFrom") || "";
-    const nextFormTo = searchParams.get("formTo") || "";
-    const nextReportFrom = searchParams.get("reportFrom") || "";
-    const nextReportTo = searchParams.get("reportTo") || "";
+      chip.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }, 80);
 
-    const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
-      | "dateSent"
-      | "createdAt"
-      | "updatedAt"
-      | "dateReceived"
-      | "reportNumber";
-    const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
-      | "asc"
-      | "desc";
+    return () => window.clearTimeout(tid);
+  }, [statusFilter, statusOptions, searchParams]);
 
-    const nextPp = parseIntSafe(searchParams.get("pp"), 10);
-    const nextP = parseIntSafe(searchParams.get("p"), 1);
+  // useEffect(() => {
+  //   const hasUrlFilters =
+  //     searchParams.has("form") ||
+  //     searchParams.has("status") ||
+  //     searchParams.has("client") ||
+  //     searchParams.has("report") ||
+  //     searchParams.has("q") ||
+  //     searchParams.has("rangeType") ||
+  //     searchParams.has("formFrom") ||
+  //     searchParams.has("formTo") ||
+  //     searchParams.has("reportFrom") ||
+  //     searchParams.has("reportTo") ||
+  //     searchParams.has("sortBy") ||
+  //     searchParams.has("sortDir") ||
+  //     searchParams.has("pp") ||
+  //     searchParams.has("p") ||
+  //     searchParams.has("active") ||
+  //     searchParams.has("dp") ||
+  //     searchParams.has("from") ||
+  //     searchParams.has("to");
 
-    const nextActive = searchParams.get("active") || "ALL";
-    const nextDp = ((searchParams.get("dp") as any) || "ALL") as DatePreset;
-    const nextFrom = searchParams.get("from") || "";
-    const nextTo = searchParams.get("to") || "";
+  //   if (!hasUrlFilters) return;
 
-    if (nextForm !== formFilter) setFormFilter(nextForm);
-    if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
+  //   const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
+  //   const nextStatus =
+  //     (searchParams.get("status") as (typeof CHEMISTRY_STATUSES)[number]) ||
+  //     "ALL";
 
-    if (nextClient !== searchClient) setSearchClient(nextClient);
-    if (nextReport !== searchReport) setSearchReport(nextReport);
-    if (nextQ !== searchText) setSearchText(nextQ);
+  //   const nextClient = searchParams.get("client") || "";
+  //   const nextReport = searchParams.get("report") || "";
+  //   const nextQ = searchParams.get("q") || "";
 
-    if (nextRangeType !== numberRangeType) setNumberRangeType(nextRangeType);
-    if (nextFormFrom !== formNoFrom) setFormNoFrom(nextFormFrom);
-    if (nextFormTo !== formNoTo) setFormNoTo(nextFormTo);
-    if (nextReportFrom !== reportNoFrom) setReportNoFrom(nextReportFrom);
-    if (nextReportTo !== reportNoTo) setReportNoTo(nextReportTo);
+  //   const nextRangeType =
+  //     (searchParams.get("rangeType") as "FORM" | "REPORT") || "FORM";
+  //   const nextFormFrom = searchParams.get("formFrom") || "";
+  //   const nextFormTo = searchParams.get("formTo") || "";
+  //   const nextReportFrom = searchParams.get("reportFrom") || "";
+  //   const nextReportTo = searchParams.get("reportTo") || "";
 
-    if (nextSortBy !== sortBy) setSortBy(nextSortBy);
-    if (nextSortDir !== sortDir) setSortDir(nextSortDir);
+  //   const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
+  //     | "dateSent"
+  //     | "createdAt"
+  //     | "updatedAt"
+  //     | "dateReceived"
+  //     | "reportNumber";
 
-    if (nextPp !== perPage) setPerPage(nextPp);
-    if (nextP !== page) setPage(nextP);
+  //   const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
+  //     | "asc"
+  //     | "desc";
 
-    if (nextActive !== activeFilter) setActiveFilter(nextActive);
-    if (nextDp !== datePreset) setDatePreset(nextDp);
-    if (nextFrom !== fromDate) setFromDate(nextFrom);
-    if (nextTo !== toDate) setToDate(nextTo);
-  }, [searchParams]);
+  //   const nextPp = parseIntSafe(searchParams.get("pp"), 10);
+  //   const nextP = parseIntSafe(searchParams.get("p"), 1);
 
+  //   const nextActive = searchParams.get("active") || "ALL";
+  //   const nextDp = ((searchParams.get("dp") as any) || "ALL") as DatePreset;
+  //   const nextFrom = searchParams.get("from") || "";
+  //   const nextTo = searchParams.get("to") || "";
+
+  //   if (nextForm !== formFilter) setFormFilter(nextForm);
+  //   if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
+  //   if (nextClient !== searchClient) setSearchClient(nextClient);
+  //   if (nextReport !== searchReport) setSearchReport(nextReport);
+  //   if (nextQ !== searchText) setSearchText(nextQ);
+  //   if (nextRangeType !== numberRangeType) setNumberRangeType(nextRangeType);
+  //   if (nextFormFrom !== formNoFrom) setFormNoFrom(nextFormFrom);
+  //   if (nextFormTo !== formNoTo) setFormNoTo(nextFormTo);
+  //   if (nextReportFrom !== reportNoFrom) setReportNoFrom(nextReportFrom);
+  //   if (nextReportTo !== reportNoTo) setReportNoTo(nextReportTo);
+  //   if (nextSortBy !== sortBy) setSortBy(nextSortBy);
+  //   if (nextSortDir !== sortDir) setSortDir(nextSortDir);
+  //   if (nextPp !== perPage) setPerPage(nextPp);
+  //   if (nextP !== page) setPage(nextP);
+  //   if (nextActive !== activeFilter) setActiveFilter(nextActive);
+  //   if (nextDp !== datePreset) setDatePreset(nextDp);
+  //   if (nextFrom !== fromDate) setFromDate(nextFrom);
+  //   if (nextTo !== toDate) setToDate(nextTo);
+  // }, [searchParams]);
+
+  useEffect(() => {
+    const next = getInitialChemistryFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearchText(next.searchText);
+
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+
+    setActiveFilter(next.activeFilter);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+
+    hydratedFromUrlRef.current = true;
+  }, [searchParams, FILTER_STORAGE_KEY]);
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     const chemistryFieldsUsedOnForm = [
       "sop",
@@ -1144,7 +1224,11 @@ export default function ChemistryDashboard() {
 
   function goToReportEditor(r: Report) {
     const slug = formTypeToSlug[r.formType] || "chemistry-mix";
-    navigate(`/chemistry-reports/${slug}/${r.id}`);
+    const returnTo = location.pathname + location.search;
+
+    navigate(
+      `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   // selection
@@ -1693,7 +1777,7 @@ export default function ChemistryDashboard() {
 
     if (selected.length === 1) {
       const r = selected[0];
-      const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+     const slug = formTypeToSlug[(r.formType ?? "").trim()] || "chemistry-mix";
       const returnTo = location.pathname + location.search;
 
       const navState = {
@@ -2043,10 +2127,16 @@ export default function ChemistryDashboard() {
       {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         {/* Status chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {CHEMISTRY_STATUSES.map((s) => (
+        <div
+          ref={statusScrollerRef}
+          className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+        >
+          {statusOptions.map((s) => (
             <button
               key={s}
+              ref={(el) => {
+                statusChipRefs.current[String(s)] = el;
+              }}
               onClick={() => setStatusFilter(s)}
               className={classNames(
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition",
@@ -2072,7 +2162,7 @@ export default function ChemistryDashboard() {
               }
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             >
-              {CHEMISTRY_STATUSES.map((s) => (
+              {statusOptions.map((s) => (
                 <option key={s} value={s}>
                   {niceStatus(s)}
                 </option>
@@ -2666,7 +2756,7 @@ export default function ChemistryDashboard() {
                         selectedReport.formType === "CHEMISTRY_MIX"
                           ? "ChemistryReport"
                           : selectedReport.formType === "COA"
-                            ? "CoaReport "
+                            ? "CoaReport"
                             : "MicroReport",
                       entityId: selectedReport.id,
                       details: `Printed ${selectedReport.formNumber}`,

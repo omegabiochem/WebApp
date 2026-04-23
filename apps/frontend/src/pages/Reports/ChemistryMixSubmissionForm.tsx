@@ -1293,14 +1293,16 @@ export default function ChemistryMixSubmissionForm({
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
-        // navigate per role (same as micro)
-        if (role === "CLIENT") backToDashboard();
-        else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
-        else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
-        else if (role === "MC") navigate("/mcDashboard");
-        else if (role === "QA") navigate("/qaDashboard");
-        else if (role === "ADMIN") navigate("/adminDashboard");
-        else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        // // navigate per role (same as micro)
+        // if (role === "CLIENT") backToDashboard();
+        // else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
+        // else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
+        // else if (role === "MC") navigate("/mcDashboard");
+        // else if (role === "QA") navigate("/qaDashboard");
+        // else if (role === "ADMIN") navigate("/adminDashboard");
+        // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        if (embedded) return;
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -3202,21 +3204,22 @@ export default function ChemistryMixSubmissionForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "CHEMISTRY") {
-                    navigate("/chemistryDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "CHEMISTRY") {
+                  //   navigate("/chemistryDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >

@@ -1357,7 +1357,7 @@ export default function MicroMixReportForm({
             "tbc_spec",
             "tmy_spec",
             "pathogens",
-             "comments",
+            "comments",
           ],
         };
 
@@ -1566,23 +1566,26 @@ export default function MicroMixReportForm({
         setIsDirty(false);
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
+        // if (embedded) return;
+        // if (role === "CLIENT") {
+        //   backToDashboard();
+        // } else if (role === "FRONTDESK") {
+        //   navigate("/frontdeskDashboard");
+        // } else if (role === "MICRO") {
+        //   // navigate("/microDashboard");
+        //   backToDashboard();
+        // } else if (role === "MC") {
+        //   navigate("/mcDashboard");
+        // } else if (role === "QA") {
+        //   navigate("/qaDashboard");
+        // } else if (role === "ADMIN") {
+        //   navigate("/adminDashboard");
+        // } else if (role === "SYSTEMADMIN") {
+        //   navigate("/systemAdminDashboard");
+        // }
+
         if (embedded) return;
-        if (role === "CLIENT") {
-          backToDashboard();
-        } else if (role === "FRONTDESK") {
-          navigate("/frontdeskDashboard");
-        } else if (role === "MICRO") {
-          // navigate("/microDashboard");
-          backToDashboard();
-        } else if (role === "MC") {
-          navigate("/mcDashboard");
-        } else if (role === "QA") {
-          navigate("/qaDashboard");
-        } else if (role === "ADMIN") {
-          navigate("/adminDashboard");
-        } else if (role === "SYSTEMADMIN") {
-          navigate("/systemAdminDashboard");
-        }
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -3679,21 +3682,22 @@ export default function MicroMixReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "MICRO") {
-                    backToDashboard();
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "MICRO") {
+                  //   backToDashboard();
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+                  backToDashboard();
                 })
               }
             >

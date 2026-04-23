@@ -614,10 +614,33 @@ export default function MicroMixWaterReportForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
+  // const backToDashboard = () => {
+  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
+  //   else navigate("/clientDashboard", { replace: true });
+  // };
+
   const backToDashboard = () => {
-    if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-    else navigate("/clientDashboard", { replace: true });
-  };
+  if (returnTo) {
+    return navigate(decodeURIComponent(returnTo), { replace: true });
+  }
+
+  if (role === "CLIENT")
+    return navigate("/clientDashboard", { replace: true });
+  if (role === "FRONTDESK")
+    return navigate("/frontdeskDashboard", { replace: true });
+  if (role === "MICRO")
+    return navigate("/microDashboard", { replace: true });
+  if (role === "MC")
+    return navigate("/mcDashboard", { replace: true });
+  if (role === "QA")
+    return navigate("/qaDashboard", { replace: true });
+  if (role === "ADMIN")
+    return navigate("/adminDashboard", { replace: true });
+  if (role === "SYSTEMADMIN")
+    return navigate("/systemAdminDashboard", { replace: true });
+
+  return navigate("/", { replace: true });
+};
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1571,21 +1594,24 @@ export default function MicroMixWaterReportForm({
         setIsDirty(false);
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
-        if (role === "CLIENT") {
-          backToDashboard();
-        } else if (role === "FRONTDESK") {
-          navigate("/frontdeskDashboard");
-        } else if (role === "MICRO") {
-          navigate("/microDashboard");
-        } else if (role === "MC") {
-          navigate("/mcDashboard");
-        } else if (role === "QA") {
-          navigate("/qaDashboard");
-        } else if (role === "ADMIN") {
-          navigate("/adminDashboard");
-        } else if (role === "SYSTEMADMIN") {
-          navigate("/systemAdminDashboard");
-        }
+        // if (role === "CLIENT") {
+        //   backToDashboard();
+        // } else if (role === "FRONTDESK") {
+        //   navigate("/frontdeskDashboard");
+        // } else if (role === "MICRO") {
+        //   navigate("/microDashboard");
+        // } else if (role === "MC") {
+        //   navigate("/mcDashboard");
+        // } else if (role === "QA") {
+        //   navigate("/qaDashboard");
+        // } else if (role === "ADMIN") {
+        //   navigate("/adminDashboard");
+        // } else if (role === "SYSTEMADMIN") {
+        //   navigate("/systemAdminDashboard");
+        // }
+
+        if (embedded) return;
+backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -3647,21 +3673,23 @@ export default function MicroMixWaterReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "MICRO") {
-                    navigate("/microDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "MICRO") {
+                  //   navigate("/microDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+
+                  backToDashboard();
                 })
               }
             >

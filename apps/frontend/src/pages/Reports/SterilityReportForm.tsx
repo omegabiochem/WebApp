@@ -923,7 +923,7 @@ export default function SterilityReportForm({
             "description",
             "lotNo",
             "manufactureDate",
-             "comments",
+            "comments",
           ],
         };
 
@@ -1125,25 +1125,28 @@ export default function SterilityReportForm({
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
-        if (returnTo) {
-          backToDashboard();
-          return;
-        }
-        if (role === "CLIENT") {
-          backToDashboard();
-        } else if (role === "FRONTDESK") {
-          navigate("/frontdeskDashboard");
-        } else if (role === "MICRO") {
-          navigate("/microDashboard");
-        } else if (role === "MC") {
-          navigate("/mcDashboard");
-        } else if (role === "QA") {
-          navigate("/qaDashboard");
-        } else if (role === "ADMIN") {
-          navigate("/adminDashboard");
-        } else if (role === "SYSTEMADMIN") {
-          navigate("/systemAdminDashboard");
-        }
+        // if (returnTo) {
+        //   backToDashboard();
+        //   return;
+        // }
+        // if (role === "CLIENT") {
+        //   backToDashboard();
+        // } else if (role === "FRONTDESK") {
+        //   navigate("/frontdeskDashboard");
+        // } else if (role === "MICRO") {
+        //   navigate("/microDashboard");
+        // } else if (role === "MC") {
+        //   navigate("/mcDashboard");
+        // } else if (role === "QA") {
+        //   navigate("/qaDashboard");
+        // } else if (role === "ADMIN") {
+        //   navigate("/adminDashboard");
+        // } else if (role === "SYSTEMADMIN") {
+        //   navigate("/systemAdminDashboard");
+        // }
+
+        if (embedded) return;
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -2736,21 +2739,23 @@ export default function SterilityReportForm({
 
                   if (embedded) return;
 
-                  if (role === "CLIENT") {
-                    backToDashboard();
-                  } else if (role === "FRONTDESK") {
-                    navigate("/frontdeskDashboard");
-                  } else if (role === "MICRO") {
-                    navigate("/microDashboard");
-                  } else if (role === "MC") {
-                    navigate("/mcDashboard");
-                  } else if (role === "QA") {
-                    navigate("/qaDashboard");
-                  } else if (role === "ADMIN") {
-                    navigate("/adminDashboard");
-                  } else if (role === "SYSTEMADMIN") {
-                    navigate("/systemAdminDashboard");
-                  }
+                  // if (role === "CLIENT") {
+                  //   backToDashboard();
+                  // } else if (role === "FRONTDESK") {
+                  //   navigate("/frontdeskDashboard");
+                  // } else if (role === "MICRO") {
+                  //   navigate("/microDashboard");
+                  // } else if (role === "MC") {
+                  //   navigate("/mcDashboard");
+                  // } else if (role === "QA") {
+                  //   navigate("/qaDashboard");
+                  // } else if (role === "ADMIN") {
+                  //   navigate("/adminDashboard");
+                  // } else if (role === "SYSTEMADMIN") {
+                  //   navigate("/systemAdminDashboard");
+                  // }
+
+                  backToDashboard();
                 })
               }
             >
