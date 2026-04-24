@@ -714,7 +714,7 @@ export default function AdminDashboard() {
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `adminDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -1141,6 +1141,8 @@ export default function AdminDashboard() {
     dateFrom,
     dateTo,
     perPage,
+    dateField,
+    sortOrder,
   ]);
 
   useEffect(() => {
@@ -1199,7 +1201,7 @@ export default function AdminDashboard() {
   ]);
 
   useEffect(() => {
-    const next = getInitialAdminFilters( searchParams, FILTER_STORAGE_KEY);
+    const next = getInitialAdminFilters(searchParams, FILTER_STORAGE_KEY);
 
     setFormFilter(next.formFilter);
     setStatusFilter(next.statusFilter);
@@ -1244,52 +1246,52 @@ export default function AdminDashboard() {
   }, [statusFilter, statusOptions, searchParams]);
 
   useEffect(() => {
-  try {
-    localStorage.setItem(
-      FILTER_STORAGE_KEY,
-      JSON.stringify({
-        formFilter,
-        statusFilter,
-        searchClient,
-        searchReport,
-        searchText,
-        datePreset,
-        dateFrom,
-        dateTo,
-        numberRangeType,
-        formNoFrom,
-        formNoTo,
-        reportNoFrom,
-        reportNoTo,
-        perPage,
-        page,
-        dateField,
-        sortOrder,
-      }),
-    );
-  } catch {
-    // ignore
-  }
-}, [
-  FILTER_STORAGE_KEY,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  page,
-  dateField,
-  sortOrder,
-]);
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText,
+          datePreset,
+          dateFrom,
+          dateTo,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          perPage,
+          page,
+          dateField,
+          sortOrder,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    page,
+    dateField,
+    sortOrder,
+  ]);
 
   // -----------------------------
   // Selection helpers
@@ -1333,12 +1335,12 @@ export default function AdminDashboard() {
       details: `Printed selected reports (${selectedIds.length})`,
       entityId: selectedIds.join(","),
       meta: { reportIds: selectedIds, count: selectedIds.length },
-    formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
-reportNumber: selectedReportObjects
-  .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
-  .join(","),
-formType: selectedReportObjects.map((r) => r.formType).join(","),
-clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
+      formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
+      reportNumber: selectedReportObjects
+        .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
+        .join(","),
+      formType: selectedReportObjects.map((r) => r.formType).join(","),
+      clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
     });
 
     setPrintingBulk(true);
@@ -1346,25 +1348,25 @@ clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
   };
 
   // optional: clear selection when filters change (avoids printing hidden rows)
-useEffect(() => {
-  setSelectedIds([]);
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  pageClamped,
-]);
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    pageClamped,
+  ]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1629,12 +1631,12 @@ useEffect(() => {
         count: voidableSelected.length,
         reason,
       },
-   formNumber: voidableSelected.map((r) => r.formNumber || "").join(","),
-reportNumber: voidableSelected
-  .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
-  .join(","),
-formType: voidableSelected.map((r) => r.formType || "").join(","),
-clientCode: voidableSelected.map((r) => r.client || "").join(","),
+      formNumber: voidableSelected.map((r) => r.formNumber || "").join(","),
+      reportNumber: voidableSelected
+        .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
+        .join(","),
+      formType: voidableSelected.map((r) => r.formType || "").join(","),
+      clientCode: voidableSelected.map((r) => r.client || "").join(","),
     });
 
     await Promise.all(
@@ -1799,10 +1801,10 @@ clientCode: voidableSelected.map((r) => r.client || "").join(","),
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+   if (targets.length <= 1) {
+  goToReportEditor(targets[0]);
+  return;
+}
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
@@ -2994,7 +2996,9 @@ clientCode: voidableSelected.map((r) => r.client || "").join(","),
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next

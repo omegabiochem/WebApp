@@ -678,7 +678,13 @@ const DEFAULT_MC_FILTERS = {
   formNoTo: "",
   reportNoFrom: "",
   reportNoTo: "",
-  sortBy: "dateSent" as "dateSent" | "reportNumber",
+  sortBy: "dateSent" as
+    | "dateSent"
+    | "reportNumber"
+    | "dateTested"
+    | "dateReceived"
+    | "createdAt"
+    | "updatedAt",
   sortDir: "desc" as "asc" | "desc",
   perPage: 10,
   page: 1,
@@ -725,30 +731,28 @@ function inRange(
 
   return true;
 }
-
-function getInitialMCFilters(searchParams: URLSearchParams) {
+function getInitialMCFilters(
+  searchParams: URLSearchParams,
+  storageKey?: string,
+) {
   try {
     const spCategory = searchParams.get("cat");
     const spStatus = searchParams.get("status");
     const spClient = searchParams.get("client");
     const spReport = searchParams.get("report");
     const spQ = searchParams.get("q");
-
     const spType = searchParams.get("type");
     const spMType = searchParams.get("mtype");
     const spCType = searchParams.get("ctype");
     const spActive = searchParams.get("active");
-
     const spDp = searchParams.get("dp");
     const spFrom = searchParams.get("from");
     const spTo = searchParams.get("to");
-
     const spRangeType = searchParams.get("rangeType");
     const spFormFrom = searchParams.get("formFrom");
     const spFormTo = searchParams.get("formTo");
     const spReportFrom = searchParams.get("reportFrom");
     const spReportTo = searchParams.get("reportTo");
-
     const spSortBy = searchParams.get("sortBy");
     const spSortDir = searchParams.get("sortDir");
     const spPp = searchParams.get("pp");
@@ -779,22 +783,15 @@ function getInitialMCFilters(searchParams: URLSearchParams) {
 
     if (hasUrlFilters) {
       return {
-        category:
-          (spCategory as "ALL" | "MICRO" | "CHEMISTRY") ||
-          DEFAULT_MC_FILTERS.category,
+        ...DEFAULT_MC_FILTERS,
+        category: (spCategory as any) || DEFAULT_MC_FILTERS.category,
         statusFilter: spStatus || DEFAULT_MC_FILTERS.statusFilter,
         searchClient: spClient || DEFAULT_MC_FILTERS.searchClient,
         searchReport: spReport || DEFAULT_MC_FILTERS.searchReport,
         searchText: spQ || DEFAULT_MC_FILTERS.searchText,
-        allTypeFilter:
-          (spType as typeof DEFAULT_MC_FILTERS.allTypeFilter) ||
-          DEFAULT_MC_FILTERS.allTypeFilter,
-        microFormFilter:
-          (spMType as typeof DEFAULT_MC_FILTERS.microFormFilter) ||
-          DEFAULT_MC_FILTERS.microFormFilter,
-        chemFormFilter:
-          (spCType as typeof DEFAULT_MC_FILTERS.chemFormFilter) ||
-          DEFAULT_MC_FILTERS.chemFormFilter,
+        allTypeFilter: (spType as any) || DEFAULT_MC_FILTERS.allTypeFilter,
+        microFormFilter: (spMType as any) || DEFAULT_MC_FILTERS.microFormFilter,
+        chemFormFilter: (spCType as any) || DEFAULT_MC_FILTERS.chemFormFilter,
         activeFilter: spActive || DEFAULT_MC_FILTERS.activeFilter,
         datePreset: (spDp as DatePreset) || DEFAULT_MC_FILTERS.datePreset,
         fromDate: spFrom || DEFAULT_MC_FILTERS.fromDate,
@@ -806,13 +803,21 @@ function getInitialMCFilters(searchParams: URLSearchParams) {
         formNoTo: spFormTo || DEFAULT_MC_FILTERS.formNoTo,
         reportNoFrom: spReportFrom || DEFAULT_MC_FILTERS.reportNoFrom,
         reportNoTo: spReportTo || DEFAULT_MC_FILTERS.reportNoTo,
-        sortBy:
-          (spSortBy as "dateSent" | "reportNumber") ||
-          DEFAULT_MC_FILTERS.sortBy,
+        sortBy: (spSortBy as any) || DEFAULT_MC_FILTERS.sortBy,
         sortDir: (spSortDir as "asc" | "desc") || DEFAULT_MC_FILTERS.sortDir,
         perPage: parseIntSafe(spPp, DEFAULT_MC_FILTERS.perPage),
         page: parseIntSafe(spP, DEFAULT_MC_FILTERS.page),
       };
+    }
+
+    if (storageKey) {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        return {
+          ...DEFAULT_MC_FILTERS,
+          ...JSON.parse(raw),
+        };
+      }
     }
   } catch {
     // ignore
@@ -820,7 +825,6 @@ function getInitialMCFilters(searchParams: URLSearchParams) {
 
   return DEFAULT_MC_FILTERS;
 }
-
 // ----------------------------------
 // Component: Combined dashboard
 // ----------------------------------
@@ -834,6 +838,9 @@ export default function MCDashboard() {
     (user as any)?.userId ||
     (user as any)?.sub ||
     (user as any)?.uid;
+
+  const FILTER_STORAGE_KEY = `mcDashboardFilters:user:${userKey || "mc"}`;
+  const hydratedFromUrlRef = React.useRef(false);
 
   // Separate stores (clean + compatible with your existing live hook)
   const [microReports, setMicroReports] = useState<MicroReport[]>([]);
@@ -860,7 +867,7 @@ export default function MCDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const initialFilters = getInitialMCFilters(searchParams);
+  const initialFilters = getInitialMCFilters(searchParams, FILTER_STORAGE_KEY);
 
   const [category, setCategory] = useState<Category>(initialFilters.category);
 
@@ -921,9 +928,7 @@ export default function MCDashboard() {
   // Selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
-    : null;
+  const PIN_STORAGE_KEY = userKey ? `mcDashboardPinned:user:${userKey}` : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
@@ -1230,33 +1235,33 @@ export default function MCDashboard() {
   // }, [statusFilter, statusOptions]);
 
   useEffect(() => {
-  statusChipRefs.current = {};
-}, [category, allTypeFilter, microFormFilter, chemFormFilter]);
+    statusChipRefs.current = {};
+  }, [category, allTypeFilter, microFormFilter, chemFormFilter]);
 
-useEffect(() => {
-  if (!hydratedFromUrlRef.current) return;
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
 
-  const tid = window.setTimeout(() => {
-    const chip = statusChipRefs.current[statusFilter];
-    if (!chip) return;
+    const tid = window.setTimeout(() => {
+      const chip = statusChipRefs.current[statusFilter];
+      if (!chip) return;
 
-    chip.scrollIntoView({
-      behavior: "smooth",
-      inline: "center",
-      block: "nearest",
-    });
-  }, 80);
+      chip.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }, 80);
 
-  return () => window.clearTimeout(tid);
-}, [
-  statusFilter,
-  statusOptions,
-  category,
-  allTypeFilter,
-  microFormFilter,
-  chemFormFilter,
-  location.search,
-]);
+    return () => window.clearTimeout(tid);
+  }, [
+    statusFilter,
+    statusOptions,
+    category,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    location.search,
+  ]);
 
   // -----------------------------
   // Filtering + sorting
@@ -1617,104 +1622,153 @@ useEffect(() => {
   //   setSearchParams,
   // ]);
 
+  useEffect(() => {
+    const next = getInitialMCFilters(searchParams, FILTER_STORAGE_KEY);
 
-  const hydratedFromUrlRef = React.useRef(false);
+    setCategory(next.category);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearch(next.searchText);
+    setAllTypeFilter(next.allTypeFilter);
+    setMicroFormFilter(next.microFormFilter);
+    setChemFormFilter(next.chemFormFilter);
+    setActiveFilter(next.activeFilter);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+    setSortBy(next.sortBy as any);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
 
-useEffect(() => {
-  const next = getInitialMCFilters(searchParams);
-
-  setCategory(next.category);
-  setStatusFilter(next.statusFilter);
-  setSearchClient(next.searchClient);
-  setSearchReport(next.searchReport);
-  setSearch(next.searchText);
-
-  setAllTypeFilter(next.allTypeFilter);
-  setMicroFormFilter(next.microFormFilter);
-  setChemFormFilter(next.chemFormFilter);
-  setActiveFilter(next.activeFilter);
-
-  setDatePreset(next.datePreset);
-  setFromDate(next.fromDate);
-  setToDate(next.toDate);
-
-  setNumberRangeType(next.numberRangeType);
-  setFormNoFrom(next.formNoFrom);
-  setFormNoTo(next.formNoTo);
-  setReportNoFrom(next.reportNoFrom);
-  setReportNoTo(next.reportNoTo);
-
-  setSortBy(next.sortBy as any);
-  setSortDir(next.sortDir);
-  setPerPage(next.perPage);
-  setPage(next.page);
-
-  hydratedFromUrlRef.current = true;
-}, [location.search]);
-
-
-
+    hydratedFromUrlRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-  if (!hydratedFromUrlRef.current) return;
+    if (!hydratedFromUrlRef.current) return;
 
-  const sp = new URLSearchParams();
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          category,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText: search,
+          allTypeFilter,
+          microFormFilter,
+          chemFormFilter,
+          activeFilter,
+          datePreset,
+          fromDate,
+          toDate,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          sortBy,
+          sortDir,
+          perPage,
+          page,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    category,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    page,
+  ]);
 
-  sp.set("cat", category);
-  sp.set("status", statusFilter);
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
 
-  if (searchClient.trim()) sp.set("client", searchClient.trim());
-  if (searchReport.trim()) sp.set("report", searchReport.trim());
-  if (search.trim()) sp.set("q", search.trim());
+    const sp = new URLSearchParams();
 
-  sp.set("type", allTypeFilter);
-  sp.set("mtype", microFormFilter);
-  sp.set("ctype", chemFormFilter);
-  sp.set("active", activeFilter);
+    sp.set("cat", category);
+    sp.set("status", statusFilter);
 
-  sp.set("dp", datePreset);
-  if (fromDate) sp.set("from", fromDate);
-  if (toDate) sp.set("to", toDate);
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (search.trim()) sp.set("q", search.trim());
 
-  sp.set("rangeType", numberRangeType);
-  if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
-  if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-  if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
-  if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+    sp.set("type", allTypeFilter);
+    sp.set("mtype", microFormFilter);
+    sp.set("ctype", chemFormFilter);
+    sp.set("active", activeFilter);
 
-  sp.set("sortBy", sortBy);
-  sp.set("sortDir", sortDir);
-  sp.set("pp", String(perPage));
-  sp.set("p", String(pageClamped));
+    sp.set("dp", datePreset);
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
 
-  if (sp.toString() !== searchParams.toString()) {
-    setSearchParams(sp, { replace: true });
-  }
-}, [
-  category,
-  statusFilter,
-  searchClient,
-  searchReport,
-  search,
-  allTypeFilter,
-  microFormFilter,
-  chemFormFilter,
-  activeFilter,
-  datePreset,
-  fromDate,
-  toDate,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  sortBy,
-  sortDir,
-  perPage,
-  pageClamped,
-  searchParams,
-  setSearchParams,
-]);
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+
+    sp.set("sortBy", sortBy);
+    sp.set("sortDir", sortDir);
+    sp.set("pp", String(perPage));
+    sp.set("p", String(pageClamped));
+
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
+  }, [
+    category,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    pageClamped,
+    searchParams,
+    setSearchParams,
+  ]);
 
   // -----------------------------
   // Helpers: permissions + nav
@@ -3489,7 +3543,7 @@ useEffect(() => {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -3499,7 +3553,7 @@ useEffect(() => {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
                 disabled={pageClamped === totalPages}
               >
                 Next

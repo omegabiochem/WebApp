@@ -559,7 +559,7 @@ export default function FrontDeskDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `frontdeskDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);

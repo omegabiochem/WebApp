@@ -505,7 +505,7 @@ export default function ChemistryDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `chemistryDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
