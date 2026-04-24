@@ -542,7 +542,7 @@ export default function MicroDashboard() {
   const [colsHydrated, setColsHydrated] = useState(false);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `microDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
