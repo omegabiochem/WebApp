@@ -1,5 +1,5 @@
 // attachments.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import * as crypto from 'crypto';
@@ -78,6 +78,19 @@ export class AttachmentsService {
     const checksum =
       input.providedChecksum ?? (await this.sha256FromPath(filePath));
 
+      const duplicate = await this.prisma.attachment.findFirst({
+  where: {
+    reportId: input.reportId,
+    checksum,
+  },
+  select: { id: true },
+});
+
+if (duplicate) {
+  if (isTemp) await fs.unlink(filePath).catch(() => {});
+  throw new ConflictException('Duplicate attachment already exists.');
+}
+
     const storageKey = await this.storage.put({
       filePath,
       filename: input.file.originalname,
@@ -117,13 +130,9 @@ export class AttachmentsService {
       return { ok: true, id: attachment.id };
     } catch (e: any) {
       // Handle duplicate checksum (unique on [reportId, checksum])
-      if (e.code === 'P2002') {
-        const existing = await this.prisma.attachment.findFirst({
-          where: { reportId: input.reportId, checksum },
-          select: { id: true },
-        });
-        return { ok: true, id: existing?.id, duplicate: true };
-      }
+   if (e.code === 'P2002') {
+  throw new ConflictException('Duplicate attachment already exists.');
+}
       throw e;
     }
   }
