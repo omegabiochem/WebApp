@@ -320,15 +320,26 @@ export async function getCorrections(reportId: string) {
 
 export async function createCorrections(
   reportId: string,
-  items: { fieldKey: string; message: string }[],
+  items: { fieldKey: string; message: string; oldValue?: string | null }[],
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
+  meta?: {
+    kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
+    previousStatus?: string;
+    workflowReturnStatus?: string;
+  },
 ) {
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, targetStatus, reason, expectedVersion }),
+    body: JSON.stringify({
+      items,
+      targetStatus,
+      reason,
+      expectedVersion,
+      ...meta,
+    }),
   });
 }
 
@@ -453,7 +464,10 @@ export function useReportValidation(role?: Role, opts?: ValidationOpts) {
 
           // Only enforce results for MICRO/ADMIN in FINAL
           if (
-            (role === "MICRO" || role === "MC" || role === "ADMIN" || role === "SYSTEMADMIN") &&
+            (role === "MICRO" ||
+              role === "MC" ||
+              role === "ADMIN" ||
+              role === "SYSTEMADMIN") &&
             currentPhase === "FINAL"
           ) {
             const missingResult = rows.some(

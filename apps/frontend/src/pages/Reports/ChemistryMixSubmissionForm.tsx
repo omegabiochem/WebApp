@@ -1087,9 +1087,24 @@ export default function ChemistryMixSubmissionForm({
           ? Object.keys(fullPayload)
           : allowedBase;
 
-        const payload = Object.fromEntries(
+        // const payload = Object.fromEntries(
+        //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
+        // );
+
+        let payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
+
+        // ✅ In correction update mode, send ONLY requested correction fields
+        if (correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((c) => c.fieldKey.split(":")[0]),
+          );
+
+          payload = Object.fromEntries(
+            Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
+          );
+        }
 
         // New reports always start as DRAFT
         if (!reportId) {
@@ -1553,6 +1568,17 @@ export default function ChemistryMixSubmissionForm({
     kinds: CorrectionLaunchKind[] = [],
   ): ChemistryReportStatus {
     return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function getWorkflowReturnStatus(
+    current: ChemistryReportStatus,
+  ): ChemistryReportStatus {
+    if (current === "UNDER_CLIENT_REVIEW") {
+      return "UNDER_QA_REVIEW";
+    }
+
+    // For any other status, return to same original status
+    return current;
   }
 
   function isCorrectionUpdateStatus(s?: ChemistryReportStatus) {
@@ -2995,7 +3021,8 @@ export default function ChemistryMixSubmissionForm({
         </div>
       </div>
       {/* Actions row: submit/reject on left, close on right */}
-      {!hideBottomActions && !isAnyTemplateMode && (
+      {!hideBottomActions && !isAnyTemplateMode &&
+  !effectiveCorrectionLaunch && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
@@ -3190,7 +3217,12 @@ export default function ChemistryMixSubmissionForm({
                     reportVersion,
                     {
                       kinds: effectiveCorrectionKinds,
-                      previousStatus: status,
+                      previousStatus: getWorkflowReturnStatus(
+                        status as ChemistryReportStatus,
+                      ),
+                      workflowReturnStatus: getWorkflowReturnStatus(
+                        status as ChemistryReportStatus,
+                      ),
                     },
                   );
 

@@ -1041,6 +1041,8 @@ export class ReportsService {
       reason: _reasonFromBody,
       eSignPassword: _pwdFromBody,
       expectedVersion,
+      workflowReturnStatus,
+      previousStatus,
       ...patch
     } = { ...patchIn };
 
@@ -1118,7 +1120,10 @@ export class ReportsService {
         targetStatus === 'CHANGE_REQUESTED' ||
         targetStatus === 'CORRECTION_REQUESTED'
       ) {
-        base.workflowReturnStatus = current.status; // 🔥 where to go back
+        base.workflowReturnStatus =
+          patchIn.workflowReturnStatus ??
+          patchIn.previousStatus ??
+          current.status; // 🔥 where to go back
         base.workflowRequestKind =
           targetStatus === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
         base.workflowRequestedByRole = user.role;
@@ -1489,7 +1494,7 @@ export class ReportsService {
 
     const prevStatus = current.status;
 
-    if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO','MC'].includes(user.role)) {
+    if (!['ADMIN', 'SYSTEMADMIN', 'QA', 'MICRO', 'MC'].includes(user.role)) {
       throw new ForbiddenException(
         'Only ADMIN/SYSTEMADMIN/QA/MICRO/MC can Change Status this directly',
       );
@@ -1704,6 +1709,8 @@ export class ReportsService {
       targetStatus?: ReportStatus;
       reason?: string;
       expectedVersion?: number;
+      previousStatus?: ReportStatus;
+      workflowReturnStatus?: ReportStatus;
     },
   ) {
     if (!body.items?.length) {
@@ -1791,6 +1798,7 @@ export class ReportsService {
         status: body.targetStatus,
         reason: body.reason || 'Corrections requested',
         expectedVersion: body.expectedVersion,
+        workflowReturnStatus: body.workflowReturnStatus ?? body.previousStatus,
       });
     }
 
