@@ -31,7 +31,7 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
-import { COLS, type ColKey } from "../../utils/globalUtils";
+import { COLS, isTerminalStatus, type ColKey } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 
 // -----------------------------
@@ -1098,6 +1098,8 @@ export default function MicroDashboard() {
   ]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
+      if (isTerminalStatus(r.status)) return false;
+
     const role = user?.role as Role | undefined;
 
     if (r.formType === "STERILITY") {
