@@ -51,6 +51,7 @@ import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
+  isTerminalStatus,
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
@@ -1774,6 +1775,8 @@ export default function MCDashboard() {
   // Helpers: permissions + nav
   // -----------------------------
   function canUpdateMicroLocal(r: MicroReport, user?: any) {
+      if (isTerminalStatus(r.status)) return false;
+
     const fieldsUsedOnForm = [
       "testSopNo",
       "dateTested",
@@ -1797,6 +1800,8 @@ export default function MCDashboard() {
   }
 
   function canUpdateSterilityLocal(r: MicroReport, user?: any) {
+      if (isTerminalStatus(r.status)) return false;
+
     const sterilityFieldsUsedOnForm = [
       "testSopNo",
       "dateTested",
@@ -1816,6 +1821,8 @@ export default function MCDashboard() {
   }
 
   function canUpdateChemLocal(r: ChemReport, user?: any) {
+      if (isTerminalStatus(r.status)) return false;
+
     const chemistryFieldsUsedOnForm = [
       "sop",
       "results",
@@ -1834,6 +1841,8 @@ export default function MCDashboard() {
   }
 
   function canUpdateCoaLocal(r: ChemReport, user?: any) {
+    if (isTerminalStatus(r.status)) return false;
+
     const coaFieldsUsedOnForm = [
       "dateReceived",
       "comments",
