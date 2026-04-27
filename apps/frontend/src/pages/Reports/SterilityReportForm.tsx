@@ -2557,7 +2557,8 @@ export default function SterilityReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!hideBottomActions && !isAnyTemplateMode && (
+      {!hideBottomActions && !isAnyTemplateMode &&
+  !effectiveCorrectionLaunch && (
         <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
           <div className="flex flex-wrap gap-2">
