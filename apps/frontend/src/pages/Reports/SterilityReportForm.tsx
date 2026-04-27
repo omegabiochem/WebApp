@@ -932,9 +932,24 @@ export default function SterilityReportForm({
           ? Object.keys(fullPayload)
           : allowedBase;
 
-        const payload = Object.fromEntries(
+        // const payload = Object.fromEntries(
+        //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
+        // );
+
+        let payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
+
+        // ✅ In correction update mode, send ONLY requested correction fields
+        if (correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((c) => c.fieldKey.split(":")[0]),
+          );
+
+          payload = Object.fromEntries(
+            Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
+          );
+        }
 
         // New reports always start as DRAFT
         if (!reportId) {
@@ -1363,6 +1378,17 @@ export default function SterilityReportForm({
     kinds: CorrectionLaunchKind[] = [],
   ): SterilityReportStatus {
     return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function getWorkflowReturnStatus(
+    current: SterilityReportStatus,
+  ): SterilityReportStatus {
+    if (current === "UNDER_CLIENT_REVIEW") {
+      return "UNDER_QA_REVIEW";
+    }
+
+    // For any other status, return to same original status
+    return current;
   }
 
   function isCorrectionUpdateStatus(s?: SterilityReportStatus) {
@@ -2725,7 +2751,10 @@ export default function SterilityReportForm({
                     reportVersion,
                     {
                       kinds: effectiveCorrectionKinds,
-                      previousStatus: status,
+                      previousStatus: getWorkflowReturnStatus(
+                        status as SterilityReportStatus,
+                      ),
+                      workflowReturnStatus: getWorkflowReturnStatus(status as SterilityReportStatus),
                     },
                   );
 

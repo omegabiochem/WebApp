@@ -620,27 +620,23 @@ export default function MicroMixWaterReportForm({
   // };
 
   const backToDashboard = () => {
-  if (returnTo) {
-    return navigate(decodeURIComponent(returnTo), { replace: true });
-  }
+    if (returnTo) {
+      return navigate(decodeURIComponent(returnTo), { replace: true });
+    }
 
-  if (role === "CLIENT")
-    return navigate("/clientDashboard", { replace: true });
-  if (role === "FRONTDESK")
-    return navigate("/frontdeskDashboard", { replace: true });
-  if (role === "MICRO")
-    return navigate("/microDashboard", { replace: true });
-  if (role === "MC")
-    return navigate("/mcDashboard", { replace: true });
-  if (role === "QA")
-    return navigate("/qaDashboard", { replace: true });
-  if (role === "ADMIN")
-    return navigate("/adminDashboard", { replace: true });
-  if (role === "SYSTEMADMIN")
-    return navigate("/systemAdminDashboard", { replace: true });
+    if (role === "CLIENT")
+      return navigate("/clientDashboard", { replace: true });
+    if (role === "FRONTDESK")
+      return navigate("/frontdeskDashboard", { replace: true });
+    if (role === "MICRO") return navigate("/microDashboard", { replace: true });
+    if (role === "MC") return navigate("/mcDashboard", { replace: true });
+    if (role === "QA") return navigate("/qaDashboard", { replace: true });
+    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
+    if (role === "SYSTEMADMIN")
+      return navigate("/systemAdminDashboard", { replace: true });
 
-  return navigate("/", { replace: true });
-};
+    return navigate("/", { replace: true });
+  };
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1366,7 +1362,7 @@ export default function MicroMixWaterReportForm({
             "tbc_spec",
             "tmy_spec",
             "pathogens",
-             "comments",
+            "comments",
           ],
         };
 
@@ -1375,9 +1371,24 @@ export default function MicroMixWaterReportForm({
           ? Object.keys(fullPayload)
           : PHASE_WRITE_GUARD(allowedBase);
 
-        const payload = Object.fromEntries(
+        // const payload = Object.fromEntries(
+        //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
+        // );
+
+        let payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
+
+        // ✅ In correction update mode, send ONLY requested correction fields
+        if (correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((c) => c.fieldKey.split(":")[0]),
+          );
+
+          payload = Object.fromEntries(
+            Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
+          );
+        }
 
         // New reports always start as DRAFT
         if (!reportId) {
@@ -1611,7 +1622,7 @@ export default function MicroMixWaterReportForm({
         // }
 
         if (embedded) return;
-backToDashboard();
+        backToDashboard();
       } catch (err: any) {
         console.error(err);
         alert("❌ Error changing status: " + err.message);
@@ -1921,6 +1932,19 @@ backToDashboard();
     kinds: CorrectionLaunchKind[] = [],
   ): ReportStatus {
     return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function getWorkflowReturnStatus(current: ReportStatus): ReportStatus {
+    if (current === "UNDER_CLIENT_PRELIMINARY_REVIEW") {
+      return "UNDER_QA_PRELIMINARY_REVIEW";
+    }
+
+    if (current === "UNDER_CLIENT_FINAL_REVIEW") {
+      return "UNDER_QA_FINAL_REVIEW";
+    }
+
+    // For any other status, return to same original status
+    return current;
   }
 
   function normalizeForCompare(v: any): string {
@@ -3659,7 +3683,10 @@ backToDashboard();
                     reportVersion,
                     {
                       kinds: effectiveCorrectionKinds,
-                      previousStatus: status,
+                      previousStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
+                      workflowReturnStatus: getWorkflowReturnStatus(status as ReportStatus),
                     },
                   );
 

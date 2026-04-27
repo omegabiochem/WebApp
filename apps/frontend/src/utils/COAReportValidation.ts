@@ -499,6 +499,7 @@ export async function createCorrections(
   meta?: {
     kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
     previousStatus?: string;
+    workflowReturnStatus?: string;
   },
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {
@@ -509,7 +510,7 @@ export async function createCorrections(
       targetStatus,
       reason,
       expectedVersion,
-      meta,
+      ...meta,
     }),
   });
 }

@@ -1366,9 +1366,24 @@ export default function MicroMixReportForm({
           ? Object.keys(fullPayload)
           : PHASE_WRITE_GUARD(allowedBase);
 
-        const payload = Object.fromEntries(
+        // const payload = Object.fromEntries(
+        //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
+        // );
+
+        let payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
+
+        // ✅ In correction update mode, send ONLY requested correction fields
+        if (correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((c) => c.fieldKey.split(":")[0]),
+          );
+
+          payload = Object.fromEntries(
+            Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
+          );
+        }
 
         // New reports always start as DRAFT
         if (!reportId) {
@@ -1908,6 +1923,19 @@ export default function MicroMixReportForm({
     kinds: CorrectionLaunchKind[] = [],
   ): ReportStatus {
     return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function getWorkflowReturnStatus(current: ReportStatus): ReportStatus {
+    if (current === "UNDER_CLIENT_PRELIMINARY_REVIEW") {
+      return "UNDER_QA_PRELIMINARY_REVIEW";
+    }
+
+    if (current === "UNDER_CLIENT_FINAL_REVIEW") {
+      return "UNDER_QA_FINAL_REVIEW";
+    }
+
+    // For any other status, return to same original status
+    return current;
   }
 
   function normalizeForCompare(v: any): string {
@@ -3668,7 +3696,12 @@ export default function MicroMixReportForm({
                     reportVersion,
                     {
                       kinds: effectiveCorrectionKinds,
-                      previousStatus: status,
+                      previousStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
+                      workflowReturnStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
                     },
                   );
 
