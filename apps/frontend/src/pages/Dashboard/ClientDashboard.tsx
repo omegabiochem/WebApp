@@ -48,6 +48,7 @@ import {
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 import { Eye, EyeOff, Pin } from "lucide-react";
+import { isTerminalStatus } from "../../utils/globalUtils";
 
 // -----------------------------
 // Types
@@ -203,6 +204,7 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
+   if (isTerminalStatus(String(r.status))) return false;
   // const isMicro =
   //   r.formType === "MICRO_MIX" ||
   //   r.formType === "MICRO_MIX_WATER" ||
@@ -258,6 +260,7 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
+   if (isTerminalStatus(String(r.status))) return false;
   const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   if (!isChemistry) return false;

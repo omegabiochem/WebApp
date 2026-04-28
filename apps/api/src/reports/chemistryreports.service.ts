@@ -689,6 +689,8 @@ export class ChemistryReportsService {
       reason: _reasonFromBody,
       eSignPassword: _pwdFromBody,
       expectedVersion,
+      workflowReturnStatus,
+      previousStatus,
       ...patch
     } = { ...patchIn };
 
@@ -758,7 +760,10 @@ export class ChemistryReportsService {
         targetStatus === 'CHANGE_REQUESTED' ||
         targetStatus === 'CORRECTION_REQUESTED'
       ) {
-        base.workflowReturnStatus = current.status; // 🔥 where to go back
+        base.workflowReturnStatus =
+          patchIn.workflowReturnStatus ??
+          patchIn.previousStatus ??
+          current.status; // 🔥 where to go back
         base.workflowRequestKind =
           targetStatus === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
         base.workflowRequestedByRole = user.role;
@@ -1391,6 +1396,8 @@ export class ChemistryReportsService {
       targetStatus?: ChemistryReportStatus;
       reason?: string;
       expectedVersion?: number;
+      previousStatus?: ChemistryReportStatus; // optional, for additional safety in concurrent scenarios
+      workflowReturnStatus?: ChemistryReportStatus; // optional, for better handling of centralized workflow states
     },
   ) {
     if (!body.items?.length) {
@@ -1475,6 +1482,7 @@ export class ChemistryReportsService {
         status: body.targetStatus,
         reason: body.reason || 'Corrections requested',
         expectedVersion: body.expectedVersion,
+        workflowReturnStatus: body.workflowReturnStatus ?? body.previousStatus,
       });
     }
 

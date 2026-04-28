@@ -2406,6 +2406,36 @@ export default function FrontDeskDashboard() {
                                   });
 
                                   try {
+                                    const existing = await api<any[]>(
+                                      `${
+                                        r.formType === "CHEMISTRY_MIX" ||
+                                        r.formType === "COA"
+                                          ? `/chemistry-reports/${r.id}/attachments`
+                                          : `/reports/${r.id}/attachments`
+                                      }`,
+                                    );
+
+                                    const duplicate = existing.some((a) => {
+                                      const existingName =
+                                        a.filename ||
+                                        a.originalName ||
+                                        a.name ||
+                                        a.fileName ||
+                                        "";
+
+                                      return (
+                                        existingName.toLowerCase() ===
+                                        file.name.toLowerCase()
+                                      );
+                                    });
+
+                                    if (duplicate) {
+                                      alert(
+                                        "⚠️ This file is already uploaded for this report.",
+                                      );
+                                      return;
+                                    }
+
                                     await uploadAttachmentForReport(r, file);
                                     alert("✅ Uploaded!");
                                     // optional: if modal open for same report, switch pane
