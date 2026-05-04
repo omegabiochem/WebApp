@@ -1181,7 +1181,6 @@ useEffect(() => {
     formNoTo,
     reportNoFrom,
     reportNoTo,
-    pageClamped,
   ]);
 
   useEffect(() => {
