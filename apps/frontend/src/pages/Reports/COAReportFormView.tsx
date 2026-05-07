@@ -2,22 +2,15 @@
 import { useEffect, useMemo, useState } from "react";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
-import { useAuth } from "../../context/AuthContext";
 
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
 
 import {
   getCorrections,
-  resolveCorrection,
   type CorrectionItem,
 } from "../../utils/COAReportValidation";
-import {
-  FIELD_EDIT_MAP,
-  STATUS_TRANSITIONS,
-  type COAReportStatus,
-  type Role,
-} from "../../utils/COAReportFormWorkflow";
+import { type COAReportStatus } from "../../utils/COAReportFormWorkflow";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -320,18 +313,6 @@ const DashStyles = () => (
   `}</style>
 );
 
-function canEdit(
-  role: Role | undefined,
-  field: string,
-  status?: COAReportStatus,
-) {
-  if (!role || !status) return false;
-  const transition = STATUS_TRANSITIONS[status];
-  if (!transition || !transition.canEdit?.includes(role)) return false;
-  if (FIELD_EDIT_MAP[role]?.includes("*")) return true;
-  return FIELD_EDIT_MAP[role]?.includes(field) ?? false;
-}
-
 function coaRowKey(rowKey: string) {
   return `coaRows:${rowKey}`;
 }
@@ -346,9 +327,6 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     showSwitcher = true,
     isSingleBulk = false,
   } = props;
-
-  const { user } = useAuth();
-  const role = user?.role as Role | undefined;
 
   const status = (report?.status ?? "DRAFT") as COAReportStatus;
 
@@ -395,6 +373,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
 
   // -------- Corrections (read-only tray + red dashed highlighting) ----------
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [showCorrTray, setShowCorrTray] = useState(false);
   useEffect(() => {
     if (!report?.id) return;
     getCorrections(report.id)
@@ -414,24 +393,8 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     );
   }
 
-  const [flash, setFlash] = useState<Record<string, boolean>>({});
-  function flashResolved(field: string) {
-    setFlash((m) => ({ ...m, [field]: true }));
-    setTimeout(() => setFlash((m) => ({ ...m, [field]: false })), 1600);
-  }
-
   const dashClass = (keyOrPrefix: string) =>
-    hasOpenCorrectionKey(keyOrPrefix)
-      ? "dash dash-red"
-      : flash[keyOrPrefix]
-        ? "dash dash-green"
-        : "";
-
-  const canResolveField = (fieldKey: string) => {
-    if (!report?.id || !role) return false;
-    const base = fieldKey.split(":")[0]; // "coaRows" etc.
-    return canEdit(role, base, status);
-  };
+    hasOpenCorrectionKey(keyOrPrefix) ? "dash dash-red" : "";
 
   // async function resolveOne(c: CorrectionItem) {
   //   if (!report?.id) return;
@@ -440,37 +403,6 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
   //   setCorrections(fresh);
   //   flashResolved(c.fieldKey);
   // }
-
-  async function resolveField(fieldKey: string) {
-    if (!report?.id) return;
-    const items = openCorrections.filter((c) => c.fieldKey === fieldKey);
-    if (!items.length) return;
-    await Promise.all(
-      items.map((c) => resolveCorrection(report.id, c.id, "Fixed")),
-    );
-    const fresh = await getCorrections(report.id);
-    setCorrections(fresh);
-    flashResolved(fieldKey);
-  }
-
-  function ResolveOverlay({ field }: { field: string }) {
-    if (!hasOpenCorrectionKey(field) || !canResolveField(field)) return null;
-    return (
-      <button
-        type="button"
-        title="Resolve all notes for this field"
-        onClick={(e) => {
-          e.stopPropagation();
-          resolveField(field);
-        }}
-        className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full grid place-items-center
-                 bg-emerald-600 text-white shadow hover:bg-emerald-700 focus:outline-none
-                 focus:ring-2 focus:ring-emerald-400"
-      >
-        ✓
-      </button>
-    );
-  }
 
   // -------- signature blur rules (copy of your view behavior) ----------
   const BLUR_SIGNATURE_STATUSES = new Set<COAReportStatus>([
@@ -622,7 +554,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   className={`px-2 border-r border-black flex items-center gap-1 ${dashClass("client")} relative`}
                 >
                   <div className="whitespace-nowrap font-medium">CLIENT :</div>
-                  <ResolveOverlay field="client" />
+
                   <div className="flex-1 min-h-[14px]">
                     {report?.client ?? ""}
                   </div>
@@ -633,7 +565,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <div className="whitespace-nowrap font-medium">
                     DATE SENT :
                   </div>
-                  <ResolveOverlay field="dateSent" />
+
                   <div className="flex-1 min-h-[14px]">
                     {formatDateForInput(report?.dateSent ?? "")}
                   </div>
@@ -644,7 +576,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 className={`border-b border-black flex items-center gap-2 px-2 relative ${dashClass("sampleDescription")}`}
               >
                 <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
-                <ResolveOverlay field="sampleDescription" />
+
                 <div className="flex-1 min-h-[14px]">
                   {report?.sampleDescription ?? ""}
                 </div>
@@ -658,7 +590,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <span className="font-medium whitespace-nowrap">
                     TYPE OF TEST :
                   </span>
-                  <ResolveOverlay field="testTypes" />
+
                   <label className="flex items-center gap-1 whitespace-nowrap">
                     <input
                       type="checkbox"
@@ -678,7 +610,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <span className="font-medium whitespace-nowrap">
                     LOT / BATCH # :
                   </span>
-                  <ResolveOverlay field="lotBatchNo" />
+
                   <div className="flex-1 min-h-[14px]">
                     {report?.lotBatchNo ?? ""}
                   </div>
@@ -689,7 +621,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <span className="font-medium whitespace-nowrap">
                     MANUFACTURE DATE :
                   </span>
-                  <ResolveOverlay field="manufactureDate" />
+
                   <div className="flex-1 min-h-[14px]">
                     {formatDateForInput(report?.manufactureDate ?? "")}
                   </div>
@@ -703,7 +635,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <span className="font-medium whitespace-nowrap">
                     FORMULA # / ID # :
                   </span>
-                  <ResolveOverlay field="formulaId" />
+
                   <div className="flex-1 min-h-[14px]">
                     {report?.formulaId ?? ""}
                   </div>
@@ -714,7 +646,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   <span className="font-medium whitespace-nowrap">
                     SAMPLE SIZE :
                   </span>
-                  <ResolveOverlay field="sampleSize" />
+
                   <div className="flex-1 min-h-[14px]">
                     {report?.sampleSize ?? ""}
                   </div>
@@ -726,7 +658,6 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   className={`font-medium relative ${dashClass("dateReceived")}`}
                 >
                   DATE RECEIVED :
-                  <ResolveOverlay field="dateReceived" />
                 </span>
                 <div className="min-h-[14px]">
                   {formatDateForInput(report?.dateReceived ?? "")}
@@ -774,34 +705,29 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                       className={`p-1 border-r border-black font-medium ${dashClass(rk)} relative`}
                     >
                       {row.item}
-                      <ResolveOverlay field={rk} />
                     </div>
 
                     <div
                       className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kStd)}`}
                     >
-                      <ResolveOverlay field={kStd} />
                       {row.Specification ?? ""}
                     </div>
 
                     <div
                       className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kSop)}`}
                     >
-                      <ResolveOverlay field={kSop} />
                       {row.sopValidatedTm ?? ""}
                     </div>
 
                     <div
                       className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kRes)}`}
                     >
-                      <ResolveOverlay field={kRes} />
                       {row.result ?? ""}
                     </div>
 
                     <div
                       className={`px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kDateInit)}`}
                     >
-                      <ResolveOverlay field={kDateInit} />
                       {date || initial
                         ? `${date}${date && initial ? " / " : ""}${initial}`
                         : ""}
@@ -817,7 +743,6 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   className={`font-medium mt-[2px] relative ${dashClass("comments")}`}
                 >
                   Comments :
-                  <ResolveOverlay field="comments" />
                 </span>
                 <div className="flex-1 min-h-[42px] whitespace-pre-wrap break-words">
                   {report?.comments ?? ""}
@@ -950,73 +875,58 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
       </div>
 
       {/* Floating Corrections tray (VIEW) */}
-      {/* {!isBulk && (
+      {!isBulk && openCorrections.length > 0 && (
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            type="button"
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+          >
+            📝 Corrections
+            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+              {openCorrections.length}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {!isBulk && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
           <div className="flex items-center justify-between border-b px-3 py-2">
-            <div className="text-sm font-semibold">
-              Open corrections{" "}
-              {openCorrections.length > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
-                  {openCorrections.length}
-                </span>
-              )}
-            </div>
+            <div className="text-sm font-semibold">Open corrections</div>
             <button
+              type="button"
               className="rounded px-2 py-1 text-xs hover:bg-slate-100"
-              onClick={() => {
-                // quick hide by unmounting: you can wire this to state if you want a toggle button
-                // for now: just close window tray by clearing list visual
-                setCorrections((prev) => prev);
-              }}
-              title="Tray is always visible in view. If you want toggle button, tell me and I'll add."
+              onClick={() => setShowCorrTray(false)}
             >
               ✕
             </button>
           </div>
 
           <div className="max-h-72 overflow-auto divide-y">
-            {openCorrections.length === 0 ? (
-              <div className="p-3 text-xs text-slate-500">No open corrections.</div>
-            ) : (
-              openCorrections.map((c) => (
-                <div key={c.id} className="p-3 text-sm">
-                  <div className="text-[11px] font-bold text-black">{c.fieldKey}</div>
-                  <div className="mt-1">Reason : {c.message}</div>
-
-                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
-                    <div className="mt-1 text-xs text-slate-600">
-                      <span className="font-medium">Old Value :</span>{" "}
-                      <span className="break-words">
-                        {typeof c.oldValue === "string"
-                          ? c.oldValue
-                          : JSON.stringify(c.oldValue)}
-                      </span>
-                    </div>
-                  )}
-
-                  {canResolveField(c.fieldKey) && (
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        className="text-xs font-medium text-emerald-700 hover:underline"
-                        onClick={() => resolveOne(c)}
-                      >
-                        ✓ Mark resolved
-                      </button>
-                      <button
-                        className="text-xs text-slate-500 hover:underline"
-                        onClick={() => resolveField(c.fieldKey)}
-                        title="Resolve all notes for this field"
-                      >
-                        Resolve all for field
-                      </button>
-                    </div>
-                  )}
+            {openCorrections.map((c) => (
+              <div key={c.id} className="p-3 text-sm">
+                <div className="text-[11px] font-medium text-slate-500">
+                  {c.fieldKey}
                 </div>
-              ))
-            )}
+
+                <div className="mt-1">Reason: {c.message}</div>
+
+                {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                  <div className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Old Value:</span>{" "}
+                    <span className="break-words">
+                      {typeof c.oldValue === "string"
+                        ? c.oldValue
+                        : JSON.stringify(c.oldValue)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
-      )} */}
+      )}
     </>
   );
 }

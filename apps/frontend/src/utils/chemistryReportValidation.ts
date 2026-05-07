@@ -618,7 +618,8 @@ export function useChemistryReportValidation(
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
-  message: "OPEN" | "RESOLVED" extends never ? never : string; // (keep)
+  message: string;
+  oldValue?: any;
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
