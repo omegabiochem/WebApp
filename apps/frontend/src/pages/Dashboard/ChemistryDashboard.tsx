@@ -1015,7 +1015,6 @@ export default function ChemistryDashboard() {
     fromDate,
     toDate,
     perPage,
-    pageClamped,
   ]);
 
   // useEffect(() => {
