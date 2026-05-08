@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
+import { getCorrections, type CorrectionItem } from "../../utils/microMixReportValidation";
 
 type Pane = "FORM" | "ATTACHMENTS";
 
@@ -247,6 +248,53 @@ function AttachmentPreview({
   );
 }
 
+const DashStyles = () => (
+  <style>{`
+    .dash {
+      position: relative;
+      z-index: 0;
+    }
+
+    .dash::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 10;
+
+      background:
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /16px 2px repeat-x,
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 100% /16px 2px repeat-x,
+        linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /2px 16px repeat-y,
+        linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 100% 0 /2px 16px repeat-y;
+
+      opacity: 1;
+      animation: dash-move 1.05s linear infinite;
+    }
+
+    .dash-red::after {
+      --dash-color: #dc2626;
+    }
+
+    @keyframes dash-move {
+      to {
+        background-position:
+          16px 0,
+          -16px 100%,
+          0 16px,
+          100% -16px;
+      }
+    }
+
+    @media print {
+      .dash::after {
+        display: none;
+      }
+    }
+  `}</style>
+);
+
 const PrintStyles = () => (
   <style>{`
     @media print {
@@ -489,6 +537,31 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   const HIDE_SIGNATURES_FOR = new Set(["DRAFT", "SUBMITTED_BY_CLIENT"]);
   const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status);
 
+  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [showCorrTray, setShowCorrTray] = useState(false);
+
+  const openCorrections = useMemo(
+    () => corrections.filter((c) => c.status === "OPEN"),
+    [corrections],
+  );
+
+  useEffect(() => {
+    if (!report?.id) return;
+
+    getCorrections(report.id)
+      .then(setCorrections)
+      .catch(() => setCorrections([]));
+  }, [report?.id]);
+
+  const hasOpenCorrection = (keyOrPrefix: string) =>
+    openCorrections.some(
+      (c) =>
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
+    );
+
+  const dashClass = (keyOrPrefix: string) =>
+    hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
+
   return (
     <div
       className={
@@ -500,6 +573,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       {/* only inject styles when NOT bulk-printing from dashboard */}
       {!isBulk && <PrintStyles />}
       {!isBulk && <BlurStyles />}
+      {!isBulk && <DashStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -589,7 +663,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
           <div className="w-full border border-black text-[15px]">
             {/* CLIENT / DATE SENT */}
             <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("client")}`}
+              >
                 <div className="whitespace-nowrap font-medium">CLIENT:</div>
 
                 <input
@@ -599,7 +675,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("dateSent")}`}
+              >
                 <div className="whitespace-nowrap font-medium">DATE SENT:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -612,7 +690,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
             {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
             <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("typeOfTest")}`}
+              >
                 <div className="font-medium whitespace-nowrap">
                   TYPE OF TEST:
                 </div>
@@ -624,7 +704,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("sampleType")}`}
+              >
                 <div className="font-medium whitespace-nowrap">
                   SAMPLE TYPE:
                 </div>
@@ -636,7 +718,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("formulaNo")}`}
+              >
                 <div className="font-medium whitespace-nowrap">FORMULA #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -648,7 +732,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
             </div>
 
             {/* DESCRIPTION (full row) */}
-            <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug">
+            <div
+              className={`border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass("description")}`}
+            >
               <div className="w-28 font-medium">DESCRIPTION:</div>
 
               <input
@@ -661,7 +747,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
             {/* LOT # / MANUFACTURE DATE */}
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("lotNo")}`}
+              >
                 <div className="font-medium whitespace-nowrap">LOT #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -670,7 +758,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("manufactureDate")}`}
+              >
                 <div className="font-medium whitespace-nowrap">
                   MANUFACTURE DATE:
                 </div>
@@ -685,7 +775,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
             {/* TEST SOP # / DATE TESTED */}
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("testSopNo")}`}
+              >
                 <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -694,7 +786,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("dateTested")}`}
+              >
                 <div className="font-medium whitespace-nowrap">
                   DATE TESTED:
                 </div>
@@ -709,7 +803,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
             {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
             <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("preliminaryResults")}`}
+              >
                 <div className="font-medium">PRELIMINARY RESULTS:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -718,7 +814,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("preliminaryResultsDate")}`}
+              >
                 <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
@@ -732,7 +830,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
             </div>
 
             {/* DATE COMPLETED (full row, label + input) */}
-            <div className=" flex items-center gap-2 px-2 text-[12px] leading-snug">
+            <div
+              className={` flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass("dateCompleted")}`}
+            >
               <div className="font-medium whitespace-nowrap">
                 DATE COMPLETED:
               </div>
@@ -770,7 +870,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               readOnly={lock("tbc_dilution")}
             /> */}
               </div>
-              <div className="py-1 px-2 border-r border-black flex">
+              <div
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_gram")}`}
+              >
                 <input
                   className="w-full input-editable  px-1"
                   value={report?.tbc_gram || ""}
@@ -778,7 +880,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="py-1 px-2 border-r border-black flex">
+              <div
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_result")}`}
+              >
                 <input
                   className="w-1/2 input-editable  px-1"
                   value={report?.tbc_result || ""}
@@ -787,7 +891,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 />
                 <div className="py-1 px-2 text-center">CFU/ mL/g</div>
               </div>
-              <div className="py-1 px-2 flex items-center justify-center text-center">
+              <div
+                className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tbc_spec")}`}
+              >
                 <div className="whitespace-nowrap">
                   {report?.tbc_spec || ""} CFU/ mL/g
                 </div>
@@ -801,7 +907,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="py-1 px-2 border-r border-black">
                 <div className="py-1 px-2 text-center"> x 10^1</div>
               </div>
-              <div className="py-1 px-2 border-r border-black flex">
+              <div
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_gram")}`}
+              >
                 <input
                   className="w-full input-editable  px-1 "
                   value={report?.tmy_gram || ""}
@@ -809,7 +917,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   disabled
                 />
               </div>
-              <div className="py-1 px-2 border-r border-black flex">
+              <div
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_result")}`}
+              >
                 <input
                   className="w-1/2 input-editable  px-1"
                   value={report?.tmy_result || ""}
@@ -818,7 +928,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 />
                 <div className="py-1 px-2 text-center">CFU/ ml/g</div>
               </div>
-              <div className="py-1 px-2 flex items-center justify-center text-center">
+              <div
+                className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tmy_spec")}`}
+              >
                 <div className="whitespace-nowrap">
                   {report?.tmy_spec || ""} CFU/ ml/g
                 </div>
@@ -842,7 +954,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 key={p.key}
                 className="grid grid-cols-[25%_55%_20%] border-b border-black text-[11px]"
               >
-                <div className="py-[2px] px-2 border-r flex gap-2 items-center text-center">
+                <div
+                  className={`py-[2px] px-2 border-r flex gap-2 items-center text-center relative ${dashClass("organism")}`}
+                >
                   {/* Organism checkbox */}
                   <input
                     type="checkbox"
@@ -853,7 +967,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   />
                   <span>{p.label}</span>
                 </div>
-                <div className="py-[2px] px-2 border-r text-[11px]">
+                <div
+                  className={`py-[2px] px-2 border-r text-[11px] relative ${dashClass(`pathogens:${p.key}:result`)}`}
+                >
                   <div className="grid grid-cols-[auto_auto_1fr] items-center gap-x-4">
                     <label className="inline-flex items-center gap-2 whitespace-nowrap">
                       <input
@@ -883,7 +999,11 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   </div>
                 </div>
 
-                <div className="py-[2px] px-2 text-center">{p.spec}</div>
+                <div
+                  className={`py-[2px] px-2 text-center relative ${dashClass(`pathogens:${p.key}:spec`)}`}
+                >
+                  {p.spec}
+                </div>
               </div>
             ))}
           </div>
@@ -902,7 +1022,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
           {/* Comments + Signatures */}
           <div className="mt-1 grid grid-cols-2 gap-2 text-[12px]">
-            <div className="col-span-2">
+            <div className={`col-span-2 relative ${dashClass("comments")}`}>
               <div className="flex items-start gap-2">
                 <div className="font-medium pt-[2px] whitespace-nowrap">
                   Comments :
@@ -930,7 +1050,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 {/* TESTED BY */}
 
                 <div className="p-2">
-                  <div className="font-medium mb-2 flex items-center gap-2">
+                  <div
+                    className={`font-medium mb-2 flex items-center gap-2 relative ${dashClass("testedBy")}`}
+                  >
                     TESTED BY:
                     <input
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
@@ -942,7 +1064,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                     />
                   </div>
 
-                  <div className="font-medium mt-2 flex items-center gap-2">
+                  <div
+                    className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass("testedDate")}`}
+                  >
                     DATE:
                     <input
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
@@ -957,7 +1081,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
                 {/* REVIEWED BY */}
                 <div className="p-2">
-                  <div className="font-medium mb-2 flex items-center gap-2">
+                  <div
+                    className={`font-medium mb-2 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}
+                  >
                     REVIEWED BY:
                     <input
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
@@ -969,7 +1095,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                     />
                   </div>
 
-                  <div className="font-medium mt-2 flex items-center gap-2">
+                  <div
+                    className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass("reviewedDate")}`}
+                  >
                     DATE:
                     <input
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
@@ -1068,6 +1196,57 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
         // ATTACHMENTS PANE
         <div className="no-print">
           <AttachmentGallery reportId={report?.id} />
+        </div>
+      )}
+
+      {!isBulk && openCorrections.length > 0 && (
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+          >
+            📝 Corrections
+            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+              {openCorrections.length}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {!isBulk && showCorrTray && (
+        <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <div className="text-sm font-semibold">Open corrections</div>
+            <button
+              className="rounded px-2 py-1 text-xs hover:bg-slate-100"
+              onClick={() => setShowCorrTray(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="max-h-72 overflow-auto divide-y">
+            {openCorrections.map((c) => (
+              <div key={c.id} className="p-3 text-sm">
+                <div className="text-[11px] font-medium text-slate-500">
+                  {c.fieldKey}
+                </div>
+
+                <div className="mt-1">Reason: {c.message}</div>
+
+                {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                  <div className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Old Value:</span>{" "}
+                    <span className="break-words">
+                      {typeof c.oldValue === "string"
+                        ? c.oldValue
+                        : JSON.stringify(c.oldValue)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

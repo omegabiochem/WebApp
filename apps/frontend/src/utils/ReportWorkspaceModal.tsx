@@ -366,8 +366,9 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
-                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
-                        // correctionKinds={correctionKinds}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
                       />
                     )}
@@ -379,8 +380,9 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
-                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
-                        // correctionKinds={correctionKinds}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
                       />
                     )}
@@ -392,8 +394,9 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
-                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
-                        // correctionKinds={correctionKinds}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
                       />
                     )}
@@ -406,8 +409,9 @@ export default function ReportWorkspaceModal({
                         forcePageReadOnly={false}
                         hideTopActions={false}
                         hideBottomActions={false}
-                        // correctionLaunch={shouldLaunchCorrectionInUpdate}
-                        // correctionKinds={correctionKinds}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
                       />
                     )}

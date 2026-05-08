@@ -162,3 +162,9 @@ export const ROW_STATUS_COLORS: Record<string, string> = {
   PRELIMINARY_TESTING_ON_HOLD: "bg-neutral-50",
   FINAL_TESTING_ON_HOLD: "bg-neutral-50",
 };
+
+
+export function isTerminalStatus(status?: string) {
+  const s = String(status || "").toUpperCase();
+  return s === "VOID" || s === "LOCKED" || s === "FINAL_APPROVED" || s === "APPROVED";
+}

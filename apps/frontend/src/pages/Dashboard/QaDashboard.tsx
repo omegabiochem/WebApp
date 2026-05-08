@@ -690,7 +690,7 @@ export default function QaDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `qaDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -1261,7 +1261,6 @@ export default function QaDashboard() {
     dateFrom,
     dateTo,
     perPage,
-    pageClamped,
     searchText,
     formNoFrom,
     formNoTo,

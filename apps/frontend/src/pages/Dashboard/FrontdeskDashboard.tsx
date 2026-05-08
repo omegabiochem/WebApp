@@ -375,7 +375,10 @@ function inRange(
   return true;
 }
 
-function getInitialFrontDeskFilters(searchParams: URLSearchParams) {
+function getInitialFrontDeskFilters(
+  searchParams: URLSearchParams,
+  storageKey?: string | null,
+) {
   try {
     const spForm = searchParams.get("form");
     const spStatus = searchParams.get("status");
@@ -456,6 +459,15 @@ function getInitialFrontDeskFilters(searchParams: URLSearchParams) {
           DEFAULT_FRONTDESK_FILTERS.modalPane,
       };
     }
+    if (storageKey) {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        return {
+          ...DEFAULT_FRONTDESK_FILTERS,
+          ...JSON.parse(raw),
+        };
+      }
+    }
   } catch {
     // ignore
   }
@@ -485,7 +497,16 @@ export default function FrontDeskDashboard() {
     (user as any)?.sub ||
     (user as any)?.uid;
 
-  const initialFilters = getInitialFrontDeskFilters(searchParams);
+  const FILTER_STORAGE_KEY = userKey
+    ? `frontdeskDashboardFilters:user:${userKey}`
+    : null;
+
+  const initialFilters = getInitialFrontDeskFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
 
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
@@ -538,7 +559,7 @@ export default function FrontDeskDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `frontdeskDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -786,6 +807,85 @@ export default function FrontDeskDashboard() {
     reportNoFrom,
     reportNoTo,
     pinnedIds,
+  ]);
+
+  useEffect(() => {
+    const next = getInitialFrontDeskFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearch(next.searchText);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+    setModalPane(next.modalPane);
+
+    setFiltersHydrated(true);
+  }, [searchParams, FILTER_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!FILTER_STORAGE_KEY) return;
+    if (!filtersHydrated) return;
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText: search,
+          datePreset,
+          fromDate,
+          toDate,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          sortBy,
+          sortDir,
+          perPage,
+          page,
+          modalPane,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    filtersHydrated,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    page,
+    modalPane,
   ]);
 
   useEffect(() => {
@@ -1490,7 +1590,7 @@ export default function FrontDeskDashboard() {
     });
   };
 
-  if (!colsHydrated || !pinsHydrated) {
+  if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -2306,6 +2406,36 @@ export default function FrontDeskDashboard() {
                                   });
 
                                   try {
+                                    const existing = await api<any[]>(
+                                      `${
+                                        r.formType === "CHEMISTRY_MIX" ||
+                                        r.formType === "COA"
+                                          ? `/chemistry-reports/${r.id}/attachments`
+                                          : `/reports/${r.id}/attachments`
+                                      }`,
+                                    );
+
+                                    const duplicate = existing.some((a) => {
+                                      const existingName =
+                                        a.filename ||
+                                        a.originalName ||
+                                        a.name ||
+                                        a.fileName ||
+                                        "";
+
+                                      return (
+                                        existingName.toLowerCase() ===
+                                        file.name.toLowerCase()
+                                      );
+                                    });
+
+                                    if (duplicate) {
+                                      alert(
+                                        "⚠️ This file is already uploaded for this report.",
+                                      );
+                                      return;
+                                    }
+
                                     await uploadAttachmentForReport(r, file);
                                     alert("✅ Uploaded!");
                                     // optional: if modal open for same report, switch pane
@@ -2401,7 +2531,7 @@ export default function FrontDeskDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2411,7 +2541,9 @@ export default function FrontDeskDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 type Role =
@@ -102,6 +102,9 @@ export default function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
   const submitLockRef = useRef(false);
+
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [lockRemaining, setLockRemaining] = useState("");
 
   const onSubmit = async (data: FormData) => {
     if (submitLockRef.current) return;
@@ -225,13 +228,28 @@ export default function Login() {
                   : code === "COMMON_ACCOUNT_ADMIN_CONTACT"
                     ? "Too many incorrect attempts. Please contact admin to verify the correct user ID and password."
                     : code === "ACCOUNT_LOCKED"
-                      ? "Too many failed attempts. Your account is temporarily locked.Please contact support."
+                      ? "Too many failed attempts. Your account is temporarily locked."
                       : code === "INVALID_CREDENTIALS" &&
                           typeof remaining === "number"
                         ? `Invalid user ID or password. Attempts left: ${remaining}`
                         : code === "INVALID_CREDENTIALS"
                           ? "Invalid user ID or password."
                           : "Login failed.";
+
+      if (code === "ACCOUNT_LOCKED") {
+        const until =
+          err?.body?.lockedUntil ||
+          err?.body?.lockUntil ||
+          err?.body?.expiresAt;
+
+        const lockTime = until
+          ? Date.parse(until)
+          : Date.now() + 15 * 60 * 1000;
+
+        setLockUntil(lockTime);
+      } else {
+        setLockUntil(null);
+      }
 
       setBanner({ type: "error", text: msg });
       setError("password", { type: "server", message: msg });
@@ -240,8 +258,32 @@ export default function Login() {
     }
   };
 
+  useEffect(() => {
+    if (!lockUntil) return;
+
+    const tick = () => {
+      const diff = Math.max(0, lockUntil - Date.now());
+
+      if (diff <= 0) {
+        setLockUntil(null);
+        setLockRemaining("");
+        return;
+      }
+
+      const min = Math.floor(diff / 60000);
+      const sec = Math.floor((diff % 60000) / 1000);
+
+      setLockRemaining(`${min}:${String(sec).padStart(2, "0")}`);
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+
+    return () => window.clearInterval(id);
+  }, [lockUntil]);
+
   const field = "border rounded-md p-2";
-  const busy = isSubmitting || submitLockRef.current;
+  const busy = isSubmitting || submitLockRef.current || !!lockUntil;
 
   // ✅ Public policy links (Twilio A2P compliance)
   const PRIVACY_URL = "https://omegabiochemlab.com/privacy-policy";
@@ -262,6 +304,12 @@ export default function Login() {
           aria-live="polite"
         >
           {banner.text}
+        </div>
+      )}
+
+      {lockUntil && lockRemaining && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Try again in <span className="font-semibold">{lockRemaining}</span>
         </div>
       )}
 

@@ -197,9 +197,14 @@ type DashboardStatus =
   | SterilityReportStatus
   | ChemistryReportStatus;
 
+// const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
+//   "ALL",
+//   ...ALL_STATUSES.filter((s) => s !== "ALL"),
+// ];
+
 const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
-  ...ALL_STATUSES.filter((s) => s !== "ALL"),
+  ...Array.from(new Set(ALL_STATUSES.filter((s) => s !== "ALL"))),
 ];
 
 const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
@@ -517,9 +522,8 @@ function inRange(
 // Component
 // ---------------------------------
 export default function SystemAdminDashboard() {
-
-    const navigate = useNavigate();
-const location = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const userKey =
@@ -531,98 +535,99 @@ const location = useLocation();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-const FILTER_STORAGE_KEY = `adminDashboardFilters:user:${userKey || "systemadmin"}`;
+  const FILTER_STORAGE_KEY = `adminDashboardFilters:user:${userKey || "systemadmin"}`;
 
-function getInitialAdminFilters(
-  searchParams: URLSearchParams,
-  storageKey: string,
-) {
-  try {
-    const spForm = searchParams.get("form");
-    const spStatus = searchParams.get("status");
-    const spClient = searchParams.get("client");
-    const spReport = searchParams.get("report");
-    const spQ = searchParams.get("q");
-    const spDp = searchParams.get("dp");
-    const spFrom = searchParams.get("from");
-    const spTo = searchParams.get("to");
-    const spRangeType = searchParams.get("rangeType");
-    const spFormFrom = searchParams.get("formFrom");
-    const spFormTo = searchParams.get("formTo");
-    const spReportFrom = searchParams.get("reportFrom");
-    const spReportTo = searchParams.get("reportTo");
-    const spPp = searchParams.get("pp");
-    const spP = searchParams.get("p");
-    const spDateField = searchParams.get("dateField");
-    const spSort = searchParams.get("sort");
+  function getInitialAdminFilters(
+    searchParams: URLSearchParams,
+    storageKey: string,
+  ) {
+    try {
+      const spForm = searchParams.get("form");
+      const spStatus = searchParams.get("status");
+      const spClient = searchParams.get("client");
+      const spReport = searchParams.get("report");
+      const spQ = searchParams.get("q");
+      const spDp = searchParams.get("dp");
+      const spFrom = searchParams.get("from");
+      const spTo = searchParams.get("to");
+      const spRangeType = searchParams.get("rangeType");
+      const spFormFrom = searchParams.get("formFrom");
+      const spFormTo = searchParams.get("formTo");
+      const spReportFrom = searchParams.get("reportFrom");
+      const spReportTo = searchParams.get("reportTo");
+      const spPp = searchParams.get("pp");
+      const spP = searchParams.get("p");
+      const spDateField = searchParams.get("dateField");
+      const spSort = searchParams.get("sort");
 
-    const hasUrlFilters =
-      spForm ||
-      spStatus ||
-      spClient ||
-      spReport ||
-      spQ ||
-      spDp ||
-      spFrom ||
-      spTo ||
-      spRangeType ||
-      spFormFrom ||
-      spFormTo ||
-      spReportFrom ||
-      spReportTo ||
-      spPp ||
-      spP ||
-      spDateField ||
-      spSort;
+      const hasUrlFilters =
+        spForm ||
+        spStatus ||
+        spClient ||
+        spReport ||
+        spQ ||
+        spDp ||
+        spFrom ||
+        spTo ||
+        spRangeType ||
+        spFormFrom ||
+        spFormTo ||
+        spReportFrom ||
+        spReportTo ||
+        spPp ||
+        spP ||
+        spDateField ||
+        spSort;
 
-    if (hasUrlFilters) {
-      return {
-        formFilter:
-          (spForm as any) || DEFAULT_ADMIN_FILTERS.formFilter,
-        statusFilter:
-          (spStatus as DashboardStatus) || DEFAULT_ADMIN_FILTERS.statusFilter,
-        searchClient: spClient || DEFAULT_ADMIN_FILTERS.searchClient,
-        searchReport: spReport || DEFAULT_ADMIN_FILTERS.searchReport,
-        searchText: spQ || DEFAULT_ADMIN_FILTERS.searchText,
-        datePreset:
-          (spDp as DatePreset) || DEFAULT_ADMIN_FILTERS.datePreset,
-        dateFrom: spFrom || DEFAULT_ADMIN_FILTERS.dateFrom,
-        dateTo: spTo || DEFAULT_ADMIN_FILTERS.dateTo,
-        numberRangeType:
-          (spRangeType as "FORM" | "REPORT") ||
-          DEFAULT_ADMIN_FILTERS.numberRangeType,
-        formNoFrom: spFormFrom || DEFAULT_ADMIN_FILTERS.formNoFrom,
-        formNoTo: spFormTo || DEFAULT_ADMIN_FILTERS.formNoTo,
-        reportNoFrom: spReportFrom || DEFAULT_ADMIN_FILTERS.reportNoFrom,
-        reportNoTo: spReportTo || DEFAULT_ADMIN_FILTERS.reportNoTo,
-        perPage: getInt(searchParams, "pp", DEFAULT_ADMIN_FILTERS.perPage),
-        page: getInt(searchParams, "p", DEFAULT_ADMIN_FILTERS.page),
-        dateField:
-          (spDateField as
-            | "dateSent"
-            | "dateTested"
-            | "dateReceived"
-            | "createdAt"
-            | "updatedAt") || DEFAULT_ADMIN_FILTERS.dateField,
-        sortOrder: (spSort as "asc" | "desc") || "desc",
-      };
+      if (hasUrlFilters) {
+        return {
+          formFilter: (spForm as any) || DEFAULT_ADMIN_FILTERS.formFilter,
+          statusFilter:
+            (spStatus as DashboardStatus) || DEFAULT_ADMIN_FILTERS.statusFilter,
+          searchClient: spClient || DEFAULT_ADMIN_FILTERS.searchClient,
+          searchReport: spReport || DEFAULT_ADMIN_FILTERS.searchReport,
+          searchText: spQ || DEFAULT_ADMIN_FILTERS.searchText,
+          datePreset: (spDp as DatePreset) || DEFAULT_ADMIN_FILTERS.datePreset,
+          dateFrom: spFrom || DEFAULT_ADMIN_FILTERS.dateFrom,
+          dateTo: spTo || DEFAULT_ADMIN_FILTERS.dateTo,
+          numberRangeType:
+            (spRangeType as "FORM" | "REPORT") ||
+            DEFAULT_ADMIN_FILTERS.numberRangeType,
+          formNoFrom: spFormFrom || DEFAULT_ADMIN_FILTERS.formNoFrom,
+          formNoTo: spFormTo || DEFAULT_ADMIN_FILTERS.formNoTo,
+          reportNoFrom: spReportFrom || DEFAULT_ADMIN_FILTERS.reportNoFrom,
+          reportNoTo: spReportTo || DEFAULT_ADMIN_FILTERS.reportNoTo,
+          perPage: getInt(searchParams, "pp", DEFAULT_ADMIN_FILTERS.perPage),
+          page: getInt(searchParams, "p", DEFAULT_ADMIN_FILTERS.page),
+          dateField:
+            (spDateField as
+              | "dateSent"
+              | "dateTested"
+              | "dateReceived"
+              | "createdAt"
+              | "updatedAt") || DEFAULT_ADMIN_FILTERS.dateField,
+          sortOrder: (spSort as "asc" | "desc") || "desc",
+        };
+      }
+
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        return {
+          ...DEFAULT_ADMIN_FILTERS,
+          ...JSON.parse(raw),
+        };
+      }
+    } catch {
+      // ignore
     }
 
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      return {
-        ...DEFAULT_ADMIN_FILTERS,
-        ...JSON.parse(raw),
-      };
-    }
-  } catch {
-    // ignore
+    return DEFAULT_ADMIN_FILTERS;
   }
 
-  return DEFAULT_ADMIN_FILTERS;
-}
-
-  const initialFilters = getInitialAdminFilters( searchParams, FILTER_STORAGE_KEY);
+  const initialFilters = getInitialAdminFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
 
   const [formFilter, setFormFilter] = useState<
     "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
@@ -649,9 +654,9 @@ function getInitialAdminFilters(
   const [dateField, setDateField] = useState<
     "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
   >(initialFilters.dateField);
- const [sortOrder, setSortOrder] = useState<"asc" | "desc">(
-  (initialFilters as any).sortOrder || "desc",
-);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(
+    (initialFilters as any).sortOrder || "desc",
+  );
 
   const allowedPP = [10, 20, 50] as const;
   const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
@@ -675,9 +680,9 @@ function getInitialAdminFilters(
   const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
 
   // ✅ status filter now uses combined type
-const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
-  initialFilters.statusFilter,
-);
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
+    initialFilters.statusFilter,
+  );
 
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
@@ -693,7 +698,7 @@ const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
   // -----------------------------
   // Selection + Printing (Admin)
   // -----------------------------
-const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
@@ -712,10 +717,8 @@ const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-
-
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `adminDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -726,10 +729,10 @@ const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const hydratedFromUrlRef = React.useRef(false);
 
-const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
-const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
-  {},
-);
+  const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
@@ -743,7 +746,7 @@ const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
     (user as any)?.uid ||
     "qa";
 
-const COL_STORAGE_KEY = `adminDashboardCols:user:${colUserKey}`;
+  const COL_STORAGE_KEY = `adminDashboardCols:user:${colUserKey}`;
 
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [showVoidPassword, setShowVoidPassword] = useState(false);
@@ -1127,156 +1130,157 @@ const COL_STORAGE_KEY = `adminDashboardCols:user:${colUserKey}`;
     dateFrom,
     dateTo,
     perPage,
+    dateField,
+    sortOrder,
   ]);
 
- useEffect(() => {
-  if (!hydratedFromUrlRef.current) return;
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
 
-  const sp = new URLSearchParams();
+    const sp = new URLSearchParams();
 
-  if (formFilter !== "ALL") sp.set("form", formFilter);
-  sp.set("status", String(statusFilter));
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    sp.set("status", String(statusFilter));
 
-  if (searchClient.trim()) sp.set("client", searchClient.trim());
-  if (searchReport.trim()) sp.set("report", searchReport.trim());
-  if (searchText.trim()) sp.set("q", searchText.trim());
+    if (searchClient.trim()) sp.set("client", searchClient.trim());
+    if (searchReport.trim()) sp.set("report", searchReport.trim());
+    if (searchText.trim()) sp.set("q", searchText.trim());
 
-  sp.set("dateField", dateField);
-  sp.set("sort", sortOrder);
+    sp.set("dateField", dateField);
+    sp.set("sort", sortOrder);
 
-  sp.set("dp", datePreset);
-  if (dateFrom) sp.set("from", dateFrom);
-  if (dateTo) sp.set("to", dateTo);
+    sp.set("dp", datePreset);
+    if (dateFrom) sp.set("from", dateFrom);
+    if (dateTo) sp.set("to", dateTo);
 
-  sp.set("rangeType", numberRangeType);
-  if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
-  if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-  if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
-  if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
+    sp.set("rangeType", numberRangeType);
+    if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
+    if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
-  if (perPage !== 10) sp.set("pp", String(perPage));
-  if (pageClamped !== 1) sp.set("p", String(pageClamped));
-  if (selectedIds.length) sp.set("sel", selectedIds.join(","));
+    if (perPage !== 10) sp.set("pp", String(perPage));
+    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+    if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
-  if (sp.toString() !== searchParams.toString()) {
-    setSearchParams(sp, { replace: true });
-  }
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  pageClamped,
-  selectedIds,
-  dateField,
-  sortOrder,
-  searchParams,
-  setSearchParams,
-]);
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    pageClamped,
+    selectedIds,
+    dateField,
+    sortOrder,
+    searchParams,
+    setSearchParams,
+  ]);
 
   useEffect(() => {
-  const next = getInitialAdminFilters( searchParams, FILTER_STORAGE_KEY);
+    const next = getInitialAdminFilters(searchParams, FILTER_STORAGE_KEY);
 
-  setFormFilter(next.formFilter);
-  setStatusFilter(next.statusFilter);
-  setSearchClient(next.searchClient);
-  setSearchReport(next.searchReport);
-  setSearchText(next.searchText);
-  setDatePreset(next.datePreset);
-  setDateFrom(next.dateFrom);
-  setDateTo(next.dateTo);
-  setNumberRangeType(next.numberRangeType);
-  setFormNoFrom(next.formNoFrom);
-  setFormNoTo(next.formNoTo);
-  setReportNoFrom(next.reportNoFrom);
-  setReportNoTo(next.reportNoTo);
-  setPerPage(
-    ([10, 20, 50] as const).includes(next.perPage as any)
-      ? (next.perPage as 10 | 20 | 50)
-      : 10,
-  );
-  setPage(next.page);
-  setDateField(next.dateField);
-  setSortOrder((next as any).sortOrder || "desc");
-
-  hydratedFromUrlRef.current = true;
-}, [searchParams ,FILTER_STORAGE_KEY]);
-
-
-useEffect(() => {
-  if (!hydratedFromUrlRef.current) return;
-
-  const tid = window.setTimeout(() => {
-    const chip = statusChipRefs.current[String(statusFilter)];
-    if (!chip) return;
-
-    chip.scrollIntoView({
-      behavior: "smooth",
-      inline: "center",
-      block: "nearest",
-    });
-  }, 80);
-
-  return () => window.clearTimeout(tid);
-}, [statusFilter, statusOptions, searchParams]);
-
-useEffect(() => {
-  try {
-    localStorage.setItem(
-      FILTER_STORAGE_KEY,
-      JSON.stringify({
-        formFilter,
-        statusFilter,
-        searchClient,
-        searchReport,
-        searchText,
-        datePreset,
-        dateFrom,
-        dateTo,
-        numberRangeType,
-        formNoFrom,
-        formNoTo,
-        reportNoFrom,
-        reportNoTo,
-        perPage,
-        page,
-        dateField,
-        sortOrder,
-      }),
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearchText(next.searchText);
+    setDatePreset(next.datePreset);
+    setDateFrom(next.dateFrom);
+    setDateTo(next.dateTo);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+    setPerPage(
+      ([10, 20, 50] as const).includes(next.perPage as any)
+        ? (next.perPage as 10 | 20 | 50)
+        : 10,
     );
-  } catch {
-    // ignore
-  }
-}, [
-  FILTER_STORAGE_KEY,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  page,
-  dateField,
-  sortOrder,
-]);
+    setPage(next.page);
+    setDateField(next.dateField);
+    setSortOrder((next as any).sortOrder || "desc");
+
+    hydratedFromUrlRef.current = true;
+  }, [searchParams, FILTER_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
+
+    const tid = window.setTimeout(() => {
+      const chip = statusChipRefs.current[String(statusFilter)];
+      if (!chip) return;
+
+      chip.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(tid);
+  }, [statusFilter, statusOptions, searchParams]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText,
+          datePreset,
+          dateFrom,
+          dateTo,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          perPage,
+          page,
+          dateField,
+          sortOrder,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    page,
+    dateField,
+    sortOrder,
+  ]);
 
   // -----------------------------
   // Selection helpers
@@ -1331,25 +1335,24 @@ useEffect(() => {
   };
 
   // optional: clear selection when filters change (avoids printing hidden rows)
-useEffect(() => {
-  setSelectedIds([]);
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  pageClamped,
-]);
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+  ]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1446,17 +1449,15 @@ useEffect(() => {
   }
 
   function goToReportEditor(r: Report) {
-  const slug = formTypeToSlug[r.formType] || "micro-mix";
-  const returnTo = encodeURIComponent(
-    location.pathname + location.search,
-  );
+    const slug = formTypeToSlug[r.formType] || "micro-mix";
+    const returnTo = encodeURIComponent(location.pathname + location.search);
 
-  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-    navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
-  } else {
-    navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
+    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+      navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
+    } else {
+      navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
+    }
   }
-}
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
@@ -1532,62 +1533,62 @@ useEffect(() => {
     }
   }, [datePreset]);
 
-const hasActiveFilters = useMemo(() => {
-  return (
-    formFilter !== "ALL" ||
-    String(statusFilter) !== "ALL" ||
-    searchClient.trim() !== "" ||
-    searchReport.trim() !== "" ||
-    searchText.trim() !== "" ||
-    datePreset !== "ALL" ||
-    dateFrom !== "" ||
-    dateTo !== "" ||
-    numberRangeType !== "FORM" ||
-    formNoFrom !== "" ||
-    formNoTo !== "" ||
-    reportNoFrom !== "" ||
-    reportNoTo !== "" ||
-    perPage !== 10 ||
-    dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
-    sortOrder !== "desc"
-  );
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-  dateField,
-  sortOrder,
-]);
-const clearFilters = () => {
-  setSearchClient("");
-  setSearchReport("");
-  setSearchText("");
-  setDatePreset("ALL");
-  setDateFrom("");
-  setDateTo("");
-  setStatusFilter("ALL");
-  setFormFilter("ALL");
-  setNumberRangeType("FORM");
-  setFormNoFrom("");
-  setFormNoTo("");
-  setReportNoFrom("");
-  setReportNoTo("");
-  setPerPage(10);
-  setPage(1);
-  setDateField(DEFAULT_ADMIN_FILTERS.dateField);
-  setSortOrder("desc");
-};
+  const hasActiveFilters = useMemo(() => {
+    return (
+      formFilter !== "ALL" ||
+      String(statusFilter) !== "ALL" ||
+      searchClient.trim() !== "" ||
+      searchReport.trim() !== "" ||
+      searchText.trim() !== "" ||
+      datePreset !== "ALL" ||
+      dateFrom !== "" ||
+      dateTo !== "" ||
+      numberRangeType !== "FORM" ||
+      formNoFrom !== "" ||
+      formNoTo !== "" ||
+      reportNoFrom !== "" ||
+      reportNoTo !== "" ||
+      perPage !== 10 ||
+      dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
+      sortOrder !== "desc"
+    );
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+    dateField,
+    sortOrder,
+  ]);
+  const clearFilters = () => {
+    setSearchClient("");
+    setSearchReport("");
+    setSearchText("");
+    setDatePreset("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setStatusFilter("ALL");
+    setFormFilter("ALL");
+    setNumberRangeType("FORM");
+    setFormNoFrom("");
+    setFormNoTo("");
+    setReportNoFrom("");
+    setReportNoTo("");
+    setPerPage(10);
+    setPage(1);
+    setDateField(DEFAULT_ADMIN_FILTERS.dateField);
+    setSortOrder("desc");
+  };
   function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
@@ -1616,12 +1617,12 @@ const clearFilters = () => {
         count: voidableSelected.length,
         reason,
       },
-    formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
-reportNumber: selectedReportObjects
-  .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
-  .join(","),
-formType: selectedReportObjects.map((r) => r.formType).join(","),
-clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
+      formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
+      reportNumber: selectedReportObjects
+        .map((r) => (r.reportNumber != null ? String(r.reportNumber) : ""))
+        .join(","),
+      formType: selectedReportObjects.map((r) => r.formType).join(","),
+      clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
     });
 
     await Promise.all(
@@ -1785,9 +1786,8 @@ clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
       toast.error("No selected reports are available for update");
       return;
     }
-
     if (targets.length <= 1) {
-      goToReportEditor(clicked);
+      goToReportEditor(targets[0]);
       return;
     }
 
@@ -2331,16 +2331,16 @@ clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
       {/* Status chips */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div
-  ref={statusScrollerRef}
-  className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
->
+          ref={statusScrollerRef}
+          className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+        >
           {statusOptions.map((s) => (
-           <button
-  key={String(s)}
-  ref={(el) => {
-    statusChipRefs.current[String(s)] = el;
-  }}
-  onClick={() => setStatusFilter(s)}
+            <button
+              key={String(s)}
+              ref={(el) => {
+                statusChipRefs.current[String(s)] = el;
+              }}
+              onClick={() => setStatusFilter(s)}
               className={classNames(
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1",
                 statusFilter === s
@@ -2846,7 +2846,11 @@ clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
                                       const next = "UNDER_TESTING_REVIEW";
-                                      await setStatus(r, next, "set by systemadmin");
+                                      await setStatus(
+                                        r,
+                                        next,
+                                        "set by systemadmin",
+                                      );
                                       setReports((prev) =>
                                         prev.map((x) =>
                                           x.id === r.id
@@ -2997,7 +3001,9 @@ clientCode: selectedReportObjects.map((r) => r.client || "").join(","),
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next

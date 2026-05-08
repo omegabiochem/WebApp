@@ -25,7 +25,7 @@ import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
-import { COLS, type ChemistryColKey } from "../../utils/globalUtils";
+import { COLS, isTerminalStatus, type ChemistryColKey } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 
 // -----------------------------
@@ -505,7 +505,7 @@ export default function ChemistryDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const PIN_STORAGE_KEY = userKey
-    ? `clientDashboardPinned:user:${userKey}`
+    ? `chemistryDashboardPinned:user:${userKey}`
     : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -1015,7 +1015,6 @@ export default function ChemistryDashboard() {
     fromDate,
     toDate,
     perPage,
-    pageClamped,
   ]);
 
   // useEffect(() => {
@@ -1204,6 +1203,7 @@ export default function ChemistryDashboard() {
     hydratedFromUrlRef.current = true;
   }, [searchParams, FILTER_STORAGE_KEY]);
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
+    if (isTerminalStatus(r.status)) return false;
     const chemistryFieldsUsedOnForm = [
       "sop",
       "results",

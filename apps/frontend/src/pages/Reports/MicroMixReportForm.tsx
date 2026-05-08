@@ -1366,9 +1366,24 @@ export default function MicroMixReportForm({
           ? Object.keys(fullPayload)
           : PHASE_WRITE_GUARD(allowedBase);
 
-        const payload = Object.fromEntries(
+        // const payload = Object.fromEntries(
+        //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
+        // );
+
+        let payload = Object.fromEntries(
           Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
         );
+
+        // ✅ In correction update mode, send ONLY requested correction fields
+        if (correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((c) => c.fieldKey.split(":")[0]),
+          );
+
+          payload = Object.fromEntries(
+            Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
+          );
+        }
 
         // New reports always start as DRAFT
         if (!reportId) {
@@ -1908,6 +1923,19 @@ export default function MicroMixReportForm({
     kinds: CorrectionLaunchKind[] = [],
   ): ReportStatus {
     return getCentralizedCorrectionStatus(kinds);
+  }
+
+  function getWorkflowReturnStatus(current: ReportStatus): ReportStatus {
+    if (current === "UNDER_CLIENT_PRELIMINARY_REVIEW") {
+      return "UNDER_QA_PRELIMINARY_REVIEW";
+    }
+
+    if (current === "UNDER_CLIENT_FINAL_REVIEW") {
+      return "UNDER_QA_FINAL_REVIEW";
+    }
+
+    // For any other status, return to same original status
+    return current;
   }
 
   function normalizeForCompare(v: any): string {
@@ -3464,84 +3492,86 @@ export default function MicroMixReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!hideBottomActions && !isAnyTemplateMode && (
-        <div className="no-print mt-4 flex items-center justify-between">
-          {/* Left: status action buttons */}
-          <div className="flex flex-wrap gap-2">
-            {showAssignReportNumberButton && (
-              <button
-                type="button"
-                onClick={assignReportNumberAndOpenTesting}
-                disabled={isBusy}
-                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {busy === "STATUS" && <Spinner />}
-                Assign Report Number
-              </button>
-            )}
-            {!showAssignReportNumberButton &&
-              STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-                (targetStatus: ReportStatus) => {
-                  const isNeedsCorrectionStatus =
-                    targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                    targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-                    targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-                    targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-                    targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-                    targetStatus === "ADMIN_NEEDS_CORRECTION" ||
-                    targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-                    targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
-
-                  if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
-                    return null;
-                  }
-
-                  if (
-                    STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                      role!,
-                    ) &&
-                    statusButtons[targetStatus]
-                  ) {
-                    const { label, color } = statusButtons[targetStatus];
-
-                    const approveNeedsAttachment =
-                      isApproveAction(targetStatus);
-                    const disableApproveForNoAttachment =
-                      approveNeedsAttachment && !hasAttachment;
-
-                    const disabled =
-                      isBusy ||
-                      attachmentsLoading ||
-                      disableApproveForNoAttachment;
-
-                    return (
-                      <div key={targetStatus} className="relative group">
-                        <button
-                          className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                          onClick={() => requestStatusChange(targetStatus)}
-                          disabled={disabled}
-                          title={formatStatusText(targetStatus)} // browser tooltip
-                        >
-                          {busy === "STATUS" && <Spinner />}
-                          {attachmentsLoading && label === "Approve"
-                            ? "Checking..."
-                            : label}
-                        </button>
-
-                        {/* custom hover tooltip */}
-                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                          {label} → {formatStatusText(targetStatus)}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return null;
-                },
+      {!hideBottomActions &&
+        !isAnyTemplateMode &&
+        !effectiveCorrectionLaunch && (
+          <div className="no-print mt-4 flex items-center justify-between">
+            {/* Left: status action buttons */}
+            <div className="flex flex-wrap gap-2">
+              {showAssignReportNumberButton && (
+                <button
+                  type="button"
+                  onClick={assignReportNumberAndOpenTesting}
+                  disabled={isBusy}
+                  className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {busy === "STATUS" && <Spinner />}
+                  Assign Report Number
+                </button>
               )}
+              {!showAssignReportNumberButton &&
+                STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+                  (targetStatus: ReportStatus) => {
+                    const isNeedsCorrectionStatus =
+                      targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+                      targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+                      targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+                      targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+                      targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
+                      targetStatus === "ADMIN_NEEDS_CORRECTION" ||
+                      targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+                      targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
+
+                    if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
+                      return null;
+                    }
+
+                    if (
+                      STATUS_TRANSITIONS[
+                        status as ReportStatus
+                      ].canSet.includes(role!) &&
+                      statusButtons[targetStatus]
+                    ) {
+                      const { label, color } = statusButtons[targetStatus];
+
+                      const approveNeedsAttachment =
+                        isApproveAction(targetStatus);
+                      const disableApproveForNoAttachment =
+                        approveNeedsAttachment && !hasAttachment;
+
+                      const disabled =
+                        isBusy ||
+                        attachmentsLoading ||
+                        disableApproveForNoAttachment;
+
+                      return (
+                        <div key={targetStatus} className="relative group">
+                          <button
+                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                            onClick={() => requestStatusChange(targetStatus)}
+                            disabled={disabled}
+                            title={formatStatusText(targetStatus)} // browser tooltip
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            {attachmentsLoading && label === "Approve"
+                              ? "Checking..."
+                              : label}
+                          </button>
+
+                          {/* custom hover tooltip */}
+                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                            {label} → {formatStatusText(targetStatus)}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  },
+                )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
       {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -3668,7 +3698,12 @@ export default function MicroMixReportForm({
                     reportVersion,
                     {
                       kinds: effectiveCorrectionKinds,
-                      previousStatus: status,
+                      previousStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
+                      workflowReturnStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
                     },
                   );
 

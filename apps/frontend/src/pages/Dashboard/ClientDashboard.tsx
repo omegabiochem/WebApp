@@ -48,6 +48,7 @@ import {
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 import { Eye, EyeOff, Pin } from "lucide-react";
+import { isTerminalStatus } from "../../utils/globalUtils";
 
 // -----------------------------
 // Types
@@ -203,6 +204,7 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
+   if (isTerminalStatus(String(r.status))) return false;
   // const isMicro =
   //   r.formType === "MICRO_MIX" ||
   //   r.formType === "MICRO_MIX_WATER" ||
@@ -258,6 +260,7 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
+   if (isTerminalStatus(String(r.status))) return false;
   const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   if (!isChemistry) return false;
@@ -494,90 +497,6 @@ function inRange(
   return true;
 }
 
-function getInitialClientFilters(searchParams: URLSearchParams) {
-  try {
-    const spForm = searchParams.get("form");
-    const spStatus = searchParams.get("status");
-    const spClient = searchParams.get("client");
-    const spReport = searchParams.get("report");
-    const spQ = searchParams.get("q");
-
-    const spSortBy = searchParams.get("sortBy");
-    const spSortDir = searchParams.get("sortDir");
-
-    const spP = searchParams.get("p");
-    const spPp = searchParams.get("pp");
-
-    const spDp = searchParams.get("dp");
-    const spFrom = searchParams.get("from");
-    const spTo = searchParams.get("to");
-
-    const spRangeType = searchParams.get("rangeType");
-    const spFormFrom = searchParams.get("formFrom");
-    const spFormTo = searchParams.get("formTo");
-    const spReportFrom = searchParams.get("reportFrom");
-    const spReportTo = searchParams.get("reportTo");
-
-    const hasUrlFilters =
-      spForm ||
-      spStatus ||
-      spClient ||
-      spReport ||
-      spQ ||
-      spSortBy ||
-      spSortDir ||
-      spP ||
-      spPp ||
-      spDp ||
-      spFrom ||
-      spRangeType ||
-      spFormFrom ||
-      spFormTo ||
-      spReportFrom ||
-      spReportTo ||
-      spTo;
-
-    if (hasUrlFilters) {
-      return {
-        formFilter:
-          (spForm as typeof DEFAULT_CLIENT_FILTERS.formFilter) ||
-          DEFAULT_CLIENT_FILTERS.formFilter,
-        statusFilter:
-          (spStatus as DashboardStatus) || DEFAULT_CLIENT_FILTERS.statusFilter,
-        searchClient: spClient || DEFAULT_CLIENT_FILTERS.searchClient,
-        searchReport: spReport || DEFAULT_CLIENT_FILTERS.searchReport,
-        searchText: spQ || DEFAULT_CLIENT_FILTERS.searchText,
-        sortBy:
-          (spSortBy as "dateSent" | "formNumber" | "createdAt" | "updatedAt") ||
-          DEFAULT_CLIENT_FILTERS.sortBy,
-        sortDir:
-          (spSortDir as "asc" | "desc") || DEFAULT_CLIENT_FILTERS.sortDir,
-        perPage: parseIntSafe(spPp, DEFAULT_CLIENT_FILTERS.perPage),
-        page: parseIntSafe(spP, DEFAULT_CLIENT_FILTERS.page),
-        datePreset: (spDp as DatePreset) || DEFAULT_CLIENT_FILTERS.datePreset,
-        fromDate:
-          (spDp as DatePreset) === "CUSTOM"
-            ? spFrom || DEFAULT_CLIENT_FILTERS.fromDate
-            : DEFAULT_CLIENT_FILTERS.fromDate,
-        toDate:
-          (spDp as DatePreset) === "CUSTOM"
-            ? spTo || DEFAULT_CLIENT_FILTERS.toDate
-            : DEFAULT_CLIENT_FILTERS.toDate,
-        numberRangeType:
-          (spRangeType as "FORM" | "REPORT") ||
-          DEFAULT_CLIENT_FILTERS.numberRangeType,
-        formNoFrom: spFormFrom || DEFAULT_CLIENT_FILTERS.formNoFrom,
-        formNoTo: spFormTo || DEFAULT_CLIENT_FILTERS.formNoTo,
-        reportNoFrom: spReportFrom || DEFAULT_CLIENT_FILTERS.reportNoFrom,
-        reportNoTo: spReportTo || DEFAULT_CLIENT_FILTERS.reportNoTo,
-      };
-    }
-  } catch {
-    // ignore
-  }
-
-  return DEFAULT_CLIENT_FILTERS;
-}
 // -----------------------------
 // Component
 // -----------------------------
@@ -588,8 +507,127 @@ export default function ClientDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, token } = useAuth();
 
-  const initialFilters = getInitialClientFilters(searchParams);
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid;
+  const FILTER_STORAGE_KEY = userKey
+    ? `clientDashboardFilters:user:${userKey}`
+    : null;
+
+  const initialFilters = getInitialClientFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+
+  function getInitialClientFilters(
+    searchParams: URLSearchParams,
+    storageKey: string | null,
+  ) {
+    try {
+      const spForm = searchParams.get("form");
+      const spStatus = searchParams.get("status");
+      const spClient = searchParams.get("client");
+      const spReport = searchParams.get("report");
+      const spQ = searchParams.get("q");
+
+      const spSortBy = searchParams.get("sortBy");
+      const spSortDir = searchParams.get("sortDir");
+
+      const spP = searchParams.get("p");
+      const spPp = searchParams.get("pp");
+
+      const spDp = searchParams.get("dp");
+      const spFrom = searchParams.get("from");
+      const spTo = searchParams.get("to");
+
+      const spRangeType = searchParams.get("rangeType");
+      const spFormFrom = searchParams.get("formFrom");
+      const spFormTo = searchParams.get("formTo");
+      const spReportFrom = searchParams.get("reportFrom");
+      const spReportTo = searchParams.get("reportTo");
+
+      const hasUrlFilters =
+        spForm ||
+        spStatus ||
+        spClient ||
+        spReport ||
+        spQ ||
+        spSortBy ||
+        spSortDir ||
+        spP ||
+        spPp ||
+        spDp ||
+        spFrom ||
+        spRangeType ||
+        spFormFrom ||
+        spFormTo ||
+        spReportFrom ||
+        spReportTo ||
+        spTo;
+
+      if (hasUrlFilters) {
+        return {
+          formFilter:
+            (spForm as typeof DEFAULT_CLIENT_FILTERS.formFilter) ||
+            DEFAULT_CLIENT_FILTERS.formFilter,
+          statusFilter:
+            (spStatus as DashboardStatus) ||
+            DEFAULT_CLIENT_FILTERS.statusFilter,
+          searchClient: spClient || DEFAULT_CLIENT_FILTERS.searchClient,
+          searchReport: spReport || DEFAULT_CLIENT_FILTERS.searchReport,
+          searchText: spQ || DEFAULT_CLIENT_FILTERS.searchText,
+          sortBy:
+            (spSortBy as
+              | "dateSent"
+              | "formNumber"
+              | "createdAt"
+              | "updatedAt") || DEFAULT_CLIENT_FILTERS.sortBy,
+          sortDir:
+            (spSortDir as "asc" | "desc") || DEFAULT_CLIENT_FILTERS.sortDir,
+          perPage: parseIntSafe(spPp, DEFAULT_CLIENT_FILTERS.perPage),
+          page: parseIntSafe(spP, DEFAULT_CLIENT_FILTERS.page),
+          datePreset: (spDp as DatePreset) || DEFAULT_CLIENT_FILTERS.datePreset,
+          fromDate:
+            (spDp as DatePreset) === "CUSTOM"
+              ? spFrom || DEFAULT_CLIENT_FILTERS.fromDate
+              : DEFAULT_CLIENT_FILTERS.fromDate,
+          toDate:
+            (spDp as DatePreset) === "CUSTOM"
+              ? spTo || DEFAULT_CLIENT_FILTERS.toDate
+              : DEFAULT_CLIENT_FILTERS.toDate,
+          numberRangeType:
+            (spRangeType as "FORM" | "REPORT") ||
+            DEFAULT_CLIENT_FILTERS.numberRangeType,
+          formNoFrom: spFormFrom || DEFAULT_CLIENT_FILTERS.formNoFrom,
+          formNoTo: spFormTo || DEFAULT_CLIENT_FILTERS.formNoTo,
+          reportNoFrom: spReportFrom || DEFAULT_CLIENT_FILTERS.reportNoFrom,
+          reportNoTo: spReportTo || DEFAULT_CLIENT_FILTERS.reportNoTo,
+        };
+      }
+      if (storageKey) {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          return {
+            ...DEFAULT_CLIENT_FILTERS,
+            ...JSON.parse(raw),
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return DEFAULT_CLIENT_FILTERS;
+  }
+  // const initialFilters = getInitialClientFilters(
+  //   searchParams,
+  //   FILTER_STORAGE_KEY,
+  // );
 
   const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
 
@@ -615,6 +653,8 @@ export default function ClientDashboard() {
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
     initialFilters.statusFilter,
   );
+
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
     initialFilters.datePreset,
@@ -671,15 +711,6 @@ export default function ClientDashboard() {
     null,
   );
 
-  const navigate = useNavigate();
-  const { user, token } = useAuth();
-
-  const userKey =
-    (user as any)?.id ||
-    (user as any)?.userId ||
-    (user as any)?.sub ||
-    (user as any)?.uid;
-
   const COL_STORAGE_KEY = userKey
     ? `clientDashboardCols:user:${userKey}`
     : null;
@@ -705,6 +736,12 @@ export default function ClientDashboard() {
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
+  const hydratedFromUrlRef = React.useRef(false);
+  const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
+
   type StatusActionModalState = {
     open: boolean;
     action: "VOID_SELECTED" | null;
@@ -727,6 +764,83 @@ export default function ClientDashboard() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const [showVoidPassword, setShowVoidPassword] = useState(false);
+
+  useEffect(() => {
+    if (!FILTER_STORAGE_KEY) return;
+    if (!filtersHydrated) return;
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          formFilter,
+          statusFilter,
+          searchClient,
+          searchReport,
+          searchText: search,
+          numberRangeType,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+          sortBy,
+          sortDir,
+          perPage,
+          page,
+          datePreset,
+          fromDate,
+          toDate,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    filtersHydrated,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    page,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
+useEffect(() => {
+  const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
+
+  setFormFilter(next.formFilter);
+  setStatusFilter(next.statusFilter);
+  setSearchClient(next.searchClient);
+  setSearchReport(next.searchReport);
+  setSearch(next.searchText);
+  setSortBy(next.sortBy);
+  setSortDir(next.sortDir);
+  setPerPage(next.perPage);
+  setPage(next.page);
+  setDatePreset(next.datePreset);
+  setFromDate(next.fromDate);
+  setToDate(next.toDate);
+  setNumberRangeType(next.numberRangeType);
+  setFormNoFrom(next.formNoFrom);
+  setFormNoTo(next.formNoTo);
+  setReportNoFrom(next.reportNoFrom);
+  setReportNoTo(next.reportNoTo);
+
+  hydratedFromUrlRef.current = true;
+  setFiltersHydrated(true);
+}, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     // ✅ IMPORTANT: don't get stuck if key isn't ready yet
@@ -1014,21 +1128,26 @@ export default function ClientDashboard() {
   const pageRows = processed.slice(start, end);
 
   // Reset to page 1 when the core filters change
-  useEffect(() => {
-    setPage(1);
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    search,
-    sortBy,
-    sortDir,
-    perPage,
-    datePreset,
-    fromDate,
-    toDate,
-  ]);
+useEffect(() => {
+  setPage(1);
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  sortBy,
+  sortDir,
+  perPage,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+]);
 
   useEffect(() => {
     if (!colOpen) return;
@@ -1044,10 +1163,33 @@ export default function ClientDashboard() {
   }, [colOpen]);
 
   useEffect(() => {
+    setSelectedIds([]);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
+
     const sp = new URLSearchParams();
 
-    sp.set("form", formFilter);
-    sp.set("status", String(statusFilter));
+    if (formFilter !== "ALL") sp.set("form", formFilter);
+    if (statusFilter !== "ALL") sp.set("status", String(statusFilter));
 
     if (searchClient.trim()) sp.set("client", searchClient.trim());
     if (searchReport.trim()) sp.set("report", searchReport.trim());
@@ -1055,7 +1197,6 @@ export default function ClientDashboard() {
 
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
-
     sp.set("pp", String(perPage));
     sp.set("p", String(pageClamped));
 
@@ -1064,13 +1205,16 @@ export default function ClientDashboard() {
       if (fromDate) sp.set("from", fromDate);
       if (toDate) sp.set("to", toDate);
     }
+
     sp.set("rangeType", numberRangeType);
     if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
     if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
     if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
-    setSearchParams(sp, { replace: true });
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
   }, [
     formFilter,
     statusFilter,
@@ -1089,8 +1233,26 @@ export default function ClientDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    searchParams,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    if (!hydratedFromUrlRef.current) return;
+
+    const tid = window.setTimeout(() => {
+      const chip = statusChipRefs.current[String(statusFilter)];
+      if (!chip) return;
+
+      chip.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(tid);
+  }, [statusFilter, statusOptions, searchParams]);
 
   async function setStatus(
     r: Report,
@@ -1192,9 +1354,9 @@ export default function ClientDashboard() {
         reportIds: selectedIds,
         count: selectedIds.length,
       },
-      formNumber: null,
-      reportNumber: null,
-      formType: null,
+      formNumber: selectedReportObjects.map((r) => r.formNumber).join(","),
+      reportNumber: selectedReportObjects.map((r) => r.reportNumber).join(","),
+      formType: selectedReportObjects.map((r) => r.formType).join(","),
       clientCode: user?.clientCode || null,
     });
 
@@ -1386,6 +1548,11 @@ export default function ClientDashboard() {
     sortBy,
     sortDir,
     perPage,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     datePreset,
     fromDate,
     toDate,
@@ -1409,6 +1576,8 @@ export default function ClientDashboard() {
     setFormNoTo(DEFAULT_CLIENT_FILTERS.formNoTo);
     setReportNoFrom(DEFAULT_CLIENT_FILTERS.reportNoFrom);
     setReportNoTo(DEFAULT_CLIENT_FILTERS.reportNoTo);
+    setSelectedIds([]);
+    setBulkMenuOpen(false);
   };
 
   useEffect(() => {
@@ -1482,7 +1651,7 @@ export default function ClientDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-  if (!colsHydrated || !pinsHydrated) {
+if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -2023,14 +2192,19 @@ export default function ClientDashboard() {
       </div>
 
       {/* Controls Card */}
-      {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
         <div className="mb-4">
-          <div className="flex min-h-[42px] items-center gap-2 overflow-x-auto pb-2">
+          <div
+            ref={statusScrollerRef}
+            className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+          >
             {statusOptions.map((s) => (
               <button
-                key={s}
+                key={String(s)}
+                ref={(el) => {
+                  statusChipRefs.current[String(s)] = el;
+                }}
                 onClick={() => setStatusFilter(s)}
                 className={classNames(
                   "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 transition",
@@ -2637,7 +2811,7 @@ export default function ClientDashboard() {
                 </select>
                 <button
                   className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                   disabled={pageClamped === 1}
                 >
                   Prev
@@ -2647,7 +2821,9 @@ export default function ClientDashboard() {
                 </span>
                 <button
                   className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() =>
+                    setPage((p: number) => Math.min(totalPages, p + 1))
+                  }
                   disabled={pageClamped === totalPages}
                 >
                   Next
