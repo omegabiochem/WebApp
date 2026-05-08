@@ -1352,7 +1352,6 @@ export default function SystemAdminDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
-    pageClamped,
   ]);
 
   // Permissions

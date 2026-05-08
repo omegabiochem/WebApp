@@ -10,6 +10,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { FormType, UserRole } from '@prisma/client';
 import { CreateTemplateDto } from './dto/create-template.dto';
+import { getRequestContext } from 'src/common/request-context';
 
 type AuthedUser = {
   userId: string;
@@ -373,6 +374,25 @@ export class TemplatesService {
         },
       });
 
+      await this.prisma.auditTrail.create({
+        data: {
+          action: 'FORM_NUMBER_ASSIGNED',
+          entity: created.formType,
+          entityId: created.id,
+          formNumber: created.formNumber,
+          reportNumber: null,
+          formType: created.formType,
+          clientCode: created.clientCode,
+          userId: user.userId,
+          role: user.role,
+          ipAddress: getRequestContext()?.ip ?? null,
+          details: `Assigned form number ${created.formNumber}`,
+          changes: {
+            formNumber: created.formNumber,
+          },
+        },
+      });
+
       return { route: `/chemistry-reports/chemistry-mix/${created.id}` };
     }
 
@@ -397,6 +417,25 @@ export class TemplatesService {
           reportNumber: true,
           formType: true,
           clientCode: true,
+        },
+      });
+
+      await this.prisma.auditTrail.create({
+        data: {
+          action: 'FORM_NUMBER_ASSIGNED',
+          entity: created.formType,
+          entityId: created.id,
+          formNumber: created.formNumber,
+          reportNumber: null,
+          formType: created.formType,
+          clientCode: created.clientCode,
+          userId: user.userId,
+          role: user.role,
+          ipAddress: getRequestContext()?.ip ?? null,
+          details: `Assigned form number ${created.formNumber}`,
+          changes: {
+            formNumber: created.formNumber,
+          },
         },
       });
 
@@ -436,6 +475,25 @@ export class TemplatesService {
         reportNumber: true,
         formType: true,
         clientCode: true,
+      },
+    });
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: 'FORM_NUMBER_ASSIGNED',
+        entity: created.formType,
+        entityId: created.id,
+        formNumber: created.formNumber,
+        reportNumber: null,
+        formType: created.formType,
+        clientCode: created.clientCode,
+        userId: user.userId,
+        role: user.role,
+        ipAddress: getRequestContext()?.ip ?? null,
+        details: `Assigned form number ${created.formNumber}`,
+        changes: {
+          formNumber: created.formNumber,
+        },
       },
     });
 

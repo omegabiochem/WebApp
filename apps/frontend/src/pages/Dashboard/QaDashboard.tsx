@@ -1261,7 +1261,6 @@ export default function QaDashboard() {
     dateFrom,
     dateTo,
     perPage,
-    pageClamped,
     searchText,
     formNoFrom,
     formNoTo,
