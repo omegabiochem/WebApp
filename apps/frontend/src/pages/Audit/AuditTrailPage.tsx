@@ -629,9 +629,47 @@ export default function AuditTrailPage() {
     () => Array.from(new Set(records.map((r) => r.entity))).sort(),
     [records],
   );
+  const KNOWN_AUDIT_ACTIONS = [
+    "FORM_CREATED",
+    "FORM_UPDATED",
+    "FORM_NUMBER_ASSIGNED",
+
+    "REPORT_CREATED",
+    "REPORT_UPDATED",
+    "REPORT_NUMBER_ASSIGNED",
+
+    "STATUS_CHANGE",
+    "CHANGE_REQUESTED",
+    "CORRECTION_REQUESTED",
+    "REPORT_APPROVED",
+    "REPORT_LOCKED",
+    "FORM_VOIDED",
+    "REPORT_VOIDED",
+
+    "CORRECTION_CREATED",
+    "CORRECTION_RESOLVED",
+    "CORRECTION_RESOLVED_ALL",
+
+    "ATTACHMENT_UPLOADED",
+    "ATTACHMENT_UPDATED",
+    "ATTACHMENT_DELETED",
+
+    "LOGIN",
+    "LOGOUT",
+    "LOGIN_FAILED",
+    "PASSWORD_CHANGE",
+
+    "UI_VIEW_REPORT",
+    "UI_PRINT_REPORT",
+    "UI_PRINT_SELECTED",
+    "UI_DOWNLOAD_AUDIT_CSV",
+  ];
 
   const actionOptions = useMemo(
-    () => Array.from(new Set(records.map((r) => r.action))).sort(),
+    () =>
+      Array.from(
+        new Set([...KNOWN_AUDIT_ACTIONS, ...records.map((r) => r.action)]),
+      ).sort(),
     [records],
   );
 

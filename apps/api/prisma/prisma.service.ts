@@ -13,6 +13,8 @@ const SKIP_MODELS = new Set([
   'Notification',
   'NotificationOutbox',
   'MessageNotificationOutbox',
+  'ClientSequence',
+  'LabReportSequence',
 ]); // never audit the audit table itself
 
 function isPlainObject(x: unknown): x is AnyObj {
@@ -355,11 +357,11 @@ function resolveAction(
       return hasReportNumber ? 'REPORT_CREATED' : 'FORM_CREATED';
     }
 
-    if (action === 'update') {
-      const reportNumberWasEmpty =
-        !before?.reportNumber && !!(patch?.reportNumber || after?.reportNumber);
+    if (action === 'update' || action === 'updateMany') {
+      const reportNumberWasAssigned =
+        !before?.reportNumber && !!after?.reportNumber;
 
-      if (reportNumberWasEmpty) {
+      if (reportNumberWasAssigned) {
         return 'REPORT_CREATED';
       }
 
@@ -370,10 +372,12 @@ function resolveAction(
         if (next === 'CORRECTION_REQUESTED') return 'CORRECTION_REQUESTED';
         if (next === 'FINAL_APPROVED' || next === 'APPROVED')
           return 'REPORT_APPROVED';
-        if (next === 'VOID') return 'REPORT_VOIDED';
+        if (next === 'VOID') {
+          return hasReportNumber ? 'REPORT_VOIDED' : 'FORM_VOIDED';
+        }
         if (next === 'LOCKED') return 'REPORT_LOCKED';
 
-        return 'STATUS_CHANGED';
+        return 'STATUS_CHANGE';
       }
 
       return hasReportNumber ? 'REPORT_UPDATED' : 'FORM_UPDATED';
@@ -391,36 +395,46 @@ function resolveAction(
   // }
 
   if (isDetailReport) {
-  const hasReportNumber =
-    !!auditRef?.reportNumber ||
-    !!before?.reportNumber ||
-    !!after?.reportNumber ||
-    !!patch?.reportNumber;
+    const hasReportNumber =
+      !!auditRef?.reportNumber ||
+      !!before?.reportNumber ||
+      !!after?.reportNumber ||
+      !!patch?.reportNumber;
 
-  if (action === 'create') {
-    return hasReportNumber ? 'REPORT_CREATED' : 'FORM_CREATED';
+    if (action === 'create') {
+      return hasReportNumber ? 'REPORT_CREATED' : 'FORM_CREATED';
+    }
+
+    if (action === 'update') {
+      const reasonText = String((getRequestContext() as any)?.action ?? '');
+
+      const isReportNumberAssignment = reasonText.includes(
+        'REPORT_NUMBER_ASSIGNED',
+      );
+
+      if (isReportNumberAssignment && hasReportNumber) {
+        return 'REPORT_CREATED';
+      }
+
+      return hasReportNumber ? 'REPORT_UPDATED' : 'FORM_UPDATED';
+    }
+
+    if (action === 'delete') {
+      return hasReportNumber ? 'REPORT_DELETED' : 'FORM_DELETED';
+    }
   }
 
-  if (action === 'update') {
-    return hasReportNumber ? 'REPORT_UPDATED' : 'FORM_UPDATED';
-  }
+  // if (entity === 'ClientSequence') {
+  //   if (action === 'upsert' || action === 'create' || action === 'update') {
+  //     return 'FORM_NUMBER_ASSIGNED';
+  //   }
+  // }
 
-  if (action === 'delete') {
-    return hasReportNumber ? 'REPORT_DELETED' : 'FORM_DELETED';
-  }
-}
-
-  if (entity === 'ClientSequence') {
-  if (action === 'upsert' || action === 'create' || action === 'update') {
-    return 'FORM_NUMBER_ASSIGNED';
-  }
-}
-
-if (entity === 'LabReportSequence') {
-  if (action === 'upsert' || action === 'create' || action === 'update') {
-    return 'REPORT_NUMBER_ASSIGNED';
-  }
-}
+  // if (entity === 'LabReportSequence') {
+  //   if (action === 'upsert' || action === 'create' || action === 'update') {
+  //     return 'REPORT_NUMBER_ASSIGNED';
+  //   }
+  // }
 
   if (entity === 'Notification') {
     if (action === 'create') return 'NOTIFICATION_CREATED';
@@ -544,50 +558,50 @@ function resolveDetails(
   // }
 
   if (isDetailReport) {
-  const hasReportNumber =
-    !!auditRef?.reportNumber ||
-    !!before?.reportNumber ||
-    !!after?.reportNumber ||
-    !!patch?.reportNumber;
+    const hasReportNumber =
+      !!auditRef?.reportNumber ||
+      !!before?.reportNumber ||
+      !!after?.reportNumber ||
+      !!patch?.reportNumber;
 
-  const label = hasReportNumber
-    ? auditRef?.reportNumber ||
-      after?.reportNumber ||
-      before?.reportNumber ||
-      auditRef?.formNumber ||
-      after?.formNumber ||
-      before?.formNumber ||
-      ''
-    : auditRef?.formNumber || after?.formNumber || before?.formNumber || '';
+    const label = hasReportNumber
+      ? auditRef?.reportNumber ||
+        after?.reportNumber ||
+        before?.reportNumber ||
+        auditRef?.formNumber ||
+        after?.formNumber ||
+        before?.formNumber ||
+        ''
+      : auditRef?.formNumber || after?.formNumber || before?.formNumber || '';
 
-  if (action === 'FORM_CREATED') return `Created form ${label}`;
-  if (action === 'FORM_UPDATED') return `Updated form ${label}`;
-  if (action === 'FORM_DELETED') return `Deleted form ${label}`;
+    if (action === 'FORM_CREATED') return `Created form ${label}`;
+    if (action === 'FORM_UPDATED') return `Updated form ${label}`;
+    if (action === 'FORM_DELETED') return `Deleted form ${label}`;
 
-  if (action === 'REPORT_CREATED') return `Created report ${label}`;
-  if (action === 'REPORT_UPDATED') return `Updated report ${label}`;
-  if (action === 'REPORT_DELETED') return `Deleted report ${label}`;
-}
+    if (action === 'REPORT_CREATED') return `Created report ${label}`;
+    if (action === 'REPORT_UPDATED') return `Updated report ${label}`;
+    if (action === 'REPORT_DELETED') return `Deleted report ${label}`;
+  }
 
   if (entity === 'ClientSequence') {
-  const client =
-    after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
+    const client =
+      after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
 
-  const assigned =
-    after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
+    const assigned =
+      after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
 
-  return `Assigned form number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
-}
+    return `Assigned form number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
+  }
 
-if (entity === 'LabReportSequence') {
-  const client =
-    after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
+  if (entity === 'LabReportSequence') {
+    const client =
+      after?.clientCode || before?.clientCode || patch?.clientCode || 'client';
 
-  const assigned =
-    after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
+    const assigned =
+      after?.lastNumber ?? patch?.lastNumber ?? before?.lastNumber ?? '';
 
-  return `Assigned report number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
-}
+    return `Assigned report number for ${client}${assigned !== '' ? ` (${assigned})` : ''}`;
+  }
 
   if (entity === 'Notification') {
     const label =
@@ -711,7 +725,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         return next(params);
       }
 
-      const AUDIT_ACTIONS = new Set(['create', 'update', 'delete', 'upsert']);
+      const AUDIT_ACTIONS = new Set([
+        'create',
+        'update',
+        'delete',
+        'upsert',
+        'updateMany',
+        'deleteMany',
+      ]);
       if (!AUDIT_ACTIONS.has(action)) {
         return next(params);
       }
@@ -733,9 +754,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       // -------- FETCH BEFORE (ONLY FOR OPS THAT MODIFY EXISTING) --------
       let before: any = null;
       try {
-        if (action === 'update' || action === 'delete' || action === 'upsert') {
+        if (
+          action === 'update' ||
+          action === 'updateMany' ||
+          action === 'delete' ||
+          action === 'upsert'
+        ) {
           if (where && Object.keys(where).length) {
-            before = await (this as any)[entity].findUnique({ where });
+            const uniqueWhere = where?.id
+              ? { id: where.id }
+              : where?.reportId
+                ? { reportId: where.reportId }
+                : where?.chemistryId
+                  ? { chemistryId: where.chemistryId }
+                  : where;
+
+            before = await (this as any)[entity].findUnique({
+              where: uniqueWhere,
+            });
           }
         }
       } catch {
@@ -745,8 +781,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       // -------- DO MAIN OP --------
       const result = await next(params);
 
+      let after = result;
+
       try {
-        const refSource = result ??
+        if (
+          (entity === 'Report' || entity === 'ChemistryReport') &&
+          (action === 'update' || action === 'updateMany') &&
+          where?.id
+        ) {
+          after = await (this as any)[entity].findUnique({
+            where: { id: where.id },
+          });
+        }
+      } catch {
+        after = result;
+      }
+
+      try {
+        const refSource = after ??
+          result ??
           before ?? {
             id: where?.id,
             reportId: where?.reportId,
@@ -755,6 +808,33 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
           };
 
         const ref = await resolveAuditRef(this as any, entity, refSource);
+
+        // SPECIAL: ClientSequence -> synthetic form number
+        if (entity === 'ClientSequence') {
+          const clientCode =
+            result?.clientCode ?? before?.clientCode ?? where?.clientCode;
+
+          const lastNumber = result?.lastNumber ?? before?.lastNumber;
+
+          if (clientCode && lastNumber != null) {
+            const yyyy = new Date().getFullYear();
+
+            formNumber = `${clientCode}-${yyyy}${String(lastNumber).padStart(4, '0')}`;
+          }
+        }
+
+        // SPECIAL: LabReportSequence -> synthetic report number
+        if (entity === 'LabReportSequence') {
+          const dept = result?.department ?? before?.department;
+
+          const lastNumber = result?.lastNumber ?? before?.lastNumber;
+
+          if (dept && lastNumber != null) {
+            const yyyy = new Date().getFullYear();
+
+            reportNumber = `${dept}-${yyyy}${String(lastNumber).padStart(4, '0')}`;
+          }
+        }
 
         entityId = ref.entityId;
         formNumber = ref.formNumber;
@@ -804,15 +884,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             ? { before: prune(before), after: prune(result) }
             : { after: prune(result) };
         }
-
-        // const resolvedAction = resolveAction(
-        //   entity,
-        //   action,
-        //   before,
-        //   result,
-        //   patch,
-        // );
-        // details = resolveDetails(entity, resolvedAction, before, result, patch);
       } catch {
         changes = changes ?? {};
         details =
@@ -836,7 +907,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         const patch = params.args?.data || {};
         const keys = Object.keys(patch);
 
-        const onlyMeta = keys.length === 1 && keys[0] === 'updatedBy';
+        const onlyMeta =
+          keys.length > 0 &&
+          keys.every((k) => ['updatedBy', 'version'].includes(k));
 
         if (onlyMeta) {
           return result;
@@ -876,7 +949,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         entity,
         action,
         before,
-        result,
+        after,
         patch,
         auditRefMeta,
       );
@@ -885,10 +958,30 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         entity,
         resolvedAction,
         before,
-        result,
+        after,
         patch,
         auditRefMeta,
       );
+
+      const patchKeys = Object.keys(patch);
+
+      const isRootReportModel =
+        entity === 'Report' || entity === 'ChemistryReport';
+
+      const rootMetaOnly =
+        isRootReportModel &&
+        (resolvedAction === 'FORM_UPDATED' ||
+          resolvedAction === 'REPORT_UPDATED') &&
+        patchKeys.length > 0 &&
+        patchKeys.every((k) => ['updatedBy', 'version'].includes(k));
+
+      if (rootMetaOnly) {
+        return result;
+      }
+
+      if (resolvedAction === 'STATUS_CHANGE') {
+        return result;
+      }
 
       // -------- WRITE AUDIT (BEST EFFORT) --------
 
@@ -927,7 +1020,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         if (entity === 'Report') {
           const prevStatus = before?.status ?? null;
           const nextStatus =
-            result?.status ??
+            after?.status ??
             params.args?.data?.status ??
             params.args?.update?.status ??
             null;
@@ -937,7 +1030,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
             await (this as any).statusHistory.create({
               data: {
-                reportId: entityId ?? result?.id,
+                reportId: entityId ?? after?.id ?? result?.id,
                 from: prevStatus,
                 to: nextStatus,
                 reason,
@@ -959,7 +1052,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         if (entity === 'ChemistryReport') {
           const prevStatus = before?.status ?? null;
           const nextStatus =
-            result?.status ??
+            after?.status ??
             params.args?.data?.status ??
             params.args?.update?.status ??
             null;
@@ -969,7 +1062,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
             await (this as any).chemistryReportStatusHistory.create({
               data: {
-                chemistryId: entityId ?? result?.id,
+                chemistryId: entityId ?? after?.id ?? result?.id,
                 from: prevStatus,
                 to: nextStatus,
                 reason,
