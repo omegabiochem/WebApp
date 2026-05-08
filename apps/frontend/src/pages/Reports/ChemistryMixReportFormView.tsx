@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
-import { DEFAULT_CHEM_ACTIVES } from "../../utils/chemistryReportValidation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  DEFAULT_CHEM_ACTIVES,
+  getCorrections,
+  type CorrectionItem,
+} from "../../utils/chemistryReportValidation";
 import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
 import pjla from "../../assets/pjla.png";
@@ -254,8 +258,6 @@ function formatDateForInput(value: string | null) {
   return new Date(value).toISOString().split("T")[0];
 }
 
-
-
 // const PrintStyles = () => (
 //   <style>{`
 //     @media print {
@@ -395,6 +397,46 @@ const BlurStyles = () => (
   `}</style>
 );
 
+const DashStyles = () => (
+  <style>{`
+    .dash { position: relative; z-index: 0; }
+
+    .dash::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 10;
+
+      background:
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /16px 2px repeat-x,
+        linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 100% /16px 2px repeat-x,
+        linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /2px 16px repeat-y,
+        linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 100% 0 /2px 16px repeat-y;
+
+      opacity: 1;
+      animation: dash-move 1.05s linear infinite;
+    }
+
+    .dash-red::after { --dash-color: #dc2626; }
+
+    @keyframes dash-move {
+      to {
+        background-position:
+          16px 0,
+          -16px 100%,
+          0 16px,
+          100% -16px;
+      }
+    }
+
+    @media print {
+      .dash::after { display: none; }
+    }
+  `}</style>
+);
+
 export default function ChemistryMixReportFormView(
   props: ChemistryMixReportFormProps,
 ) {
@@ -501,6 +543,31 @@ export default function ChemistryMixReportFormView(
 
   const hideDateInputs = HIDE_DATE_INPUT_FOR.has(report?.status);
 
+  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [showCorrTray, setShowCorrTray] = useState(false);
+
+  const openCorrections = useMemo(
+    () => corrections.filter((c) => c.status === "OPEN"),
+    [corrections],
+  );
+
+  useEffect(() => {
+    if (!report?.id) return;
+
+    getCorrections(report.id)
+      .then(setCorrections)
+      .catch(() => setCorrections([]));
+  }, [report?.id]);
+
+  const hasOpenCorrection = (keyOrPrefix: string) =>
+    openCorrections.some(
+      (c) =>
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
+    );
+
+  const dashClass = (keyOrPrefix: string) =>
+    hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
+
   return (
     <div
       className={
@@ -513,6 +580,7 @@ export default function ChemistryMixReportFormView(
       {!isBulk && <PrintStyles />}
       {!isBulk && <BlurStyles />}
       {!isBulk && <ClampStyles />}
+      {!isBulk && <DashStyles />}
 
       {!isBulk &&
         // any floating / sticky UI
@@ -597,7 +665,9 @@ export default function ChemistryMixReportFormView(
           {/* CLIENT / DATE SENT */}
           <div className="w-full border border-black text-[12px]">
             <div className="grid grid-cols-[67%_33%] border-b border-black">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("client")}`}
+              >
                 <div className="whitespace-nowrap font-medium">CLIENT :</div>
                 <input
                   className="flex-1 border-none  text-[12px]"
@@ -606,7 +676,9 @@ export default function ChemistryMixReportFormView(
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("dateSent")}`}
+              >
                 <div className="whitespace-nowrap font-medium">DATE SENT :</div>
                 <input
                   className="flex-1 border-none outline-none text-[12px]"
@@ -619,7 +691,9 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE DESCRIPTION line */}
-            <div className="border-b border-black flex items-center gap-2 px-2">
+            <div
+              className={`border-b border-black flex items-center gap-2 px-2 relative ${dashClass("sampleDescription")}`}
+            >
               <div className="w-40 font-medium">SAMPLE DESCRIPTION :</div>
               <input
                 className="flex-1 border-none outline-none text-[12px]"
@@ -632,7 +706,9 @@ export default function ChemistryMixReportFormView(
             {/* TYPE OF TEST / SAMPLE COLLECTED */}
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] min-h-[20px]">
               {/* LEFT */}
-              <div className="px-2 border-r border-black grid items-center">
+              <div
+                className={`px-2 border-r border-black grid items-center relative ${dashClass("testTypes")}`}
+              >
                 <div className="flex items-center gap-2 whitespace-nowrap">
                   <span className="font-medium mr-1 shrink-0">
                     TYPE OF TEST :
@@ -687,7 +763,9 @@ export default function ChemistryMixReportFormView(
               </div>
 
               {/* RIGHT */}
-              <div className="px-2 grid items-center">
+              <div
+                className={`px-2 grid items-center relative ${dashClass("sampleCollected")}`}
+              >
                 <div className="flex items-center gap-1 whitespace-nowrap">
                   <span className="font-medium mr-1 shrink-0">
                     SAMPLE COLLECTED :
@@ -734,7 +812,9 @@ export default function ChemistryMixReportFormView(
 
             {/* LOT / MFG DATE */}
             <div className="grid grid-cols-[50%_50%] border-b border-black text-[12px]">
-              <div className="px-2 border-r border-black flex items-center gap-2">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-2 relative ${dashClass("lotBatchNo")}`}
+              >
                 <span className="font-medium">LOT / BATCH # :</span>
                 <input
                   className="flex-1 border-none outline-none"
@@ -743,7 +823,9 @@ export default function ChemistryMixReportFormView(
                   disabled
                 />
               </div>
-              <div className="px-2 flex items-center gap-2">
+              <div
+                className={`px-2 flex items-center gap-2 relative ${dashClass("manufactureDate")}`}
+              >
                 <span className="font-medium">MANUFACTURE DATE :</span>
                 <input
                   className="flex-1 border-none outline-none"
@@ -757,7 +839,9 @@ export default function ChemistryMixReportFormView(
 
             {/* FORMULA / SAMPLE SIZE / NUMBER OF ACTIVES */}
             <div className="grid grid-cols-[35%_30%_35%] border-b border-black text-[12px]">
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("formulaId")}`}
+              >
                 <span className="whitespace-nowrap font-medium">
                   FORMULA # / ID # :
                 </span>
@@ -769,7 +853,9 @@ export default function ChemistryMixReportFormView(
                 />
               </div>
 
-              <div className="px-2 border-r border-black flex items-center gap-1">
+              <div
+                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("sampleSize")}`}
+              >
                 <span className="whitespace-nowrap font-medium">
                   SAMPLE SIZE :
                 </span>
@@ -781,7 +867,9 @@ export default function ChemistryMixReportFormView(
                 />
               </div>
 
-              <div className="px-2 flex items-center gap-1">
+              <div
+                className={`px-2 flex items-center gap-1 relative ${dashClass("numberOfActives")}`}
+              >
                 <span className="whitespace-nowrap font-medium">
                   NUMBER OF ACTIVES :
                 </span>
@@ -795,7 +883,9 @@ export default function ChemistryMixReportFormView(
             </div>
 
             {/* SAMPLE TYPE checkboxes */}
-            <div className="px-2 text-[12px] grid grid-cols-[1fr_auto] items-stretch">
+            <div
+              className={`px-2 text-[12px] grid grid-cols-[1fr_auto] items-stretch relative ${dashClass("sampleTypes")}`}
+            >
               {/* LEFT: sample type section */}
               <div className="flex flex-col border-r border-black pr-2">
                 {/* Row 1 */}
@@ -914,14 +1004,14 @@ export default function ChemistryMixReportFormView(
                       value={report?.stabilityNote ?? ""}
                       readOnly
                       disabled
-                      className="ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none"
+                      className={`ml-1 w-[110px] border-0 border-b border-black/60 bg-transparent text-[11px] font-bold outline-none ${dashClass("stabilityNote")}`}
                     />
                   </label>
                 </div>
               </div>
 
               {/* RIGHT: Date received */}
-              <div className="flex items-center gap-2 whitespace-nowrap pl-2">
+           <div className={`flex items-center gap-2 whitespace-nowrap pl-2 relative ${dashClass("dateReceived")}`}>
                 <span className="whitespace-nowrap font-medium">
                   DATE RECEIVED :
                 </span>
@@ -976,7 +1066,7 @@ export default function ChemistryMixReportFormView(
                     className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] border-b last:border-b-0 border-black"
                   >
                     {/* ACTIVE NAME + checkbox */}
-                    <div className="flex items-start gap-2 border-r border-black px-1 py-1">
+                   <div className={`flex items-start gap-2 border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:checked`)}`}>
                       {/* <input
                         type="checkbox"
                         className="thick-box2 mt-[2px]"
@@ -994,35 +1084,35 @@ export default function ChemistryMixReportFormView(
                     </div>
 
                     {/* BULK ACTIVE LOT # */}
-                    <div className="border-r border-black px-1 py-1">
+                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:bulkActiveLot`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.bulkActiveLot)}
                       </div>
                     </div>
 
                     {/* SOP # */}
-                    <div className="border-r border-black px-1 py-1">
+                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:sopNo`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.sopNo)}
                       </div>
                     </div>
 
                     {/* FORMULA CONTENT */}
-                    <div className="border-r border-black px-1 py-1">
+                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:formulaContent`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.formulaContent)}
                       </div>
                     </div>
 
                     {/* RESULTS */}
-                    <div className="border-r border-black px-1 py-1">
+                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:result`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.result)}
                       </div>
                     </div>
 
                     {/* DATE TESTED / INITIAL */}
-                    <div className="px-1 py-1">
+                    <div className={`px-1 py-1 relative ${dashClass(`actives:${row.key}:dateTestedInitial`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.dateTestedInitial)}
                       </div>
@@ -1042,7 +1132,7 @@ export default function ChemistryMixReportFormView(
 
           {/* Comments + signatures */}
           <div className="mt-2 text-[12px]">
-            <div className="flex items-start gap-2">
+            <div className={`flex items-start gap-2 relative ${dashClass("comments")}`}>
               <span className="font-medium mt-[2px] whitespace-nowrap">
                 Comments :
               </span>
@@ -1067,7 +1157,7 @@ export default function ChemistryMixReportFormView(
               <>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
-                    <div className="mb-1 flex items-center gap-2">
+                    <div className={`mb-1 flex items-center gap-2 relative ${dashClass("testedBy")}`}>
                       <span className="font-medium">VERIFIED BY :</span>
                       <input
                         className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -1078,7 +1168,7 @@ export default function ChemistryMixReportFormView(
                         disabled
                       />
                     </div>
-                    <div className="flex items-center gap-2">
+                   <div className={`flex items-center gap-2 relative ${dashClass("testedDate")}`}>
                       <span className="font-medium">DATE :</span>
                       {hideDateInputs ? (
                         <div
@@ -1103,7 +1193,7 @@ export default function ChemistryMixReportFormView(
                   </div>
 
                   <div>
-                    <div className="mb-1 flex items-center gap-2">
+                    <div className={`mb-1 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}>
                       <span className="font-medium">REVIEWED BY :</span>
                       <input
                         className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -1114,7 +1204,7 @@ export default function ChemistryMixReportFormView(
                         disabled
                       />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 relative ${dashClass("reviewedDate")}`}>
                       <span className="font-medium">DATE :</span>
                       {hideDateInputs ? (
                         <div
@@ -1225,6 +1315,57 @@ export default function ChemistryMixReportFormView(
           <AttachmentGallery reportId={report?.id} />
         </div>
       )}
+
+      {!isBulk && openCorrections.length > 0 && (
+  <div className="no-print fixed bottom-20 right-6 z-40">
+    <button
+      onClick={() => setShowCorrTray((s) => !s)}
+      className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+    >
+      📝 Corrections
+      <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+        {openCorrections.length}
+      </span>
+    </button>
+  </div>
+)}
+
+{!isBulk && showCorrTray && (
+  <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
+    <div className="flex items-center justify-between border-b px-3 py-2">
+      <div className="text-sm font-semibold">Open corrections</div>
+      <button
+        className="rounded px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={() => setShowCorrTray(false)}
+      >
+        ✕
+      </button>
+    </div>
+
+    <div className="max-h-72 overflow-auto divide-y">
+      {openCorrections.map((c) => (
+        <div key={c.id} className="p-3 text-sm">
+          <div className="text-[11px] font-medium text-slate-500">
+            {c.fieldKey}
+          </div>
+
+          <div className="mt-1">Reason: {c.message}</div>
+
+          {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+            <div className="mt-1 text-xs text-slate-600">
+              <span className="font-medium">Old Value:</span>{" "}
+              <span className="break-words">
+                {typeof c.oldValue === "string"
+                  ? c.oldValue
+                  : JSON.stringify(c.oldValue)}
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
     </div>
   );
 }

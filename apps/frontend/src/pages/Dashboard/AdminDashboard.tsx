@@ -1365,7 +1365,6 @@ export default function AdminDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
-    pageClamped,
   ]);
 
   // Permissions

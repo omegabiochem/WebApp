@@ -1746,7 +1746,6 @@ export default function MicroDashboard() {
     fromDate,
     toDate,
     perPage,
-    pageClamped,
   ]);
 
   function getTargetsForAction(clicked: Report): Report[] {

@@ -993,6 +993,26 @@ export class ReportsService {
         sterility: true,
       },
     });
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: 'FORM_NUMBER_ASSIGNED',
+        entity: created.formType,
+        entityId: created.id,
+        userId: user.userId,
+        role: user.role,
+        ipAddress: getRequestContext()?.ip ?? null,
+        clientCode: created.clientCode ?? null,
+        formNumber: created.formNumber,
+        reportNumber: created.reportNumber ?? null,
+        formType: created.formType,
+        details: `Assigned form number ${created.formNumber}`,
+        changes: {
+          formNumber: created.formNumber,
+        },
+      },
+    });
+
     const flat = flattenReport(created);
     this.reportsGateway.notifyReportCreated(flat);
     return flat;
@@ -1101,6 +1121,15 @@ export class ReportsService {
 
     // Split base-vs-details
     const { base, details } = splitPatch(this._coerce(patch));
+
+    // If status is being set to SUBMITTED_BY_CLIENT, set dateSent if not already set on either current or patch
+    if (patchIn.status === 'SUBMITTED_BY_CLIENT') {
+      const currentDetails = pickDetails(current);
+
+      if (!currentDetails?.dateSent && !details.dateSent) {
+        details.dateSent = new Date();
+      }
+    }
 
     // handle status transitions (base.status)
     if (patchIn.status) {
@@ -1311,6 +1340,28 @@ export class ReportsService {
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
+    if (!current.reportNumber && updated.reportNumber) {
+      await this.prisma.auditTrail.create({
+        data: {
+          action: 'REPORT_NUMBER_ASSIGNED',
+          entity: current.formType,
+          entityId: current.id,
+          userId: user.userId,
+          role: user.role,
+          ipAddress: getRequestContext()?.ip ?? null,
+          clientCode: current.clientCode ?? null,
+          formNumber: current.formNumber,
+          reportNumber: updated.reportNumber,
+          formType: current.formType,
+          details: `Assigned report number ${updated.reportNumber}`,
+          changes: {
+            formNumber: current.formNumber,
+            reportNumber: updated.reportNumber,
+          },
+        },
+      });
+    }
+
     const prevStatus = String(current.status);
 
     if (patchIn.status) {
@@ -1407,7 +1458,9 @@ export class ReportsService {
           role: args.actorRole,
           ipAddress: ctx?.ip ?? null,
           clientCode: args.clientCode ?? null,
-          details: `Status changed: ${args.from} → ${args.to}`,
+          details: args.reason
+            ? `Status changed: ${args.from} → ${args.to} | reason: ${args.reason}`
+            : `Status changed: ${args.from} → ${args.to}`,
           changes: {
             from: args.from,
             to: args.to,
@@ -1602,11 +1655,35 @@ export class ReportsService {
     // ✅ apply lock timestamp
     if (target === 'LOCKED') patch.lockedAt = new Date();
 
+    
+
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
       include: { microMix: true, microMixWater: true, sterility: true },
     });
+
+    // if (!current.reportNumber && updated.reportNumber) {
+    //   await this.prisma.auditTrail.create({
+    //     data: {
+    //       action: 'REPORT_NUMBER_ASSIGNED',
+    //       entity: current.formType,
+    //       entityId: current.id,
+    //       userId: user.userId,
+    //       role: user.role,
+    //       ipAddress: getRequestContext()?.ip ?? null,
+    //       clientCode: current.clientCode ?? null,
+    //       formNumber: current.formNumber,
+    //       reportNumber: updated.reportNumber,
+    //       formType: current.formType,
+    //       details: `Assigned report number ${updated.reportNumber}`,
+    //       changes: {
+    //         formNumber: current.formNumber,
+    //         reportNumber: updated.reportNumber,
+    //       },
+    //     },
+    //   });
+    // }
 
     // ✅ NOW log status change (StatusHistory + AuditTrail)
     if (prevStatus !== target) {
