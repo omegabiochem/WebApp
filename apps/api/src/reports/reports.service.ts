@@ -1122,6 +1122,15 @@ export class ReportsService {
     // Split base-vs-details
     const { base, details } = splitPatch(this._coerce(patch));
 
+    // If status is being set to SUBMITTED_BY_CLIENT, set dateSent if not already set on either current or patch
+    if (patchIn.status === 'SUBMITTED_BY_CLIENT') {
+      const currentDetails = pickDetails(current);
+
+      if (!currentDetails?.dateSent && !details.dateSent) {
+        details.dateSent = new Date();
+      }
+    }
+
     // handle status transitions (base.status)
     if (patchIn.status) {
       const transitions = transitionsFor(current.formType);
@@ -1645,6 +1654,8 @@ export class ReportsService {
 
     // ✅ apply lock timestamp
     if (target === 'LOCKED') patch.lockedAt = new Date();
+
+    
 
     const updated = await this.prisma.report.update({
       where: { id },

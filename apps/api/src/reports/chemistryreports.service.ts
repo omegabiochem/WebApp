@@ -767,6 +767,15 @@ export class ChemistryReportsService {
     // Split base-vs-details
     const { base, details } = splitPatch(this._coerce(patch));
 
+    // Handle status change if requested
+    if (patchIn.status === 'SUBMITTED_BY_CLIENT') {
+      const currentDetails = pickDetails(current);
+
+      if (!currentDetails?.dateSent && !details.dateSent) {
+        details.dateSent = new Date();
+      }
+    }
+
     if (patchIn.status) {
       const trans = STATUS_TRANSITIONS[current.status as ChemistryReportStatus];
       if (!trans) {
@@ -1346,6 +1355,8 @@ export class ChemistryReportsService {
     }
 
     if (target === 'LOCKED') patch.lockedAt = new Date();
+
+    
 
     const updated = await this.prisma.chemistryReport.update({
       where: { id },
