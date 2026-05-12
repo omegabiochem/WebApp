@@ -830,7 +830,8 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
-  const isSystemAdmin = role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA";
+  const isSystemAdmin =
+    role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA";
 
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [deletingBulk, setDeletingBulk] = useState(false);
@@ -1780,72 +1781,39 @@ export default function ReportAttachmentsPage() {
       </div>
 
       {/* Content card */}
-      <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="rounded-2xl border bg-white shadow-sm flex flex-col">
         {error && (
           <div className="border-b bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-        <div className="p-4">
-          {loading ? (
-            <div className="text-sm text-slate-500">Loading attachments…</div>
-          ) : filtered.length === 0 ? (
-            <div className="text-sm text-slate-500">
-              No attachments match your filters.
-            </div>
-          ) : view === "GRID" ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {pagedItems.map((a) => {
-                const ext = fileExt(a.filename);
-                const ft = fileTypeFromExt(ext);
-                const filePath = fileById(a.id);
-                const reportLink = reportLinkFor(a.reportType, a.reportId);
+        <div className="min-h-0">
+          <div className="max-h-[60vh] overflow-auto scrollbar-thin">
+            {loading ? (
+              <div className="p-4 text-sm text-slate-500">
+                Loading attachments…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-4 text-sm text-slate-500">
+                No attachments match your filters.
+              </div>
+            ) : view === "GRID" ? (
+              <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {pagedItems.map((a) => {
+                  const ext = fileExt(a.filename);
+                  const ft = fileTypeFromExt(ext);
+                  const filePath = fileById(a.id);
+                  const reportLink = reportLinkFor(a.reportType, a.reportId);
 
-                return (
-                  <div
-                    key={a.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      if (ft === "other") {
-                        // (Open file in new tab)
-                        logAttachEvent({
-                          action: "UI_ATTACHMENTS_OPEN_FILE",
-                          details: "Opened attachment file",
-                          entityId: a.id,
-                          meta: { filename: a.filename, fileType: ft },
-                          formNumber: a.formNumber,
-                          reportNumber: a.reportNumber,
-                          formType: a.formType,
-                          clientCode: a.clientCode,
-                        });
-                        window.open(`${API_URL}${filePath}`, "_blank");
-                      } else {
-                        // (Preview open)
-                        logAttachEvent({
-                          action: "UI_ATTACHMENTS_PREVIEW_OPEN",
-                          details: "Opened attachment preview",
-                          entityId: a.id,
-                          meta: {
-                            filename: a.filename,
-                            fileType: ft,
-                            reportType: a.reportType,
-                            reportId: a.reportId,
-                            kind: a.kind,
-                          },
-                          formNumber: a.formNumber,
-                          reportNumber: a.reportNumber,
-                          formType: a.formType,
-                          clientCode: a.clientCode,
-                        });
-                        setOpen({ id: a.id, filename: a.filename });
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
+                  return (
+                    <div
+                      key={a.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
                         if (ft === "other") {
+                          // (Open file in new tab)
                           logAttachEvent({
                             action: "UI_ATTACHMENTS_OPEN_FILE",
                             details: "Opened attachment file",
@@ -1858,6 +1826,7 @@ export default function ReportAttachmentsPage() {
                           });
                           window.open(`${API_URL}${filePath}`, "_blank");
                         } else {
+                          // (Preview open)
                           logAttachEvent({
                             action: "UI_ATTACHMENTS_PREVIEW_OPEN",
                             details: "Opened attachment preview",
@@ -1876,182 +1845,216 @@ export default function ReportAttachmentsPage() {
                           });
                           setOpen({ id: a.id, filename: a.filename });
                         }
-                      }
-                    }}
-                    className={classNames(
-                      "text-left rounded-2xl border bg-white p-3 shadow-sm hover:bg-slate-50/50 transition cursor-pointer",
-                      isRowSelected(a.id) && "ring-2 ring-blue-500",
-                    )}
-                    title="Click to preview"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0" />
-                      <label
-                        className="inline-flex items-center gap-2 text-xs text-slate-600"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isRowSelected(a.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => toggleRow(a.id)}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="h-28 w-full border rounded-lg flex items-center justify-center overflow-hidden bg-slate-50">
-                      {ft === "image" ? (
-                        <Thumb path={filePath} alt={a.filename} />
-                      ) : ft === "pdf" ? (
-                        <div className="text-xs text-slate-600">
-                          PDF • click to preview
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-600 uppercase">
-                          {ext || "file"}
-                        </div>
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (ft === "other") {
+                            logAttachEvent({
+                              action: "UI_ATTACHMENTS_OPEN_FILE",
+                              details: "Opened attachment file",
+                              entityId: a.id,
+                              meta: { filename: a.filename, fileType: ft },
+                              formNumber: a.formNumber,
+                              reportNumber: a.reportNumber,
+                              formType: a.formType,
+                              clientCode: a.clientCode,
+                            });
+                            window.open(`${API_URL}${filePath}`, "_blank");
+                          } else {
+                            logAttachEvent({
+                              action: "UI_ATTACHMENTS_PREVIEW_OPEN",
+                              details: "Opened attachment preview",
+                              entityId: a.id,
+                              meta: {
+                                filename: a.filename,
+                                fileType: ft,
+                                reportType: a.reportType,
+                                reportId: a.reportId,
+                                kind: a.kind,
+                              },
+                              formNumber: a.formNumber,
+                              reportNumber: a.reportNumber,
+                              formType: a.formType,
+                              clientCode: a.clientCode,
+                            });
+                            setOpen({ id: a.id, filename: a.filename });
+                          }
+                        }
+                      }}
+                      className={classNames(
+                        "text-left rounded-2xl border bg-white p-3 shadow-sm hover:bg-slate-50/50 transition cursor-pointer",
+                        isRowSelected(a.id) && "ring-2 ring-blue-500",
                       )}
-                    </div>
-
-                    <div
-                      className="mt-2 text-sm font-medium truncate"
-                      title={a.filename}
+                      title="Click to preview"
                     >
-                      {a.filename}
-                    </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0" />
+                        <label
+                          className="inline-flex items-center gap-2 text-xs text-slate-600"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(a.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleRow(a.id)}
+                          />
+                        </label>
+                      </div>
 
-                    <div className="mt-1 text-xs text-slate-500 flex flex-wrap gap-x-2 gap-y-1">
-                      <span className="px-2 py-[2px] rounded-full border bg-slate-50">
-                        {a.kind}
-                      </span>
-                      <span className="px-2 py-[2px] rounded-full border bg-white">
-                        {reportTypeLabel(a.reportType)}
-                      </span>
-                      <span>{new Date(a.createdAt).toLocaleString()}</span>
-                    </div>
+                      <div className="h-28 w-full border rounded-lg flex items-center justify-center overflow-hidden bg-slate-50">
+                        {ft === "image" ? (
+                          <Thumb path={filePath} alt={a.filename} />
+                        ) : ft === "pdf" ? (
+                          <div className="text-xs text-slate-600">
+                            PDF • click to preview
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-600 uppercase">
+                            {ext || "file"}
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="mt-2 flex items-center justify-between">
-                      <Link
-                        to={reportLink}
-                        className="text-xs underline text-blue-700"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          logAttachEvent({
-                            action: "UI_ATTACHMENTS_OPEN_REPORT",
-                            details: "Opened report from attachment",
-                            entityId: a.id,
-                            meta: {
-                              reportId: a.reportId,
-                              reportType: a.reportType,
-                              reportLink,
-                            },
-                            formNumber: a.formNumber,
-                            reportNumber: a.reportNumber,
-                            formType: a.formType,
-                            clientCode: a.clientCode,
-                          });
-                        }}
+                      <div
+                        className="mt-2 text-sm font-medium truncate"
+                        title={a.filename}
                       >
-                        Open report
-                      </Link>
+                        {a.filename}
+                      </div>
 
-                      {(() => {
-                        const canPrint = ft === "image" || ft === "pdf";
-                        return (
+                      <div className="mt-1 text-xs text-slate-500 flex flex-wrap gap-x-2 gap-y-1">
+                        <span className="px-2 py-[2px] rounded-full border bg-slate-50">
+                          {a.kind}
+                        </span>
+                        <span className="px-2 py-[2px] rounded-full border bg-white">
+                          {reportTypeLabel(a.reportType)}
+                        </span>
+                        <span>{new Date(a.createdAt).toLocaleString()}</span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <Link
+                          to={reportLink}
+                          className="text-xs underline text-blue-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            logAttachEvent({
+                              action: "UI_ATTACHMENTS_OPEN_REPORT",
+                              details: "Opened report from attachment",
+                              entityId: a.id,
+                              meta: {
+                                reportId: a.reportId,
+                                reportType: a.reportType,
+                                reportLink,
+                              },
+                              formNumber: a.formNumber,
+                              reportNumber: a.reportNumber,
+                              formType: a.formType,
+                              clientCode: a.clientCode,
+                            });
+                          }}
+                        >
+                          Open report
+                        </Link>
+
+                        {(() => {
+                          const canPrint = ft === "image" || ft === "pdf";
+                          return (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!canPrint) return;
+
+                                logAttachEvent({
+                                  action: "UI_ATTACHMENTS_PRINT_SINGLE",
+                                  details: "Print single attachment",
+                                  entityId: a.id,
+                                  meta: { filename: a.filename, fileType: ft },
+                                  formNumber: a.formNumber,
+                                  reportNumber: a.reportNumber,
+                                  formType: a.formType,
+                                  clientCode: a.clientCode,
+                                });
+
+                                const ftNow = fileTypeFromExt(
+                                  fileExt(a.filename),
+                                );
+                                if (ftNow === "pdf") {
+                                  setPrintingSingle(true);
+                                  try {
+                                    await mergeAndPrintSelectedPdfs([a.id]);
+                                    logAttachEvent({
+                                      action: "UI_ATTACHMENTS_PRINT_PREPARED",
+                                      details: "Prepared PDF print (merged)",
+                                      entityId: a.id,
+                                      meta: { ids: [a.id], count: 1 },
+                                      formNumber: a.formNumber,
+                                      reportNumber: a.reportNumber,
+                                      formType: a.formType,
+                                      clientCode: a.clientCode,
+                                    });
+                                  } catch (err: any) {
+                                    logAttachEvent({
+                                      action: "UI_ATTACHMENTS_PRINT_FAILED",
+                                      details: "Print single failed",
+                                      entityId: a.id,
+                                      meta: {
+                                        error: err?.message || String(err),
+                                      },
+                                      formNumber: a.formNumber,
+                                      reportNumber: a.reportNumber,
+                                      formType: a.formType,
+                                      clientCode: a.clientCode,
+                                    });
+                                    throw err;
+                                  } finally {
+                                    setPrintingSingle(false);
+                                  }
+                                  return;
+                                }
+
+                                // image -> portal print
+                                setPrintingSingle(true);
+                                setSinglePrintItem(a);
+                              }}
+                              disabled={!canPrint || printingSingle}
+                              className="text-xs rounded-lg border px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                              title={
+                                canPrint
+                                  ? "Print this attachment"
+                                  : "Not printable"
+                              }
+                            >
+                              🖨️
+                            </button>
+                          );
+                        })()}
+
+                        {isSystemAdmin && (
                           <button
                             type="button"
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (!canPrint) return;
-
-                              logAttachEvent({
-                                action: "UI_ATTACHMENTS_PRINT_SINGLE",
-                                details: "Print single attachment",
-                                entityId: a.id,
-                                meta: { filename: a.filename, fileType: ft },
-                                formNumber: a.formNumber,
-                                reportNumber: a.reportNumber,
-                                formType: a.formType,
-                                clientCode: a.clientCode,
-                              });
-
-                              const ftNow = fileTypeFromExt(
-                                fileExt(a.filename),
-                              );
-                              if (ftNow === "pdf") {
-                                setPrintingSingle(true);
-                                try {
-                                  await mergeAndPrintSelectedPdfs([a.id]);
-                                  logAttachEvent({
-                                    action: "UI_ATTACHMENTS_PRINT_PREPARED",
-                                    details: "Prepared PDF print (merged)",
-                                    entityId: a.id,
-                                    meta: { ids: [a.id], count: 1 },
-                                    formNumber: a.formNumber,
-                                    reportNumber: a.reportNumber,
-                                    formType: a.formType,
-                                    clientCode: a.clientCode,
-                                  });
-                                } catch (err: any) {
-                                  logAttachEvent({
-                                    action: "UI_ATTACHMENTS_PRINT_FAILED",
-                                    details: "Print single failed",
-                                    entityId: a.id,
-                                    meta: {
-                                      error: err?.message || String(err),
-                                    },
-                                    formNumber: a.formNumber,
-                                    reportNumber: a.reportNumber,
-                                    formType: a.formType,
-                                    clientCode: a.clientCode,
-                                  });
-                                  throw err;
-                                } finally {
-                                  setPrintingSingle(false);
-                                }
-                                return;
-                              }
-
-                              // image -> portal print
-                              setPrintingSingle(true);
-                              setSinglePrintItem(a);
+                              await handleDeleteAttachments([a.id]);
                             }}
-                            disabled={!canPrint || printingSingle}
-                            className="text-xs rounded-lg border px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
-                            title={
-                              canPrint
-                                ? "Print this attachment"
-                                : "Not printable"
-                            }
+                            disabled={deletingIds.includes(a.id)}
+                            className="text-xs rounded-lg border border-rose-200 px-2 py-1 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            title="Delete this attachment"
                           >
-                            🖨️
+                            {deletingIds.includes(a.id) ? "Deleting..." : "🗑️"}
                           </button>
-                        );
-                      })()}
-
-                      {isSystemAdmin && (
-                        <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await handleDeleteAttachments([a.id]);
-                          }}
-                          disabled={deletingIds.includes(a.id)}
-                          className="text-xs rounded-lg border border-rose-200 px-2 py-1 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                          title="Delete this attachment"
-                        >
-                          {deletingIds.includes(a.id) ? "Deleting..." : "🗑️"}
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50">
+                  );
+                })}
+              </div>
+            ) : (
+              <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+                <thead className="sticky top-0 z-30 bg-slate-50">
                   <tr className="text-left text-slate-600">
                     <th className="px-4 py-3 font-medium w-10">
                       <input
@@ -2203,7 +2206,10 @@ export default function ReportAttachmentsPage() {
                                   action: "UI_ATTACHMENTS_PRINT_SINGLE",
                                   details: "Print single attachment",
                                   entityId: a.id,
-                                  meta: { filename: a.filename, fileType: ft },
+                                  meta: {
+                                    filename: a.filename,
+                                    fileType: ft,
+                                  },
                                   formNumber: a.formNumber,
                                   reportNumber: a.reportNumber,
                                   formType: a.formType,
@@ -2324,73 +2330,58 @@ export default function ReportAttachmentsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-slate-600">
-          Showing <span className="font-medium">{pageStart}</span> to{" "}
-          <span className="font-medium">{pageEnd}</span> of{" "}
-          <span className="font-medium">{filtered.length}</span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-            className="rounded-lg border px-3 py-2 text-sm"
-          >
-            <option value={12}>12 / page</option>
-            <option value={24}>24 / page</option>
-            <option value={48}>48 / page</option>
-            <option value={96}>96 / page</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={() => setPage(1)}
-            disabled={page === 1}
-            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            First
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            Prev
-          </button>
-
-          <div className="px-2 text-sm text-slate-700">
-            Page <span className="font-semibold">{page}</span> of{" "}
-            <span className="font-semibold">{totalPages}</span>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            Next
-          </button>
+          {/* fixed pagination/footer */}
+          {!loading && filtered.length > 0 && (
+            <div className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm md:flex-row">
+              <div className="text-slate-600">
+                Showing <span className="font-medium">{pageStart}</span>–
+                <span className="font-medium">{pageEnd}</span> of{" "}
+                <span className="font-medium">{filtered.length}</span>
+              </div>
 
-          <button
-            type="button"
-            onClick={() => setPage(totalPages)}
-            disabled={page === totalPages}
-            className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            Last
-          </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-600">Rows:</label>
+
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="w-28 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                >
+                  {[12, 24, 48, 96].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Prev
+                </button>
+
+                <span className="tabular-nums">
+                  {page} / {totalPages}
+                </span>
+
+                <button
+                  className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
