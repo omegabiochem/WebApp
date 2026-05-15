@@ -482,7 +482,7 @@ type CorrectionItem = {
   oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
   resolvedAt?: string | null; // ✅ ISO
   resolvedByUserId?: string | null;
-
+  resolvedByRole?: UserRole | null;
   resolutionNote?: string | null; // optional
 };
 
@@ -1356,8 +1356,6 @@ export class ChemistryReportsService {
 
     if (target === 'LOCKED') patch.lockedAt = new Date();
 
-    
-
     const updated = await this.prisma.chemistryReport.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
@@ -1522,6 +1520,7 @@ export class ChemistryReportsService {
       oldValue: it.oldValue ?? null,
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
+      resolvedByRole: null as UserRole | null,
       resolutionNote: null as string | null,
     }));
     const nextCorrections = [...existing, ...toAdd];
@@ -1617,6 +1616,7 @@ export class ChemistryReportsService {
       status: 'RESOLVED',
       resolvedAt: new Date().toISOString(),
       resolvedByUserId: user.userId,
+      resolvedByRole: user.role,
       resolutionNote: body?.resolutionNote ?? null,
     };
 
@@ -1643,6 +1643,7 @@ export class ChemistryReportsService {
         oldValue: resolvedItem.oldValue ?? null,
         resolvedAt: resolvedItem.resolvedAt ?? null,
         resolvedByUserId: resolvedItem.resolvedByUserId ?? null,
+        resolvedByRole: resolvedItem.resolvedByRole ?? null,
         resolutionNote: resolvedItem.resolutionNote ?? null,
       },
     });
@@ -1651,9 +1652,11 @@ export class ChemistryReportsService {
 
     if (
       allResolved &&
+      report.workflowReturnStatus &&
       (report.status === 'UNDER_CHANGE_UPDATE' ||
-        report.status === 'UNDER_CORRECTION_UPDATE') &&
-      report.workflowReturnStatus
+        report.status === 'UNDER_CORRECTION_UPDATE' ||
+        report.status === 'CHANGE_REQUESTED' ||
+        report.status === 'CORRECTION_REQUESTED')
     ) {
       await this.prisma.chemistryReport.update({
         where: { id },
