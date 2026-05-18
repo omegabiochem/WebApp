@@ -1363,15 +1363,22 @@ export default function MCDashboard() {
     }
 
     // 6) chemistry actives filter
-    if (category === "CHEMISTRY" && activeFilter !== "ALL") {
+    if (activeFilter !== "ALL") {
       rows = rows.filter((r) => {
         if (r.kind !== "CHEMISTRY") return false;
 
         const list = r.selectedActivesText?.trim()
-          ? r.selectedActivesText.split(",").map((s) => s.trim())
-          : (r.selectedActives ?? []).map((s) => String(s).trim());
+          ? r.selectedActivesText
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : (r.selectedActives ?? [])
+              .map((s) => String(s).trim())
+              .filter(Boolean);
 
-        return list.includes(activeFilter);
+        return list.some(
+          (a) => a.trim().toLowerCase() === activeFilter.trim().toLowerCase(),
+        );
       });
     }
 
@@ -1542,87 +1549,6 @@ export default function MCDashboard() {
     activeFilter,
   ]);
 
-  // Keep statusFilter valid when switching category
-  // const didMount = React.useRef(false);
-
-  // useEffect(() => {
-  //   if (!didMount.current) {
-  //     didMount.current = true;
-  //     return; // ✅ skip initial run
-  //   }
-
-  //   // runs only for real category changes after mount
-  //   setSelectedIds([]);
-  //   setStatusFilter("ALL");
-
-  //   if (category === "ALL") {
-  //     setMicroFormFilter("ALL");
-  //     setChemFormFilter("ALL");
-  //     setActiveFilter("ALL");
-  //   } else if (category === "MICRO") {
-  //     setChemFormFilter("ALL");
-  //     setActiveFilter("ALL");
-  //   } else if (category === "CHEMISTRY") {
-  //     setMicroFormFilter("ALL");
-  //   }
-  // }, [category]);
-
-  // useEffect(() => {
-  //   const sp = new URLSearchParams();
-
-  //   sp.set("cat", category);
-  //   sp.set("status", statusFilter);
-
-  //   if (searchClient.trim()) sp.set("client", searchClient.trim());
-  //   if (searchReport.trim()) sp.set("report", searchReport.trim());
-  //   if (search.trim()) sp.set("q", search.trim());
-
-  //   sp.set("type", allTypeFilter);
-  //   sp.set("mtype", microFormFilter);
-  //   sp.set("ctype", chemFormFilter);
-  //   sp.set("active", activeFilter);
-
-  //   sp.set("dp", datePreset);
-  //   if (fromDate) sp.set("from", fromDate);
-  //   if (toDate) sp.set("to", toDate);
-
-  //   sp.set("rangeType", numberRangeType);
-  //   if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
-  //   if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-  //   if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
-  //   if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
-
-  //   sp.set("sortBy", sortBy);
-  //   sp.set("sortDir", sortDir);
-  //   sp.set("pp", String(perPage));
-  //   sp.set("p", String(pageClamped));
-
-  //   setSearchParams(sp, { replace: true });
-  // }, [
-  //   category,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   search,
-  //   allTypeFilter,
-  //   microFormFilter,
-  //   chemFormFilter,
-  //   activeFilter,
-  //   datePreset,
-  //   fromDate,
-  //   toDate,
-  //   numberRangeType,
-  //   formNoFrom,
-  //   formNoTo,
-  //   reportNoFrom,
-  //   reportNoTo,
-  //   sortBy,
-  //   sortDir,
-  //   perPage,
-  //   pageClamped,
-  //   setSearchParams,
-  // ]);
-
   useEffect(() => {
     const next = getInitialMCFilters(searchParams, FILTER_STORAGE_KEY);
 
@@ -1775,7 +1701,7 @@ export default function MCDashboard() {
   // Helpers: permissions + nav
   // -----------------------------
   function canUpdateMicroLocal(r: MicroReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const fieldsUsedOnForm = [
       "testSopNo",
@@ -1800,7 +1726,7 @@ export default function MCDashboard() {
   }
 
   function canUpdateSterilityLocal(r: MicroReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const sterilityFieldsUsedOnForm = [
       "testSopNo",
@@ -1821,7 +1747,7 @@ export default function MCDashboard() {
   }
 
   function canUpdateChemLocal(r: ChemReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const chemistryFieldsUsedOnForm = [
       "sop",
@@ -3562,7 +3488,9 @@ export default function MCDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next
