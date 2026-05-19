@@ -9,7 +9,7 @@ import { api, API_URL, getToken } from "../../lib/api";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
 
-type Pane = "FORM" | "ATTACHMENTS";
+type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
 type ChemistryMixReportFormProps = {
   report: any;
@@ -497,7 +497,7 @@ export default function ChemistryMixReportFormView(
   }, [onClose, isBulkPrint]);
 
   const isControlled = typeof pane !== "undefined";
-  const [internalPane, setInternalPane] = useState<Pane>("FORM");
+  const [internalPane, setInternalPane] = useState<Pane>("REPORT");
 
   const activePane: Pane = isControlled ? (pane as Pane) : internalPane;
 
@@ -568,6 +568,15 @@ export default function ChemistryMixReportFormView(
   const dashClass = (keyOrPrefix: string) =>
     hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
 
+
+    const isSubmissionFormPane = activePane === "FORM";
+  const blankIfForm = (value: any) => {
+    if (isSubmissionFormPane) return "";
+    return value ?? "";
+  };
+  const isReportPane = isBulk || activePane === "REPORT";
+  const isFormPane = pane === "FORM";
+
   return (
     <div
       className={
@@ -588,7 +597,7 @@ export default function ChemistryMixReportFormView(
 
       {/* View switcher */}
 
-      {!isBulk && showSwitcher !== false && (
+      {/* {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
           <div className="flex items-center gap-2 py-2">
             <button
@@ -617,11 +626,36 @@ export default function ChemistryMixReportFormView(
             </button>
           </div>
         </div>
+      )} */}
+
+
+      
+      {!isBulk && showSwitcher !== false && (
+        <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
+          <div className="flex items-center gap-2 py-2">
+            {(["FORM", "REPORT", "ATTACHMENTS"] as Pane[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setActivePane(p)}
+                className={`px-3 py-1 rounded-full text-sm transition ${
+                  activePane === p
+                    ? "bg-blue-600 text-white"
+                    : "hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                {p === "ATTACHMENTS"
+                  ? "Attachment"
+                  : p[0] + p.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Controls (hidden on print) */}
 
-      {isBulk || activePane === "FORM" ? (
+       {isReportPane || isSubmissionFormPane ? (
         <>
           {/* Letterhead – same look as Micro */}
           <div className="mb-1 text-center">
@@ -649,15 +683,19 @@ export default function ChemistryMixReportFormView(
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
-                {report.status === "DRAFT" ||
+                {/* {report.status === "DRAFT" ||
                 report.status === "SUBMITTED_BY_CLIENT"
+                  ? "CHEMISTRY SUBMISSION FORM"
+                  : "CHEMISTRY REPORT"} */}
+
+                {isSubmissionFormPane
                   ? "CHEMISTRY SUBMISSION FORM"
                   : "CHEMISTRY REPORT"}
               </div>
 
               {/* Right: Report Number */}
               <div className="text-right text-[12px] font-bold">
-                {report.reportNumber && report.reportNumber}
+                {!isFormPane  && report.reportNumber}
               </div>
             </div>
           </div>
@@ -1018,7 +1056,7 @@ export default function ChemistryMixReportFormView(
                 <input
                   type="date"
                   className="w-[80px] border-0 border-b border-black/60 outline-none text-[11px]"
-                  value={formatDateForInput(report?.dateReceived ?? "")}
+                  value={blankIfForm(formatDateForInput(report?.dateReceived ?? ""))}
                   readOnly
                   disabled
                 />
@@ -1093,7 +1131,7 @@ export default function ChemistryMixReportFormView(
                     {/* SOP # */}
                     <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:sopNo`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
-                        {cellText(row.sopNo)}
+                        {cellText(blankIfForm(row.sopNo))}
                       </div>
                     </div>
 
@@ -1107,14 +1145,14 @@ export default function ChemistryMixReportFormView(
                     {/* RESULTS */}
                     <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:result`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
-                        {cellText(row.result)}
+                        {cellText(blankIfForm(row.result))}
                       </div>
                     </div>
 
                     {/* DATE TESTED / INITIAL */}
                     <div className={`px-1 py-1 relative ${dashClass(`actives:${row.key}:dateTestedInitial`)}`}>
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
-                        {cellText(row.dateTestedInitial)}
+                        {cellText(blankIfForm(row.dateTestedInitial))}
                       </div>
                     </div>
                   </div>
@@ -1153,7 +1191,7 @@ export default function ChemistryMixReportFormView(
               </div>
             </div>
 
-            {showSignatures && (
+            {showSignatures && !isSubmissionFormPane && (
               <>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
@@ -1281,7 +1319,7 @@ export default function ChemistryMixReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-                {report?.reportNumber && (
+                { !isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>

@@ -8,7 +8,7 @@ import {
   type CorrectionItem,
 } from "../../utils/microMixWaterReportValidation";
 
-type Pane = "FORM" | "ATTACHMENTS";
+type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
 type MicroReportFormProps = {
   report: any;
@@ -504,7 +504,7 @@ export default function MicroMixWaterReportFormView(
   }, [onClose, isBulkPrint]);
 
   const isControlled = typeof pane !== "undefined";
-  const [internalPane, setInternalPane] = useState<Pane>("FORM");
+  const [internalPane, setInternalPane] = useState<Pane>("REPORT");
 
   const activePane: Pane = isControlled ? (pane as Pane) : internalPane;
 
@@ -575,6 +575,14 @@ export default function MicroMixWaterReportFormView(
   const dashClass = (keyOrPrefix: string) =>
     hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
 
+  const isSubmissionFormPane = activePane === "FORM";
+  const blankIfForm = (value: any) => {
+    if (isSubmissionFormPane) return "";
+    return value ?? "";
+  };
+  const isReportPane = isBulk || activePane === "REPORT";
+  const isFormPane = pane === "FORM";
+
   return (
     <div
       className={
@@ -592,7 +600,7 @@ export default function MicroMixWaterReportFormView(
         null}
 
       {/* View switcher */}
-
+      {/* 
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
           <div className="flex items-center gap-2 py-2">
@@ -622,9 +630,32 @@ export default function MicroMixWaterReportFormView(
             </button>
           </div>
         </div>
+      )} */}
+
+      {!isBulk && showSwitcher !== false && (
+        <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
+          <div className="flex items-center gap-2 py-2">
+            {(["FORM", "REPORT", "ATTACHMENTS"] as Pane[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setActivePane(p)}
+                className={`px-3 py-1 rounded-full text-sm transition ${
+                  activePane === p
+                    ? "bg-blue-600 text-white"
+                    : "hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                {p === "ATTACHMENTS"
+                  ? "Attachment"
+                  : p[0] + p.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
-      {isBulk || activePane === "FORM" ? (
+      {isReportPane || isSubmissionFormPane ? (
         <>
           {/* Letterhead */}
           <div className="mb-2 text-center">
@@ -651,20 +682,23 @@ export default function MicroMixWaterReportFormView(
             <div className="mt-1 grid grid-cols-3 items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
-                {report.formNumber && report.formNumber}
+                { report.formNumber}
               </div>
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
-                {report.status === "DRAFT" ||
+                {/* {report.status === "DRAFT" ||
                 report.status === "SUBMITTED_BY_CLIENT"
+                  ? "MICRO WATER SUBMISSION FORM"
+                  : "MICRO WATER REPORT"} */}
+                {isSubmissionFormPane
                   ? "MICRO WATER SUBMISSION FORM"
                   : "MICRO WATER REPORT"}
               </div>
 
               {/* Right: Report Number */}
               <div className="text-right text-[12px] font-bold">
-                {report.reportNumber && report.reportNumber}
+                {!isFormPane && report.reportNumber}
               </div>
             </div>
           </div>
@@ -791,7 +825,7 @@ export default function MicroMixWaterReportFormView(
                 <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={report?.testSopNo || ""}
+                  value={blankIfForm(report?.testSopNo)}
                   readOnly
                   disabled
                 />
@@ -804,7 +838,7 @@ export default function MicroMixWaterReportFormView(
                 </div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={formatDateForInput(report?.dateTested) || ""}
+                  value={blankIfForm(formatDateForInput(report?.dateTested))}
                   readOnly
                   disabled
                 />
@@ -819,7 +853,7 @@ export default function MicroMixWaterReportFormView(
                 <div className="font-medium">PRELIMINARY RESULTS:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={report?.preliminaryResults || ""}
+                  value={blankIfForm(report?.preliminaryResults)}
                   readOnly
                   disabled
                 />
@@ -831,7 +865,9 @@ export default function MicroMixWaterReportFormView(
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
                   value={
-                    formatDateForInput(report?.preliminaryResultsDate) || ""
+                    blankIfForm(
+                      formatDateForInput(report?.preliminaryResultsDate),
+                    ) || ""
                   }
                   readOnly
                   disabled
@@ -848,7 +884,9 @@ export default function MicroMixWaterReportFormView(
               </div>
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={formatDateForInput(report?.dateCompleted) || ""}
+                value={
+                  blankIfForm(formatDateForInput(report?.dateCompleted)) || ""
+                }
                 readOnly
                 disabled
               />
@@ -885,7 +923,7 @@ export default function MicroMixWaterReportFormView(
               >
                 <input
                   className="w-full input-editable  px-1"
-                  value={report?.tbc_gram || ""}
+                  value={blankIfForm(report?.tbc_gram)}
                   readOnly
                   disabled
                 />
@@ -895,7 +933,7 @@ export default function MicroMixWaterReportFormView(
               >
                 <input
                   className="w-1/2 input-editable  px-1"
-                  value={report?.tbc_result || ""}
+                  value={blankIfForm(report?.tbc_result) || ""}
                   readOnly
                   disabled
                 />
@@ -928,7 +966,7 @@ export default function MicroMixWaterReportFormView(
               >
                 <input
                   className="w-full input-editable  px-1 "
-                  value={report?.tmy_gram || ""}
+                  value={blankIfForm(report?.tmy_gram) || ""}
                   readOnly
                   disabled
                 />
@@ -938,7 +976,7 @@ export default function MicroMixWaterReportFormView(
               >
                 <input
                   className="w-1/2 input-editable  px-1"
-                  value={report?.tmy_result || ""}
+                  value={blankIfForm(report?.tmy_result) || ""}
                   readOnly
                   disabled
                 />
@@ -993,7 +1031,7 @@ export default function MicroMixWaterReportFormView(
                       <input
                         type="radio"
                         className="thick-box"
-                        checked={p.result === "Absent"}
+                        checked={!isSubmissionFormPane && p.result === "Absent"}
                         readOnly
                         disabled
                       />
@@ -1004,7 +1042,9 @@ export default function MicroMixWaterReportFormView(
                       <input
                         type="radio"
                         className="thick-box"
-                        checked={p.result === "Present"}
+                        checked={
+                          !isSubmissionFormPane && p.result === "Present"
+                        }
                         readOnly
                         disabled
                       />
@@ -1062,7 +1102,7 @@ export default function MicroMixWaterReportFormView(
                 </div>
               </div>
             </div>
-            {showSignatures && (
+            {showSignatures && !isSubmissionFormPane && (
               <>
                 {/* TESTED BY */}
 
@@ -1177,7 +1217,7 @@ export default function MicroMixWaterReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-                {report?.reportNumber && (
+              { !isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>

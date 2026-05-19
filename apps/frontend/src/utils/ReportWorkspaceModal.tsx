@@ -188,7 +188,7 @@ export default function ReportWorkspaceModal({
       }}
     >
       <div className="flex h-[94vh] w-full flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
+  <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold">
               {mode === "VIEW"
