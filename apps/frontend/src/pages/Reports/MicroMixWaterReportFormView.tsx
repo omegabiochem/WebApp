@@ -682,7 +682,7 @@ export default function MicroMixWaterReportFormView(
             <div className="mt-1 grid grid-cols-3 items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
-                { report.formNumber}
+                {report.formNumber}
               </div>
 
               {/* Center: Title */}
@@ -1217,7 +1217,7 @@ export default function MicroMixWaterReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-              { !isFormPane && report?.reportNumber && (
+                {!isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>
