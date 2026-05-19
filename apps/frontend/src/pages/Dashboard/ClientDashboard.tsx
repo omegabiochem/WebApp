@@ -204,7 +204,7 @@ function formatDate(iso: string | null) {
 }
 
 function canUpdateThisReport(r: Report, user?: any) {
-   if (isTerminalStatus(String(r.status))) return false;
+  if (isTerminalStatus(String(r.status))) return false;
   // const isMicro =
   //   r.formType === "MICRO_MIX" ||
   //   r.formType === "MICRO_MIX_WATER" ||
@@ -260,7 +260,7 @@ function canUpdateThisReport(r: Report, user?: any) {
 }
 
 function canUpdateThisChemistryReport(r: Report, user?: any) {
-   if (isTerminalStatus(String(r.status))) return false;
+  if (isTerminalStatus(String(r.status))) return false;
   const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
   if (!isChemistry) return false;
@@ -292,19 +292,25 @@ function canUpdateThisChemistryReport(r: Report, user?: any) {
   );
 }
 
-const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
-  status === "UNDER_CLIENT_FINAL_REVIEW" ||
-  status === "FINAL_APPROVED" ||
-  status === "UNDER_CLIENT_REVIEW"
-    ? "ATTACHMENTS"
-    : "FORM";
+// const paneFor = (status: string): "FORM" | "ATTACHMENTS" =>
+//   status === "UNDER_CLIENT_FINAL_REVIEW" ||
+//   status === "FINAL_APPROVED" ||
+//   status === "UNDER_CLIENT_REVIEW"
+//     ? "ATTACHMENTS"
+//     : "FORM";
+
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
 
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printPane = "REPORT",
 }: {
   reports: Report[];
   onAfterPrint: () => void;
+  printPane?: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -347,6 +353,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -359,6 +366,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -371,6 +379,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -383,6 +392,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -395,6 +405,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -673,15 +684,17 @@ export default function ClientDashboard() {
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
 
   // ✅ multiple selection & bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
 
   // ✅ NEW: single-report print from modal
-  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null,
-  );
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: Report;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   const statusOptions =
     formFilter === "CHEMISTRY" ||
@@ -817,30 +830,30 @@ export default function ClientDashboard() {
     toDate,
   ]);
 
-useEffect(() => {
-  const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
+  useEffect(() => {
+    const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
 
-  setFormFilter(next.formFilter);
-  setStatusFilter(next.statusFilter);
-  setSearchClient(next.searchClient);
-  setSearchReport(next.searchReport);
-  setSearch(next.searchText);
-  setSortBy(next.sortBy);
-  setSortDir(next.sortDir);
-  setPerPage(next.perPage);
-  setPage(next.page);
-  setDatePreset(next.datePreset);
-  setFromDate(next.fromDate);
-  setToDate(next.toDate);
-  setNumberRangeType(next.numberRangeType);
-  setFormNoFrom(next.formNoFrom);
-  setFormNoTo(next.formNoTo);
-  setReportNoFrom(next.reportNoFrom);
-  setReportNoTo(next.reportNoTo);
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearch(next.searchText);
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
 
-  hydratedFromUrlRef.current = true;
-  setFiltersHydrated(true);
-}, [searchParams, FILTER_STORAGE_KEY]);
+    hydratedFromUrlRef.current = true;
+    setFiltersHydrated(true);
+  }, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     // ✅ IMPORTANT: don't get stuck if key isn't ready yet
@@ -1128,26 +1141,26 @@ useEffect(() => {
   const pageRows = processed.slice(start, end);
 
   // Reset to page 1 when the core filters change
-useEffect(() => {
-  setPage(1);
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  search,
-  sortBy,
-  sortDir,
-  perPage,
-  datePreset,
-  fromDate,
-  toDate,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-]);
+  useEffect(() => {
+    setPage(1);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    sortBy,
+    sortDir,
+    perPage,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
 
   useEffect(() => {
     if (!colOpen) return;
@@ -1651,7 +1664,7 @@ useEffect(() => {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
+  if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -1772,7 +1785,10 @@ if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      // setSelectedReport(clicked);
+      setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
+      return;
       return;
     }
 
@@ -1915,7 +1931,7 @@ if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
 
   return (
     <div className="p-6">
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
             <style>
@@ -1964,11 +1980,14 @@ if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : [singlePrintJob!.report]
               }
+              printPane={isBulkPrinting ? "REPORT" : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                if (singlePrintJob) setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -2847,129 +2866,147 @@ if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
           }}
         >
           <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold">
-                Report ({selectedReport.formNumber})
-              </h2>
-              <div className="flex items-center gap-2">
-                {/* ✅ NEW: Print this report */}
-                <button
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                  disabled={printingSingle}
-                  onClick={() => {
-                    if (printingSingle) return;
-                    logUiEvent({
-                      action: "UI_PRINT_SINGLE",
-                      entity:
-                        selectedReport.formType === "CHEMISTRY_MIX"
-                          ? "ChemistryReport"
-                          : "MicroReport",
-                      entityId: selectedReport.id,
-                      details: `Printed ${selectedReport.formNumber}`,
-                      meta: {
-                        formNumber: selectedReport.formNumber,
-                        reportNumber: selectedReport.reportNumber,
-                        formType: selectedReport.formType,
-                        clientCode: user?.clientCode || null,
-                      },
-                      formNumber: selectedReport.formNumber,
-                      reportNumber: selectedReport.reportNumber,
-                      formType: selectedReport.formType,
-                      clientCode: user?.clientCode || null,
-                    });
-                    setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
-                  }}
-                >
-                  {printingSingle ? <SpinnerDark /> : "🖨️"}
-                  {printingSingle ? "Preparing..." : "Print"}
-                </button>
+            <div className="sticky top-0 z-10 border-b bg-white px-6 py-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                {/* Left: title */}
+                <h2 className="text-lg font-semibold">
+                  {selectedViewPane === "FORM"
+                    ? "Form"
+                    : selectedViewPane === "ATTACHMENTS"
+                      ? "Attachments"
+                      : "Report"}{" "}
+                  ({selectedReport.formNumber})
+                </h2>
 
-                {canUpdateThisReport(selectedReport, user) && (
+                {/* Center: separate tab section */}
+                <div className="flex justify-center">
+                  <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                    {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                      (p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setSelectedViewPane(p)}
+                          className={classNames(
+                            "rounded-full px-4 py-1.5 text-xs font-semibold transition",
+                            selectedViewPane === p
+                              ? "bg-blue-600 text-white"
+                              : "text-white-600 hover:bg-slate-100 hover:text-blue-600",
+                          )}
+                        >
+                          {p === "ATTACHMENTS"
+                            ? "Attachments"
+                            : p[0] + p.slice(1).toLowerCase()}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
                   <button
-                    disabled={modalUpdating}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    onClick={async () => {
-                      if (modalUpdating) return;
-                      setModalUpdating(true);
-                      try {
-                        const r = selectedReport!;
-                        if (
-                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                        ) {
-                          await setStatus(
-                            r,
-                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                            "Sent back to client for correction",
-                          );
-                        } else if (
-                          r.status === "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                        ) {
-                          await setStatus(
-                            r,
-                            "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                            "Resubmission under Review",
-                          );
-                        }
-                        setSelectedReport(null);
-                        openUpdateTarget(r);
-                      } catch (e: any) {
-                        toast.error(e?.message || "Failed to update status");
-                      } finally {
-                        setModalUpdating(false);
-                      }
+                    className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                    disabled={printingSingle}
+                    onClick={() => {
+                      if (printingSingle) return;
+                      setPrintingSingle(true);
+                      setSinglePrintJob({
+                        report: selectedReport,
+                        pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                      });
                     }}
                   >
-                    {modalUpdating ? <Spinner /> : null}
-                    {modalUpdating ? "Updating..." : "Update"}
+                    {printingSingle ? <SpinnerDark /> : "🖨️"}
+                    {printingSingle ? "Preparing..." : "Print"}
                   </button>
-                )}
-                {canUpdateThisChemistryReport(selectedReport, user) && (
-                  <button
-                    disabled={modalUpdating}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    onClick={async () => {
-                      if (modalUpdating) return;
-                      setModalUpdating(true);
-                      try {
-                        const r = selectedReport!;
-                        if (
-                          selectedReport.status === "TESTING_NEEDS_CORRECTION"
-                        ) {
-                          await setStatus(
-                            r,
-                            "UNDER_CLIENT_CORRECTION",
-                            "Sent back to client for correction",
-                          );
-                        } else if (
-                          selectedReport.status === "RESUBMISSION_BY_TESTING"
-                        ) {
-                          await setStatus(
-                            r,
-                            "UNDER_CLIENT_REVIEW",
-                            "Resubmission under Review",
-                          );
+
+                  {canUpdateThisReport(selectedReport, user) && (
+                    <button
+                      disabled={modalUpdating}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                      onClick={async () => {
+                        if (modalUpdating) return;
+                        setModalUpdating(true);
+                        try {
+                          const r = selectedReport!;
+                          if (
+                            r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          ) {
+                            await setStatus(
+                              r,
+                              "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                              "Sent back to client for correction",
+                            );
+                          } else if (
+                            r.status === "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                          ) {
+                            await setStatus(
+                              r,
+                              "UNDER_CLIENT_PRELIMINARY_REVIEW",
+                              "Resubmission under Review",
+                            );
+                          }
+                          setSelectedReport(null);
+                          openUpdateTarget(r);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Failed to update status");
+                        } finally {
+                          setModalUpdating(false);
                         }
-                        setSelectedReport(null);
-                        //goToReportEditor(r);
-                        openUpdateTarget(r);
-                      } catch (e: any) {
-                        toast.error(e?.message || "Failed to update status");
-                      } finally {
-                        setModalUpdating(false);
-                      }
-                    }}
+                      }}
+                    >
+                      {modalUpdating ? <Spinner /> : null}
+                      {modalUpdating ? "Updating..." : "Update"}
+                    </button>
+                  )}
+
+                  {canUpdateThisChemistryReport(selectedReport, user) && (
+                    <button
+                      disabled={modalUpdating}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                      onClick={async () => {
+                        if (modalUpdating) return;
+                        setModalUpdating(true);
+                        try {
+                          const r = selectedReport!;
+                          if (
+                            selectedReport.status === "TESTING_NEEDS_CORRECTION"
+                          ) {
+                            await setStatus(
+                              r,
+                              "UNDER_CLIENT_CORRECTION",
+                              "Sent back to client for correction",
+                            );
+                          } else if (
+                            selectedReport.status === "RESUBMISSION_BY_TESTING"
+                          ) {
+                            await setStatus(
+                              r,
+                              "UNDER_CLIENT_REVIEW",
+                              "Resubmission under Review",
+                            );
+                          }
+                          setSelectedReport(null);
+                          openUpdateTarget(r);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Failed to update status");
+                        } finally {
+                          setModalUpdating(false);
+                        }
+                      }}
+                    >
+                      {modalUpdating ? <Spinner /> : null}
+                      {modalUpdating ? "Updating..." : "Update"}
+                    </button>
+                  )}
+
+                  <button
+                    className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+                    onClick={() => setSelectedReport(null)}
                   >
-                    {modalUpdating ? <Spinner /> : null}
-                    {modalUpdating ? "Updating..." : "Update"}
+                    Close
                   </button>
-                )}
-                <button
-                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
-                >
-                  Close
-                </button>
+                </div>
               </div>
             </div>
             <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
@@ -2978,35 +3015,36 @@ if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
+                  // pane={paneFor(String(selectedReport.status))}
+                  pane={selectedViewPane}
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
+                  pane={selectedViewPane}
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
+                  pane={selectedViewPane}
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
+                  pane={selectedViewPane}
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={paneFor(String(selectedReport.status))}
+                  pane={selectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">
