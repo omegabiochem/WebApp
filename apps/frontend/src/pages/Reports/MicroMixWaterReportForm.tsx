@@ -924,14 +924,25 @@ export default function MicroMixWaterReportForm({
       <button
         type="button"
         title={
-          isDirty
-            ? "Save the form before resolving"
-            : disabled
-              ? "Edit the field first before resolving"
-              : "Resolve all notes for this field"
+          role === "SYSTEMADMIN"
+            ? "Resolve with reason"
+            : isDirty
+              ? "Save the form before resolving"
+              : disabled
+                ? "Edit the field first before resolving"
+                : "Mark resolved"
         }
         onClick={() => {
           if (disabled) return;
+
+          if (role === "SYSTEMADMIN") {
+            setResolveFieldTarget(field);
+            setResolveTarget(null);
+            setResolveReason("");
+            setShowResolveModal(true);
+            return;
+          }
+
           resolveField(field);
         }}
         disabled={disabled}
@@ -1970,7 +1981,30 @@ export default function MicroMixWaterReportForm({
     return normalizeForCompare(currentValue) !== normalizeForCompare(oldValue);
   }
 
+  const [resolveTarget, setResolveTarget] = useState<CorrectionItem | null>(
+    null,
+  );
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const [resolveReason, setResolveReason] = useState("");
+  const [resolveFieldTarget, setResolveFieldTarget] = useState<string | null>(
+    null,
+  );
+
+  function getCorrectionFieldKeys(fieldKey: string) {
+    const [base, key, col] = fieldKey.split(":");
+
+    if (base === "pathogens" && key && col === "checked") {
+      return [`pathogens:${key}:checked`, `pathogens:${key}:spec`];
+    }
+
+    return [fieldKey];
+  }
+
   function canResolveCorrectionItem(c: CorrectionItem): boolean {
+    if (role === "SYSTEMADMIN") {
+      return c.status === "OPEN" && !isDirty;
+    }
+
     return canResolveField(c.fieldKey) && hasCorrectionBeenFixed(c) && !isDirty;
   }
 
@@ -3030,10 +3064,6 @@ export default function MicroMixWaterReportForm({
           } `}
           aria-invalid={!!errors.pathogens}
         >
-          {/* floating badge; doesn't affect layout */}
-          {/* <FieldErrorBadge name="pathogens" errors={errors} /> */}
-          <ResolveOverlay field="pathogens" />
-
           {/* Header */}
           <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
             <div className="p-2 border-r border-black"></div>
@@ -3060,19 +3090,17 @@ export default function MicroMixWaterReportForm({
               >
                 {/* <ResolveOverlay field={`pathogens.${p.key}`} /> */}
                 {/* First column: checkbox + label (unchanged except using setPathogenChecked) */}
-                <ResolveOverlay field={`pathogens:${p.key}:checked`} />
+
                 <div
-                  id="f-pathogens-checked"
+                  id={`f-pathogens-${p.key}-checked`}
                   onClick={() => {
                     if (!selectingCorrections) return;
                     setAddForField(`pathogens:${p.key}:checked`);
                     setAddMessage("");
                   }}
-                  className={`py-[2px] px-2 border-r border-black flex items-center gap-2 ${
-                    hasOpenCorrection(`pathogens:${p.key}`)
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }${dashClass(`pathogens:${p.key}:checked`)}`}
+                  className={`relative py-[2px] px-2 border-r border-black flex items-center gap-2 ${dashClass(
+                    `pathogens:${p.key}:checked`,
+                  )}`}
                 >
                   <ResolveOverlay field={`pathogens:${p.key}:checked`} />
                   <input
@@ -3117,13 +3145,13 @@ export default function MicroMixWaterReportForm({
 
                 {/* Second column: Result + per-row error */}
                 <div
-                  id="f-pathogens-result"
+                  id={`f-pathogens-${p.key}-result`}
                   onClick={() => {
                     if (!selectingCorrections) return;
                     setAddForField(`pathogens:${p.key}:result`);
                     setAddMessage("");
                   }}
-                  className={`py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap ${dashClass(
+                  className={`relative py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap ${dashClass(
                     `pathogens:${p.key}:result`,
                   )}`}
                 >
@@ -3204,20 +3232,16 @@ export default function MicroMixWaterReportForm({
                 </div>
 
                 {/* Third column (spec) */}
-                {/* Third column (spec) */}
-                {/* Third column (spec) */}
                 <div
-                  id="f-pathogens-spec"
+                  id={`f-pathogens-${p.key}-spec`}
                   onClick={() => {
                     if (!selectingCorrections) return;
                     setAddForField(`pathogens:${p.key}:spec`);
                     setAddMessage("");
                   }}
-                  className={`py-[2px] px-2 text-center ${dashClass(
+                  className={`relative py-[2px] px-2 text-center ${dashClass(
                     `pathogens:${p.key}:spec`,
-                  )} ${
-                    pathogenRowErrors[idx]?.spec ? "ring-1 ring-red-500" : ""
-                  }`}
+                  )} ${pathogenRowErrors[idx]?.spec ? "ring-1 ring-red-500" : ""}`}
                 >
                   <ResolveOverlay field={`pathogens:${p.key}:spec`} />
                   <select
@@ -3474,89 +3498,90 @@ export default function MicroMixWaterReportForm({
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}
-      {!hideBottomActions && !isAnyTemplateMode &&
-  !effectiveCorrectionLaunch && (
-        <div className="no-print mt-4 flex items-center justify-between">
-          {/* Left: status action buttons */}
-          <div className="flex flex-wrap gap-2">
-            {showAssignReportNumberButton && (
-              <button
-                type="button"
-                onClick={assignReportNumberAndOpenTesting}
-                disabled={isBusy}
-                className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {busy === "STATUS" && <Spinner />}
-                Assign Report Number
-              </button>
-            )}
-            {!showAssignReportNumberButton &&
-              STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-                (targetStatus: ReportStatus) => {
-                  const isNeedsCorrectionStatus =
-                    targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                    targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-                    targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-                    targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-                    targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-                    targetStatus === "ADMIN_NEEDS_CORRECTION" ||
-                    targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-                    targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
-
-                  if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
-                    return null;
-                  }
-                  if (
-                    STATUS_TRANSITIONS[status as ReportStatus].canSet.includes(
-                      role!,
-                    ) &&
-                    statusButtons[targetStatus]
-                  ) {
-                    const { label, color } = statusButtons[targetStatus];
-
-                    const approveNeedsAttachment =
-                      isApproveAction(targetStatus);
-                    const disableApproveForNoAttachment =
-                      approveNeedsAttachment && !hasAttachment;
-
-                    const disabled =
-                      isBusy ||
-                      attachmentsLoading ||
-                      disableApproveForNoAttachment;
-
-                    return (
-                      <div key={targetStatus} className="relative group">
-                        <button
-                          className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                          onClick={() => requestStatusChange(targetStatus)}
-                          disabled={disabled}
-                          title={
-                            disableApproveForNoAttachment
-                              ? "Upload at least 1 attachment to enable Approve"
-                              : undefined
-                          }
-                        >
-                          {busy === "STATUS" && <Spinner />}
-                          {attachmentsLoading && label === "Approve"
-                            ? "Checking..."
-                            : label}
-                        </button>
-
-                        {/* 🔥 HOVER TOOLTIP */}
-                        {!disableApproveForNoAttachment && (
-                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                            {label} → {formatStatus(targetStatus)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                  return null;
-                },
+      {!hideBottomActions &&
+        !isAnyTemplateMode &&
+        !effectiveCorrectionLaunch && (
+          <div className="no-print mt-4 flex items-center justify-between">
+            {/* Left: status action buttons */}
+            <div className="flex flex-wrap gap-2">
+              {showAssignReportNumberButton && (
+                <button
+                  type="button"
+                  onClick={assignReportNumberAndOpenTesting}
+                  disabled={isBusy}
+                  className="px-4 py-2 rounded-md border bg-purple-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {busy === "STATUS" && <Spinner />}
+                  Assign Report Number
+                </button>
               )}
+              {!showAssignReportNumberButton &&
+                STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+                  (targetStatus: ReportStatus) => {
+                    const isNeedsCorrectionStatus =
+                      targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+                      targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+                      targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+                      targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+                      targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
+                      targetStatus === "ADMIN_NEEDS_CORRECTION" ||
+                      targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+                      targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
+
+                    if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
+                      return null;
+                    }
+                    if (
+                      STATUS_TRANSITIONS[
+                        status as ReportStatus
+                      ].canSet.includes(role!) &&
+                      statusButtons[targetStatus]
+                    ) {
+                      const { label, color } = statusButtons[targetStatus];
+
+                      const approveNeedsAttachment =
+                        isApproveAction(targetStatus);
+                      const disableApproveForNoAttachment =
+                        approveNeedsAttachment && !hasAttachment;
+
+                      const disabled =
+                        isBusy ||
+                        attachmentsLoading ||
+                        disableApproveForNoAttachment;
+
+                      return (
+                        <div key={targetStatus} className="relative group">
+                          <button
+                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                            onClick={() => requestStatusChange(targetStatus)}
+                            disabled={disabled}
+                            title={
+                              disableApproveForNoAttachment
+                                ? "Upload at least 1 attachment to enable Approve"
+                                : undefined
+                            }
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            {attachmentsLoading && label === "Approve"
+                              ? "Checking..."
+                              : label}
+                          </button>
+
+                          {/* 🔥 HOVER TOOLTIP */}
+                          {!disableApproveForNoAttachment && (
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                              {label} → {formatStatus(targetStatus)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  },
+                )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {showESign && (
         <div
@@ -3687,7 +3712,9 @@ export default function MicroMixWaterReportForm({
                       previousStatus: getWorkflowReturnStatus(
                         status as ReportStatus,
                       ),
-                      workflowReturnStatus: getWorkflowReturnStatus(status as ReportStatus),
+                      workflowReturnStatus: getWorkflowReturnStatus(
+                        status as ReportStatus,
+                      ),
                     },
                   );
 
@@ -3758,14 +3785,22 @@ export default function MicroMixWaterReportForm({
                 disabled={!addMessage.trim()}
                 onClick={() =>
                   runBusy("ADD_CORRECTION", async () => {
-                    setPendingCorrections((prev) => [
-                      ...prev,
-                      {
-                        fieldKey: addForField!,
-                        message: addMessage.trim(),
-                        oldValue: getFieldDisplayValue(addForField!),
-                      },
-                    ]);
+                    setPendingCorrections((prev) => {
+                      const fields = getCorrectionFieldKeys(addForField!);
+
+                      const newCorrections = fields
+                        .filter(
+                          (fieldKey) =>
+                            !prev.some((p) => p.fieldKey === fieldKey),
+                        )
+                        .map((fieldKey) => ({
+                          fieldKey,
+                          message: addMessage.trim(),
+                          oldValue: getFieldDisplayValue(fieldKey),
+                        }));
+
+                      return [...prev, ...newCorrections];
+                    });
 
                     setAddForField(null);
                     setAddMessage("");
@@ -3781,15 +3816,20 @@ export default function MicroMixWaterReportForm({
       )}
 
       {/* Floating Corrections button */}
-      {!isTemplateViewMode && (
+      {canShowFloatingUi && !isTemplateViewMode && (
         <div className="no-print fixed bottom-20 right-6 z-40">
           <button
+            type="button"
             onClick={() => setShowCorrTray((s) => !s)}
-            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-xl hover:bg-slate-50"
           >
-            📝 Corrections
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+              📝
+            </span>
+            <span>Corrections</span>
+
             {openCorrections.length > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+              <span className="ml-1 inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
                 {openCorrections.length}
               </span>
             )}
@@ -3797,89 +3837,166 @@ export default function MicroMixWaterReportForm({
         </div>
       )}
 
-      {!isTemplateViewMode && showCorrTray && (
-        <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
-          <div className="flex items-center justify-between border-b px-3 py-2">
-            <div className="text-sm font-semibold">Open corrections</div>
-            <button
-              className="rounded px-2 py-1 text-xs hover:bg-slate-100"
-              onClick={() => setShowCorrTray(false)}
-            >
-              ✕
-            </button>
+      {canShowFloatingUi && !isTemplateViewMode && showCorrTray && (
+        <div className="no-print fixed bottom-20 right-6 z-40 w-[430px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5">
+          <div className="border-b bg-slate-50 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Correction Review
+                  </h3>
+
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                    {openCorrections.length} Open
+                  </span>
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Review requested corrections and resolve after verification.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700"
+                onClick={() => setShowCorrTray(false)}
+                aria-label="Close corrections tray"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
-          <div className="max-h-72 overflow-auto divide-y">
+          <div className="max-h-[430px] overflow-auto bg-slate-50/60 p-3">
             {openCorrections.length === 0 ? (
-              <div className="p-3 text-xs text-slate-500">
-                No open corrections.
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                  ✓
+                </div>
+                <div className="text-sm font-semibold text-slate-800">
+                  No open corrections
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  All correction items are currently resolved.
+                </p>
               </div>
             ) : (
-              openCorrections.map((c) => (
-                <div key={c.id} className="p-3 text-sm">
-                  <div className="text-[11px] font-medium text-slate-500">
-                    {c.fieldKey}
-                  </div>
-                  <div className="mt-1"> Reason : {c.message}</div>
-                  {c.oldValue != null && String(c.oldValue).trim() !== "" && (
-                    <div className="mt-1 text-xs text-slate-600">
-                      <span className="font-medium">Old Value :</span>{" "}
-                      <span className="break-words">
-                        {typeof c.oldValue === "string"
-                          ? c.oldValue
-                          : JSON.stringify(c.oldValue)}
-                      </span>
-                    </div>
-                  )}
+              <>
+                <div className="space-y-3">
+                  {openCorrections.map((c, index) => {
+                    const canResolve = canResolveCorrectionItem(c);
 
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      className={`text-xs font-medium ${
-                        canResolveCorrectionItem(c)
-                          ? "text-emerald-700 hover:underline"
-                          : "text-slate-400 cursor-not-allowed"
-                      }`}
-                      onClick={() => {
-                        if (!canResolveCorrectionItem(c)) return;
-                        resolveOne(c);
-                      }}
-                      disabled={!canResolveCorrectionItem(c)}
-                      title={
-                        isDirty
-                          ? "Save the form before resolving"
-                          : !hasCorrectionBeenFixed(c)
-                            ? "Edit the field first before resolving"
-                            : "Mark resolved"
-                      }
-                    >
-                      {busy === "RESOLVE" && <SpinnerDark />}✓ Mark resolved
-                    </button>
-                    <button
-                      className={`text-xs ${
-                        canResolveAllForFieldKey(c.fieldKey)
-                          ? "text-slate-500 hover:underline"
-                          : "text-slate-400 cursor-not-allowed"
-                      }`}
-                      onClick={() => {
-                        if (!canResolveAllForFieldKey(c.fieldKey)) return;
-                        resolveField(c.fieldKey);
-                      }}
-                      disabled={!canResolveAllForFieldKey(c.fieldKey)}
-                      title={
-                        isDirty
-                          ? "Save the form before resolving"
-                          : !openCorrections
-                                .filter((x) => x.fieldKey === c.fieldKey)
-                                .every((x) => hasCorrectionBeenFixed(x))
-                            ? "Edit the field first before resolving"
-                            : "Resolve all notes for this field"
-                      }
-                    >
-                      Resolve all for field
-                    </button>
-                  </div>
+                    return (
+                      <div
+                        key={c.id}
+                        className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700">
+                                {index + 1}
+                              </span>
+
+                              <div className="truncate text-sm font-semibold text-slate-900">
+                                {c.fieldKey}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                              <span className="font-semibold">Reason:</span>{" "}
+                              {c.message}
+                            </div>
+                          </div>
+
+                          <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                            OPEN
+                          </span>
+                        </div>
+
+                        {c.oldValue != null &&
+                          String(c.oldValue).trim() !== "" && (
+                            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                Old Value
+                              </div>
+                              <div className="break-words text-xs text-slate-700">
+                                {typeof c.oldValue === "string"
+                                  ? c.oldValue
+                                  : JSON.stringify(c.oldValue)}
+                              </div>
+                            </div>
+                          )}
+
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                              canResolve
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            }`}
+                            onClick={() => {
+                              if (!canResolve) return;
+
+                              if (role === "SYSTEMADMIN") {
+                                setResolveTarget(c);
+                                setResolveFieldTarget(null);
+                                setResolveReason("");
+                                setShowResolveModal(true);
+                                return;
+                              }
+
+                              resolveOne(c);
+                            }}
+                            disabled={!canResolve}
+                            title={
+                              role === "SYSTEMADMIN"
+                                ? "Resolve with reason"
+                                : isDirty
+                                  ? "Save the form before resolving"
+                                  : !hasCorrectionBeenFixed(c)
+                                    ? "Edit the field first before resolving"
+                                    : "Mark resolved"
+                            }
+                          >
+                            {busy === "RESOLVE" ? <SpinnerDark /> : "✓"}
+                            Mark Resolved
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))
+
+                {role === "SYSTEMADMIN" && (
+                  <div className="sticky bottom-0 mt-3 border-t border-slate-200 bg-white p-3">
+                    <button
+                      type="button"
+                      className="w-full rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isDirty || busy === "RESOLVE"}
+                      onClick={() => {
+                        setResolveTarget(null);
+                        setResolveFieldTarget("__ALL_OPEN_CORRECTIONS__");
+                        setResolveReason("");
+                        setShowResolveModal(true);
+                      }}
+                    >
+                      {busy === "RESOLVE"
+                        ? "Resolving..."
+                        : "Resolve All Open Corrections"}
+                    </button>
+
+                    {isDirty && (
+                      <p className="mt-2 text-center text-[11px] text-rose-600">
+                        Save the report before resolving corrections.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -3918,6 +4035,119 @@ export default function MicroMixWaterReportForm({
                 onClick={saveCustomSpec}
               >
                 Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showResolveModal && (resolveTarget || resolveFieldTarget) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-semibold mb-2">Resolve Correction</h3>
+
+            <p className="mb-2 text-xs text-slate-600">
+              Field:{" "}
+              <b>
+                {resolveFieldTarget === "__ALL_OPEN_CORRECTIONS__"
+                  ? "All Open Corrections"
+                  : (resolveTarget?.fieldKey ?? resolveFieldTarget)}
+              </b>
+            </p>
+
+            <textarea
+              autoFocus
+              rows={3}
+              value={resolveReason}
+              onChange={(e) => setResolveReason(e.target.value)}
+              placeholder="Enter reason for resolving this correction"
+              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-emerald-500"
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setShowResolveModal(false);
+                  setResolveTarget(null);
+                  setResolveFieldTarget(null);
+                  setResolveReason("");
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!resolveReason.trim() || busy === "RESOLVE"}
+                onClick={() =>
+                  runBusy("RESOLVE", async () => {
+                    if (!reportId) return;
+
+                    if (resolveFieldTarget === "__ALL_OPEN_CORRECTIONS__") {
+                      const correctionsToResolve = [...openCorrections];
+
+                      for (const c of correctionsToResolve) {
+                        await resolveCorrection(
+                          reportId,
+                          c.id,
+                          `SystemAdmin override: ${resolveReason.trim()}`,
+                        );
+                      }
+
+                      const fresh = await getCorrections(reportId);
+                      setCorrections(fresh);
+
+                      setShowResolveModal(false);
+                      setResolveTarget(null);
+                      setResolveFieldTarget(null);
+                      setResolveReason("");
+                      return;
+                    }
+
+                    if (resolveFieldTarget) {
+                      const items = openCorrections.filter(
+                        (c) =>
+                          c.fieldKey === resolveFieldTarget ||
+                          c.fieldKey.startsWith(`${resolveFieldTarget}:`),
+                      );
+
+                      for (const c of items) {
+                        await resolveCorrection(
+                          reportId,
+                          c.id,
+                          `SystemAdmin override: ${resolveReason.trim()}`,
+                        );
+                      }
+
+                      const fresh = await getCorrections(reportId);
+                      setCorrections(fresh);
+                      flashResolved(resolveFieldTarget);
+                    }
+
+                    if (resolveTarget) {
+                      await resolveCorrection(
+                        reportId,
+                        resolveTarget.id,
+                        `SystemAdmin override: ${resolveReason.trim()}`,
+                      );
+
+                      const fresh = await getCorrections(reportId);
+                      setCorrections(fresh);
+                      flashResolved(resolveTarget.fieldKey);
+                    }
+
+                    setShowResolveModal(false);
+                    setResolveTarget(null);
+                    setResolveFieldTarget(null);
+                    setResolveReason("");
+                  })
+                }
+              >
+                {busy === "RESOLVE" && <Spinner />}
+                Confirm Resolve
               </button>
             </div>
           </div>

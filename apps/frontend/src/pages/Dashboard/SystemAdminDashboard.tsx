@@ -313,15 +313,20 @@ const ADMIN_FIELDS_ON_FORM = [
   "adminNotes",
 ];
 
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
 // -----------------------------
 // Bulk print area (Admin)
 // -----------------------------
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printPane = "REPORT",
 }: {
   reports: Report[];
   onAfterPrint: () => void;
+  printPane: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -351,6 +356,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -365,6 +371,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -379,6 +386,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -393,6 +401,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -407,6 +416,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -677,7 +687,7 @@ export default function SystemAdminDashboard() {
   const [eSignError, setESignError] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
 
-  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
 
   // ✅ status filter now uses combined type
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
@@ -701,9 +711,10 @@ export default function SystemAdminDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
-  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null,
-  );
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: Report;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
@@ -1766,6 +1777,9 @@ export default function SystemAdminDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedViewPane(defaultViewPane());
+      setSelectedReport(clicked);
+      return;
       setSelectedReport(clicked);
       return;
     }
@@ -2056,7 +2070,7 @@ export default function SystemAdminDashboard() {
       {/* -----------------------------
           PRINT PORTAL (bulk + single)
          ----------------------------- */}
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
             <style>
@@ -2105,11 +2119,18 @@ export default function SystemAdminDashboard() {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : singlePrintJob
+                    ? [singlePrintJob.report]
+                    : []
+              }
+              printPane={
+                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -3032,30 +3053,25 @@ export default function SystemAdminDashboard() {
 
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
                 <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setModalPane("FORM")}
-                    className={`px-3 py-1 rounded-full transition ${
-                      modalPane === "FORM"
-                        ? "bg-blue-600 text-white"
-                        : "text-slate-700 hover:bg-white"
-                    }`}
-                    aria-pressed={modalPane === "FORM"}
-                  >
-                    Form
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalPane("ATTACHMENTS")}
-                    className={`px-3 py-1 rounded-full transition ${
-                      modalPane === "ATTACHMENTS"
-                        ? "bg-blue-600 text-white"
-                        : "text-slate-700 hover:bg-white"
-                    }`}
-                    aria-pressed={modalPane === "ATTACHMENTS"}
-                  >
-                    Attachments
-                  </button>
+                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setSelectedViewPane(p)}
+                        className={classNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                          selectedViewPane === p
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {p === "ATTACHMENTS"
+                          ? "Attachments"
+                          : p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -3088,7 +3104,10 @@ export default function SystemAdminDashboard() {
                     });
 
                     setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
+                    setSinglePrintJob({
+                      report: selectedReport,
+                      pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                    });
                   }}
                 >
                   {printingSingle ? <SpinnerDark /> : "🖨️"}
@@ -3152,40 +3171,40 @@ export default function SystemAdminDashboard() {
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

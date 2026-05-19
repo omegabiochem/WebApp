@@ -778,7 +778,7 @@ type CorrectionItem = {
   oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
   resolvedAt?: string | null; // ✅ ISO
   resolvedByUserId?: string | null;
-
+  resolvedByRole?: UserRole | null;
   resolutionNote?: string | null;
 };
 
@@ -1655,8 +1655,6 @@ export class ReportsService {
     // ✅ apply lock timestamp
     if (target === 'LOCKED') patch.lockedAt = new Date();
 
-    
-
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
@@ -1839,6 +1837,7 @@ export class ReportsService {
 
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
+      resolvedByRole: null as UserRole | null,
       resolutionNote: null as string | null,
     }));
     const nextCorrections = [...existing, ...toAdd];
@@ -1934,6 +1933,7 @@ export class ReportsService {
       status: 'RESOLVED',
       resolvedAt: new Date().toISOString(),
       resolvedByUserId: user.userId,
+      resolvedByRole: user.role,
       resolutionNote: body?.resolutionNote ?? null,
     };
 
@@ -1960,6 +1960,7 @@ export class ReportsService {
         oldValue: resolvedItem.oldValue ?? null,
         resolvedAt: resolvedItem.resolvedAt ?? null,
         resolvedByUserId: resolvedItem.resolvedByUserId ?? null,
+        resolvedByRole: resolvedItem.resolvedByRole ?? null,
         resolutionNote: resolvedItem.resolutionNote ?? null,
       },
     });
@@ -1968,9 +1969,11 @@ export class ReportsService {
 
     if (
       allResolved &&
+      report.workflowReturnStatus &&
       (report.status === 'UNDER_CHANGE_UPDATE' ||
-        report.status === 'UNDER_CORRECTION_UPDATE') &&
-      report.workflowReturnStatus
+        report.status === 'UNDER_CORRECTION_UPDATE' ||
+        report.status === 'CHANGE_REQUESTED' ||
+        report.status === 'CORRECTION_REQUESTED')
     ) {
       await this.prisma.report.update({
         where: { id },
@@ -2022,51 +2025,6 @@ export class ReportsService {
 
     return { ok: true };
   }
-  // async resolveCorrection(
-  //   user: { userId: string; role: UserRole },
-  //   id: string,
-  //   cid: string,
-  //   body: { resolutionNote?: string },
-  // ) {
-  //   const report = await this.prisma.report.findUnique({
-  //     where: { id },
-  //     include: {
-  //       microMix: true,
-  //       microMixWater: true,
-  //       sterility: true,
-  //     },
-  //   });
-  //   if (!report) throw new NotFoundException('Report not found');
-
-  //   const d = pickDetails(report) || { corrections: [] };
-  //   const arr = this._getCorrectionsArray(d);
-  //   const idx = arr.findIndex((c) => c.id === cid);
-  //   if (idx < 0) throw new NotFoundException('Correction not found');
-
-  //   const allowedResolvers: UserRole[] = [
-  //     'CLIENT',
-  //     'MICRO',
-  //     'FRONTDESK',
-  //     'ADMIN',
-  //     'QA',
-  //   ];
-  //   if (!allowedResolvers.includes(user.role))
-  //     throw new ForbiddenException('Not allowed to resolve');
-  //   arr[idx] = {
-  //     ...arr[idx],
-  //     status: 'RESOLVED',
-  //     resolvedAt: new Date().toISOString(), // ✅ ISO
-  //     resolvedByUserId: user.userId,
-  //     resolutionNote: body?.resolutionNote ?? null, // ✅ store note
-  //   };
-
-  //   await updateDetailsByType(this.prisma, report.formType, id, {
-  //     corrections: arr,
-  //   });
-
-  //   this.reportsGateway.notifyReportUpdate({ id });
-  //   return { ok: true };
-  // }
 
   private async findReportOrThrow(user: any, id: string) {
     // add org/tenant scoping here if you have it on MicroMixReport

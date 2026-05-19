@@ -12,7 +12,7 @@ import {
 } from "../../utils/COAReportValidation";
 import { type COAReportStatus } from "../../utils/COAReportFormWorkflow";
 
-type Pane = "FORM" | "ATTACHMENTS";
+type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
 type AttachmentItem = {
   id: string;
@@ -332,7 +332,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
 
   // -------- panes (FORM / ATTACHMENTS) ----------
   const isControlled = typeof pane !== "undefined";
-  const [internalPane, setInternalPane] = useState<Pane>("FORM");
+  const [internalPane, setInternalPane] = useState<Pane>("REPORT");
   const activePane: Pane = isControlled ? (pane as Pane) : internalPane;
 
   const setActivePane = (p: Pane) => {
@@ -464,6 +464,14 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     });
   }, [coaRows, isSubmissionForm]);
 
+  const isSubmissionFormPane = activePane === "FORM";
+  const blankIfForm = (value: any) => {
+    if (isSubmissionFormPane) return "";
+    return value ?? "";
+  };
+  const isReportPane = isBulk || activePane === "REPORT";
+  const isFormPane = pane === "FORM";
+
   return (
     <>
       {!isBulk && <PrintStyles />}
@@ -477,7 +485,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
         }
       >
         {/* View switcher */}
-        {!isBulk && showSwitcher !== false && (
+        {/* {!isBulk && showSwitcher !== false && (
           <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
             <div className="flex items-center gap-2 py-2">
               <button
@@ -506,9 +514,32 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
               </button>
             </div>
           </div>
+        )} */}
+
+        {!isBulk && showSwitcher !== false && (
+          <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
+            <div className="flex items-center gap-2 py-2">
+              {(["FORM", "REPORT", "ATTACHMENTS"] as Pane[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setActivePane(p)}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    activePane === p
+                      ? "bg-blue-600 text-white"
+                      : "hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {p === "ATTACHMENTS"
+                    ? "Attachment"
+                    : p[0] + p.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
-        {isBulk || activePane === "FORM" ? (
+        {isReportPane || isSubmissionFormPane ? (
           <>
             {/* Letterhead */}
             <div className="mb-2 text-center">
@@ -536,13 +567,15 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 </div>
 
                 <div className="text-[18px] font-bold text-center underline">
-                  {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
+                  {/* {status === "DRAFT" || status === "SUBMITTED_BY_CLIENT"
                     ? "COA SUBMISSION FORM"
-                    : "COA REPORT"}
+                    : "COA REPORT"} */}
+
+                  {isSubmissionFormPane ? "COA SUBMISSION FORM" : "COA REPORT"}
                 </div>
 
                 <div className="text-right text-[12px] font-bold">
-                  {report?.reportNumber ?? ""}
+                  {!isFormPane && (report?.reportNumber ?? "")}
                 </div>
               </div>
             </div>
@@ -660,7 +693,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                   DATE RECEIVED :
                 </span>
                 <div className="min-h-[14px]">
-                  {formatDateForInput(report?.dateReceived ?? "")}
+                  {blankIfForm(formatDateForInput(report?.dateReceived ?? ""))}
                 </div>
               </div>
             </div>
@@ -716,21 +749,21 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                     <div
                       className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kSop)}`}
                     >
-                      {row.sopValidatedTm ?? ""}
+                      {blankIfForm(row.sopValidatedTm ?? "")}
                     </div>
 
                     <div
                       className={`border-r border-black px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kRes)}`}
                     >
-                      {row.result ?? ""}
+                      {blankIfForm(row.result ?? "")}
                     </div>
 
                     <div
                       className={`px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kDateInit)}`}
                     >
-                      {date || initial
+                      {blankIfForm(date || initial
                         ? `${date}${date && initial ? " / " : ""}${initial}`
-                        : ""}
+                        : "")}
                     </div>
                   </div>
                 );
@@ -749,7 +782,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 </div>
               </div>
 
-              {showSignatures && (
+              {showSignatures && !isSubmissionFormPane && (
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
                     <div className="mb-2 flex items-center gap-2">
@@ -839,7 +872,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 <div className="text-right leading-tight">
                   <div className="text-[11px] font-semibold">Report ID</div>
                   <div className="mono text-[11px]">{report?.id}</div>
-                  {report?.reportNumber && (
+                  {!isFormPane && report?.reportNumber && (
                     <div className="text-[11px]">
                       Report # {report.reportNumber}
                     </div>
