@@ -409,15 +409,21 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
+
 // ----------------------------------
 // Bulk print area (mixed)
 // ----------------------------------
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printPane = "REPORT",
 }: {
   reports: UnifiedRow[];
   onAfterPrint: () => void;
+  printPane?: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -452,6 +458,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
+                  pane={printPane}
                 />
               </div>
             );
@@ -465,6 +472,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
+                  pane={printPane}
                 />
               </div>
             );
@@ -478,6 +486,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
+                  pane={printPane}
                 />
               </div>
             );
@@ -500,6 +509,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -515,6 +525,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -943,9 +954,12 @@ export default function MCDashboard() {
   );
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
-  const [singlePrintReport, setSinglePrintReport] = useState<UnifiedRow | null>(
-    null,
-  );
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
+
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: UnifiedRow;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   // UI guards
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -1363,15 +1377,22 @@ export default function MCDashboard() {
     }
 
     // 6) chemistry actives filter
-    if (category === "CHEMISTRY" && activeFilter !== "ALL") {
+    if (activeFilter !== "ALL") {
       rows = rows.filter((r) => {
         if (r.kind !== "CHEMISTRY") return false;
 
         const list = r.selectedActivesText?.trim()
-          ? r.selectedActivesText.split(",").map((s) => s.trim())
-          : (r.selectedActives ?? []).map((s) => String(s).trim());
+          ? r.selectedActivesText
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : (r.selectedActives ?? [])
+              .map((s) => String(s).trim())
+              .filter(Boolean);
 
-        return list.includes(activeFilter);
+        return list.some(
+          (a) => a.trim().toLowerCase() === activeFilter.trim().toLowerCase(),
+        );
       });
     }
 
@@ -1542,87 +1563,6 @@ export default function MCDashboard() {
     activeFilter,
   ]);
 
-  // Keep statusFilter valid when switching category
-  // const didMount = React.useRef(false);
-
-  // useEffect(() => {
-  //   if (!didMount.current) {
-  //     didMount.current = true;
-  //     return; // ✅ skip initial run
-  //   }
-
-  //   // runs only for real category changes after mount
-  //   setSelectedIds([]);
-  //   setStatusFilter("ALL");
-
-  //   if (category === "ALL") {
-  //     setMicroFormFilter("ALL");
-  //     setChemFormFilter("ALL");
-  //     setActiveFilter("ALL");
-  //   } else if (category === "MICRO") {
-  //     setChemFormFilter("ALL");
-  //     setActiveFilter("ALL");
-  //   } else if (category === "CHEMISTRY") {
-  //     setMicroFormFilter("ALL");
-  //   }
-  // }, [category]);
-
-  // useEffect(() => {
-  //   const sp = new URLSearchParams();
-
-  //   sp.set("cat", category);
-  //   sp.set("status", statusFilter);
-
-  //   if (searchClient.trim()) sp.set("client", searchClient.trim());
-  //   if (searchReport.trim()) sp.set("report", searchReport.trim());
-  //   if (search.trim()) sp.set("q", search.trim());
-
-  //   sp.set("type", allTypeFilter);
-  //   sp.set("mtype", microFormFilter);
-  //   sp.set("ctype", chemFormFilter);
-  //   sp.set("active", activeFilter);
-
-  //   sp.set("dp", datePreset);
-  //   if (fromDate) sp.set("from", fromDate);
-  //   if (toDate) sp.set("to", toDate);
-
-  //   sp.set("rangeType", numberRangeType);
-  //   if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
-  //   if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
-  //   if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
-  //   if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
-
-  //   sp.set("sortBy", sortBy);
-  //   sp.set("sortDir", sortDir);
-  //   sp.set("pp", String(perPage));
-  //   sp.set("p", String(pageClamped));
-
-  //   setSearchParams(sp, { replace: true });
-  // }, [
-  //   category,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   search,
-  //   allTypeFilter,
-  //   microFormFilter,
-  //   chemFormFilter,
-  //   activeFilter,
-  //   datePreset,
-  //   fromDate,
-  //   toDate,
-  //   numberRangeType,
-  //   formNoFrom,
-  //   formNoTo,
-  //   reportNoFrom,
-  //   reportNoTo,
-  //   sortBy,
-  //   sortDir,
-  //   perPage,
-  //   pageClamped,
-  //   setSearchParams,
-  // ]);
-
   useEffect(() => {
     const next = getInitialMCFilters(searchParams, FILTER_STORAGE_KEY);
 
@@ -1775,7 +1715,7 @@ export default function MCDashboard() {
   // Helpers: permissions + nav
   // -----------------------------
   function canUpdateMicroLocal(r: MicroReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const fieldsUsedOnForm = [
       "testSopNo",
@@ -1800,7 +1740,7 @@ export default function MCDashboard() {
   }
 
   function canUpdateSterilityLocal(r: MicroReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const sterilityFieldsUsedOnForm = [
       "testSopNo",
@@ -1821,7 +1761,7 @@ export default function MCDashboard() {
   }
 
   function canUpdateChemLocal(r: ChemReport, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const chemistryFieldsUsedOnForm = [
       "sop",
@@ -2273,6 +2213,7 @@ export default function MCDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
       return;
     }
@@ -2583,7 +2524,7 @@ export default function MCDashboard() {
   // ----------------------------------
   return (
     <div className="p-6">
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
             <style>
@@ -2632,11 +2573,18 @@ export default function MCDashboard() {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : singlePrintJob
+                    ? [singlePrintJob.report]
+                    : []
+              }
+              printPane={
+                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -3562,7 +3510,9 @@ export default function MCDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setPage((p: number) => Math.min(totalPages, p + 1))
+                }
                 disabled={pageClamped === totalPages}
               >
                 Next
@@ -3580,12 +3530,36 @@ export default function MCDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+      <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 {selectedReport.kind === "MICRO" ? "Micro" : "Chemistry"} Report
                 ({displayReportNo(selectedReport)})
               </h2>
+
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setSelectedViewPane(p)}
+                        className={classNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                          selectedViewPane === p
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {p === "ATTACHMENTS"
+                          ? "Attachments"
+                          : p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
 
               <div className="flex items-center gap-2">
                 {/* Print single */}
@@ -3615,7 +3589,10 @@ export default function MCDashboard() {
                       clientCode: selectedReport.client || null,
                     });
                     setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
+                    setSinglePrintJob({
+                      report: selectedReport,
+                      pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                    });
                   }}
                 >
                   {printingSingle ? <SpinnerDark /> : "🖨️"}
@@ -3692,28 +3669,31 @@ export default function MCDashboard() {
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+            <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.kind === "MICRO" ? (
                 selectedReport.formType === "MICRO_MIX" ? (
                   <MicroMixReportFormView
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
-                    pane="FORM"
+                    pane={selectedViewPane}
+                    onPaneChange={setSelectedViewPane}
                   />
                 ) : selectedReport.formType === "STERILITY" ? (
                   <SterilityReportFormView
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
-                    pane="FORM"
+                    pane={selectedViewPane}
+                    onPaneChange={setSelectedViewPane}
                   />
                 ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                   <MicroMixWaterReportFormView
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
-                    pane="FORM"
+                    pane={selectedViewPane}
+                    onPaneChange={setSelectedViewPane}
                   />
                 ) : (
                   <div className="text-sm text-slate-600">
@@ -3726,14 +3706,16 @@ export default function MCDashboard() {
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport.formType === "COA" ? (
                 <COAReportFormView
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

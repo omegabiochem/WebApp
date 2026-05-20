@@ -593,7 +593,8 @@ export default function UsersAdmin() {
       {tab === "USERS" && (
         <>
           {/* Create user card */}
-          <div className={cx(card, "overflow-hidden")}>
+          {/* Users list */}
+          <div className={cx(card, "overflow-hidden flex flex-col")}>
             <div
               className={cx(cardHeader, "flex items-center justify-between")}
             >
@@ -880,147 +881,53 @@ export default function UsersAdmin() {
               )}
             </div>
 
-            <div className="p-3">
-              {/* Desktop header row */}
-              <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
-                <div>User</div>
-                <div>Role</div>
-                <div>Client</div>
-                <div>Status</div>
-                <div>Last login</div>
-                <div>Last activity</div>
-                <div>Reports</div>
-                <div className="text-right">Actions</div>
-              </div>
-
-              {!loading && items.length === 0 ? (
-                <div className="px-3 py-10 text-center text-slate-500">
-                  No users found.
+            <div className="min-h-0">
+              <div className="max-h-[60vh] overflow-auto p-3">
+                {/* Desktop header row */}
+                <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
+                  <div>User</div>
+                  <div>Role</div>
+                  <div>Client</div>
+                  <div>Status</div>
+                  <div>Last login</div>
+                  <div>Last activity</div>
+                  <div>Reports</div>
+                  <div className="text-right">Actions</div>
                 </div>
-              ) : (
-                <div className="divide-y divide-slate-200">
-                  {items.map((u) => (
-                    <div key={u.id} className="py-3">
-                      {/* Desktop row */}
-                      <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 items-start px-3">
-                        <div>
-                          <div className="font-semibold text-slate-900">
-                            {u.name ?? "—"}
-                          </div>
-                          <div className="text-slate-700">{u.email}</div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            <span className="font-medium text-slate-700">
-                              User ID:
-                            </span>{" "}
-                            {u.userId ?? "—"} •{" "}
-                            <span className="font-medium text-slate-700">
-                              Created:
-                            </span>{" "}
-                            {fmtDate(u.createdAt)}
-                          </div>
-                          {u.mustChangePassword && (
-                            <div className="mt-2 inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
-                              Must change password
-                            </div>
-                          )}
-                        </div>
 
-                        <div>
-                          <span
-                            className={cx(
-                              "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
-                              rolePillClass(u.role),
-                            )}
-                          >
-                            {u.role}
-                          </span>
-                        </div>
-
-                        <div className="text-slate-900">
-                          {u.clientCode ?? "—"}
-                        </div>
-
-                        <div>
-                          <span
-                            className={cx(
-                              "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
-                              statusPill(u.active),
-                            )}
-                          >
-                            {u.active ? "ACTIVE" : "DISABLED"}
-                          </span>
-                        </div>
-
-                        <div className="text-slate-900">
-                          {fmtDate(u.lastLoginAt)}
-                        </div>
-                        <div className="text-slate-900">
-                          {fmtDate(u.lastActivityAt)}
-                        </div>
-                        <div className="text-slate-900">
-                          {u.activeReportCount ?? "—"}
-                        </div>
-
-                        <div className="flex justify-end gap-2 flex-wrap">
-                          <button
-                            className={btn.outline}
-                            onClick={() => openManage(u)}
-                            type="button"
-                          >
-                            Manage
-                          </button>
-                          <button
-                            className={u.active ? btn.warning : btn.success}
-                            onClick={() => toggleActive(u)}
-                            type="button"
-                          >
-                            {u.active ? "Disable" : "Enable"}
-                          </button>
-                          <button
-                            className={btn.neutral}
-                            onClick={() => doResetPassword(u)}
-                            type="button"
-                          >
-                            Reset PW
-                          </button>
-                          <button
-                            className={btn.danger}
-                            onClick={() => doForceSignout(u)}
-                            type="button"
-                            title="Force signout (increments passwordVersion)"
-                          >
-                            Signout
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Mobile / Tablet card */}
-                      <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
+                {!loading && items.length === 0 ? (
+                  <div className="px-3 py-10 text-center text-slate-500">
+                    No users found.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-200">
+                    {items.map((u) => (
+                      <div key={u.id} className="py-3">
+                        {/* Desktop row */}
+                        <div className="hidden lg:grid grid-cols-[2.2fr_0.9fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr_1.6fr] gap-3 items-start px-3">
                           <div>
                             <div className="font-semibold text-slate-900">
                               {u.name ?? "—"}
                             </div>
-                            <div className="text-slate-700 text-sm">
-                              {u.email}
-                            </div>
+                            <div className="text-slate-700">{u.email}</div>
                             <div className="text-xs text-slate-500 mt-1">
-                              User ID:{" "}
-                              <span className="font-medium text-slate-900">
-                                {u.userId ?? "—"}
-                              </span>
+                              <span className="font-medium text-slate-700">
+                                User ID:
+                              </span>{" "}
+                              {u.userId ?? "—"} •{" "}
+                              <span className="font-medium text-slate-700">
+                                Created:
+                              </span>{" "}
+                              {fmtDate(u.createdAt)}
                             </div>
+                            {u.mustChangePassword && (
+                              <div className="mt-2 inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
+                                Must change password
+                              </div>
+                            )}
                           </div>
 
-                          <div className="flex flex-col items-end gap-2">
-                            <span
-                              className={cx(
-                                "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
-                                statusPill(u.active),
-                              )}
-                            >
-                              {u.active ? "ACTIVE" : "DISABLED"}
-                            </span>
+                          <div>
                             <span
                               className={cx(
                                 "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
@@ -1030,76 +937,172 @@ export default function UsersAdmin() {
                               {u.role}
                             </span>
                           </div>
+
+                          <div className="text-slate-900">
+                            {u.clientCode ?? "—"}
+                          </div>
+
+                          <div>
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                statusPill(u.active),
+                              )}
+                            >
+                              {u.active ? "ACTIVE" : "DISABLED"}
+                            </span>
+                          </div>
+
+                          <div className="text-slate-900">
+                            {fmtDate(u.lastLoginAt)}
+                          </div>
+                          <div className="text-slate-900">
+                            {fmtDate(u.lastActivityAt)}
+                          </div>
+                          <div className="text-slate-900">
+                            {u.activeReportCount ?? "—"}
+                          </div>
+
+                          <div className="flex justify-end gap-2 flex-wrap">
+                            <button
+                              className={btn.outline}
+                              onClick={() => openManage(u)}
+                              type="button"
+                            >
+                              Manage
+                            </button>
+                            <button
+                              className={u.active ? btn.warning : btn.success}
+                              onClick={() => toggleActive(u)}
+                              type="button"
+                            >
+                              {u.active ? "Disable" : "Enable"}
+                            </button>
+                            <button
+                              className={btn.neutral}
+                              onClick={() => doResetPassword(u)}
+                              type="button"
+                            >
+                              Reset PW
+                            </button>
+                            <button
+                              className={btn.danger}
+                              onClick={() => doForceSignout(u)}
+                              type="button"
+                              title="Force signout (increments passwordVersion)"
+                            >
+                              Signout
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div className="text-slate-500">
-                            Client
-                            <div className="text-slate-900 font-medium">
-                              {u.clientCode ?? "—"}
+                        {/* Mobile / Tablet card */}
+                        <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {u.name ?? "—"}
+                              </div>
+                              <div className="text-slate-700 text-sm">
+                                {u.email}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-1">
+                                User ID:{" "}
+                                <span className="font-medium text-slate-900">
+                                  {u.userId ?? "—"}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-slate-500">
-                            Reports
-                            <div className="text-slate-900 font-medium">
-                              {u.activeReportCount ?? "—"}
-                            </div>
-                          </div>
-                          <div className="text-slate-500">
-                            Last login
-                            <div className="text-slate-900 font-medium">
-                              {fmtDate(u.lastLoginAt)}
-                            </div>
-                          </div>
-                          <div className="text-slate-500">
-                            Last activity
-                            <div className="text-slate-900 font-medium">
-                              {fmtDate(u.lastActivityAt)}
-                            </div>
-                          </div>
-                        </div>
 
-                        {u.mustChangePassword && (
-                          <div className="inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
-                            Must change password
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={cx(
+                                  "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                  statusPill(u.active),
+                                )}
+                              >
+                                {u.active ? "ACTIVE" : "DISABLED"}
+                              </span>
+                              <span
+                                className={cx(
+                                  "inline-flex items-center rounded-full px-2 py-1 text-xs ring-1",
+                                  rolePillClass(u.role),
+                                )}
+                              >
+                                {u.role}
+                              </span>
+                            </div>
                           </div>
-                        )}
 
-                        <div className="flex gap-2 flex-wrap pt-1">
-                          <button
-                            className={btn.outline}
-                            onClick={() => openManage(u)}
-                            type="button"
-                          >
-                            Manage
-                          </button>
-                          <button
-                            className={u.active ? btn.warning : btn.success}
-                            onClick={() => toggleActive(u)}
-                            type="button"
-                          >
-                            {u.active ? "Disable" : "Enable"}
-                          </button>
-                          <button
-                            className={btn.neutral}
-                            onClick={() => doResetPassword(u)}
-                            type="button"
-                          >
-                            Reset PW
-                          </button>
-                          <button
-                            className={btn.danger}
-                            onClick={() => doForceSignout(u)}
-                            type="button"
-                          >
-                            Signout
-                          </button>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="text-slate-500">
+                              Client
+                              <div className="text-slate-900 font-medium">
+                                {u.clientCode ?? "—"}
+                              </div>
+                            </div>
+                            <div className="text-slate-500">
+                              Reports
+                              <div className="text-slate-900 font-medium">
+                                {u.activeReportCount ?? "—"}
+                              </div>
+                            </div>
+                            <div className="text-slate-500">
+                              Last login
+                              <div className="text-slate-900 font-medium">
+                                {fmtDate(u.lastLoginAt)}
+                              </div>
+                            </div>
+                            <div className="text-slate-500">
+                              Last activity
+                              <div className="text-slate-900 font-medium">
+                                {fmtDate(u.lastActivityAt)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {u.mustChangePassword && (
+                            <div className="inline-flex rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 text-xs">
+                              Must change password
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 flex-wrap pt-1">
+                            <button
+                              className={btn.outline}
+                              onClick={() => openManage(u)}
+                              type="button"
+                            >
+                              Manage
+                            </button>
+                            <button
+                              className={u.active ? btn.warning : btn.success}
+                              onClick={() => toggleActive(u)}
+                              type="button"
+                            >
+                              {u.active ? "Disable" : "Enable"}
+                            </button>
+                            <button
+                              className={btn.neutral}
+                              onClick={() => doResetPassword(u)}
+                              type="button"
+                            >
+                              Reset PW
+                            </button>
+                            <button
+                              className={btn.danger}
+                              onClick={() => doForceSignout(u)}
+                              type="button"
+                            >
+                              Signout
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Pagination */}

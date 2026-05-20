@@ -159,13 +159,19 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
+
 // --------------- Bulk print helper (renders selected reports + window.print) ---------------
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printPane = "REPORT",
 }: {
   reports: Report[];
   onAfterPrint: () => void;
+  printPane: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -202,6 +208,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -214,6 +221,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -226,6 +234,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -238,6 +247,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -250,6 +260,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printPane}
               />
             </div>
           );
@@ -551,9 +562,7 @@ export default function FrontDeskDashboard() {
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
-  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">(
-    initialFilters.modalPane,
-  );
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
 
   // selected row IDs for bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -570,9 +579,10 @@ export default function FrontDeskDashboard() {
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
-  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null,
-  );
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: Report;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   // ✅ guards
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -829,7 +839,6 @@ export default function FrontDeskDashboard() {
     setSortDir(next.sortDir);
     setPerPage(next.perPage);
     setPage(next.page);
-    setModalPane(next.modalPane);
 
     setFiltersHydrated(true);
   }, [searchParams, FILTER_STORAGE_KEY]);
@@ -859,7 +868,6 @@ export default function FrontDeskDashboard() {
           sortDir,
           perPage,
           page,
-          modalPane,
         }),
       );
     } catch {
@@ -885,7 +893,6 @@ export default function FrontDeskDashboard() {
     sortDir,
     perPage,
     page,
-    modalPane,
   ]);
 
   useEffect(() => {
@@ -976,8 +983,6 @@ export default function FrontDeskDashboard() {
     if (reportNoFrom.trim()) sp.set("reportFrom", reportNoFrom.trim());
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
-    if (modalPane !== "FORM") sp.set("pane", modalPane);
-
     if (perPage !== 10) sp.set("pp", String(perPage));
     if (pageClamped !== 1) sp.set("p", String(pageClamped));
 
@@ -998,7 +1003,6 @@ export default function FrontDeskDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
-    modalPane,
     perPage,
     pageClamped,
     setSearchParams,
@@ -1409,6 +1413,7 @@ export default function FrontDeskDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
       return;
     }
@@ -1603,7 +1608,7 @@ export default function FrontDeskDashboard() {
 
   return (
     <div className="p-6">
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
             {/* <style>
@@ -1686,11 +1691,18 @@ export default function FrontDeskDashboard() {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : singlePrintJob
+                    ? [singlePrintJob.report]
+                    : []
+              }
+              printPane={
+                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -2310,7 +2322,6 @@ export default function FrontDeskDashboard() {
                                   formType: r.formType,
                                   clientCode: user?.clientCode || null,
                                 });
-                                setModalPane("ATTACHMENTS");
 
                                 openViewTarget(r);
                               }}
@@ -2440,7 +2451,7 @@ export default function FrontDeskDashboard() {
                                     alert("✅ Uploaded!");
                                     // optional: if modal open for same report, switch pane
                                     if (selectedReport?.id === r.id)
-                                      setModalPane("ATTACHMENTS");
+                                      setSelectedViewPane("ATTACHMENTS");
                                   } catch (err: any) {
                                     if (err?.status === 409) {
                                       alert(
@@ -2564,38 +2575,33 @@ export default function FrontDeskDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({selectedReport.formNumber})
               </h2>
 
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
-                <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setModalPane("FORM")}
-                    className={`px-3 py-1 rounded-full transition ${
-                      modalPane === "FORM"
-                        ? "bg-blue-600 text-white"
-                        : "text-slate-700 hover:bg-white"
-                    }`}
-                    aria-pressed={modalPane === "FORM"}
-                  >
-                    Form
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalPane("ATTACHMENTS")}
-                    className={`px-3 py-1 rounded-full transition ${
-                      modalPane === "ATTACHMENTS"
-                        ? "bg-blue-600 text-white"
-                        : "text-slate-700 hover:bg-white"
-                    }`}
-                    aria-pressed={modalPane === "ATTACHMENTS"}
-                  >
-                    Attachments
-                  </button>
+                <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setSelectedViewPane(p)}
+                        className={classNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                          selectedViewPane === p
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {p === "ATTACHMENTS"
+                          ? "Attachments"
+                          : p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -2670,7 +2676,10 @@ export default function FrontDeskDashboard() {
                       clientCode: user?.clientCode || null,
                     });
                     setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
+                    setSinglePrintJob({
+                      report: selectedReport,
+                      pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                    });
                   }}
                 >
                   {printingSingle ? <SpinnerDark /> : "🖨️"}
@@ -2681,7 +2690,6 @@ export default function FrontDeskDashboard() {
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
                   onClick={() => {
                     setSelectedReport(null);
-                    setModalPane("FORM"); // ✅ reset state so URL won't re-add it
                     setSearchParams(
                       (prev) => {
                         const sp = new URLSearchParams(prev);
@@ -2697,46 +2705,46 @@ export default function FrontDeskDashboard() {
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+            <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane={modalPane}
-                  onPaneChange={setModalPane}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

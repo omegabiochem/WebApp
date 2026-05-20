@@ -25,7 +25,11 @@ import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
-import { COLS, isTerminalStatus, type ChemistryColKey } from "../../utils/globalUtils";
+import {
+  COLS,
+  isTerminalStatus,
+  type ChemistryColKey,
+} from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 
 // -----------------------------
@@ -176,15 +180,21 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
+
 // -----------------------------
 // ✅ Bulk print area
 // -----------------------------
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printpane = "REPORT",
 }: {
   reports: Report[];
   onAfterPrint: () => void;
+  printpane: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -220,6 +230,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printpane}
               />
             </div>
           );
@@ -233,6 +244,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={printpane}
               />
             </div>
           );
@@ -521,9 +533,12 @@ export default function ChemistryDashboard() {
   );
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
-  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null,
-  );
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
+
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: Report;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   // ✅ Loading guards
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -1720,6 +1735,7 @@ export default function ChemistryDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
       return;
     }
@@ -1777,7 +1793,7 @@ export default function ChemistryDashboard() {
 
     if (selected.length === 1) {
       const r = selected[0];
-     const slug = formTypeToSlug[(r.formType ?? "").trim()] || "chemistry-mix";
+      const slug = formTypeToSlug[(r.formType ?? "").trim()] || "chemistry-mix";
       const returnTo = location.pathname + location.search;
 
       const navState = {
@@ -1866,7 +1882,7 @@ export default function ChemistryDashboard() {
 
   return (
     <div className="p-6">
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
             <style>
@@ -1915,11 +1931,18 @@ export default function ChemistryDashboard() {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : singlePrintJob
+                    ? [singlePrintJob.report]
+                    : []
+              }
+              printpane={
+                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -2738,11 +2761,35 @@ export default function ChemistryDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+            <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({displayReportNo(selectedReport)})
               </h2>
+
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setSelectedViewPane(p)}
+                        className={classNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                          selectedViewPane === p
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {p === "ATTACHMENTS"
+                          ? "Attachments"
+                          : p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
 
               <div className="flex items-center gap-2">
                 <button
@@ -2766,7 +2813,10 @@ export default function ChemistryDashboard() {
                       clientCode: null,
                     });
                     setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
+                    setSinglePrintJob({
+                      report: selectedReport,
+                      pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                    });
                   }}
                 >
                   {printingSingle ? <SpinnerDark /> : "🖨️"}
@@ -2809,20 +2859,22 @@ export default function ChemistryDashboard() {
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+            <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport.formType === "COA" ? (
                 <COAReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">

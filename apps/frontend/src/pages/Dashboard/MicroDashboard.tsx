@@ -256,6 +256,10 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+
+const defaultViewPane = (): ViewPane => "REPORT";
+
 // -----------------------------
 // Bulk print area
 // -----------------------------
@@ -741,9 +745,12 @@ export default function MicroDashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
-  const [singlePrintReport, setSinglePrintReport] = useState<Report | null>(
-    null,
-  );
+  const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
+
+  const [singlePrintJob, setSinglePrintJob] = useState<{
+    report: Report;
+    pane: "FORM" | "REPORT";
+  } | null>(null);
 
   // ✅ Loading guards for buttons
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -1098,7 +1105,7 @@ export default function MicroDashboard() {
   ]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
-      if (isTerminalStatus(r.status)) return false;
+    if (isTerminalStatus(r.status)) return false;
 
     const role = user?.role as Role | undefined;
 
@@ -1768,6 +1775,7 @@ export default function MicroDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
       return;
     }
@@ -1914,42 +1922,9 @@ export default function MicroDashboard() {
 
   return (
     <div className="p-6">
-      {(isBulkPrinting || !!singlePrintReport) &&
+      {(isBulkPrinting || !!singlePrintJob) &&
         createPortal(
           <>
-            {/* <style>
-              {`
-                @media print {
-                  body > *:not(#bulk-print-root) { display: none !important; }
-                  #bulk-print-root { display: block !important; position: absolute; inset: 0; background: white; }
-                  @page { size: A4 portrait; margin: 8mm 10mm 10mm 10mm; }
-
-                  #bulk-print-root .sheet {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    box-shadow: none !important;
-                    border: none !important;
-                    padding: 0 !important;
-                  }
-
-                  #bulk-print-root .report-page {
-                    break-inside: avoid-page;
-                    page-break-inside: avoid;
-                  }
-
-                  #bulk-print-root .report-page + .report-page {
-                    break-before: page;
-                    page-break-before: always;
-                  }
-
-                  @supports (margin-trim: block) {
-                    @page { margin-trim: block; }
-                  }
-                }
-              `}
-            </style> */}
-
             <style>
               {`
     @media print {
@@ -1996,11 +1971,13 @@ export default function MicroDashboard() {
 
             <BulkPrintArea
               reports={
-                isBulkPrinting ? selectedReportObjects : [singlePrintReport!]
+                isBulkPrinting
+                  ? selectedReportObjects
+                  : [singlePrintJob?.report!]
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
-                if (singlePrintReport) setSinglePrintReport(null);
+                if (singlePrintJob) setSinglePrintJob(null);
                 setPrintingBulk(false);
                 setPrintingSingle(false);
               }}
@@ -2798,11 +2775,35 @@ export default function MicroDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
+         <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+            <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({displayReportNo(selectedReport)})
               </h2>
+
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setSelectedViewPane(p)}
+                        className={classNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                          selectedViewPane === p
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {p === "ATTACHMENTS"
+                          ? "Attachments"
+                          : p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
 
               <div className="flex items-center gap-2">
                 {/* Print this report */}
@@ -2830,7 +2831,10 @@ export default function MicroDashboard() {
                       clientCode: selectedReport.client || null,
                     });
                     setPrintingSingle(true);
-                    setSinglePrintReport(selectedReport);
+                    setSinglePrintJob({
+                      report: selectedReport,
+                      pane: selectedViewPane === "FORM" ? "FORM" : "REPORT",
+                    });
                   }}
                 >
                   {printingSingle ? <SpinnerDark /> : "🖨️"}
@@ -2893,27 +2897,30 @@ export default function MicroDashboard() {
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+            <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport.formType === "STERILITY" ? (
                 <SterilityReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
-                  pane="FORM"
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
                 />
               ) : (
                 <div className="text-sm text-slate-600">
