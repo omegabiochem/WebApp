@@ -163,8 +163,63 @@ export const ROW_STATUS_COLORS: Record<string, string> = {
   FINAL_TESTING_ON_HOLD: "bg-neutral-50",
 };
 
-
 export function isTerminalStatus(status?: string) {
   const s = String(status || "").toUpperCase();
-  return s === "VOID" || s === "LOCKED" || s === "FINAL_APPROVED" || s === "APPROVED";
+  return (
+    s === "VOID" || s === "LOCKED" || s === "FINAL_APPROVED" || s === "APPROVED"
+  );
 }
+
+export const AUDIT_ACTION_COLORS: Record<string, string> = {
+  // Authentication
+  LOGIN: "bg-blue-50 text-blue-800 border border-blue-200",
+
+  LOGIN_FAILED: "bg-rose-50 text-rose-800 border border-rose-200",
+
+  LOGOUT: "bg-slate-50 text-slate-700 border border-slate-200",
+
+  PASSWORD_CHANGE: "bg-indigo-50 text-indigo-800 border border-indigo-200",
+
+  // Workflow
+  STATUS_CHANGE: "bg-violet-50 text-violet-800 border border-violet-200",
+
+  APPROVED: "bg-emerald-50 text-emerald-800 border border-emerald-200",
+
+  REJECTED: "bg-red-50 text-red-800 border border-red-200",
+
+  HOLD: "bg-slate-100 text-slate-800 border border-slate-300",
+
+  // Corrections
+  CORRECTION_CREATED: "bg-amber-50 text-amber-800 border border-amber-200",
+
+  CORRECTION_REQUESTED: "bg-orange-50 text-orange-800 border border-orange-200",
+
+  CORRECTION_RESOLVED: "bg-teal-50 text-teal-800 border border-teal-200",
+
+  CORRECTION_RESOLVED_BY_SYSTEMADMIN:
+    "bg-cyan-50 text-cyan-800 border border-cyan-300",
+
+  CHANGE_REQUESTED: "bg-yellow-50 text-yellow-800 border border-yellow-300",
+
+  // E-sign
+  ESIGN_VERIFIED: "bg-green-50 text-green-800 border border-green-200",
+
+  ESIGN_REJECTED: "bg-rose-50 text-rose-800 border border-rose-300",
+
+  // Data
+  CREATED: "bg-sky-50 text-sky-800 border border-sky-200",
+
+  UPDATED: "bg-indigo-50 text-indigo-800 border border-indigo-200",
+
+  DELETED: "bg-red-100 text-red-900 border border-red-300",
+
+  VOIDED: "bg-neutral-200 text-neutral-900 border border-neutral-400",
+
+  PRINT: "bg-purple-50 text-purple-800 border border-purple-200",
+
+  VIEW: "bg-slate-50 text-slate-700 border border-slate-200",
+
+  EXPORT: "bg-fuchsia-50 text-fuchsia-800 border border-fuchsia-200",
+
+  DEFAULT: "bg-slate-100 text-slate-700 border border-slate-300",
+};

@@ -36,27 +36,110 @@ function safeText(v: string | null | undefined) {
 
 // Badge colors for actions
 const badgeColor = (action: string) => {
-  switch (action) {
-    case "CREATE":
-      return "bg-green-100 text-green-800";
-    case "UPDATE":
-      return "bg-blue-100 text-blue-800";
-    case "DELETE":
-      return "bg-red-100 text-red-800";
+  switch (action?.toUpperCase()) {
+    // ---------- Authentication ----------
     case "LOGIN":
       return "bg-emerald-100 text-emerald-800";
-    case "LOGOUT":
-      return "bg-slate-100 text-slate-800";
+
     case "LOGIN_FAILED":
-      return "bg-orange-100 text-orange-800";
-    case "PASSWORD_CHANGE":
-      return "bg-purple-100 text-purple-800";
-    case "INVITE_ISSUED":
+      return "bg-red-100 text-red-800";
+
+    case "LOGOUT":
       return "bg-cyan-100 text-cyan-800";
+
+    case "PASSWORD_CHANGE":
     case "FIRST_CREDENTIALS_SET":
+      return "bg-violet-100 text-violet-800";
+
+    // ---------- Create ----------
+    case "FORM_CREATED":
+    case "REPORT_CREATED":
+      return "bg-green-100 text-green-800";
+
+    // ---------- Updates ----------
+    case "FORM_UPDATED":
+    case "REPORT_UPDATED":
+    case "USER_UPDATED":
+    case "ATTACHMENT_UPDATED":
       return "bg-indigo-100 text-indigo-800";
+
+    // ---------- Approvals ----------
+    case "REPORT_APPROVED":
+    case "ESIGN_VERIFIED":
+      return "bg-emerald-100 text-emerald-900";
+
+    // ---------- Corrections ----------
+    case "CORRECTION_CREATED":
+      return "bg-orange-100 text-orange-800";
+
+    case "CORRECTION_REQUESTED":
+      return "bg-yellow-100 text-yellow-900";
+
+    case "CORRECTION_RESOLVED":
+    case "CORRECTION_RESOLVED_ALL":
+      return "bg-teal-100 text-teal-800";
+
+    case "CHANGE_REQUESTED":
+      return "bg-amber-100 text-amber-900";
+
+    // ---------- Workflow ----------
+    case "STATUS_CHANGE":
+      return "bg-purple-100 text-purple-800";
+
+    // ---------- Number Assignment ----------
+    case "FORM_NUMBER_ASSIGNED":
+    case "REPORT_NUMBER_ASSIGNED":
+      return "bg-sky-100 text-sky-800";
+
+    // ---------- Lock / Void ----------
+    case "REPORT_LOCKED":
+      return "bg-red-200 text-red-900";
+
+    case "FORM_VOIDED":
+    case "REPORT_VOIDED":
+      return "bg-rose-200 text-rose-900";
+
+    // ---------- Attachments ----------
+    case "ATTACHMENT_UPLOADED":
+      return "bg-blue-100 text-blue-800";
+
+    case "ATTACHMENT_UPDATED":
+      return "bg-indigo-100 text-indigo-800";
+
+    case "ATTACHMENT_DELETED":
+      return "bg-red-100 text-red-800";
+
+    // ---------- View ----------
+    case "UI_VIEW":
+    case "UI_VIEW_REPORT":
+    case "UI_VIEW_ATTACHMENTS_PAGE":
+    case "UI_VIEW_AUDIT_PAGE":
+      return "bg-blue-50 text-blue-700";
+
+    // ---------- Print ----------
+    case "UI_PRINT_REPORT":
+    case "UI_PRINT_SELECTED":
+      return "bg-pink-100 text-pink-800";
+
+    // ---------- Export ----------
+    case "UI_DOWNLOAD_AUDIT_CSV":
+      return "bg-fuchsia-100 text-fuchsia-800";
+
+    // ---------- UI Load ----------
+    case "UI_ATTACHMENTS_LOADED":
+      return "bg-cyan-100 text-cyan-700";
+
+    case "ESIGN_VERIFIED":
+      return "bg-green-100 text-green-800";
+
+    case "ESIGN_REJECTED":
+      return "bg-red-100 text-red-800";
+
+    case "UI_PRINT_SINGLE":
+      return "bg-purple-100 text-purple-800";
+
     default:
-      return "bg-gray-100 text-gray-800";
+      return "bg-zinc-100 text-zinc-800";
   }
 };
 type DiffRow = {
@@ -663,6 +746,9 @@ export default function AuditTrailPage() {
     "UI_PRINT_REPORT",
     "UI_PRINT_SELECTED",
     "UI_DOWNLOAD_AUDIT_CSV",
+
+    "ESIGN_VERIFIED",
+    "ESIGN_REJECTED",
   ];
 
   const actionOptions = useMemo(

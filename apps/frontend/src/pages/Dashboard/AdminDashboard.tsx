@@ -197,9 +197,14 @@ type DashboardStatus =
   | SterilityReportStatus
   | ChemistryReportStatus;
 
+// const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
+//   "ALL",
+//   ...ALL_STATUSES.filter((s) => s !== "ALL"),
+// ];
+
 const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
-  ...ALL_STATUSES.filter((s) => s !== "ALL"),
+  ...Array.from(new Set(ALL_STATUSES.filter((s) => s !== "ALL"))),
 ];
 
 const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
@@ -2366,9 +2371,9 @@ export default function AdminDashboard() {
           ref={statusScrollerRef}
           className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
         >
-          {statusOptions.map((s) => (
+          {statusOptions.map((s, index) => (
             <button
-              key={String(s)}
+              key={`${String(s)}-${index}`}
               ref={(el) => {
                 statusChipRefs.current[String(s)] = el;
               }}

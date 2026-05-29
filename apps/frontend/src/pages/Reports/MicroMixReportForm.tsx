@@ -22,6 +22,7 @@ import {
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
 import { api } from "../../lib/api";
+import { Eye, EyeOff } from "lucide-react";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -130,9 +131,9 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
 
   // --- PHASE GUARD ---
   const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA") {
-    return p === "FINAL";
-  }
+  // if (role === "QA") {
+  //   return p === "FINAL";
+  // }
 
   // Block FINAL fields during PRELIM for MICRO & ADMIN
   if (
@@ -328,6 +329,46 @@ function SpinnerDark({ className = "" }: { className?: string }) {
       aria-hidden="true"
     />
   );
+}
+
+function eSignActionTitle(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("FINAL_APPROVED") || s.includes("APPROVED")) {
+    return "Electronic Approval";
+  }
+
+  if (s.includes("QA") || s.includes("REVIEW")) {
+    return "Electronic Review Authorization";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Electronic Lock Authorization";
+  }
+
+  if (s.includes("CORRECTION")) {
+    return "Electronic Correction Authorization";
+  }
+
+  return "Electronic Signature Verification";
+}
+
+function eSignButtonText(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("APPROVED") || s.includes("FINAL_APPROVED")) {
+    return "Verify & Approve";
+  }
+
+  if (s.includes("REVIEW")) {
+    return "Verify & Continue";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Verify & Lock";
+  }
+
+  return "Verify Signature";
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -566,6 +607,18 @@ export default function MicroMixReportForm({
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
+  const [showESignPassword, setShowESignPassword] = useState(false);
+  const [autoFillSnapshot, setAutoFillSnapshot] = useState<{
+    testedBy?: string;
+    testedDate?: string;
+    reviewedBy?: string;
+    reviewedDate?: string;
+    wasDirty: boolean;
+  } | null>(null);
+
+  const [eSignSubmitting, setESignSubmitting] = useState(false);
+  const [eSignError, setESignError] = useState<string | null>(null);
+
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -803,9 +856,19 @@ export default function MicroMixReportForm({
   const [addMessage, setAddMessage] = useState("");
 
   // UI policy: only when server will enforce
+  // const uiNeedsESign = (s: string) =>
+  //   (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
+  //   (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
-    (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+    (role === "ADMIN" ||
+      role === "SYSTEMADMIN" ||
+      role === "FRONTDESK" ||
+      role === "MICRO" ||
+      role === "MC") &&
+    (s === "UNDER_CLIENT_FINAL_REVIEW" ||
+      s === "UNDER_QA_FINAL_REVIEW" ||
+      s === "LOCKED");
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -838,9 +901,98 @@ export default function MicroMixReportForm({
       setPendingStatus(target);
       return;
     }
-    // existing path (incl. e-sign if required)
+
     if (uiNeedsESign(target)) {
+      const shouldAutoFillTestingSignature =
+        status === "UNDER_FINAL_TESTING_REVIEW" &&
+        target === "UNDER_QA_FINAL_REVIEW" &&
+        (role === "MICRO" || role === "MC");
+
+      const shouldAutoFillReviewSignature =
+        status === "UNDER_ADMIN_REVIEW" &&
+        target === "UNDER_CLIENT_FINAL_REVIEW" &&
+        (role === "ADMIN" || role === "SYSTEMADMIN");
+
+      const values = makeValues();
+
+      const validationValues = {
+        ...values,
+
+        ...(shouldAutoFillTestingSignature
+          ? {
+              testedBy: values.testedBy || user?.name || user?.email || "",
+              testedDate: values.testedDate || todayISO(),
+            }
+          : {}),
+
+        ...(shouldAutoFillReviewSignature
+          ? {
+              reviewedBy: values.reviewedBy || user?.name || user?.email || "",
+              reviewedDate: values.reviewedDate || todayISO(),
+            }
+          : {}),
+      };
+      if (shouldAutoFillTestingSignature) {
+        // const autoName = user?.name || user?.email || "";
+        // const autoDate = todayISO();
+
+        setAutoFillSnapshot({
+          testedBy,
+          testedDate,
+          wasDirty: isDirty,
+        });
+
+        // if (!testedBy.trim()) {
+        //   setTestedBy(autoName);
+        // }
+
+        // if (!testedDate) {
+        //   setTestedDate(autoDate);
+        // }
+      }
+      if (shouldAutoFillReviewSignature) {
+        // const autoName = user?.name || user?.email || "";
+        // const autoDate = todayISO();
+
+        setAutoFillSnapshot({
+          reviewedBy,
+          reviewedDate,
+          wasDirty: isDirty,
+        } as any);
+
+        // if (!reviewedBy.trim()) {
+        //   setReviewedBy(autoName);
+        // }
+
+        // if (!reviewedDate) {
+        //   setReviewedDate(autoDate);
+        // }
+      }
+
+      const okFields = validateAndSetErrors(validationValues);
+      const okRows = validatePathogenRows(values.pathogens, role, phase);
+
+      if (!okFields) {
+        alert("⚠️ Please fill all required fields before e-signature.");
+        return;
+      }
+
+      if (!okRows) {
+        alert(
+          "⚠️ Please fix the highlighted pathogen rows before e-signature.",
+        );
+        return;
+      }
+
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
+
+      setESignError(null);
+      setESignPassword("");
+      setChangeReason(getDefaultESignReason(status, target));
       setPendingStatus(target);
+      setESignConfirmed(false);
       setShowESign(true);
     } else {
       handleStatusChange(target);
@@ -1331,8 +1483,8 @@ export default function MicroMixReportForm({
             "preliminaryResults",
             "preliminaryResultsDate",
             "dateCompleted",
-            // "testedBy",
-            // "testedDate",
+            "testedBy",
+            "testedDate",
             "comments",
           ],
           MC: [
@@ -1348,8 +1500,8 @@ export default function MicroMixReportForm({
             "preliminaryResults",
             "preliminaryResultsDate",
             "dateCompleted",
-            // "testedBy",
-            // "testedDate",
+            "testedBy",
+            "testedDate",
             "comments",
           ],
           QA: ["comments"],
@@ -1503,6 +1655,7 @@ export default function MicroMixReportForm({
   ) {
     return await runBusy("STATUS", async () => {
       const values = makeValues();
+
       const okFields = validateAndSetErrors(values);
       const okRows = validatePathogenRows(values.pathogens, role, phase);
 
@@ -1542,23 +1695,31 @@ export default function MicroMixReportForm({
       ) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
+          return false;
         }
         if (!okRows) {
           alert("⚠️ Please fix the highlighted rows before changing status.");
-          return;
+          return false;
         }
       }
 
       if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return;
+        return false;
       }
 
       // ensure latest edits are saved
       if (!reportId || isDirty) {
         const saved = await handleSave();
-        if (!saved) return;
+        if (!saved) return false;
       }
+
+      // if (
+      //   newStatus === "UNDER_QA_FINAL_REVIEW" &&
+      //   (role === "MICRO" || role === "MC")
+      // ) {
+      //   setTestedBy(user?.name || "");
+      //   setTestedDate(todayISO());
+      // }
 
       try {
         let updated: UpdatedReport;
@@ -1589,29 +1750,20 @@ export default function MicroMixReportForm({
         setIsDirty(false);
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
-        // if (embedded) return;
-        // if (role === "CLIENT") {
-        //   backToDashboard();
-        // } else if (role === "FRONTDESK") {
-        //   navigate("/frontdeskDashboard");
-        // } else if (role === "MICRO") {
-        //   // navigate("/microDashboard");
-        //   backToDashboard();
-        // } else if (role === "MC") {
-        //   navigate("/mcDashboard");
-        // } else if (role === "QA") {
-        //   navigate("/qaDashboard");
-        // } else if (role === "ADMIN") {
-        //   navigate("/adminDashboard");
-        // } else if (role === "SYSTEMADMIN") {
-        //   navigate("/systemAdminDashboard");
-        // }
 
-        if (embedded) return;
+        if (embedded) return true;
         backToDashboard();
+        return true;
       } catch (err: any) {
         console.error(err);
-        alert("❌ Error changing status: " + err.message);
+
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.message ||
+          err?.message ||
+          "Status update failed.";
+
+        throw new Error(msg);
       }
     });
   }
@@ -1724,42 +1876,6 @@ export default function MicroMixReportForm({
       setBusy(null);
       busyRef.current = false;
     }
-  }
-
-  const [hasAttachment, setHasAttachment] = useState(false);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
-
-  async function refreshHasAttachment(id: string) {
-    setAttachmentsLoading(true);
-    try {
-      // ✅ Use the endpoint you already have for listing attachments.
-      // Examples (pick the one your API actually supports):
-      //   GET /reports/:id/attachments
-      //   GET /reports/:id/attachments/meta
-      //   GET /reports/:id/attachments/list
-      const list = await api<any[]>(`/reports/${id}/attachments`, {
-        method: "GET",
-      });
-      setHasAttachment(Array.isArray(list) && list.length > 0);
-    } catch {
-      // fail closed (treat as no attachment)
-      setHasAttachment(false);
-    } finally {
-      setAttachmentsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!reportId) return;
-    refreshHasAttachment(reportId);
-  }, [reportId]);
-
-  const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
-    "UNDER_CLIENT_FINAL_REVIEW",
-  ]);
-
-  function isApproveAction(targetStatus: ReportStatus) {
-    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
   }
 
   const specOptions = useMemo(() => {
@@ -2049,6 +2165,41 @@ export default function MicroMixReportForm({
 
     return [fieldKey];
   }
+
+  const [eSignConfirmed, setESignConfirmed] = useState(false);
+
+  function getDefaultESignReason(fromStatus: string, toStatus?: string | null) {
+    const from = formatStatusText(fromStatus);
+    const to = formatStatusText(String(toStatus || ""));
+
+    return `Electronic signature authorization for status transition from ${from} to ${to}.`;
+  }
+
+  const previewTestingSignature =
+    showESign &&
+    status === "UNDER_FINAL_TESTING_REVIEW" &&
+    pendingStatus === "UNDER_QA_FINAL_REVIEW" &&
+    (role === "MICRO" || role === "MC");
+
+  const previewReviewSignature =
+    showESign &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    pendingStatus === "UNDER_CLIENT_FINAL_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
+
+  const displayTestedBy = previewTestingSignature
+    ? user?.name || user?.email || ""
+    : testedBy;
+
+  const displayTestedDate = previewTestingSignature ? todayISO() : testedDate;
+
+  const displayReviewedBy = previewReviewSignature
+    ? user?.name || user?.email || ""
+    : reviewedBy;
+
+  const displayReviewedDate = previewReviewSignature
+    ? todayISO()
+    : reviewedDate;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3372,7 +3523,7 @@ export default function MicroMixReportForm({
                         ? "ring-2 ring-rose-500 animate-pulse"
                         : ""
                     }`}
-                    value={testedBy.toUpperCase()}
+                    value={displayTestedBy.toUpperCase()}
                     onChange={(e) => {
                       setTestedBy(e.target.value);
                       clearError("testedBy");
@@ -3410,7 +3561,7 @@ export default function MicroMixReportForm({
                     }`}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(testedDate)}
+                    value={formatDateForInput(displayTestedDate)}
                     onChange={(e) => {
                       setTestedDate(e.target.value);
                       clearError("testedDate");
@@ -3446,7 +3597,7 @@ export default function MicroMixReportForm({
                         ? "ring-2 ring-rose-500 animate-pulse"
                         : ""
                     }`}
-                    value={reviewedBy.toUpperCase()}
+                    value={displayReviewedBy.toUpperCase()}
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
                       clearError("reviewedBy");
@@ -3484,7 +3635,7 @@ export default function MicroMixReportForm({
                     }`}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(reviewedDate)}
+                    value={formatDateForInput(displayReviewedDate)}
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
                       clearError("reviewedDate");
@@ -3543,28 +3694,29 @@ export default function MicroMixReportForm({
                     ) {
                       const { label, color } = statusButtons[targetStatus];
 
-                      const approveNeedsAttachment =
-                        isApproveAction(targetStatus);
-                      const disableApproveForNoAttachment =
-                        approveNeedsAttachment && !hasAttachment;
+                      // const approveNeedsAttachment =
+                      //   isApproveAction(targetStatus);
+                      // const disableApproveForNoAttachment =
+                      //   approveNeedsAttachment && !hasAttachment;
 
-                      const disabled =
-                        isBusy ||
-                        attachmentsLoading ||
-                        disableApproveForNoAttachment;
+                      // const disabled =
+                      //   isBusy ||
+                      //   attachmentsLoading ||
+                      //   disableApproveForNoAttachment;
 
                       return (
                         <div key={targetStatus} className="relative group">
                           <button
                             className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                             onClick={() => requestStatusChange(targetStatus)}
-                            disabled={disabled}
+                            // disabled={disabled}
                             title={formatStatusText(targetStatus)} // browser tooltip
                           >
                             {busy === "STATUS" && <Spinner />}
-                            {attachmentsLoading && label === "Approve"
+                            {/* {attachmentsLoading && label === "Approve"
                               ? "Checking..."
-                              : label}
+                              : label} */}
+                            {label === "Approve" ? "Approve" : label}
                           </button>
 
                           {/* custom hover tooltip */}
@@ -3581,6 +3733,7 @@ export default function MicroMixReportForm({
             </div>
           </div>
         )}
+
       {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -3589,37 +3742,144 @@ export default function MicroMixReportForm({
           aria-label="E-signature"
         >
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">
-              Confirm Status Change
-            </h2>
-            <p className="text-sm text-slate-600 mb-3">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                🔐
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {eSignActionTitle(pendingStatus)}
+                </h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  21 CFR Part 11 Electronic Signature Authorization
+                </p>
+              </div>
+            </div>
+
+            {/* <p className="text-sm text-slate-600 mb-3">
               Change status to{" "}
               <span className="font-medium">{pendingStatus}</span>. Provide a
               reason and your e-signature password.
+            </p> */}
+
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Authorization Summary
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Current Status</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {formatStatusText(status)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">New Status</span>
+                  <span className="text-right font-semibold text-blue-700">
+                    {formatStatusText(String(pendingStatus || ""))}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Report No.</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {reportNumber || "Not assigned"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Signed By</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {user?.name || user?.email}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This electronic signature will be recorded in the audit trail with
+              user, timestamp, reason, and status transition.
             </p>
+
+            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={eSignConfirmed}
+                onChange={(e) => setESignConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm that this electronic signature represents my legally
+                binding authorization for this action.
+              </span>
+            </label>
 
             <input
               type="text"
               placeholder="Reason for change"
               value={changeReason}
               onChange={(e) => setChangeReason(e.target.value)}
-              className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
 
-            <input
-              type="password"
-              placeholder="E-signature password"
-              value={eSignPassword}
-              onChange={(e) => setESignPassword(e.target.value)}
-              className="mb-4 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type={showESignPassword ? "text" : "password"}
+                value={eSignPassword}
+                onChange={(e) => setESignPassword(e.target.value)}
+                className="w-full rounded border px-3 py-2 pr-10"
+                placeholder="Enter e-sign password"
+              />
 
-            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowESignPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
+              >
+                {showESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {eSignError && (
+              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {eSignError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-                onClick={() => {
+                onClick={async () => {
+                  if (autoFillSnapshot) {
+                    if ("testedBy" in autoFillSnapshot) {
+                      setTestedBy(autoFillSnapshot.testedBy || "");
+                    }
+
+                    if ("testedDate" in autoFillSnapshot) {
+                      setTestedDate(autoFillSnapshot.testedDate || "");
+                    }
+
+                    if ("reviewedBy" in autoFillSnapshot) {
+                      setReviewedBy(autoFillSnapshot.reviewedBy || "");
+                    }
+
+                    if ("reviewedDate" in autoFillSnapshot) {
+                      setReviewedDate(autoFillSnapshot.reviewedDate || "");
+                    }
+
+                    setIsDirty(autoFillSnapshot.wasDirty);
+                    setAutoFillSnapshot(null);
+                  }
+
                   setShowESign(false);
                   setPendingStatus(null);
+                  setShowESignPassword(false);
+                  setESignPassword("");
+                  setChangeReason("");
+                  setESignError(null);
                 }}
               >
                 Cancel
@@ -3627,24 +3887,105 @@ export default function MicroMixReportForm({
               <button
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
-                  isBusy ||
+                  eSignSubmitting ||
                   !pendingStatus ||
                   !changeReason.trim() ||
-                  !eSignPassword.trim()
+                  !eSignPassword.trim() ||
+                  !eSignConfirmed
                 }
-                onClick={() => {
+                onClick={async () => {
                   if (!pendingStatus) return;
+
+                  const reason = changeReason.trim();
+                  const pwd = eSignPassword.trim();
+
+                  if (!reason) {
+                    setESignError("Reason is required.");
+                    return;
+                  }
+
+                  if (!pwd) {
+                    setESignError("E-sign password is required.");
+                    return;
+                  }
+
                   const statusToApply = pendingStatus;
-                  setShowESign(false);
-                  setPendingStatus(null);
-                  handleStatusChange(statusToApply, {
-                    reason: changeReason.trim(),
-                    eSignPassword,
-                  });
+
+                  setESignSubmitting(true);
+                  setESignError(null);
+
+                  try {
+                    const success = await handleStatusChange(statusToApply, {
+                      reason,
+                      eSignPassword: pwd,
+                    });
+
+                    if (!success) return;
+
+                    if (previewTestingSignature) {
+                      setTestedBy(user?.name || user?.email || "");
+                      setTestedDate(todayISO());
+                    }
+
+                    if (previewReviewSignature) {
+                      setReviewedBy(user?.name || user?.email || "");
+                      setReviewedDate(todayISO());
+                    }
+
+                    setShowESign(false);
+                    setPendingStatus(null);
+                    setAutoFillSnapshot(null);
+                    setShowESignPassword(false);
+                    setESignPassword("");
+                    setChangeReason("");
+                    setESignError(null);
+                  } catch (e: any) {
+                    if (autoFillSnapshot) {
+                      if ("testedBy" in autoFillSnapshot) {
+                        setTestedBy(autoFillSnapshot.testedBy || "");
+                      }
+
+                      if ("testedDate" in autoFillSnapshot) {
+                        setTestedDate(autoFillSnapshot.testedDate || "");
+                      }
+
+                      if ("reviewedBy" in autoFillSnapshot) {
+                        setReviewedBy(autoFillSnapshot.reviewedBy || "");
+                      }
+
+                      if ("reviewedDate" in autoFillSnapshot) {
+                        setReviewedDate(autoFillSnapshot.reviewedDate || "");
+                      }
+
+                      setIsDirty(autoFillSnapshot.wasDirty);
+                      setAutoFillSnapshot(null);
+                    }
+
+                    const msg =
+                      e?.message ||
+                      e?.response?.message ||
+                      e?.response?.data?.message ||
+                      "";
+
+                    if (
+                      msg.toLowerCase().includes("password") ||
+                      msg.toLowerCase().includes("invalid") ||
+                      msg.toLowerCase().includes("incorrect")
+                    ) {
+                      setESignError("❌ Incorrect e-signature password.");
+                    } else {
+                      setESignError(msg || "❌ E-signature failed.");
+                    }
+                    setShowESign(true);
+                  } finally {
+                    setESignSubmitting(false);
+                  }
                 }}
               >
-                {busy === "STATUS" && <Spinner />}
-                Confirm
+                {eSignSubmitting && <Spinner />}
+                {eSignSubmitting
+                  ? "Verifying..."
+                  : eSignButtonText(pendingStatus)}
               </button>
             </div>
           </div>
@@ -3725,22 +4066,6 @@ export default function MicroMixReportForm({
                   setPendingStatus(null);
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "MICRO") {
-                  //   backToDashboard();
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
                   backToDashboard();
                 })
               }
@@ -3998,7 +4323,6 @@ export default function MicroMixReportForm({
           </div>
         </div>
       )}
-
       {canShowFloatingUi && showAddSpec && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">

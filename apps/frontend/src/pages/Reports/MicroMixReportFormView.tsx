@@ -520,7 +520,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     "PRELIMINARY_RESUBMISSION_BY_CLIENT",
     "FINAL_RESUBMISSION_BY_CLIENT",
     "UNDER_CLIENT_PRELIMINARY_REVIEW",
-    "UNDER_CLIENT_FINAL_REVIEW",
     "UNDER_PRELIMINARY_TESTING_REVIEW",
     "PRELIMINARY_TESTING_ON_HOLD",
     "PRELIMINARY_TESTING_NEEDS_CORRECTION",
@@ -1108,7 +1107,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={report?.testedBy || ""}
+                      value={report?.testedBy?.toUpperCase() || ""}
                       readOnly
                       disabled
                     />
@@ -1122,7 +1121,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={formatDateForInput(report?.testedDate) || ""}
+                      value={formatDateForInput(report?.testedDate?.toUpperCase()) || ""}
                       readOnly
                       disabled
                     />
@@ -1139,7 +1138,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                       className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={report?.reviewedBy || ""}
+                      value={report?.reviewedBy?.toUpperCase() || ""}
                       readOnly
                       disabled
                     />

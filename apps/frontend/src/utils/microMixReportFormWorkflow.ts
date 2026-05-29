@@ -92,7 +92,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["MICRO", "MC", "SYSTEMADMIN", "ADMIN"],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canSet: ["CLIENT", "SYSTEMADMIN"],
@@ -122,7 +122,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["FINAL_APPROVED", "CLIENT_NEEDS_FINAL_CORRECTION"],
     nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["CLIENT", "SYSTEMADMIN"],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
@@ -158,7 +158,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["FRONTDESK", "SYSTEMADMIN"],
     next: ["RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["FRONTDESK", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["FRONTDESK", "SYSTEMADMIN"],
   },
   FRONTDESK_NEEDS_CORRECTION: {
     canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
@@ -180,7 +180,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["UNDER_PRELIMINARY_TESTING_REVIEW"],
     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
     canSet: ["CLIENT", "SYSTEMADMIN"],
@@ -229,7 +229,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
     next: ["FINAL_TESTING_NEEDS_CORRECTION", "UNDER_FINAL_TESTING_REVIEW"],
     nextEditableBy: ["CLIENT", "MICRO", "MC", "SYSTEMADMIN"],
-    canEdit: [],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
     canSet: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
@@ -251,7 +251,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   UNDER_QA_FINAL_REVIEW: {
     canSet: ["MICRO", "MC", "QA", "SYSTEMADMIN"],
-    next: ["QA_NEEDS_FINAL_CORRECTION", "RECEIVED_BY_FRONTDESK"],
+    next: ["QA_NEEDS_FINAL_CORRECTION", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: ["QA", "SYSTEMADMIN"],
   },
@@ -270,7 +270,11 @@ export const STATUS_TRANSITIONS: Record<
 
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
-    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
+    next: [
+      "ADMIN_NEEDS_CORRECTION",
+      "ADMIN_REJECTED",
+      "UNDER_CLIENT_FINAL_REVIEW",
+    ],
     nextEditableBy: ["ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN", "SYSTEMADMIN"],
   },
@@ -311,11 +315,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: [],
   },
   CHANGE_REQUESTED: {
-    canSet: [
-      "QA",
-      "ADMIN",
-      "SYSTEMADMIN",
-    ],
+    canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_CHANGE_UPDATE"],
     nextEditableBy: [
       "CLIENT",
@@ -361,11 +361,7 @@ export const STATUS_TRANSITIONS: Record<
   },
 
   CORRECTION_REQUESTED: {
-    canSet: [
-      "QA",
-      "ADMIN",
-      "SYSTEMADMIN",
-    ],
+    canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
     next: ["UNDER_CORRECTION_UPDATE"],
     nextEditableBy: [
       "CLIENT",
@@ -528,7 +524,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "testedBy",
     "testedDate",
   ],
-  QA: ["*"],
+  QA: ["comments"],
   CLIENT: [
     "client",
     "dateSent",
@@ -553,7 +549,7 @@ export function canRoleEditInStatus(
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
-  return !!t?.canSet?.includes(role);
+  return !!t?.canEdit?.includes(role);
 }
 
 export function canRoleEditField(

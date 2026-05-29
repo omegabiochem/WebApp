@@ -778,6 +778,8 @@ export default function ClientDashboard() {
 
   const [showVoidPassword, setShowVoidPassword] = useState(false);
 
+  const [modalPane, setModalPane] = useState<"FORM" | "ATTACHMENTS">("FORM");
+
   useEffect(() => {
     if (!FILTER_STORAGE_KEY) return;
     if (!filtersHydrated) return;
@@ -2681,6 +2683,7 @@ export default function ClientDashboard() {
                                 });
 
                                 // setSelectedReport(r);
+                                setModalPane("FORM");
                                 openViewTarget(r);
                               }}
                             >

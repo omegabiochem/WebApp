@@ -57,6 +57,8 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResultsDate',
     'dateCompleted',
     'comments',
+    'testedBy',
+    'testedDate',
 
     'ftm_turbidity',
     'ftm_observation',
@@ -93,6 +95,8 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'preliminaryResultsDate',
     'dateCompleted',
     'comments',
+    'testedBy',
+    'testedDate',
 
     'ftm_turbidity',
     'ftm_observation',
@@ -156,7 +160,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ['MICRO', 'MC', 'SYSTEMADMIN', 'ADMIN'],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
@@ -216,7 +220,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ["FRONTDESK", "SYSTEMADMIN"],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
@@ -244,7 +248,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
   },
   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
@@ -293,7 +297,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['FINAL_TESTING_NEEDS_CORRECTION', 'UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['CLIENT', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit:  ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
   },
   FINAL_TESTING_NEEDS_CORRECTION: {
     canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
@@ -315,7 +319,7 @@ const STATUS_TRANSITIONS = {
   },
   UNDER_QA_FINAL_REVIEW: {
     canSet: ['MICRO', 'MC', 'QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_FINAL_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    next: ['QA_NEEDS_FINAL_CORRECTION', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
@@ -334,7 +338,11 @@ const STATUS_TRANSITIONS = {
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+    next: [
+      'ADMIN_NEEDS_CORRECTION',
+      'ADMIN_REJECTED',
+      'UNDER_CLIENT_FINAL_REVIEW',
+    ],
     nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
@@ -531,7 +539,7 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ['FRONTDESK', 'SYSTEMADMIN'],
   },
   FRONTDESK_NEEDS_CORRECTION: {
     canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
@@ -549,7 +557,7 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
   TESTING_NEEDS_CORRECTION: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
@@ -1033,6 +1041,7 @@ export class ReportsService {
     return flattenReport(r);
   }
 
+  //// UPDATE METHOD
   async update(
     user: { userId: string; role: UserRole },
     id: string,
@@ -1279,6 +1288,7 @@ export class ReportsService {
       // e-sign requirements
       if (
         patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
+        patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
         patchIn.status === 'LOCKED' ||
         patchIn.status === 'VOID'
       ) {
@@ -1291,7 +1301,72 @@ export class ReportsService {
           throw new BadRequestException(
             'Electronic signature (password) is required',
           );
-        await this.esign.verifyPassword(user.userId, String(password));
+        try {
+          await this.esign.verifyPassword(user.userId, String(password));
+        } catch {
+          await this.logESignAudit({
+            reportId: current.id,
+            clientCode: current.clientCode ?? null,
+
+            formType: current.formType,
+            formNumber: current.formNumber,
+            reportNumber: current.reportNumber ?? null,
+
+            actorUserId: user.userId,
+            actorRole: user.role,
+
+            action: 'ESIGN_REJECTED',
+
+            fromStatus: current.status,
+            toStatus: patchIn.status,
+
+            reason: reasonFromCtxOrBody,
+
+            details:
+              `Electronic signature rejected ` +
+              `for ${current.status} → ${patchIn.status}`,
+          });
+
+          throw new ForbiddenException('Electronic signature failed');
+        }
+      }
+
+      if (
+        current.status === 'UNDER_FINAL_TESTING_REVIEW' &&
+        patchIn.status === 'UNDER_QA_FINAL_REVIEW' &&
+        (user.role === 'MICRO' || user.role === 'MC')
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.testedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.testedDate = new Date();
+      }
+
+      if (
+        current.status === 'UNDER_ADMIN_REVIEW' &&
+        patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' &&
+        user.role === 'ADMIN'
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.reviewedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.reviewedDate = new Date();
       }
 
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
@@ -1372,6 +1447,30 @@ export class ReportsService {
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
       const ctx = getRequestContext() || {};
+
+      if (
+        patchIn.status &&
+        prevStatus !== String(patchIn.status) &&
+        (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
+          patchIn.status === 'LOCKED' ||
+          patchIn.status === 'VOID')
+      ) {
+        await this.logESignAudit({
+          reportId: current.id,
+          clientCode: current.clientCode ?? null,
+          formType: current.formType,
+          formNumber: current.formNumber,
+          reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'ESIGN_VERIFIED',
+          fromStatus: current.status,
+          toStatus: patchIn.status,
+          reason: reasonFromCtxOrBody,
+          details: `Electronic signature verified for ${current.status} → ${patchIn.status}`,
+        });
+      }
       const reason =
         (ctx as any)?.reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
 
@@ -1417,6 +1516,7 @@ export class ReportsService {
 
     return flattenReport(updated);
   }
+
   private async logStatusChange(args: {
     reportId: string;
     clientCode: string | null;
@@ -1512,6 +1612,59 @@ export class ReportsService {
     });
   }
 
+  private async logESignAudit(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+
+    actorUserId: string;
+    actorRole: UserRole;
+
+    action: 'ESIGN_VERIFIED' | 'ESIGN_REJECTED';
+
+    fromStatus?: ReportStatus | null;
+    toStatus?: ReportStatus | null;
+
+    reason?: string | null;
+
+    details: string;
+  }) {
+    const ctx = getRequestContext();
+
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: args.action,
+
+        entity: args.formType,
+        entityId: args.reportId,
+
+        userId: args.actorUserId,
+        role: args.actorRole,
+
+        ipAddress: ctx?.ip ?? null,
+
+        clientCode: args.clientCode ?? null,
+
+        details: args.details,
+
+        changes: {
+          fromStatus: args.fromStatus ?? null,
+          toStatus: args.toStatus ?? null,
+          reason: args.reason ?? null,
+          signedAt: new Date().toISOString(),
+        },
+
+        formNumber: args.formNumber,
+        reportNumber: args.reportNumber ?? null,
+        formType: args.formType,
+      },
+    });
+  }
+
   // async updateStatus(
   //   user: { userId: string; role: UserRole },
   //   id: string,
@@ -1576,13 +1729,27 @@ export class ReportsService {
     }
 
     // ✅ e-sign rules (keep your existing rule)
-    const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW';
+    // const skipESign = target === 'UNDER_FINAL_TESTING_REVIEW';
+    // if (!skipESign) {
+    //   if (!eSignPassword) {
+    //     throw new BadRequestException(
+    //       'Electronic Signature (password) is required for status changes',
+    //     );
+    //   }
+    //   await this.esign.verifyPassword(user.userId, String(eSignPassword));
+    // }
+
+    const skipESignStatuses: ReportStatus[] = ['UNDER_FINAL_TESTING_REVIEW'];
+
+    const skipESign = skipESignStatuses.includes(target);
+
     if (!skipESign) {
       if (!eSignPassword) {
         throw new BadRequestException(
           'Electronic Signature (password) is required for status changes',
         );
       }
+
       await this.esign.verifyPassword(user.userId, String(eSignPassword));
     }
 
