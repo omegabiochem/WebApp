@@ -2388,7 +2388,7 @@ export default function ChemistryMixSubmissionForm({
                 <input
                   id="f-dateReceived"
                   type="date"
-                  min={todayISO()}
+                min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   className={`
                       w-[80px] border-0 border-b outline-none text-[11px]
                       ${
