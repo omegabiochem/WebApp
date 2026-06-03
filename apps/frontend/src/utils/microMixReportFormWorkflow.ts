@@ -122,7 +122,7 @@ export const STATUS_TRANSITIONS: Record<
     canSet: ["CLIENT", "SYSTEMADMIN"],
     next: ["FINAL_APPROVED", "CLIENT_NEEDS_FINAL_CORRECTION"],
     nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
-    canEdit: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: [],
   },
   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
@@ -549,7 +549,7 @@ export function canRoleEditInStatus(
 ): boolean {
   if (!role || !status) return false;
   const t = STATUS_TRANSITIONS[status];
-  return !!t?.canEdit?.includes(role);
+  return !!t?.canSet?.includes(role);
 }
 
 export function canRoleEditField(

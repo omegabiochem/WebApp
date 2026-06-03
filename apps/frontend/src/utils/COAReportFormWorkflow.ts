@@ -158,7 +158,7 @@ export const STATUS_TRANSITIONS: Record<
   },
   UNDER_QA_REVIEW: {
     canSet: ["QA", "SYSTEMADMIN"],
-    next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
+    next: ["QA_NEEDS_CORRECTION", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: ["QA", "SYSTEMADMIN"],
   },
@@ -171,7 +171,7 @@ export const STATUS_TRANSITIONS: Record<
 
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
-    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
+    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "UNDER_CLIENT_REVIEW"],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN", "SYSTEMADMIN"],
   },

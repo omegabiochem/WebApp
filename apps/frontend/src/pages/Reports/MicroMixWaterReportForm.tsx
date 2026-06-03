@@ -631,6 +631,34 @@ export default function MicroMixWaterReportForm({
       .catch(() => {});
   }, [reportId]);
 
+
+  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
+const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+
+function startESignDrag(e: React.MouseEvent) {
+  dragRef.current = {
+    dragging: true,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: eSignPos.x,
+    origY: eSignPos.y,
+  };
+
+  window.onmousemove = (ev) => {
+    if (!dragRef.current.dragging) return;
+    setESignPos({
+      x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+      y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+    });
+  };
+
+  window.onmouseup = () => {
+    dragRef.current.dragging = false;
+    window.onmousemove = null;
+    window.onmouseup = null;
+  };
+}
+
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
     () => corrections.filter((c) => c.status === "OPEN"),
@@ -3541,7 +3569,7 @@ export default function MicroMixWaterReportForm({
                   <FieldErrorBadge name="testedBy" errors={errors} />
                   <ResolveOverlay field="testedBy" />
                   <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
                       errors.testedBy ? "border-b-red-500" : "border-b-black/70"
                     } ${
                       hasCorrection("testedBy")
@@ -3575,7 +3603,7 @@ export default function MicroMixWaterReportForm({
                   <FieldErrorBadge name="testedDate" errors={errors} />
                   <ResolveOverlay field="testedDate" />
                   <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
                       errors.testedDate
                         ? "border-b-red-500"
                         : "border-b-black/70"
@@ -3614,7 +3642,7 @@ export default function MicroMixWaterReportForm({
                   <FieldErrorBadge name="reviewedBy" errors={errors} />
                   <ResolveOverlay field="reviewedBy" />
                   <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
                       errors.reviewedBy
                         ? "border-b-red-500"
                         : "border-b-black/70"
@@ -3650,7 +3678,7 @@ export default function MicroMixWaterReportForm({
                   <FieldErrorBadge name="reviewedDate" errors={errors} />
                   <ResolveOverlay field="reviewedDate" />
                   <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
+                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
                       errors.reviewedDate
                         ? "border-b-red-500"
                         : "border-b-black/70"
@@ -3764,8 +3792,14 @@ export default function MicroMixWaterReportForm({
           aria-modal="true"
           aria-label="E-signature"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-start gap-3">
+          <div
+  className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+  style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+>
+            <div
+  className="mb-4 flex items-start gap-3 cursor-move select-none"
+  onMouseDown={startESignDrag}
+>
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
                 🔐
               </div>
@@ -3814,7 +3848,7 @@ export default function MicroMixWaterReportForm({
                 </div>
 
                 <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Signed By</span>
+                  <span className="text-slate-500">Signing By</span>
                   <span className="text-right font-semibold text-slate-800">
                     {user?.name || user?.email}
                   </span>

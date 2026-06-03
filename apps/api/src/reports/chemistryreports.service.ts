@@ -24,6 +24,7 @@ import { ReportNotificationsService } from 'src/notifications/report-notificatio
 import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
 import { ReportsGateway } from './reports.gateway';
+import { ReportStatus } from 'src/generated/client/client';
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
@@ -179,7 +180,7 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    next: ['QA_NEEDS_CORRECTION', "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
@@ -192,7 +193,7 @@ const STATUS_TRANSITIONS: Record<
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', "UNDER_CLIENT_REVIEW"],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
@@ -911,6 +912,8 @@ export class ChemistryReportsService {
           actor?.email?.trim() ||
           'Unknown';
 
+
+
         // ✅ Auto-fill dateReceived at the same time as BC number assignment
         const currentDetails = pickDetails(current);
         const alreadyHasDateReceived = !!currentDetails?.dateReceived;
@@ -922,6 +925,9 @@ export class ChemistryReportsService {
       }
 
       // e-sign requirements
+
+
+      
       if (
         patchIn.status === 'UNDER_CLIENT_REVIEW' ||
         patchIn.status === 'LOCKED' ||
@@ -940,6 +946,92 @@ export class ChemistryReportsService {
       }
 
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
+
+
+      if (
+        patchIn.status === 'UNDER_QA_REVIEW' ||
+        patchIn.status === 'UNDER_CLIENT_REVIEW' ||
+        patchIn.status === 'LOCKED' ||
+        patchIn.status === 'VOID'
+      ) {
+        const password =
+          _pwdFromBody ||
+          (patchIn as any)?.eSignPassword ||
+          (ctx as any)?.eSignPassword ||
+          null;
+        if (!password)
+          throw new BadRequestException(
+            'Electronic signature (password) is required',
+          );
+        try {
+          await this.esign.verifyPassword(user.userId, String(password));
+        } catch {
+          await this.logESignAudit({
+            reportId: current.id,
+            clientCode: current.clientCode ?? null,
+
+            formType: current.formType,
+            formNumber: current.formNumber,
+            reportNumber: current.reportNumber ?? null,
+
+            actorUserId: user.userId,
+            actorRole: user.role,
+
+            action: 'ESIGN_REJECTED',
+
+            fromStatus: current.status,
+            toStatus: patchIn.status,
+
+            reason: reasonFromCtxOrBody,
+
+            details:
+              `Electronic signature rejected ` +
+              `for ${current.status} → ${patchIn.status}`,
+          });
+
+          throw new ForbiddenException('Electronic signature failed');
+        }
+      }
+
+
+      if (
+        current.status === 'UNDER_TESTING_REVIEW' &&
+        patchIn.status === 'UNDER_QA_REVIEW' &&
+        (user.role === 'CHEMISTRY' || user.role === 'MC')
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.testedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.testedDate = new Date();
+      }
+
+      if (
+        current.status === 'UNDER_ADMIN_REVIEW' &&
+        patchIn.status === 'UNDER_CLIENT_REVIEW' &&
+        user.role === 'ADMIN'
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.reviewedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.reviewedDate = new Date();
+      }
+
 
       base.status = patchIn.status;
     }
@@ -1040,6 +1132,33 @@ export class ChemistryReportsService {
     if (newStatus && prevStatus !== newStatus) {
       const ctx = getRequestContext() || {};
 
+
+        if (
+        patchIn.status &&
+        prevStatus !== String(patchIn.status) &&
+        (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_REVIEW' ||
+          patchIn.status === 'UNDER_CLIENT_REVIEW' ||
+          patchIn.status === 'LOCKED' ||
+          patchIn.status === 'VOID')
+      ) {
+        await this.logESignAudit({
+          reportId: current.id,
+          clientCode: current.clientCode ?? null,
+          formType: current.formType,
+          formNumber: current.formNumber,
+          reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'ESIGN_VERIFIED',
+          fromStatus: current.status,
+          toStatus: patchIn.status,
+          reason: reasonFromCtxOrBody,
+          details: `Electronic signature verified for ${current.status} → ${patchIn.status}`,
+        });
+      }
+
       const reason =
         (ctx as any).reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
 
@@ -1096,13 +1215,59 @@ export class ChemistryReportsService {
     return flattenReport(updated);
   }
 
-  // async updateStatus(
-  //   user: { userId: string; role: UserRole },
-  //   id: string,
-  //   status: ChemistryReportStatus,
-  // ) {
-  //   return this.update(user, id, { status });
-  // }
+ private async logESignAudit(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+
+    actorUserId: string;
+    actorRole: UserRole;
+
+    action: 'ESIGN_VERIFIED' | 'ESIGN_REJECTED';
+
+    fromStatus?: ChemistryReportStatus | null;
+    toStatus?: ChemistryReportStatus | null;
+
+    reason?: string | null;
+
+    details: string;
+  }) {
+    const ctx = getRequestContext();
+
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: args.action,
+
+        entity: args.formType,
+        entityId: args.reportId,
+
+        userId: args.actorUserId,
+        role: args.actorRole,
+
+        ipAddress: ctx?.ip ?? null,
+
+        clientCode: args.clientCode ?? null,
+
+        details: args.details,
+
+        changes: {
+          fromStatus: args.fromStatus ?? null,
+          toStatus: args.toStatus ?? null,
+          reason: args.reason ?? null,
+          signedAt: new Date().toISOString(),
+        },
+
+        formNumber: args.formNumber,
+        reportNumber: args.reportNumber ?? null,
+        formType: args.formType,
+      },
+    });
+  }
+
 
   async updateStatus(
     user: { userId: string; role: UserRole },

@@ -9,7 +9,7 @@ import {
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
@@ -755,7 +755,18 @@ export default function MicroDashboard() {
   // ✅ Loading guards for buttons
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
+
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   // ✅ Per-row update guard
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -1913,6 +1924,30 @@ export default function MicroDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
+
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
+    }
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2775,7 +2810,7 @@ export default function MicroDashboard() {
             if (e.target === e.currentTarget) setSelectedReport(null);
           }}
         >
-         <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
+          <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
             <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
               <h2 className="text-lg font-semibold">
                 Report ({displayReportNo(selectedReport)})
@@ -2806,6 +2841,38 @@ export default function MicroDashboard() {
               </div>
 
               <div className="flex items-center gap-2">
+                <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 {/* Print this report */}
                 <button
                   disabled={printingSingle}
@@ -2900,6 +2967,7 @@ export default function MicroDashboard() {
             <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -2908,6 +2976,7 @@ export default function MicroDashboard() {
                 />
               ) : selectedReport.formType === "STERILITY" ? (
                 <SterilityReportFormView
+                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -2916,6 +2985,7 @@ export default function MicroDashboard() {
                 />
               ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

@@ -8,6 +8,8 @@ import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
+import { useAuth } from "../../context/AuthContext";
+import { Eye } from "lucide-react";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -27,6 +29,7 @@ type AttachmentItem = {
   filename: string;
   kind: string;
   createdAt: string;
+  visibility?: "ALL" | "LAB_ONLY" | "CLIENT_ONLY";
 };
 
 const attBase = (id: string) => `/chemistry-reports/${id}/attachments`;
@@ -60,12 +63,107 @@ function useAttachments(reportId?: string) {
     })();
   }, [reportId]);
 
-  return { items, loading };
+  return { items,setItems, loading };
 }
 
+// function AttachmentGallery({ reportId }: { reportId?: string }) {
+//   const { items, loading } = useAttachments(reportId);
+//   const [openId, setOpenId] = useState<string | null>(null);
+
+//   if (loading)
+//     return (
+//       <div className="no-print mt-4 text-sm text-slate-500">
+//         Loading attachments…
+//       </div>
+//     );
+//   if (!items.length)
+//     return (
+//       <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>
+//     );
+
+//   return (
+//     <div className="no-print mt-4">
+//       <div className="mb-2 text-sm font-semibold">Attachments</div>
+//       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+//         {items.map((a) => {
+//           const filePath = `${attBase(reportId ?? "")}/${a.id}/file`;
+//           const ext = a.filename.split(".").pop()?.toLowerCase() || "";
+//           const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
+//           const isPdf = ext === "pdf";
+
+//           return (
+//             <button
+//               key={a.id}
+//               type="button"
+//               onClick={() =>
+//                 isImage || isPdf
+//                   ? setOpenId(a.id)
+//                   : window.open(filePath, "_blank")
+//               }
+//               className="group text-left border rounded-lg p-3 hover:shadow-sm transition bg-white"
+//               title="Click to preview"
+//             >
+//               <div className="h-28 w-full border rounded flex items-center justify-center overflow-hidden bg-slate-50">
+//                 {isImage ? (
+//                   <Thumb path={filePath} alt={a.filename} />
+//                 ) : isPdf ? (
+//                   <div className="text-xs text-slate-600">
+//                     PDF • click to preview
+//                   </div>
+//                 ) : (
+//                   <div className="text-xs text-slate-600 uppercase">
+//                     {ext || "file"}
+//                   </div>
+//                 )}
+//               </div>
+//               <div
+//                 className="mt-2 text-sm font-medium truncate"
+//                 title={a.filename}
+//               >
+//                 {a.filename}
+//               </div>
+//               <div className="text-xs text-slate-500">
+//                 {a.kind} • {new Date(a.createdAt).toLocaleString()}
+//               </div>
+//             </button>
+//           );
+//         })}
+//       </div>
+
+//       {/* simple modal */}
+//       {openId && (
+//         <div
+//           className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+//           onClick={() => setOpenId(null)}
+//         >
+//           <div
+//             className="bg-white rounded-lg shadow max-w-5xl w-full h-[80vh] overflow-hidden"
+//             onClick={(e) => e.stopPropagation()}
+//           >
+//             <div className="flex items-center justify-between p-2 border-b">
+//               <div className="text-sm font-semibold">Preview</div>
+//               <button
+//                 className="px-2 py-1 text-sm border rounded hover:bg-slate-50"
+//                 onClick={() => setOpenId(null)}
+//               >
+//                 Close
+//               </button>
+//             </div>
+//             <div className="w-full h-full">
+//               <AttachmentPreview reportId={reportId!} attId={openId} />
+//             </div>
+//           </div>
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
 function AttachmentGallery({ reportId }: { reportId?: string }) {
-  const { items, loading } = useAttachments(reportId);
+  const { user } = useAuth();
+  const { items, setItems, loading } = useAttachments(reportId);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [visibilityMenuId, setVisibilityMenuId] = useState<string | null>(null);
 
   if (loading)
     return (
@@ -78,6 +176,27 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
       <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>
     );
 
+  const LAB_ROLES = ["ADMIN", "FRONTDESK", "MICRO", "MC", "QA", "CHEMISTRY"];
+
+  const visibilityOptions =
+    user?.role === "SYSTEMADMIN"
+      ? [
+          ["ALL", "All can view"],
+          ["LAB_ONLY", "Only lab can view"],
+          ["CLIENT_ONLY", "Only client can view"],
+        ]
+      : user?.role === "CLIENT"
+        ? [
+            ["ALL", "All can view"],
+            ["CLIENT_ONLY", "Only client can view"],
+          ]
+        : LAB_ROLES.includes(user?.role || "")
+          ? [
+              ["ALL", "All can view"],
+              ["LAB_ONLY", "Only lab can view"],
+            ]
+          : [["ALL", "All can view"]];
+
   return (
     <div className="no-print mt-4">
       <div className="mb-2 text-sm font-semibold">Attachments</div>
@@ -89,15 +208,14 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
           const isPdf = ext === "pdf";
 
           return (
-            <button
+            <div
               key={a.id}
-              type="button"
               onClick={() =>
                 isImage || isPdf
                   ? setOpenId(a.id)
                   : window.open(filePath, "_blank")
               }
-              className="group text-left border rounded-lg p-3 hover:shadow-sm transition bg-white"
+              className="relative group cursor-pointer text-left border rounded-lg p-3 pb-1 hover:shadow-sm transition bg-white"
               title="Click to preview"
             >
               <div className="h-28 w-full border rounded flex items-center justify-center overflow-hidden bg-slate-50">
@@ -119,10 +237,97 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
               >
                 {a.filename}
               </div>
-              <div className="text-xs text-slate-500">
+              {/* <div className="text-xs text-slate-500">
                 {a.kind} • {new Date(a.createdAt).toLocaleString()}
+              </div> */}
+
+              <div className="mt-1 flex items-center justify-between">
+                <div className="text-xs text-slate-500">{a.kind}</div>
+
+                <span
+                  className={`rounded-full px-2 py-2 text-[10px] font-medium ${
+                    a.visibility === "ALL"
+                      ? "bg-green-100 text-green-700"
+                      : a.visibility === "CLIENT_ONLY"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {a.visibility === "ALL"
+                    ? "ALL"
+                    : a.visibility === "CLIENT_ONLY"
+                      ? "CLIENT"
+                      : "LAB"}
+                </span>
               </div>
-            </button>
+
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>{new Date(a.createdAt).toLocaleString()}</span>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVisibilityMenuId(
+                        visibilityMenuId === a.id ? null : a.id,
+                      );
+                    }}
+                    className="rounded p-2 hover:bg-slate-100"
+                    title="Visibility"
+                  >
+                    <Eye className="h-4 w-4 text-slate-600" />
+                  </button>
+
+                  {visibilityMenuId === a.id && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg border bg-white p-1 shadow-lg"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {visibilityOptions.map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={`block w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-100 ${
+                            a.visibility === value
+                              ? "bg-blue-50 font-semibold text-blue-700"
+                              : ""
+                          }`}
+                          onClick={async () => {
+                            const nextVisibility = value as
+                              | "ALL"
+                              | "LAB_ONLY"
+                              | "CLIENT_ONLY";
+
+                            await api(
+                              `${attBase(reportId ?? "")}/${a.id}/visibility`,
+                              {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  visibility: nextVisibility,
+                                }),
+                              },
+                            );
+
+                            setItems((prev) =>
+                              prev.map((x) =>
+                                x.id === a.id
+                                  ? { ...x, visibility: nextVisibility }
+                                  : x,
+                              ),
+                            );
+
+                            setVisibilityMenuId(null);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -1198,10 +1403,10 @@ export default function ChemistryMixReportFormView(
                     <div className={`mb-1 flex items-center gap-2 relative ${dashClass("testedBy")}`}>
                       <span className="font-medium">VERIFIED BY :</span>
                       <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                        className={`flex-1 border-0 border-b border-black/60 outline-none font-medium ${
                           shouldBlurSignatures ? "blur-field" : ""
                         }`}
-                        value={report?.testedBy || ""}
+                        value={report?.testedBy?.toUpperCase() || ""}
                         readOnly
                         disabled
                       />
@@ -1218,7 +1423,7 @@ export default function ChemistryMixReportFormView(
                         </div>
                       ) : (
                         <input
-                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          className={`flex-1 border-0 border-b border-black/60 outline-none font-medium ${
                             shouldBlurSignatures ? "blur-field" : ""
                           }`}
                           type="date"
@@ -1234,10 +1439,10 @@ export default function ChemistryMixReportFormView(
                     <div className={`mb-1 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}>
                       <span className="font-medium">REVIEWED BY :</span>
                       <input
-                        className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                        className={`flex-1 border-0 border-b border-black/60 outline-none font-medium ${
                           shouldBlurSignatures ? "blur-field" : ""
                         }`}
-                        value={report?.reviewedBy || ""}
+                        value={report?.reviewedBy?.toUpperCase() || ""}
                         readOnly
                         disabled
                       />
@@ -1254,7 +1459,7 @@ export default function ChemistryMixReportFormView(
                         </div>
                       ) : (
                         <input
-                          className={`flex-1 border-0 border-b border-black/60 outline-none ${
+                          className={`flex-1 border-0 border-b border-black/60 outline-none font-medium ${
                             shouldBlurSignatures ? "blur-field" : ""
                           }`}
                           type="date"

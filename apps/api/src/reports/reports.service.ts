@@ -160,7 +160,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC', 'SYSTEMADMIN', 'ADMIN'],
+    canEdit: [],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
@@ -579,7 +579,7 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
@@ -592,7 +592,7 @@ const STERILITY_STATUS_TRANSITIONS = {
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
@@ -1289,6 +1289,8 @@ export class ReportsService {
       if (
         patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
         patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
+        patchIn.status === 'UNDER_QA_REVIEW' ||
+        patchIn.status === 'UNDER_CLIENT_REVIEW' ||
         patchIn.status === 'LOCKED' ||
         patchIn.status === 'VOID'
       ) {
@@ -1353,6 +1355,45 @@ export class ReportsService {
       if (
         current.status === 'UNDER_ADMIN_REVIEW' &&
         patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' &&
+        user.role === 'ADMIN'
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.reviewedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.reviewedDate = new Date();
+      }
+
+
+      if (
+        current.status === 'UNDER_TESTING_REVIEW' &&
+        patchIn.status === 'UNDER_QA_REVIEW' &&
+        (user.role === 'MICRO' || user.role === 'MC')
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.testedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.testedDate = new Date();
+      }
+
+      if (
+        current.status === 'UNDER_ADMIN_REVIEW' &&
+        patchIn.status === 'UNDER_CLIENT_REVIEW' &&
         user.role === 'ADMIN'
       ) {
         const actor = await this.prisma.user.findUnique({
@@ -1453,6 +1494,8 @@ export class ReportsService {
         prevStatus !== String(patchIn.status) &&
         (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
           patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_REVIEW' ||
+          patchIn.status === 'UNDER_CLIENT_REVIEW' ||
           patchIn.status === 'LOCKED' ||
           patchIn.status === 'VOID')
       ) {

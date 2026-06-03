@@ -9,7 +9,7 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 import { useAuth } from "../../context/AuthContext";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 
@@ -718,6 +718,18 @@ export default function SystemAdminDashboard() {
 
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
+
+  
+     const [modalUploading, setModalUploading] = useState(false);
+      const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+      const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+    
+      const defaultAttachmentVisibility =
+        user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+    
+      const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+        defaultAttachmentVisibility,
+      );
 
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
@@ -2058,6 +2070,33 @@ export default function SystemAdminDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+
+
+  
+    async function uploadAttachmentForReport(r: Report, file: File) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("source", "manual-upload");
+      form.append("createdBy", user?.name || user?.role || "micro");
+      form.append("kind", "SIGNED_FORM");
+      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+      form.append("visibility", attachmentVisibility);
+  
+      const token = localStorage.getItem("token");
+  
+      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: form,
+      });
+  
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+    }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3076,6 +3115,38 @@ export default function SystemAdminDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
+                  <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 {/* ✅ Print single */}
                 <button
                   disabled={printingSingle}
@@ -3168,6 +3239,7 @@ export default function SystemAdminDashboard() {
             <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3176,6 +3248,7 @@ export default function SystemAdminDashboard() {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3184,6 +3257,7 @@ export default function SystemAdminDashboard() {
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3192,6 +3266,7 @@ export default function SystemAdminDashboard() {
                 />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3200,6 +3275,7 @@ export default function SystemAdminDashboard() {
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

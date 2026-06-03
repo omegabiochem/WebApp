@@ -16,10 +16,11 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "5.0",
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false,
+    "noFallthroughCasesInSwitch": false
   }
 }

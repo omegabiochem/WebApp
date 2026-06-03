@@ -359,6 +359,7 @@ model Attachment {
   meta          Json?
   createdAt     DateTime       @default(now())
   createdBy     String?
+  visibility    AttachmentVisibility @default(LAB_ONLY)
   storageBucket String?
   storageDriver String         @default("local")
   report        Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
@@ -523,6 +524,7 @@ model ChemistryAttachment {
   createdAt     DateTime        @default(now())
   createdBy     String?
   kind          AttachmentKind
+  visibility    AttachmentVisibility @default(LAB_ONLY)
   storageBucket String?
   storageDriver String          @default("local")
   report        ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
@@ -936,4 +938,11 @@ model Notification {
   @@index([role, createdAt])
   @@index([clientCode, createdAt])
   @@index([readAt, createdAt])
+}
+
+
+enum AttachmentVisibility {
+  ALL
+  LAB_ONLY
+  CLIENT_ONLY
 }
