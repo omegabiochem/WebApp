@@ -389,7 +389,16 @@ export default function SterilityReportFormView(
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
+  // const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
+
+  const footerRevNo = report?.footerRevNo || "Rev-01";
+  const footerDateEffective = report?.footerDateEffective
+    ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
+        timeZone: "UTC",
+      })
+    : "03/10/2026";
+
+  const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
   // ✅ Keep these simple. Update if you want stricter/looser blur.
   const BLUR_SIGNATURE_STATUSES = new Set([
