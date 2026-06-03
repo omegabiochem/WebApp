@@ -403,6 +403,8 @@ export default function MicroMixReportForm({
     report?.dateCompleted || "",
   );
 
+  type Unit = "CFU/mL" | "CFU/g" | "CFU/mL/g";
+
   const normalizeSpec = (v: any) => {
     const s = String(v ?? "").trim();
     if (!s) return "";
@@ -430,21 +432,40 @@ export default function MicroMixReportForm({
     normalizeSpec(report?.tmy_spec),
   );
 
-  const [tbcUnit, setTbcUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
-  const [tmyUnit, setTmyUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
+  // const [tbcUnit, setTbcUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
+  // const [tmyUnit, setTmyUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
+  const extractUnit = (v: any): Unit => {
+    const s = String(v ?? "").trim();
+
+    if (!s) return "CFU/mL/g";
+
+    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+
+    return "CFU/mL/g";
+  };
+  const [tbcUnit, setTbcUnit] = useState<Unit>(() =>
+    extractUnit(report?.tbc_spec),
+  );
+
+  const [tmyUnit, setTmyUnit] = useState<Unit>(() =>
+    extractUnit(report?.tmy_spec),
+  );
 
   // Spec dropdown presets
   const UNIT_OPTIONS = ["CFU/mL", "CFU/g"] as const;
   const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
 
-  const extractUnit = (v: any): "CFU/mL" | "CFU/g" => {
-    const s = String(v ?? "");
-    return /CFU\s*\/\s*g/i.test(s) ? "CFU/g" : "CFU/mL";
-  };
+  // const extractUnit = (v: any): "CFU/mL" | "CFU/g" => {
+  //   const s = String(v ?? "");
+  //   return /CFU\s*\/\s*g/i.test(s) ? "CFU/g" : "CFU/mL";
+  // };
 
   // const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
-  const formatSpec = (v: string, unit: "CFU/mL" | "CFU/g") =>
-    v ? `${v} ${unit}` : "";
+  // const formatSpec = (v: string, unit: "CFU/mL" | "CFU/g") =>
+  //   v ? `${v} ${unit}` : "";
+
+  const formatSpec = (v: string, unit: Unit) => (v ? `${v} ${unit}` : "");
 
   useEffect(() => {
     set_tbc_spec(normalizeSpec(report?.tbc_spec));
@@ -587,9 +608,6 @@ export default function MicroMixReportForm({
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
-
-
-  
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1800,10 +1818,12 @@ export default function MicroMixReportForm({
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    const [specValue, unitValue] = value.split("|") as [
-      string,
-      "CFU/mL" | "CFU/g",
-    ];
+    // const [specValue, unitValue] = value.split("|") as [
+    //   string,
+    //   "CFU/mL" | "CFU/g",
+    // ];
+
+    const [specValue, unitValue] = value.split("|") as [string, Unit];
 
     if (target === "tbc_spec") {
       set_tbc_spec(specValue);

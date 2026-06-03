@@ -586,15 +586,27 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
       .replace(/\s*CFU.*$/i, "")
       .trim();
 
+  // const getSpecUnit = (v: any) => {
+  //   const s = String(v ?? "");
+  //   if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+  //   if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+  //   return "CFU/mL";
+  // };
+
   const getSpecUnit = (v: any) => {
-    const s = String(v ?? "");
-    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
-    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
-    return "CFU/mL";
-  };
+  const s = String(v ?? "").trim();
+
+  if (!s) return "CFU/mL/g";
+
+  if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+  if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+
+  return "CFU/mL/g";
+};
 
   const tbcUnit = getSpecUnit(report?.tbc_spec);
   const tmyUnit = getSpecUnit(report?.tmy_spec);
+
 
   return (
     <div
