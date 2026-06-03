@@ -430,14 +430,27 @@ export default function MicroMixReportForm({
     normalizeSpec(report?.tmy_spec),
   );
 
+  const [tbcUnit, setTbcUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
+  const [tmyUnit, setTmyUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
+
   // Spec dropdown presets
+  const UNIT_OPTIONS = ["CFU/mL", "CFU/g"] as const;
   const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
 
-  const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
+  const extractUnit = (v: any): "CFU/mL" | "CFU/g" => {
+    const s = String(v ?? "");
+    return /CFU\s*\/\s*g/i.test(s) ? "CFU/g" : "CFU/mL";
+  };
+
+  // const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
+  const formatSpec = (v: string, unit: "CFU/mL" | "CFU/g") =>
+    v ? `${v} ${unit}` : "";
 
   useEffect(() => {
     set_tbc_spec(normalizeSpec(report?.tbc_spec));
     set_tmy_spec(normalizeSpec(report?.tmy_spec));
+    setTbcUnit(extractUnit(report?.tbc_spec));
+    setTmyUnit(extractUnit(report?.tmy_spec));
   }, [report?.id]);
 
   // Allow user-added custom spec values (shared by both TBC + TMY)
@@ -574,6 +587,9 @@ export default function MicroMixReportForm({
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
+
+
+  
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1165,10 +1181,12 @@ export default function MicroMixReportForm({
     set_tbc_gram(data?.tbc_gram ?? "");
     set_tbc_result(data?.tbc_result ?? "");
     set_tbc_spec(normalizeSpec(data?.tbc_spec ?? ""));
+    setTbcUnit(extractUnit(data?.tbc_spec));
 
     set_tmy_gram(data?.tmy_gram ?? "");
     set_tmy_result(data?.tmy_result ?? "");
     set_tmy_spec(normalizeSpec(data?.tmy_spec ?? ""));
+    setTmyUnit(extractUnit(data?.tmy_spec));
 
     setPathogens(data?.pathogens ?? pathogenDefaults);
 
@@ -1263,10 +1281,10 @@ export default function MicroMixReportForm({
           dateCompleted,
           tbc_gram,
           tbc_result,
-          tbc_spec,
+          tbc_spec: tbc_spec ? `${tbc_spec} ${tbcUnit}` : "",
           tmy_gram,
           tmy_result,
-          tmy_spec,
+          tmy_spec: tmy_spec ? `${tmy_spec} ${tmyUnit}` : "",
           pathogens,
           comments,
           testedBy,
@@ -1782,13 +1800,21 @@ export default function MicroMixReportForm({
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
+    const [specValue, unitValue] = value.split("|") as [
+      string,
+      "CFU/mL" | "CFU/g",
+    ];
+
     if (target === "tbc_spec") {
-      set_tbc_spec(value);
+      set_tbc_spec(specValue);
+      if (unitValue) setTbcUnit(unitValue);
       clearError("tbc_spec");
     } else {
-      set_tmy_spec(value);
+      set_tmy_spec(specValue);
+      if (unitValue) setTmyUnit(unitValue);
       clearError("tmy_spec");
     }
+
     markDirty();
   }
 
@@ -2238,7 +2264,7 @@ export default function MicroMixReportForm({
                       : ""
                   }`}
                   type="date"
-                min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
+                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
@@ -2855,10 +2881,10 @@ export default function MicroMixReportForm({
                   markDirty();
                 }}
                 readOnly={lock("tbc_result")}
-                placeholder="CFU/ml/g"
+                placeholder={tbc_spec ? `${tbcUnit}` : ""}
                 aria-invalid={!!errors.tbc_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">{tbcUnit}</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -2885,17 +2911,19 @@ export default function MicroMixReportForm({
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   }`}
-                  value={tbc_spec}
+                  value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
                   onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
                   disabled={lock("tbc_spec")}
                   aria-invalid={!!errors.tbc_spec}
                 >
                   <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
+                  {specOptions.flatMap((opt) =>
+                    UNIT_OPTIONS.map((unit) => (
+                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                        {formatSpec(opt, unit)}
+                      </option>
+                    )),
+                  )}
                 </select>
 
                 {/* + Add new */}
@@ -2993,10 +3021,10 @@ export default function MicroMixReportForm({
                   markDirty();
                 }}
                 readOnly={lock("tmy_result")}
-                placeholder="CFU/ml/g"
+                placeholder={tmy_spec ? `${tmyUnit}` : ""}
                 aria-invalid={!!errors.tmy_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml/g</div>
+              <div className="py-1 px-2 text-center">{tmyUnit}</div>
             </div>
 
             {/* SPECIFICATION */}
@@ -3023,17 +3051,19 @@ export default function MicroMixReportForm({
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   }`}
-                  value={tmy_spec}
+                  value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
                   onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
                   disabled={lock("tmy_spec")}
                   aria-invalid={!!errors.tmy_spec}
                 >
                   <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
+                  {specOptions.flatMap((opt) =>
+                    UNIT_OPTIONS.map((unit) => (
+                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                        {formatSpec(opt, unit)}
+                      </option>
+                    )),
+                  )}
                 </select>
 
                 {!lock("tmy_spec") && (

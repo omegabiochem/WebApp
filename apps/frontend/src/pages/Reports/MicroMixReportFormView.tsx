@@ -508,7 +508,15 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
+  // const FOOTER_NOTE = "Rev-02 [Date Effective : 06/03/2026]";
+
+  const footerRevNo = report?.footerRevNo || "Rev-02";
+
+  const footerDateEffective = report?.footerDateEffective
+    ? new Date(report.footerDateEffective).toLocaleDateString("en-US",{timeZone: "UTC"})
+    : "06/03/2026";
+
+  const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
   const BLUR_SIGNATURE_STATUSES = new Set([
     "DRAFT",
@@ -572,6 +580,21 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   };
   const isReportPane = isBulk || activePane === "REPORT";
   const isFormPane = pane === "FORM";
+
+  const getSpecValue = (v: any) =>
+    String(v ?? "")
+      .replace(/\s*CFU.*$/i, "")
+      .trim();
+
+  const getSpecUnit = (v: any) => {
+    const s = String(v ?? "");
+    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+    return "CFU/mL";
+  };
+
+  const tbcUnit = getSpecUnit(report?.tbc_spec);
+  const tmyUnit = getSpecUnit(report?.tmy_spec);
 
   return (
     <div
@@ -692,7 +715,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
               {/* Right: Report Number */}
               <div className="text-right text-[12px] font-bold">
-                { !isFormPane && report.reportNumber}
+                {!isFormPane && report.reportNumber}
               </div>
             </div>
           </div>
@@ -936,14 +959,14 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ mL/g</div>
+                <div className="py-1 px-2 text-center">{tbcUnit}</div>
               </div>
 
               <div
                 className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tbc_spec")}`}
               >
                 <div className="whitespace-nowrap">
-                  {report?.tbc_spec || ""} CFU/ mL/g
+                  {getSpecValue(report?.tbc_spec)} {tbcUnit}
                 </div>
               </div>
             </div>
@@ -974,13 +997,13 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   readOnly
                   disabled
                 />
-                <div className="py-1 px-2 text-center">CFU/ ml/g</div>
+                <div className="py-1 px-2 text-center">{tmyUnit}</div>
               </div>
               <div
                 className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tmy_spec")}`}
               >
                 <div className="whitespace-nowrap">
-                  {report?.tmy_spec || ""} CFU/ ml/g
+                  {getSpecValue(report?.tmy_spec)} {tmyUnit}
                 </div>
               </div>
             </div>
@@ -1212,7 +1235,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-              { !isFormPane && report?.reportNumber && (
+                {!isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>

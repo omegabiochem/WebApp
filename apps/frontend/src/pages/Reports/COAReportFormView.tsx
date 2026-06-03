@@ -430,7 +430,16 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     { src: pjla, alt: "FDA Registered" },
     { src: ilacmra, alt: "ISO Certified" },
   ];
-  const FOOTER_NOTE = "Rev-02 [Date Effective : 04/08/2026]";
+  // const FOOTER_NOTE = "Rev-02 [Date Effective : 04/08/2026]";
+
+  const footerRevNo = report?.footerRevNo || "Rev-02";
+  const footerDateEffective = report?.footerDateEffective
+    ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
+        timeZone: "UTC",
+      })
+    : "04/08/2026";
+
+  const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
   const isBulk = isBulkPrint === true;
 
