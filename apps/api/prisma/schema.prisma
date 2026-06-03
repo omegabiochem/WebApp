@@ -75,6 +75,9 @@ model MicroMixDetails {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
   corrections            Json?
+
+  footerRevNo          String?
+  footerDateEffective  DateTime?
   report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
@@ -114,6 +117,9 @@ model MicroMixWaterDetails {
   corrections            Json?
   idNo                   String?
   samplingDate           DateTime?
+
+  footerRevNo          String?
+  footerDateEffective  DateTime?
   report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
@@ -150,6 +156,9 @@ model sterilityDetails {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
   corrections            Json?
+
+  footerRevNo          String?
+  footerDateEffective  DateTime?
   report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
@@ -451,6 +460,9 @@ model ChemistryMixDetails {
   status            ChemistryReportStatus @default(DRAFT)
   dateReceived      DateTime?
   stabilityNote     String?
+
+  footerRevNo          String?
+  footerDateEffective  DateTime?
   chemistryReport   ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 }
 
@@ -491,6 +503,9 @@ model COADetails {
   updatedAt          DateTime      @updatedAt
 
   corrections        Json?         // optional if you store corrections in a table elsewhere
+
+  footerRevNo          String?
+  footerDateEffective  DateTime?
 
   chemistryReport   ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 
