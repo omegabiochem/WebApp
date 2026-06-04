@@ -1104,6 +1104,32 @@ export default function QaDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
+
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem(
+      "/systemAdminDashboard:lastSearch",
+      `?${sp.toString()}`,
+    );
+
+    sessionStorage.setItem(
+      "lastSearch:/systemAdminDashboard",
+      `?${sp.toString()}`,
+    );
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
+
+
+
   useEffect(() => {
     setPage(1);
   }, [
@@ -1140,7 +1166,13 @@ export default function QaDashboard() {
     if (dateTo) sp.set("to", dateTo);
 
     sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped));
+    // sp.set("p", String(pageClamped));
+
+     if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
 
     if (formNoFrom.trim()) sp.set("formFrom", formNoFrom.trim());
     if (formNoTo.trim()) sp.set("formTo", formNoTo.trim());
@@ -1163,7 +1195,7 @@ export default function QaDashboard() {
     dateFrom,
     dateTo,
     perPage,
-    pageClamped,
+    page,
     searchText,
     formNoFrom,
     formNoTo,
@@ -2975,9 +3007,10 @@ export default function QaDashboard() {
                 ))}
               </select>
 
-              <button
+             <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                // onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2990,7 +3023,7 @@ export default function QaDashboard() {
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
+                  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                 }
                 disabled={pageClamped === totalPages}
               >
