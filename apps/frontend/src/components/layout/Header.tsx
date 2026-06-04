@@ -33,7 +33,7 @@ export default function Header() {
       { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
-      { label : "Report Management", path:"/manage-reports"},
+      { label: "Report Management", path: "/manage-reports" },
       { label: "Support", path: "/support" },
     ],
     CLIENT: [
@@ -49,7 +49,7 @@ export default function Header() {
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
-       { label : "Report Management", path:"/manage-reports"},
+      { label: "Report Management", path: "/manage-reports" },
       { label: "Support Tickets", path: "/supportTickets" },
       { label: "More", path: "/more" },
     ],
@@ -506,6 +506,17 @@ export default function Header() {
                   >
                     {item.label}
                   </Link>
+                  // <Link
+                  //   key={item.path}
+                  //   to={
+                  //     item.label === "Home"
+                  //       ? item.path
+                  //       : toRemembered(item.path)
+                  //   }
+                  //   className="hover:underline"
+                  // >
+                  //   {item.label}
+                  // </Link>
                 ),
               )}
               {/* {(role === "ADMIN" || role === "SYSTEMADMIN") && (

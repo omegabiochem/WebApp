@@ -546,7 +546,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  // const initialFilters = getInitialAdminFilters();
+ 
 
   const FILTER_STORAGE_KEY = `adminDashboardFilters:user:${userKey || "admin"}`;
   const initialFilters = getInitialAdminFilters(
@@ -1174,6 +1174,22 @@ export default function AdminDashboard() {
     sortOrder,
   ]);
 
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem("/adminDashboard:lastSearch", `?${sp.toString()}`);
+    sessionStorage.setItem("lastSearch:/adminDashboard", `?${sp.toString()}`);
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
+
   useEffect(() => {
     if (!hydratedFromUrlRef.current) return;
 
@@ -1200,7 +1216,11 @@ export default function AdminDashboard() {
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
     if (perPage !== 10) sp.set("pp", String(perPage));
-    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+    if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
     if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
     if (sp.toString() !== searchParams.toString()) {
@@ -1221,7 +1241,7 @@ export default function AdminDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
-    pageClamped,
+    page,
     selectedIds,
     dateField,
     sortOrder,
@@ -1256,6 +1276,7 @@ export default function AdminDashboard() {
 
     hydratedFromUrlRef.current = true;
   }, [searchParams, FILTER_STORAGE_KEY]);
+  
 
   useEffect(() => {
     if (!hydratedFromUrlRef.current) return;
@@ -3048,7 +3069,7 @@ export default function AdminDashboard() {
 
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -3059,7 +3080,7 @@ export default function AdminDashboard() {
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
+                  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                 }
                 disabled={pageClamped === totalPages}
               >

@@ -982,6 +982,26 @@ export class ReportsService {
     // remove non-details keys from body that would collide with Report fields
     const { formType: _ft, clientCode: _cc, ...rest } = body;
 
+    // const MICRO_FOOTER_REV_NO = 'Rev-02';
+    // const MICRO_FOOTER_DATE_EFFECTIVE = new Date('2026-06-03T00:00:00.000Z');
+
+    const FOOTER_BY_FORM_TYPE = {
+      MICRO_MIX: {
+        footerRevNo: 'Rev-02',
+        footerDateEffective: new Date('2026-06-03T12:00:00.000Z'),
+      },
+      MICRO_MIX_WATER: {
+        footerRevNo: 'Rev-01',
+        footerDateEffective: new Date('2026-03-10T12:00:00.000Z'),
+      },
+      STERILITY: {
+        footerRevNo: 'Rev-01',
+        footerDateEffective: new Date('2026-03-10T12:00:00.000Z'),
+      },
+    } as const;
+
+    const footerDefaults = FOOTER_BY_FORM_TYPE[formType];
+
     const created = await this.prisma.report.create({
       data: {
         clientCode,
@@ -992,7 +1012,11 @@ export class ReportsService {
         createdBy: user.userId,
         updatedBy: user.userId,
         [relationKey]: {
-          create: this._coerce(rest), // everything else goes into details
+          create: this._coerce({
+            ...rest,
+            footerRevNo: footerDefaults.footerRevNo,
+            footerDateEffective: footerDefaults.footerDateEffective,
+          }),
         },
       },
       include: {

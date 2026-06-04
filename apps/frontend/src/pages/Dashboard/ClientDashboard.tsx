@@ -1153,6 +1153,23 @@ export default function ClientDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem("/clientDashboard:lastSearch", `?${sp.toString()}`);
+
+    sessionStorage.setItem("lastSearch:/clientDashboard", `?${sp.toString()}`);
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
+
   // Reset to page 1 when the core filters change
   useEffect(() => {
     setPage(1);
@@ -1224,7 +1241,13 @@ export default function ClientDashboard() {
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
     sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped));
+    // sp.set("p", String(pageClamped));
+
+    if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
 
     sp.set("dp", datePreset);
     if (datePreset === "CUSTOM") {
@@ -1250,7 +1273,7 @@ export default function ClientDashboard() {
     sortBy,
     sortDir,
     perPage,
-    pageClamped,
+    page,
     datePreset,
     fromDate,
     toDate,
@@ -2870,7 +2893,9 @@ export default function ClientDashboard() {
                 </select>
                 <button
                   className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                  onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                  onClick={() =>
+                    saveDashboardPage(Math.max(1, pageClamped - 1))
+                  }
                   disabled={pageClamped === 1}
                 >
                   Prev
@@ -2881,7 +2906,7 @@ export default function ClientDashboard() {
                 <button
                   className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                   onClick={() =>
-                    setPage((p: number) => Math.min(totalPages, p + 1))
+                    saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                   }
                   disabled={pageClamped === totalPages}
                 >

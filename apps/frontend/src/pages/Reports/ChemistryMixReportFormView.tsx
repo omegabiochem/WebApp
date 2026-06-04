@@ -716,7 +716,15 @@ export default function ChemistryMixReportFormView(
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const FOOTER_NOTE = "Rev-02 [Date Effective : 03/10/2026]";
+  // const FOOTER_NOTE = "Rev-02 [Date Effective : 03/10/2026]";
+  const footerRevNo = report?.footerRevNo || "Rev-02";
+  const footerDateEffective = report?.footerDateEffective
+    ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
+        timeZone: "UTC",
+      })
+    : "03/10/2026";
+
+  const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
   const BLUR_SIGNATURE_STATUSES = new Set([
     "DRAFT",

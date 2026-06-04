@@ -1022,6 +1022,29 @@ export default function ChemistryDashboard() {
   const start = (pageClamped - 1) * perPage;
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
+
+useEffect(() => {
+  setPage(1);
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  searchText,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+  perPage,
+  activeFilter,
+  datePreset,
+  fromDate,
+  toDate,
+]);
+  
   useEffect(() => {
     setSelectedIds([]);
   }, [
@@ -1063,7 +1086,11 @@ export default function ChemistryDashboard() {
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
     sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped));
+    if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
 
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
@@ -1098,7 +1125,7 @@ export default function ChemistryDashboard() {
     sortBy,
     sortDir,
     perPage,
-    pageClamped,
+    page,
     activeFilter,
     datePreset,
     fromDate,
@@ -1106,6 +1133,34 @@ export default function ChemistryDashboard() {
     selectedIds,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    const next = getInitialChemistryFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearchText(next.searchText);
+
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+
+    setActiveFilter(next.activeFilter);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+
+    hydratedFromUrlRef.current = true;
+  }, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     if (!hydratedFromUrlRef.current) return;
@@ -1202,33 +1257,6 @@ export default function ChemistryDashboard() {
   //   if (nextTo !== toDate) setToDate(nextTo);
   // }, [searchParams]);
 
-  useEffect(() => {
-    const next = getInitialChemistryFilters(searchParams, FILTER_STORAGE_KEY);
-
-    setFormFilter(next.formFilter);
-    setStatusFilter(next.statusFilter);
-    setSearchClient(next.searchClient);
-    setSearchReport(next.searchReport);
-    setSearchText(next.searchText);
-
-    setNumberRangeType(next.numberRangeType);
-    setFormNoFrom(next.formNoFrom);
-    setFormNoTo(next.formNoTo);
-    setReportNoFrom(next.reportNoFrom);
-    setReportNoTo(next.reportNoTo);
-
-    setSortBy(next.sortBy);
-    setSortDir(next.sortDir);
-    setPerPage(next.perPage);
-    setPage(next.page);
-
-    setActiveFilter(next.activeFilter);
-    setDatePreset(next.datePreset);
-    setFromDate(next.fromDate);
-    setToDate(next.toDate);
-
-    hydratedFromUrlRef.current = true;
-  }, [searchParams, FILTER_STORAGE_KEY]);
   function canUpdateThisChemistryReportLocal(r: Report, user?: any) {
     if (isTerminalStatus(r.status)) return false;
     const chemistryFieldsUsedOnForm = [
@@ -1360,27 +1388,29 @@ export default function ChemistryDashboard() {
     return nextStatus;
   }
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    sortBy,
-    sortDir,
-    perPage,
-    activeFilter,
-    datePreset,
-    fromDate,
-    toDate,
-  ]);
+
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem(
+      "/chemistryDashboard:lastSearch",
+      `?${sp.toString()}`,
+    );
+
+    sessionStorage.setItem(
+      "lastSearch:/chemistryDashboard",
+      `?${sp.toString()}`,
+    );
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
 
   useEffect(() => {
     const now = new Date();
@@ -2769,7 +2799,7 @@ export default function ChemistryDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2780,7 +2810,7 @@ export default function ChemistryDashboard() {
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
+                  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                 }
                 disabled={pageClamped === totalPages}
               >

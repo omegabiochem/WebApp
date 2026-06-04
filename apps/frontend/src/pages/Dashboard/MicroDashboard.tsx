@@ -343,6 +343,32 @@ function BulkPrintArea({
   );
 }
 
+const DEFAULT_MICRO_FILTERS = {
+  formFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY",
+  statusFilter: "ALL",
+  searchClient: "",
+  searchReport: "",
+  searchText: "",
+  numberRangeType: "FORM" as "FORM" | "REPORT",
+  formNoFrom: "",
+  formNoTo: "",
+  reportNoFrom: "",
+  reportNoTo: "",
+  sortBy: "dateSent" as
+    | "dateSent"
+    | "reportNumber"
+    | "dateTested"
+    | "createdAt"
+    | "updatedAt",
+  sortDir: "desc" as "asc" | "desc",
+  activeFilter: "ALL",
+  perPage: 10,
+  page: 1,
+  datePreset: "ALL" as DatePreset,
+  fromDate: "",
+  toDate: "",
+};
+
 function extractYearAndSequence(value?: string | number | null): {
   year: number | null;
   sequence: number | null;
@@ -392,35 +418,26 @@ function inRange(
 // Component
 // -----------------------------
 export default function MicroDashboard() {
+  const location = useLocation();
+  const { user } = useAuth();
+
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "micro";
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const DEFAULT_MICRO_FILTERS = {
-    formFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY",
-    statusFilter: "ALL",
-    searchClient: "",
-    searchReport: "",
-    searchText: "",
-    numberRangeType: "FORM" as "FORM" | "REPORT",
-    formNoFrom: "",
-    formNoTo: "",
-    reportNoFrom: "",
-    reportNoTo: "",
-    sortBy: "dateSent" as
-      | "dateSent"
-      | "reportNumber"
-      | "dateTested"
-      | "createdAt"
-      | "updatedAt",
-    sortDir: "desc" as "asc" | "desc",
-    perPage: 10,
-    page: 1,
-    datePreset: "ALL" as DatePreset,
-    fromDate: "",
-    toDate: "",
-  };
+  const FILTER_STORAGE_KEY = `microDashboardFilters:user:${userKey || "micro"}`;
+
+  const initialFilters = getInitialMicroFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
 
   function getInitialMicroFilters(
     searchParams: URLSearchParams,
@@ -508,16 +525,6 @@ export default function MicroDashboard() {
 
     return DEFAULT_MICRO_FILTERS;
   }
-
-  const location = useLocation();
-  const { user } = useAuth();
-
-  const userKey =
-    (user as any)?.id ||
-    (user as any)?.userId ||
-    (user as any)?.sub ||
-    (user as any)?.uid ||
-    "micro";
 
   const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
   const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
@@ -687,13 +694,6 @@ export default function MicroDashboard() {
     });
   };
 
-  const FILTER_STORAGE_KEY = `microDashboardFilters:user:${userKey}`;
-
-  const initialFilters = getInitialMicroFilters(
-    searchParams,
-    FILTER_STORAGE_KEY,
-  );
-
   type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
 
   const [formFilter, setFormFilter] = useState<FormFilter>(
@@ -856,33 +856,6 @@ export default function MicroDashboard() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    const next = getInitialMicroFilters(searchParams, FILTER_STORAGE_KEY);
-
-    setFormFilter(next.formFilter);
-    setStatusFilter(next.statusFilter);
-    setSearchClient(next.searchClient);
-    setSearchReport(next.searchReport);
-    setSearchText(next.searchText);
-
-    setNumberRangeType(next.numberRangeType);
-    setFormNoFrom(next.formNoFrom);
-    setFormNoTo(next.formNoTo);
-    setReportNoFrom(next.reportNoFrom);
-    setReportNoTo(next.reportNoTo);
-
-    setSortBy(next.sortBy);
-    setSortDir(next.sortDir);
-    setPerPage(next.perPage);
-    setPage(next.page);
-
-    setDatePreset(next.datePreset);
-    setFromDate(next.fromDate);
-    setToDate(next.toDate);
-
-    hydratedFromUrlRef.current = true;
-  }, [searchParams, FILTER_STORAGE_KEY]);
 
   const correctionCloseTimerRef = React.useRef<number | null>(null);
 
@@ -1096,6 +1069,22 @@ export default function MicroDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem("/microDashboard:lastSearch", `?${sp.toString()}`);
+    sessionStorage.setItem("lastSearch:/microDashboard", `?${sp.toString()}`);
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
+
   useEffect(() => {
     setPage(1);
   }, [
@@ -1109,11 +1098,41 @@ export default function MicroDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    sortBy,
+    sortDir,
     perPage,
     datePreset,
     fromDate,
     toDate,
   ]);
+
+  // const didHydrateRef = React.useRef(false);
+
+  // useEffect(() => {
+  //   if (!hydratedFromUrlRef.current) return;
+
+  //   if (!didHydrateRef.current) {
+  //     didHydrateRef.current = true;
+  //     return;
+  //   }
+
+  //   setPage(1);
+  // }, [
+  //   formFilter,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   searchText,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   perPage,
+  //   datePreset,
+  //   fromDate,
+  //   toDate,
+  // ]);
 
   function canUpdateThisReportLocal(r: Report, user?: any) {
     if (isTerminalStatus(r.status)) return false;
@@ -1178,7 +1197,13 @@ export default function MicroDashboard() {
     sp.set("sortBy", sortBy);
     sp.set("sortDir", sortDir);
     sp.set("pp", String(perPage));
-    sp.set("p", String(pageClamped));
+    // sp.set("p", String(pageClamped));
+
+    if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
     sp.set("dp", datePreset);
 
     if (fromDate) sp.set("from", fromDate);
@@ -1208,13 +1233,40 @@ export default function MicroDashboard() {
     sortBy,
     sortDir,
     perPage,
-    pageClamped,
+    page,
     datePreset,
     fromDate,
     toDate,
     searchParams,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    const next = getInitialMicroFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearchText(next.searchText);
+
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+
+    hydratedFromUrlRef.current = true;
+  }, [searchParams, FILTER_STORAGE_KEY]);
   useEffect(() => {
     statusChipRefs.current = {};
   }, [formFilter]);
@@ -2780,7 +2832,7 @@ export default function MicroDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2791,7 +2843,7 @@ export default function MicroDashboard() {
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
+                  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                 }
                 disabled={pageClamped === totalPages}
               >

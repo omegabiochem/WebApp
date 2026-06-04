@@ -93,6 +93,10 @@ export type MicroMixReportFormValues = {
   reviewedDate: string;
 
   pathogens: PathRow[];
+
+  // added for footer control
+//   footerRevNo: string;
+// footerDateEffective: string;
 };
 
 export type MicroMixWaterReportFormValues = {
@@ -125,6 +129,8 @@ export type MicroMixWaterReportFormValues = {
   reviewedDate: string;
 
   pathogens: PathRow[];
+//   footerRevNo: string;
+// footerDateEffective: string;
 };
 
 // Centralized field requirements per role (no layout impact)

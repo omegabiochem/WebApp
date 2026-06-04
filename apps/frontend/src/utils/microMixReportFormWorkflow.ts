@@ -223,7 +223,7 @@ export const STATUS_TRANSITIONS: Record<
       "UNDER_QA_FINAL_REVIEW",
     ],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
-    canEdit: ["MICRO", "MC"],
+    canEdit: ["MICRO", "MC","SYSTEMADMIN"],
   },
   FINAL_TESTING_ON_HOLD: {
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],

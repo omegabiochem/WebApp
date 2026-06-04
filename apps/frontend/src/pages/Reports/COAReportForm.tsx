@@ -1787,7 +1787,7 @@ function formatStatusText(status: string) {
                 <input
                   className={inputClass("dateSent", "flex-1")}
                   type="date"
-                  min={todayISO()}
+                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     if (selectingCorrections) return;

@@ -1,4 +1,4 @@
-// AdminDashboard.tsx
+// SystemAdminDashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
@@ -1136,7 +1136,34 @@ export default function SystemAdminDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
+  // const didMountPageResetRef = React.useRef(false);
+
+  function saveDashboardPage(nextPage: number) {
+    const sp = new URLSearchParams(searchParams);
+
+    if (nextPage > 1) {
+      sp.set("p", String(nextPage));
+    } else {
+      sp.delete("p");
+    }
+
+    sessionStorage.setItem(
+      "/systemAdminDashboard:lastSearch",
+      `?${sp.toString()}`,
+    );
+
+    sessionStorage.setItem(
+      "lastSearch:/systemAdminDashboard",
+      `?${sp.toString()}`,
+    );
+
+    setSearchParams(sp, { replace: true });
+    setPage(nextPage);
+  }
+
   useEffect(() => {
+
+
     setPage(1);
   }, [
     formFilter,
@@ -1183,7 +1210,12 @@ export default function SystemAdminDashboard() {
     if (reportNoTo.trim()) sp.set("reportTo", reportNoTo.trim());
 
     if (perPage !== 10) sp.set("pp", String(perPage));
-    if (pageClamped !== 1) sp.set("p", String(pageClamped));
+    // if (pageClamped !== 1) sp.set("p", String(pageClamped));
+    if (page !== 1) {
+      sp.set("p", String(page));
+    } else {
+      sp.delete("p");
+    }
     if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
     if (sp.toString() !== searchParams.toString()) {
@@ -1204,7 +1236,8 @@ export default function SystemAdminDashboard() {
     reportNoFrom,
     reportNoTo,
     perPage,
-    pageClamped,
+    // pageClamped,
+    page,
     selectedIds,
     dateField,
     sortOrder,
@@ -3051,7 +3084,8 @@ export default function SystemAdminDashboard() {
 
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                // onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -3061,8 +3095,11 @@ export default function SystemAdminDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+                // onClick={() =>
+                //   setPage((p: number) => Math.min(totalPages, p + 1))
+                // }
                 onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
+                  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
                 }
                 disabled={pageClamped === totalPages}
               >

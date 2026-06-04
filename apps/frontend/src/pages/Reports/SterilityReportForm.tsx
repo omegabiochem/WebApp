@@ -1901,7 +1901,7 @@ export default function SterilityReportForm({
                       : ""
                   }`}
                   type="date"
-                  min={todayISO()}
+                   min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);
