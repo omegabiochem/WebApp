@@ -179,7 +179,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
   CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
   UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+ CORRECTION_REQUESTED: {
+    label: "Raise Correction",
+    color: "bg-yellow-600",
+  },
   UNDER_CORRECTION_UPDATE: {
     label: "Approve",
     color: "bg-green-800",
@@ -949,19 +952,48 @@ export default function ChemistryMixSubmissionForm({
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
+    // const isNeeds =
+    //   target === "FRONTDESK_NEEDS_CORRECTION" ||
+    //   target === "TESTING_NEEDS_CORRECTION" ||
+    //   target === "QA_NEEDS_CORRECTION" ||
+    //   target === "ADMIN_NEEDS_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_CORRECTION" ||
+    //   target === "CHANGE_REQUESTED" ||
+    //   target === "CORRECTION_REQUESTED";
 
-    if (isNeeds) {
+    // if (isNeeds) {
+    //   setSelectingCorrections(true);
+    //   setPendingCorrections([]);
+    //   setPendingStatus(target);
+    //   return;
+    // }
+
+    //     const OLD_NEEDS_CORRECTION_STATUSES = new Set<ReportStatus>([
+    //   "FRONTDESK_NEEDS_CORRECTION",
+    //   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+    //   "FINAL_TESTING_NEEDS_CORRECTION",
+    //   "QA_NEEDS_PRELIMINARY_CORRECTION",
+    //   "QA_NEEDS_FINAL_CORRECTION",
+    //   "ADMIN_NEEDS_CORRECTION",
+    //   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    //   "CLIENT_NEEDS_FINAL_CORRECTION",
+    // ]);
+
+    const isCorrectionAction =
+      // OLD_NEEDS_CORRECTION_STATUSES.has(target) ||
+      target === "CHANGE_REQUESTED" || target === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       setSelectingCorrections(true);
       setPendingCorrections([]);
-      setPendingStatus(target);
+
+      // ✅ old Needs Correction button now uses centralized status
+      const centralizedTarget =
+        target === "CHANGE_REQUESTED"
+          ? "CHANGE_REQUESTED"
+          : "CORRECTION_REQUESTED";
+
+      setPendingStatus(centralizedTarget as ChemistryReportStatus);
       return;
     }
 
@@ -1397,19 +1429,19 @@ export default function ChemistryMixSubmissionForm({
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        newStatus === "RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        // newStatus === "QA_NEEDS_CORRECTION" ||
+        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        newStatus === "TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "CHANGE_REQUESTED" ||
         newStatus === "CORRECTION_REQUESTED" ||
         newStatus === "UNDER_CHANGE_UPDATE" ||
@@ -2587,7 +2619,7 @@ export default function ChemistryMixSubmissionForm({
                 <input
                   id="f-dateReceived"
                   type="date"
-                min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
+                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   className={`
                       w-[80px] border-0 border-b outline-none text-[11px]
                       ${

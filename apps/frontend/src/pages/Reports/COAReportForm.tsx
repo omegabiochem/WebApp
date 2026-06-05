@@ -175,7 +175,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
   CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
   UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+ CORRECTION_REQUESTED: {
+    label: "Raise Correction",
+    color: "bg-yellow-600",
+  },
   UNDER_CORRECTION_UPDATE: {
     label: "Approve",
     color: "bg-green-800",
@@ -220,8 +223,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
     />
   );
 }
-
-
 
 function eSignActionTitle(status?: string | null) {
   const s = String(status || "");
@@ -287,8 +288,6 @@ export default function COAReportForm({
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
 
-  
-
   type TestType = "COA_VERIFICATION";
   const [_testTypes, setTestTypes] = useState<TestType[]>(
     report?.testTypes?.length ? report.testTypes : ["COA_VERIFICATION"],
@@ -342,8 +341,6 @@ export default function COAReportForm({
 
   const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
 
- 
-
   // ---- comments / signatures ----
   const [comments, setComments] = useState(report?.comments || "");
   const [testedBy, setTestedBy] = useState(report?.testedBy || "");
@@ -391,14 +388,12 @@ export default function COAReportForm({
 
     return navigate("/", { replace: true });
   };
- 
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
     () => corrections.filter((c) => c.status === "OPEN"),
     [corrections],
   );
-
 
   const hasCorrection = (keyOrPrefix: string) =>
     hasOpenCorrectionKey(keyOrPrefix);
@@ -600,8 +595,6 @@ export default function COAReportForm({
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
-  
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [autoFillSnapshot, setAutoFillSnapshot] = useState<{
     testedBy?: string;
@@ -769,23 +762,52 @@ export default function COAReportForm({
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
+    // const isNeeds =
+    //   target === "FRONTDESK_NEEDS_CORRECTION" ||
+    //   target === "TESTING_NEEDS_CORRECTION" ||
+    //   target === "QA_NEEDS_CORRECTION" ||
+    //   target === "ADMIN_NEEDS_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_CORRECTION" ||
+    //   target === "CHANGE_REQUESTED" ||
+    //   target === "CORRECTION_REQUESTED";
 
-    if (isNeeds) {
+    // if (isNeeds) {
+    //   setSelectingCorrections(true);
+    //   setPendingCorrections([]);
+    //   setPendingStatus(target);
+    //   return;
+    // }
+
+    //     const OLD_NEEDS_CORRECTION_STATUSES = new Set<ReportStatus>([
+    //   "FRONTDESK_NEEDS_CORRECTION",
+    //   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+    //   "FINAL_TESTING_NEEDS_CORRECTION",
+    //   "QA_NEEDS_PRELIMINARY_CORRECTION",
+    //   "QA_NEEDS_FINAL_CORRECTION",
+    //   "ADMIN_NEEDS_CORRECTION",
+    //   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    //   "CLIENT_NEEDS_FINAL_CORRECTION",
+    // ]);
+
+    const isCorrectionAction =
+      // OLD_NEEDS_CORRECTION_STATUSES.has(target) ||
+      target === "CHANGE_REQUESTED" || target === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       setSelectingCorrections(true);
       setPendingCorrections([]);
-      setPendingStatus(target);
+
+      // ✅ old Needs Correction button now uses centralized status
+      const centralizedTarget =
+        target === "CHANGE_REQUESTED"
+          ? "CHANGE_REQUESTED"
+          : "CORRECTION_REQUESTED";
+
+      setPendingStatus(centralizedTarget as COAReportStatus);
       return;
     }
 
-      // existing path (incl. e-sign if required)
+    // existing path (incl. e-sign if required)
     if (uiNeedsESign(target)) {
       const shouldAutoFillTestingSignature =
         status === "UNDER_TESTING_REVIEW" &&
@@ -1198,19 +1220,19 @@ export default function COAReportForm({
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        newStatus === "RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        // newStatus === "QA_NEEDS_CORRECTION" ||
+        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        newStatus === "TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "CHANGE_REQUESTED" ||
         newStatus === "CORRECTION_REQUESTED" ||
         newStatus === "UNDER_CHANGE_UPDATE" ||
@@ -1234,7 +1256,7 @@ export default function COAReportForm({
       // }
 
       if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return false  ;
+        return false;
       }
 
       // 3) Ensure latest edits are saved
@@ -1278,12 +1300,12 @@ export default function COAReportForm({
         // else if (role === "QA") navigate("/qaDashboard");
         // else if (role === "ADMIN") navigate("/adminDashboard");
         // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
-               if (embedded) return true;
+        if (embedded) return true;
         backToDashboard();
-             return true;
+        return true;
       } catch (err: any) {
         console.error(err);
-           const msg =
+        const msg =
           err?.response?.data?.message ||
           err?.response?.message ||
           err?.message ||
@@ -1408,8 +1430,6 @@ export default function COAReportForm({
       busyRef.current = false;
     }
   }
-
-
 
   const HIDE_SIGNATURES_FOR = new Set<COAReportStatus>([
     "DRAFT",
@@ -1572,7 +1592,7 @@ export default function COAReportForm({
     return false; // ✅ allow
   }
 
-function formatStatusText(status: string) {
+  function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
 
@@ -1610,7 +1630,6 @@ function formatStatusText(status: string) {
   const displayReviewedDate = previewReviewSignature
     ? todayISO()
     : reviewedDate;
-  
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2615,14 +2634,14 @@ function formatStatusText(status: string) {
                             className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                             onClick={() => requestStatusChange(targetStatus)}
                             // disabled={disabled}
-                         title={formatStatusText(targetStatus)}
+                            title={formatStatusText(targetStatus)}
                           >
                             {busy === "STATUS" && <Spinner />}
-                                {label === "Approve" ? "Approve" : label}
+                            {label === "Approve" ? "Approve" : label}
                           </button>
 
                           {/* 🔥 Custom tooltip */}
-                       <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
                             {label} → {formatStatusText(targetStatus)}
                           </div>
                         </div>
@@ -2634,7 +2653,7 @@ function formatStatusText(status: string) {
             </div>
           </div>
         )}
-       {canShowFloatingUi && showESign && (
+      {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           role="dialog"

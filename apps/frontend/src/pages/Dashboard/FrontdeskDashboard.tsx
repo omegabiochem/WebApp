@@ -108,7 +108,7 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
 ];
 
 // used to know which viewer to render

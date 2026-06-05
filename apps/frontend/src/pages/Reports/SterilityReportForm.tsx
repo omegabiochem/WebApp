@@ -86,7 +86,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
   CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
   UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+  CORRECTION_REQUESTED: {
+    label: "Raise Correction",
+    color: "bg-yellow-600",
+  },
   UNDER_CORRECTION_UPDATE: {
     label: "Approve",
     color: "bg-green-800",
@@ -650,19 +653,37 @@ export default function SterilityReportForm({
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
+    // const isNeeds =
+    //   target === "FRONTDESK_NEEDS_CORRECTION" ||
+    //   target === "TESTING_NEEDS_CORRECTION" ||
+    //   target === "QA_NEEDS_CORRECTION" ||
+    //   target === "ADMIN_NEEDS_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_CORRECTION" ||
+    //   target === "CHANGE_REQUESTED" ||
+    //   target === "CORRECTION_REQUESTED";
 
-    if (isNeeds) {
+    // if (isNeeds) {
+    //   setSelectingCorrections(true);
+    //   setPendingCorrections([]);
+    //   setPendingStatus(target);
+    //   return;
+    // }
+
+    const isCorrectionAction =
+      // OLD_NEEDS_CORRECTION_STATUSES.has(target) ||
+      target === "CHANGE_REQUESTED" || target === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       setSelectingCorrections(true);
       setPendingCorrections([]);
-      setPendingStatus(target);
+
+      // ✅ old Needs Correction button now uses centralized status
+      const centralizedTarget =
+        target === "CHANGE_REQUESTED"
+          ? "CHANGE_REQUESTED"
+          : "CORRECTION_REQUESTED";
+
+      setPendingStatus(centralizedTarget as SterilityReportStatus);
       return;
     }
 
@@ -1267,19 +1288,19 @@ export default function SterilityReportForm({
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        newStatus === "RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        // newStatus === "QA_NEEDS_CORRECTION" ||
+        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        newStatus === "TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "LOCKED" ||
         newStatus === "APPROVED"
       ) {
@@ -1595,8 +1616,9 @@ export default function SterilityReportForm({
   function isCorrectionUpdateStatus(s?: SterilityReportStatus) {
     return (
       s === "UNDER_CORRECTION_UPDATE" ||
-      s === "UNDER_CHANGE_UPDATE" ||
-      s === "UNDER_CLIENT_CORRECTION"
+      s === "UNDER_CHANGE_UPDATE"
+      //  ||
+      // s === "UNDER_CLIENT_CORRECTION"
     );
   }
 
@@ -1901,7 +1923,7 @@ export default function SterilityReportForm({
                       : ""
                   }`}
                   type="date"
-                   min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
+                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);

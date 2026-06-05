@@ -160,56 +160,22 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ['MICRO', 'MC', 'SYSTEMADMIN', 'ADMIN'],
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CLIENT_NEEDS_PRELIMINARY_CORRECTION', 'PRELIMINARY_APPROVED'],
+    next: ['CORRECTION_REQUESTED', 'PRELIMINARY_APPROVED'],
     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_CLIENT_PRELIMINARY_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT'],
-  },
-  UNDER_CLIENT_FINAL_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT'],
-  },
+
   UNDER_CLIENT_FINAL_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
+    next: ['FINAL_APPROVED', 'CORRECTION_REQUESTED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  CLIENT_NEEDS_FINAL_CORRECTION: {
-    canSet: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  FINAL_RESUBMISSION_BY_CLIENT: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+
   PRELIMINARY_APPROVED: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_FINAL_TESTING_REVIEW'],
@@ -220,25 +186,20 @@ const STATUS_TRANSITIONS = {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: ["FRONTDESK", "SYSTEMADMIN"],
+    canEdit: [],
   },
   FRONTDESK_ON_HOLD: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
-    canEdit: [],
+    canEdit: ['FRONTDESK', 'SYSTEMADMIN'],
   },
-  FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+
   UNDER_PRELIMINARY_TESTING_REVIEW: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'PRELIMINARY_TESTING_ON_HOLD',
-      'PRELIMINARY_TESTING_NEEDS_CORRECTION',
+      'CORRECTION_REQUESTED',
       'UNDER_QA_PRELIMINARY_REVIEW',
     ],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
@@ -248,122 +209,58 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
+    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_PRELIMINARY_CORRECTION'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: [],
-  },
+
   UNDER_QA_PRELIMINARY_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: [
-      'QA_NEEDS_PRELIMINARY_CORRECTION',
-      'UNDER_CLIENT_PRELIMINARY_REVIEW',
-    ],
+    next: ['CORRECTION_REQUESTED', 'UNDER_CLIENT_PRELIMINARY_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  QA_NEEDS_PRELIMINARY_CORRECTION: {
-    canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_PRELIMINARY_REVIEW'],
-    nextEditableBy: ['CLIENT'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  },
-  PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_PRELIMINARY_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+
   UNDER_FINAL_TESTING_REVIEW: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'FINAL_TESTING_ON_HOLD',
-      'FINAL_TESTING_NEEDS_CORRECTION',
+      'CORRECTION_REQUESTED',
       'UNDER_QA_FINAL_REVIEW',
     ],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC'],
+    canEdit: ['MICRO', 'MC', 'SYSTEMADMIN'],
   },
   FINAL_TESTING_ON_HOLD: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['FINAL_TESTING_NEEDS_CORRECTION', 'UNDER_FINAL_TESTING_REVIEW'],
+    next: ['CORRECTION_REQUESTED', 'UNDER_FINAL_TESTING_REVIEW'],
     nextEditableBy: ['CLIENT', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit:  ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
-  },
-  FINAL_TESTING_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_FINAL_CORRECTION'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_RESUBMISSION_QA_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
-  FINAL_RESUBMISSION_BY_TESTING: {
-    canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_FINAL_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: ['QA', 'SYSTEMADMIN'],
-  },
+
   UNDER_QA_FINAL_REVIEW: {
-    canSet: ['MICRO', 'MC', 'QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_FINAL_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    canSet: ['QA', 'SYSTEMADMIN'],
+    next: ['CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
-  },
-  QA_NEEDS_FINAL_CORRECTION: {
-    canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_FINAL_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'QA', 'SYSTEMADMIN'],
   },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: [
-      'ADMIN_NEEDS_CORRECTION',
+      'CORRECTION_REQUESTED',
       'ADMIN_REJECTED',
       'UNDER_CLIENT_FINAL_REVIEW',
     ],
     nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  ADMIN_NEEDS_CORRECTION: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_FINAL_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_FINAL_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+
   FINAL_APPROVED: {
     canSet: [],
     next: [],
@@ -382,24 +279,13 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: ['SYSTEMADMIN'],
     canEdit: [],
   },
-
   CHANGE_REQUESTED: {
-    canSet: [
-      'CLIENT',
-      'FRONTDESK',
-      'MICRO',
-      'CHEMISTRY',
-      'MC',
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_CHANGE_UPDATE'],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -409,13 +295,20 @@ const STATUS_TRANSITIONS = {
   },
 
   UNDER_CHANGE_UPDATE: {
-    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
     next: [],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -425,7 +318,6 @@ const STATUS_TRANSITIONS = {
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -434,22 +326,12 @@ const STATUS_TRANSITIONS = {
   },
 
   CORRECTION_REQUESTED: {
-    canSet: [
-      'CLIENT',
-      'FRONTDESK',
-      'MICRO',
-      'CHEMISTRY',
-      'MC',
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_CORRECTION_UPDATE'],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -459,13 +341,20 @@ const STATUS_TRANSITIONS = {
   },
 
   UNDER_CORRECTION_UPDATE: {
-    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
     next: [],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -475,7 +364,6 @@ const STATUS_TRANSITIONS = {
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -484,13 +372,355 @@ const STATUS_TRANSITIONS = {
   },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
+// const STATUS_TRANSITIONS = {
+//   DRAFT: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_DRAFT_REVIEW: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+//     nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   SUBMITTED_BY_CLIENT: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_PRELIMINARY_REVIEW: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['CLIENT_NEEDS_PRELIMINARY_CORRECTION', 'PRELIMINARY_APPROVED'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_PRELIMINARY_CORRECTION: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_CLIENT_FINAL_CORRECTION: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_CLIENT_FINAL_REVIEW: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['FINAL_APPROVED', 'CLIENT_NEEDS_FINAL_CORRECTION'],
+//     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   PRELIMINARY_RESUBMISSION_BY_CLIENT: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_FINAL_CORRECTION: {
+//     canSet: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   FINAL_RESUBMISSION_BY_CLIENT: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   PRELIMINARY_APPROVED: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   RECEIVED_BY_FRONTDESK: {
+//     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_FINAL_REVIEW', 'FRONTDESK_ON_HOLD'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: ["FRONTDESK", "SYSTEMADMIN"],
+//   },
+//   FRONTDESK_ON_HOLD: {
+//     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   FRONTDESK_NEEDS_CORRECTION: {
+//     canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     next: ['SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_PRELIMINARY_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: [
+//       'PRELIMINARY_TESTING_ON_HOLD',
+//       'PRELIMINARY_TESTING_NEEDS_CORRECTION',
+//       'UNDER_QA_PRELIMINARY_REVIEW',
+//     ],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   PRELIMINARY_TESTING_ON_HOLD: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
+//   },
+//   PRELIMINARY_TESTING_NEEDS_CORRECTION: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_PRELIMINARY_CORRECTION'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: [],
+//   },
+//   UNDER_QA_PRELIMINARY_REVIEW: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: [
+//       'QA_NEEDS_PRELIMINARY_CORRECTION',
+//       'UNDER_CLIENT_PRELIMINARY_REVIEW',
+//     ],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: ['QA', 'SYSTEMADMIN'],
+//   },
+//   QA_NEEDS_PRELIMINARY_CORRECTION: {
+//     canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_PRELIMINARY_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_PRELIMINARY_REVIEW'],
+//     nextEditableBy: ['CLIENT'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   PRELIMINARY_RESUBMISSION_BY_TESTING: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_PRELIMINARY_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: [
+//       'FINAL_TESTING_ON_HOLD',
+//       'FINAL_TESTING_NEEDS_CORRECTION',
+//       'UNDER_QA_FINAL_REVIEW',
+//     ],
+//     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC'],
+//   },
+//   FINAL_TESTING_ON_HOLD: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['FINAL_TESTING_NEEDS_CORRECTION', 'UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['CLIENT', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit:  ["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"],
+//   },
+//   FINAL_TESTING_NEEDS_CORRECTION: {
+//     canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_FINAL_CORRECTION'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_RESUBMISSION_QA_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   FINAL_RESUBMISSION_BY_TESTING: {
+//     canSet: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_FINAL_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['QA', 'SYSTEMADMIN'],
+//   },
+//   UNDER_QA_FINAL_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'QA', 'SYSTEMADMIN'],
+//     next: ['QA_NEEDS_FINAL_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['QA', 'SYSTEMADMIN'],
+//   },
+//   QA_NEEDS_FINAL_CORRECTION: {
+//     canSet: ['QA', 'MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_FINAL_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+
+//   UNDER_ADMIN_REVIEW: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: [
+//       'ADMIN_NEEDS_CORRECTION',
+//       'ADMIN_REJECTED',
+//       'UNDER_CLIENT_FINAL_REVIEW',
+//     ],
+//     nextEditableBy: ['ADMIN', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   ADMIN_NEEDS_CORRECTION: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_FINAL_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   ADMIN_REJECTED: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_FINAL_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   FINAL_APPROVED: {
+//     canSet: [],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   LOCKED: {
+//     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   VOID: {
+//     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+//     next: [],
+//     nextEditableBy: ['SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+
+//   CHANGE_REQUESTED: {
+//     canSet: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     next: ['UNDER_CHANGE_UPDATE'],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CHANGE_UPDATE: {
+//     canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//   },
+
+//   CORRECTION_REQUESTED: {
+//     canSet: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     next: ['UNDER_CORRECTION_UPDATE'],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CORRECTION_UPDATE: {
+//     canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//   },
+// } as const satisfies Partial<Record<ReportStatus, Transition>>;
+
 // 🔁 Keep this in sync with backend
-const STERILITY_STATUS_TRANSITIONS = {
+
+export const STERILITY_STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
     nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT'],
+    canEdit: ['CLIENT', 'SYSTEMADMIN'],
   },
   UNDER_DRAFT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
@@ -506,29 +736,29 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
   UNDER_CLIENT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
+    next: ['CORRECTION_REQUESTED', 'APPROVED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  CLIENT_NEEDS_CORRECTION: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT', 'SYSTEMADMIN'],
-  },
+  // CLIENT_NEEDS_CORRECTION: {
+  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+  //   next: ["UNDER_TESTING_REVIEW"],
+  //   nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+  //   canEdit: [],
+  // },
+  // UNDER_CLIENT_CORRECTION: {
+  //   canSet: ["CLIENT", "SYSTEMADMIN"],
+  //   next: ["UNDER_TESTING_REVIEW"],
+  //   nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+  //   canEdit: ["CLIENT", "SYSTEMADMIN"],
+  // },
 
-  RESUBMISSION_BY_CLIENT: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
-    canEdit: [],
-  },
+  // RESUBMISSION_BY_CLIENT: {
+  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+  //   next: ["UNDER_TESTING_REVIEW"],
+  //   nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
+  //   canEdit: [],
+  // },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
@@ -538,18 +768,18 @@ const STERILITY_STATUS_TRANSITIONS = {
   FRONTDESK_ON_HOLD: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
-    canEdit: ['FRONTDESK', 'SYSTEMADMIN'],
-  },
-  FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+    nextEditableBy: ['FRONTDESK'],
     canEdit: [],
   },
+  // FRONTDESK_NEEDS_CORRECTION: {
+  //   canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
+  //   next: ["SUBMITTED_BY_CLIENT"],
+  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+  //   canEdit: [],
+  // },
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'CORRECTION_REQUESTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
@@ -557,69 +787,69 @@ const STERILITY_STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: ['UNDER_TESTING_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  },
-  TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  },
-  RESUBMISSION_BY_TESTING: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+  // TESTING_NEEDS_CORRECTION: {
+  //   canSet: ["CLIENT", "SYSTEMADMIN"],
+  //   next: ["UNDER_CLIENT_CORRECTION"],
+  //   nextEditableBy: ["CLIENT"],
+  //   canEdit: [],
+  // },
+  // UNDER_RESUBMISSION_TESTING_REVIEW: {
+  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+  //   next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
+  //   nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+  //   canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+  // },
+  // RESUBMISSION_BY_TESTING: {
+  //   canSet: ["QA", "SYSTEMADMIN"],
+  //   next: ["UNDER_CLIENT_REVIEW"],
+  //   nextEditableBy: ["QA", "SYSTEMADMIN"],
+  //   canEdit: [],
+  // },
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    next: ['CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  QA_NEEDS_CORRECTION: {
-    canSet: ['QA', 'SYSTEMADMIN', 'MC', 'MICRO'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+  // QA_NEEDS_CORRECTION: {
+  //   canSet: ["QA", "SYSTEMADMIN", "MC", "MICRO"], // added MC and MICRO as they often need to make corrections based on QA feedback
+  //   next: ["UNDER_TESTING_REVIEW"],
+  //   nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+  //   canEdit: [],
+  // },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
+    next: ['CORRECTION_REQUESTED', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  ADMIN_NEEDS_CORRECTION: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+  // ADMIN_NEEDS_CORRECTION: {
+  //   canSet: ["ADMIN", "SYSTEMADMIN"],
+  //   next: ["UNDER_QA_REVIEW"],
+  //   nextEditableBy: ["QA", "SYSTEMADMIN"],
+  //   canEdit: ["ADMIN", "SYSTEMADMIN"],
+  // },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['QA', 'SYSTEMADMIN'],
-  },
-  UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+  // UNDER_RESUBMISSION_QA_REVIEW: {
+  //   canSet: ["QA", "SYSTEMADMIN"],
+  //   next: ["RECEIVED_BY_FRONTDESK"],
+  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+  //   canEdit: ["QA", "SYSTEMADMIN"],
+  // },
+  // UNDER_RESUBMISSION_ADMIN_REVIEW: {
+  //   canSet: ["ADMIN", "SYSTEMADMIN"],
+  //   next: ["RECEIVED_BY_FRONTDESK"],
+  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+  //   canEdit: ["ADMIN", "SYSTEMADMIN"],
+  // },
   APPROVED: {
     canSet: [],
     next: [],
@@ -640,22 +870,12 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
 
   CHANGE_REQUESTED: {
-    canSet: [
-      'CLIENT',
-      'FRONTDESK',
-      'MICRO',
-      'CHEMISTRY',
-      'MC',
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_CHANGE_UPDATE'],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -665,13 +885,20 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
 
   UNDER_CHANGE_UPDATE: {
-    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
     next: [],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -681,7 +908,6 @@ const STERILITY_STATUS_TRANSITIONS = {
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -690,22 +916,12 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
 
   CORRECTION_REQUESTED: {
-    canSet: [
-      'CLIENT',
-      'FRONTDESK',
-      'MICRO',
-      'CHEMISTRY',
-      'MC',
-      'QA',
-      'ADMIN',
-      'SYSTEMADMIN',
-    ],
+    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_CORRECTION_UPDATE'],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -715,13 +931,20 @@ const STERILITY_STATUS_TRANSITIONS = {
   },
 
   UNDER_CORRECTION_UPDATE: {
-    canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+    canSet: [
+      'CLIENT',
+      'FRONTDESK',
+      'MICRO',
+      'MC',
+      'QA',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ],
     next: [],
     nextEditableBy: [
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -731,7 +954,6 @@ const STERILITY_STATUS_TRANSITIONS = {
       'CLIENT',
       'FRONTDESK',
       'MICRO',
-      'CHEMISTRY',
       'MC',
       'QA',
       'ADMIN',
@@ -739,6 +961,261 @@ const STERILITY_STATUS_TRANSITIONS = {
     ],
   },
 } as const satisfies Partial<Record<ReportStatus, Transition>>;
+
+// const STERILITY_STATUS_TRANSITIONS = {
+//   DRAFT: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT', 'FRONTDESK', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT'],
+//   },
+//   UNDER_DRAFT_REVIEW: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['DRAFT', 'SUBMITTED_BY_CLIENT'], // ✅
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT', 'SYSTEMADMIN'],
+//   },
+//   SUBMITTED_BY_CLIENT: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_REVIEW: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
+//     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_CORRECTION: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_CORRECTION: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: ['CLIENT', 'SYSTEMADMIN'],
+//   },
+
+//   RESUBMISSION_BY_CLIENT: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['ADMIN', 'QA', 'MICRO', 'MC'],
+//     canEdit: [],
+//   },
+//   RECEIVED_BY_FRONTDESK: {
+//     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   FRONTDESK_ON_HOLD: {
+//     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
+//     canEdit: ['FRONTDESK', 'SYSTEMADMIN'],
+//   },
+//   FRONTDESK_NEEDS_CORRECTION: {
+//     canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     next: ['SUBMITTED_BY_CLIENT'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   TESTING_ON_HOLD: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   TESTING_NEEDS_CORRECTION: {
+//     canSet: ['CLIENT', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_CORRECTION'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+//   },
+//   RESUBMISSION_BY_TESTING: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: ['UNDER_CLIENT_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_QA_REVIEW: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['QA', 'SYSTEMADMIN'],
+//   },
+//   QA_NEEDS_CORRECTION: {
+//     canSet: ['QA', 'SYSTEMADMIN', 'MC', 'MICRO'],
+//     next: ['UNDER_TESTING_REVIEW'],
+//     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+
+//   UNDER_ADMIN_REVIEW: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
+//     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   ADMIN_NEEDS_CORRECTION: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   ADMIN_REJECTED: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['UNDER_QA_REVIEW'],
+//     nextEditableBy: ['QA', 'SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+//   UNDER_RESUBMISSION_QA_REVIEW: {
+//     canSet: ['QA', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: ['QA', 'SYSTEMADMIN'],
+//   },
+//   UNDER_RESUBMISSION_ADMIN_REVIEW: {
+//     canSet: ['ADMIN', 'SYSTEMADMIN'],
+//     next: ['RECEIVED_BY_FRONTDESK'],
+//     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+//     canEdit: ['ADMIN', 'SYSTEMADMIN'],
+//   },
+//   APPROVED: {
+//     canSet: [],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   LOCKED: {
+//     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   VOID: {
+//     canSet: ['CLIENT', 'ADMIN', 'SYSTEMADMIN', 'QA'], // nobody can set FROM VOID (no transitions out)
+//     next: [],
+//     nextEditableBy: ['SYSTEMADMIN'],
+//     canEdit: [],
+//   },
+
+//   CHANGE_REQUESTED: {
+//     canSet: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     next: ['UNDER_CHANGE_UPDATE'],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CHANGE_UPDATE: {
+//     canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//   },
+
+//   CORRECTION_REQUESTED: {
+//     canSet: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     next: ['UNDER_CORRECTION_UPDATE'],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CORRECTION_UPDATE: {
+//     canSet: ['QA', 'ADMIN', 'SYSTEMADMIN'],
+//     next: [],
+//     nextEditableBy: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//     canEdit: [
+//       'CLIENT',
+//       'FRONTDESK',
+//       'MICRO',
+//       'CHEMISTRY',
+//       'MC',
+//       'QA',
+//       'ADMIN',
+//       'SYSTEMADMIN',
+//     ],
+//   },
+// } as const satisfies Partial<Record<ReportStatus, Transition>>;
 
 type ChangeStatusInput =
   | ReportStatus
@@ -1394,7 +1871,6 @@ export class ReportsService {
 
         details.reviewedDate = new Date();
       }
-
 
       if (
         current.status === 'UNDER_TESTING_REVIEW' &&

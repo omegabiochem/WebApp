@@ -110,7 +110,10 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
   CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
   UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
+   CORRECTION_REQUESTED: {
+    label: "Raise Correction",
+    color: "bg-yellow-600",
+  },
   UNDER_CORRECTION_UPDATE: {
     label: "Approve",
     color: "bg-green-800",
@@ -631,33 +634,38 @@ export default function MicroMixWaterReportForm({
       .catch(() => {});
   }, [reportId]);
 
-
   const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
-const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+  const dragRef = useRef({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+  });
 
-function startESignDrag(e: React.MouseEvent) {
-  dragRef.current = {
-    dragging: true,
-    startX: e.clientX,
-    startY: e.clientY,
-    origX: eSignPos.x,
-    origY: eSignPos.y,
-  };
+  function startESignDrag(e: React.MouseEvent) {
+    dragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: eSignPos.x,
+      origY: eSignPos.y,
+    };
 
-  window.onmousemove = (ev) => {
-    if (!dragRef.current.dragging) return;
-    setESignPos({
-      x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
-      y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
-    });
-  };
+    window.onmousemove = (ev) => {
+      if (!dragRef.current.dragging) return;
+      setESignPos({
+        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+      });
+    };
 
-  window.onmouseup = () => {
-    dragRef.current.dragging = false;
-    window.onmousemove = null;
-    window.onmouseup = null;
-  };
-}
+    window.onmouseup = () => {
+      dragRef.current.dragging = false;
+      window.onmousemove = null;
+      window.onmouseup = null;
+    };
+  }
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -911,21 +919,50 @@ function startESignDrag(e: React.MouseEvent) {
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-      target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "QA_NEEDS_FINAL_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
-    if (isNeeds) {
+    // const isNeeds =
+    //   target === "FRONTDESK_NEEDS_CORRECTION" ||
+    //   target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+    //   target === "FINAL_TESTING_NEEDS_CORRECTION" ||
+    //   target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+    //   target === "QA_NEEDS_FINAL_CORRECTION" ||
+    //   target === "ADMIN_NEEDS_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_FINAL_CORRECTION" ||
+    //   target === "CHANGE_REQUESTED" ||
+    //   target === "CORRECTION_REQUESTED";
+    // if (isNeeds) {
+    //   setSelectingCorrections(true);
+    //   setPendingCorrections([]);
+    //   setPendingStatus(target);
+    //   return;
+    // }
+
+    //     const OLD_NEEDS_CORRECTION_STATUSES = new Set<ReportStatus>([
+    //   "FRONTDESK_NEEDS_CORRECTION",
+    //   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+    //   "FINAL_TESTING_NEEDS_CORRECTION",
+    //   "QA_NEEDS_PRELIMINARY_CORRECTION",
+    //   "QA_NEEDS_FINAL_CORRECTION",
+    //   "ADMIN_NEEDS_CORRECTION",
+    //   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    //   "CLIENT_NEEDS_FINAL_CORRECTION",
+    // ]);
+
+    const isCorrectionAction =
+      // OLD_NEEDS_CORRECTION_STATUSES.has(target) ||
+      target === "CHANGE_REQUESTED" || target === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       setSelectingCorrections(true);
       setPendingCorrections([]);
-      setPendingStatus(target);
+
+      // ✅ old Needs Correction button now uses centralized status
+      const centralizedTarget =
+        target === "CHANGE_REQUESTED"
+          ? "CHANGE_REQUESTED"
+          : "CORRECTION_REQUESTED";
+
+      setPendingStatus(centralizedTarget as ReportStatus);
       return;
     }
 
@@ -1709,32 +1746,32 @@ function startESignDrag(e: React.MouseEvent) {
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
-        newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-        newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
         newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
         newStatus === "UNDER_QA_FINAL_REVIEW" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
-        newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
+        // newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
         newStatus === "PRELIMINARY_APPROVED" ||
         newStatus === "FINAL_TESTING_ON_HOLD" ||
-        newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        // newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+        // newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
+        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-        newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
+        // newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+        // newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
+        // newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
         newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
-        newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
+        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        // newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
         newStatus === "LOCKED" ||
         newStatus === "FINAL_APPROVED"
       ) {
@@ -2197,13 +2234,17 @@ function startESignDrag(e: React.MouseEvent) {
     );
   }
 
+  // function isCorrectionUpdateStatus(s?: ReportStatus) {
+  //   return (
+  //     s === "UNDER_CORRECTION_UPDATE" ||
+  //     s === "UNDER_CHANGE_UPDATE" ||
+  //     s === "UNDER_CLIENT_PRELIMINARY_CORRECTION" ||
+  //     s === "UNDER_CLIENT_FINAL_CORRECTION"
+  //   );
+  // }
+
   function isCorrectionUpdateStatus(s?: ReportStatus) {
-    return (
-      s === "UNDER_CORRECTION_UPDATE" ||
-      s === "UNDER_CHANGE_UPDATE" ||
-      s === "UNDER_CLIENT_PRELIMINARY_CORRECTION" ||
-      s === "UNDER_CLIENT_FINAL_CORRECTION"
-    );
+    return s === "UNDER_CORRECTION_UPDATE" || s === "UNDER_CHANGE_UPDATE";
   }
 
   function lockCorrectionField(fieldKey: string, baseField?: string) {
@@ -3728,14 +3769,15 @@ function startESignDrag(e: React.MouseEvent) {
                 STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
                   (targetStatus: ReportStatus) => {
                     const isNeedsCorrectionStatus =
-                      targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                      targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-                      targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-                      targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-                      targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-                      targetStatus === "ADMIN_NEEDS_CORRECTION" ||
-                      targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-                      targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
+                      targetStatus === "CORRECTION_REQUESTED";
+                    // targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+                    // targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
+                    // targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
+                    // targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
+                    // targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
+                    // targetStatus === "ADMIN_NEEDS_CORRECTION" ||
+                    // targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
+                    // targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
 
                     if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
                       return null;
@@ -3793,13 +3835,13 @@ function startESignDrag(e: React.MouseEvent) {
           aria-label="E-signature"
         >
           <div
-  className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-  style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
->
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
             <div
-  className="mb-4 flex items-start gap-3 cursor-move select-none"
-  onMouseDown={startESignDrag}
->
+              className="mb-4 flex items-start gap-3 cursor-move select-none"
+              onMouseDown={startESignDrag}
+            >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
                 🔐
               </div>

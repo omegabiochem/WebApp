@@ -93,12 +93,12 @@ const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "FINAL_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  // "UNDER_CLIENT_FINAL_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "FINAL_RESUBMISSION_BY_CLIENT",
   "LOCKED",
   "VOID",
 ];
@@ -115,9 +115,9 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "LOCKED",
   "VOID",
 ];
@@ -716,18 +716,16 @@ export default function ClientDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
 
-  
-     const [modalUploading, setModalUploading] = useState(false);
-      const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
-      const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
-    
-      const defaultAttachmentVisibility =
-        user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
-    
-      const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
-        defaultAttachmentVisibility,
-      );
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
@@ -842,31 +840,6 @@ export default function ClientDashboard() {
     fromDate,
     toDate,
   ]);
-
-  useEffect(() => {
-    const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
-
-    setFormFilter(next.formFilter);
-    setStatusFilter(next.statusFilter);
-    setSearchClient(next.searchClient);
-    setSearchReport(next.searchReport);
-    setSearch(next.searchText);
-    setSortBy(next.sortBy);
-    setSortDir(next.sortDir);
-    setPerPage(next.perPage);
-    setPage(next.page);
-    setDatePreset(next.datePreset);
-    setFromDate(next.fromDate);
-    setToDate(next.toDate);
-    setNumberRangeType(next.numberRangeType);
-    setFormNoFrom(next.formNoFrom);
-    setFormNoTo(next.formNoTo);
-    setReportNoFrom(next.reportNoFrom);
-    setReportNoTo(next.reportNoTo);
-
-    hydratedFromUrlRef.current = true;
-    setFiltersHydrated(true);
-  }, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     // ✅ IMPORTANT: don't get stuck if key isn't ready yet
@@ -1285,6 +1258,31 @@ export default function ClientDashboard() {
     searchParams,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearch(next.searchText);
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+
+    hydratedFromUrlRef.current = true;
+    setFiltersHydrated(true);
+  }, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     if (!hydratedFromUrlRef.current) return;
@@ -1958,31 +1956,29 @@ export default function ClientDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
 
-  
-    async function uploadAttachmentForReport(r: Report, file: File) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "manual-upload");
-      form.append("createdBy", user?.name || user?.role || "micro");
-      form.append("kind", "SIGNED_FORM");
-      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
-      form.append("visibility", attachmentVisibility);
-  
-      const token = localStorage.getItem("token");
-  
-      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: form,
-      });
-  
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2969,38 +2965,38 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="flex items-center justify-end gap-2">
-                    <input
-                  ref={modalUploadInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!file || !selectedReport) return;
+                  <input
+                    ref={modalUploadInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file || !selectedReport) return;
 
-                    setModalUploading(true);
-                    try {
-                      await uploadAttachmentForReport(selectedReport, file);
-                      toast.success("Uploaded!");
-                      setAttachmentRefreshKey((k) => k + 1);
-                      setSelectedViewPane("ATTACHMENTS");
-                    } catch (err: any) {
-                      toast.error(err?.message || "Upload failed");
-                    } finally {
-                      setModalUploading(false);
-                    }
-                  }}
-                />
+                      setModalUploading(true);
+                      try {
+                        await uploadAttachmentForReport(selectedReport, file);
+                        toast.success("Uploaded!");
+                        setAttachmentRefreshKey((k) => k + 1);
+                        setSelectedViewPane("ATTACHMENTS");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Upload failed");
+                      } finally {
+                        setModalUploading(false);
+                      }
+                    }}
+                  />
 
-                <button
-                  type="button"
-                  disabled={modalUploading || !selectedReport?.id}
-                  onClick={() => modalUploadInputRef.current?.click()}
-                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                >
-                  {modalUploading ? <Spinner /> : "⬆️"}
-                  {modalUploading ? "Uploading..." : "Upload"}
-                </button>
+                  <button
+                    type="button"
+                    disabled={modalUploading || !selectedReport?.id}
+                    onClick={() => modalUploadInputRef.current?.click()}
+                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  >
+                    {modalUploading ? <Spinner /> : "⬆️"}
+                    {modalUploading ? "Uploading..." : "Upload"}
+                  </button>
                   <button
                     className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     disabled={printingSingle}
@@ -3109,7 +3105,7 @@ export default function ClientDashboard() {
             <div className="modal-body flex-1 min-h-0 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
-                    key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

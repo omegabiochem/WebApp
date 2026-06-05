@@ -77,16 +77,15 @@ function flattenReport(r: any) {
   return { ...base, ...d };
 }
 
+type Transition = {
+  next: ChemistryReportStatus[];
+  canSet: UserRole[];
+  nextEditableBy: UserRole[];
+  canEdit: UserRole[];
+};
+
 // 🔁 Keep this in sync with backend
-const STATUS_TRANSITIONS: Record<
-  ChemistryReportStatus,
-  {
-    canSet: UserRole[];
-    next: ChemistryReportStatus[];
-    nextEditableBy: UserRole[];
-    canEdit: UserRole[];
-  }
-> = {
+const STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
@@ -111,25 +110,25 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT', 'SYSTEMADMIN'],
-  },
+  // CLIENT_NEEDS_CORRECTION: {
+  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   next: ['UNDER_TESTING_REVIEW'],
+  //   nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+  //   canEdit: [],
+  // },
+  // UNDER_CLIENT_CORRECTION: {
+  //   canSet: ['CLIENT', 'SYSTEMADMIN'],
+  //   next: ['UNDER_TESTING_REVIEW'],
+  //   nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+  //   canEdit: ['CLIENT', 'SYSTEMADMIN'],
+  // },
 
-  RESUBMISSION_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+  // RESUBMISSION_BY_CLIENT: {
+  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   next: ['UNDER_TESTING_REVIEW'],
+  //   nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   canEdit: [],
+  // },
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
@@ -166,61 +165,61 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  },
-  RESUBMISSION_BY_TESTING: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+  // UNDER_RESUBMISSION_TESTING_REVIEW: {
+  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
+  //   nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
+  // },
+  // RESUBMISSION_BY_TESTING: {
+  //   canSet: ['QA', 'SYSTEMADMIN'],
+  //   next: ['UNDER_CLIENT_REVIEW'],
+  //   nextEditableBy: ['QA', 'SYSTEMADMIN'],
+  //   canEdit: [],
+  // },
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', "UNDER_ADMIN_REVIEW"],
+    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  QA_NEEDS_CORRECTION: {
-    canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+  // QA_NEEDS_CORRECTION: {
+  //   canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
+  //   next: ['UNDER_TESTING_REVIEW'],
+  //   nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
+  //   canEdit: [],
+  // },
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', "UNDER_CLIENT_REVIEW"],
+    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  ADMIN_NEEDS_CORRECTION: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+  // ADMIN_NEEDS_CORRECTION: {
+  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
+  //   next: ['UNDER_QA_REVIEW'],
+  //   nextEditableBy: ['QA', 'SYSTEMADMIN'],
+  //   canEdit: ['ADMIN', 'SYSTEMADMIN'],
+  // },
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['QA', 'SYSTEMADMIN'],
-  },
-  UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+  // UNDER_RESUBMISSION_QA_REVIEW: {
+  //   canSet: ['QA', 'SYSTEMADMIN'],
+  //   next: ['RECEIVED_BY_FRONTDESK'],
+  //   nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+  //   canEdit: ['QA', 'SYSTEMADMIN'],
+  // },
+  // UNDER_RESUBMISSION_ADMIN_REVIEW: {
+  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
+  //   next: ['RECEIVED_BY_FRONTDESK'],
+  //   nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
+  //   canEdit: ['ADMIN', 'SYSTEMADMIN'],
+  // },
   APPROVED: {
     canSet: [],
     next: [],
@@ -339,7 +338,7 @@ const STATUS_TRANSITIONS: Record<
       'SYSTEMADMIN',
     ],
   },
-};
+} as const satisfies Partial<Record<ChemistryReportStatus, Transition>>;
 
 const EDIT_MAP: Record<UserRole, string[]> = {
   SYSTEMADMIN: ['*'],
@@ -932,8 +931,6 @@ export class ChemistryReportsService {
           actor?.email?.trim() ||
           'Unknown';
 
-
-
         // ✅ Auto-fill dateReceived at the same time as BC number assignment
         const currentDetails = pickDetails(current);
         const alreadyHasDateReceived = !!currentDetails?.dateReceived;
@@ -946,8 +943,6 @@ export class ChemistryReportsService {
 
       // e-sign requirements
 
-
-      
       if (
         patchIn.status === 'UNDER_CLIENT_REVIEW' ||
         patchIn.status === 'LOCKED' ||
@@ -966,7 +961,6 @@ export class ChemistryReportsService {
       }
 
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
-
 
       if (
         patchIn.status === 'UNDER_QA_REVIEW' ||
@@ -1013,7 +1007,6 @@ export class ChemistryReportsService {
         }
       }
 
-
       if (
         current.status === 'UNDER_TESTING_REVIEW' &&
         patchIn.status === 'UNDER_QA_REVIEW' &&
@@ -1051,7 +1044,6 @@ export class ChemistryReportsService {
 
         details.reviewedDate = new Date();
       }
-
 
       base.status = patchIn.status;
     }
@@ -1152,8 +1144,7 @@ export class ChemistryReportsService {
     if (newStatus && prevStatus !== newStatus) {
       const ctx = getRequestContext() || {};
 
-
-        if (
+      if (
         patchIn.status &&
         prevStatus !== String(patchIn.status) &&
         (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
@@ -1235,7 +1226,7 @@ export class ChemistryReportsService {
     return flattenReport(updated);
   }
 
- private async logESignAudit(args: {
+  private async logESignAudit(args: {
     reportId: string;
     clientCode: string | null;
     formType: FormType;
@@ -1287,7 +1278,6 @@ export class ChemistryReportsService {
       },
     });
   }
-
 
   async updateStatus(
     user: { userId: string; role: UserRole },
