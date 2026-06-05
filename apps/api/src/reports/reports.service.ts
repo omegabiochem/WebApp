@@ -164,14 +164,14 @@ const STATUS_TRANSITIONS = {
   },
   UNDER_CLIENT_PRELIMINARY_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'PRELIMINARY_APPROVED'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'PRELIMINARY_APPROVED'],
     nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
     canEdit: [],
   },
 
   UNDER_CLIENT_FINAL_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['FINAL_APPROVED', 'CORRECTION_REQUESTED'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'FINAL_APPROVED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
@@ -199,6 +199,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'PRELIMINARY_TESTING_ON_HOLD',
+      'CHANGE_REQUESTED',
       'CORRECTION_REQUESTED',
       'UNDER_QA_PRELIMINARY_REVIEW',
     ],
@@ -214,7 +215,11 @@ const STATUS_TRANSITIONS = {
 
   UNDER_QA_PRELIMINARY_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'UNDER_CLIENT_PRELIMINARY_REVIEW'],
+    next: [
+      'CHANGE_REQUESTED',
+      'CORRECTION_REQUESTED',
+      'UNDER_CLIENT_PRELIMINARY_REVIEW',
+    ],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
@@ -223,6 +228,7 @@ const STATUS_TRANSITIONS = {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
     next: [
       'FINAL_TESTING_ON_HOLD',
+      'CHANGE_REQUESTED',
       'CORRECTION_REQUESTED',
       'UNDER_QA_FINAL_REVIEW',
     ],
@@ -231,14 +237,18 @@ const STATUS_TRANSITIONS = {
   },
   FINAL_TESTING_ON_HOLD: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'UNDER_FINAL_TESTING_REVIEW'],
+    next: [
+      'CHANGE_REQUESTED',
+      'CORRECTION_REQUESTED',
+      'UNDER_FINAL_TESTING_REVIEW',
+    ],
     nextEditableBy: ['CLIENT', 'MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
 
   UNDER_QA_FINAL_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
@@ -246,6 +256,7 @@ const STATUS_TRANSITIONS = {
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: [
+      'CHANGE_REQUESTED',
       'CORRECTION_REQUESTED',
       'ADMIN_REJECTED',
       'UNDER_CLIENT_FINAL_REVIEW',
@@ -736,29 +747,11 @@ export const STERILITY_STATUS_TRANSITIONS = {
   },
   UNDER_CLIENT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'APPROVED'],
+    next: ["CHANGE_REQUESTED","CORRECTION_REQUESTED", 'APPROVED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  // CLIENT_NEEDS_CORRECTION: {
-  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
-  //   next: ["UNDER_TESTING_REVIEW"],
-  //   nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
-  //   canEdit: [],
-  // },
-  // UNDER_CLIENT_CORRECTION: {
-  //   canSet: ["CLIENT", "SYSTEMADMIN"],
-  //   next: ["UNDER_TESTING_REVIEW"],
-  //   nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
-  //   canEdit: ["CLIENT", "SYSTEMADMIN"],
-  // },
-
-  // RESUBMISSION_BY_CLIENT: {
-  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
-  //   next: ["UNDER_TESTING_REVIEW"],
-  //   nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
-  //   canEdit: [],
-  // },
+ 
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
@@ -771,15 +764,10 @@ export const STERILITY_STATUS_TRANSITIONS = {
     nextEditableBy: ['FRONTDESK'],
     canEdit: [],
   },
-  // FRONTDESK_NEEDS_CORRECTION: {
-  //   canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
-  //   next: ["SUBMITTED_BY_CLIENT"],
-  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
-  //   canEdit: [],
-  // },
+
   UNDER_TESTING_REVIEW: {
     canSet: ['MICRO', 'MC', 'SYSTEMADMIN'],
-    next: ['TESTING_ON_HOLD', 'CORRECTION_REQUESTED', 'UNDER_QA_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['MICRO', 'MC', 'SYSTEMADMIN'],
     canEdit: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
@@ -789,67 +777,29 @@ export const STERILITY_STATUS_TRANSITIONS = {
     nextEditableBy: ['MICRO', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  // TESTING_NEEDS_CORRECTION: {
-  //   canSet: ["CLIENT", "SYSTEMADMIN"],
-  //   next: ["UNDER_CLIENT_CORRECTION"],
-  //   nextEditableBy: ["CLIENT"],
-  //   canEdit: [],
-  // },
-  // UNDER_RESUBMISSION_TESTING_REVIEW: {
-  //   canSet: ["MICRO", "MC", "SYSTEMADMIN"],
-  //   next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
-  //   nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
-  //   canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
-  // },
-  // RESUBMISSION_BY_TESTING: {
-  //   canSet: ["QA", "SYSTEMADMIN"],
-  //   next: ["UNDER_CLIENT_REVIEW"],
-  //   nextEditableBy: ["QA", "SYSTEMADMIN"],
-  //   canEdit: [],
-  // },
+
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  // QA_NEEDS_CORRECTION: {
-  //   canSet: ["QA", "SYSTEMADMIN", "MC", "MICRO"], // added MC and MICRO as they often need to make corrections based on QA feedback
-  //   next: ["UNDER_TESTING_REVIEW"],
-  //   nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
-  //   canEdit: [],
-  // },
+
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['CORRECTION_REQUESTED', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  // ADMIN_NEEDS_CORRECTION: {
-  //   canSet: ["ADMIN", "SYSTEMADMIN"],
-  //   next: ["UNDER_QA_REVIEW"],
-  //   nextEditableBy: ["QA", "SYSTEMADMIN"],
-  //   canEdit: ["ADMIN", "SYSTEMADMIN"],
-  // },
+
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  // UNDER_RESUBMISSION_QA_REVIEW: {
-  //   canSet: ["QA", "SYSTEMADMIN"],
-  //   next: ["RECEIVED_BY_FRONTDESK"],
-  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
-  //   canEdit: ["QA", "SYSTEMADMIN"],
-  // },
-  // UNDER_RESUBMISSION_ADMIN_REVIEW: {
-  //   canSet: ["ADMIN", "SYSTEMADMIN"],
-  //   next: ["RECEIVED_BY_FRONTDESK"],
-  //   nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
-  //   canEdit: ["ADMIN", "SYSTEMADMIN"],
-  // },
+  
   APPROVED: {
     canSet: [],
     next: [],

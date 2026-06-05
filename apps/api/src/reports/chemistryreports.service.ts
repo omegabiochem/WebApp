@@ -106,29 +106,11 @@ const STATUS_TRANSITIONS = {
   },
   UNDER_CLIENT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
+    next: ["CHANGE_REQUESTED","CORRECTION_REQUESTED", 'APPROVED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  // CLIENT_NEEDS_CORRECTION: {
-  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  //   canEdit: [],
-  // },
-  // UNDER_CLIENT_CORRECTION: {
-  //   canSet: ['CLIENT', 'SYSTEMADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  //   canEdit: ['CLIENT', 'SYSTEMADMIN'],
-  // },
-
-  // RESUBMISSION_BY_CLIENT: {
-  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   canEdit: [],
-  // },
+ 
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
@@ -141,15 +123,9 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
   UNDER_TESTING_REVIEW: {
     canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
@@ -159,67 +135,29 @@ const STATUS_TRANSITIONS = {
     nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  // UNDER_RESUBMISSION_TESTING_REVIEW: {
-  //   canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-  //   nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  // },
-  // RESUBMISSION_BY_TESTING: {
-  //   canSet: ['QA', 'SYSTEMADMIN'],
-  //   next: ['UNDER_CLIENT_REVIEW'],
-  //   nextEditableBy: ['QA', 'SYSTEMADMIN'],
-  //   canEdit: [],
-  // },
+
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', 'UNDER_ADMIN_REVIEW'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  // QA_NEEDS_CORRECTION: {
-  //   canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
-  //   next: ['UNDER_TESTING_REVIEW'],
-  //   nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-  //   canEdit: [],
-  // },
+
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  // ADMIN_NEEDS_CORRECTION: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['UNDER_QA_REVIEW'],
-  //   nextEditableBy: ['QA', 'SYSTEMADMIN'],
-  //   canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  // },
+
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  // UNDER_RESUBMISSION_QA_REVIEW: {
-  //   canSet: ['QA', 'SYSTEMADMIN'],
-  //   next: ['RECEIVED_BY_FRONTDESK'],
-  //   nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-  //   canEdit: ['QA', 'SYSTEMADMIN'],
-  // },
-  // UNDER_RESUBMISSION_ADMIN_REVIEW: {
-  //   canSet: ['ADMIN', 'SYSTEMADMIN'],
-  //   next: ['RECEIVED_BY_FRONTDESK'],
-  //   nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-  //   canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  // },
+
   APPROVED: {
     canSet: [],
     next: [],

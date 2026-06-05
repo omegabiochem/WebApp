@@ -41,76 +41,38 @@ function useConfirmOnLeave(isDirty: boolean) {
 
 // ---- Map each transition to buttons ----
 
-const statusButtons: Record<string, { label: string; color: string }> = {
+const statusButtons: Record<ReportStatus, { label: string; color: string }> = {
+  DRAFT: { label: "Draft", color: "bg-slate-500" },
+  LOCKED: { label: "Locked", color: "bg-neutral-500" },
+  VOID: { label: "Void", color: "bg-gray-500" },
   UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
   UNDER_CLIENT_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
   UNDER_CLIENT_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
   PRELIMINARY_APPROVED: { label: "Approve", color: "bg-green-600" },
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  CLIENT_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
+
   RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
   FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FRONTDESK_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-red-600",
-  },
+
   UNDER_PRELIMINARY_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
   PRELIMINARY_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
+
   UNDER_FINAL_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
+
   FINAL_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FINAL_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
+
   UNDER_QA_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
+
   UNDER_QA_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
+
   UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
-  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
+
   ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
   FINAL_APPROVED: { label: "Approve", color: "bg-green-700" },
 
   CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
   UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-   CORRECTION_REQUESTED: {
+  CORRECTION_REQUESTED: {
     label: "Raise Correction",
     color: "bg-yellow-600",
   },
@@ -686,6 +648,8 @@ export default function MicroMixWaterReportForm({
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
 
   const location = useLocation();
   const { search, state } = location;
@@ -3766,63 +3730,111 @@ export default function MicroMixWaterReportForm({
                 </button>
               )}
               {!showAssignReportNumberButton &&
-                STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-                  (targetStatus: ReportStatus) => {
-                    const isNeedsCorrectionStatus =
-                      targetStatus === "CORRECTION_REQUESTED";
-                    // targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                    // targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-                    // targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-                    // targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-                    // targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-                    // targetStatus === "ADMIN_NEEDS_CORRECTION" ||
-                    // targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-                    // targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
+                (() => {
+                  const nextStatuses =
+                    STATUS_TRANSITIONS[status as ReportStatus]?.next ?? [];
 
-                    if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
-                      return null;
-                    }
-                    if (
-                      STATUS_TRANSITIONS[
-                        status as ReportStatus
-                      ].canSet.includes(role!) &&
-                      statusButtons[targetStatus]
-                    ) {
-                      const { label, color } = statusButtons[targetStatus];
+                  const correctionStatuses = nextStatuses.filter(
+                    (s) =>
+                      !hideNeedCorrectionButtons &&
+                      (s === "CHANGE_REQUESTED" ||
+                        s === "CORRECTION_REQUESTED"),
+                  );
 
-                      // const approveNeedsAttachment =
-                      //   isApproveAction(targetStatus);
-                      // const disableApproveForNoAttachment =
-                      //   approveNeedsAttachment && !hasAttachment;
+                  const normalStatuses = nextStatuses.filter(
+                    (s) =>
+                      s !== "CHANGE_REQUESTED" && s !== "CORRECTION_REQUESTED",
+                  );
 
-                      // const disabled =
-                      //   isBusy ||
-                      //   attachmentsLoading ||
-                      //   disableApproveForNoAttachment;
+                  return (
+                    <>
+                      {correctionStatuses.length > 0 &&
+                        STATUS_TRANSITIONS[
+                          status as ReportStatus
+                        ].canSet.includes(role!) && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setCorrectionActionOpen((v) => !v)}
+                              className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                              disabled={isBusy}
+                            >
+                              {busy === "STATUS" && <Spinner />}
+                              Corrections ▾
+                            </button>
 
-                      return (
-                        <div key={targetStatus} className="relative group">
-                          <button
-                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                            onClick={() => requestStatusChange(targetStatus)}
-                            // disabled={disabled}
-                            title={formatStatusText(targetStatus)}
-                          >
-                            {busy === "STATUS" && <Spinner />}
-                            {label === "Approve" ? "Approve" : label}
-                          </button>
+                            {correctionActionOpen && (
+                              <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
+                                {correctionStatuses.includes(
+                                  "CHANGE_REQUESTED",
+                                ) && (
+                                  <button
+                                    type="button"
+                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                    onClick={() => {
+                                      setCorrectionActionOpen(false);
+                                      requestStatusChange("CHANGE_REQUESTED");
+                                    }}
+                                  >
+                                    Request Change
+                                  </button>
+                                )}
 
-                          {/* 🔥 HOVER TOOLTIP */}
-
-                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                            {label} → {formatStatusText(targetStatus)}
+                                {correctionStatuses.includes(
+                                  "CORRECTION_REQUESTED",
+                                ) && (
+                                  <button
+                                    type="button"
+                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                    onClick={() => {
+                                      setCorrectionActionOpen(false);
+                                      requestStatusChange(
+                                        "CORRECTION_REQUESTED",
+                                      );
+                                    }}
+                                  >
+                                    Raise Correction
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  },
-                )}
+                        )}
+
+                      {normalStatuses.map((targetStatus: ReportStatus) => {
+                        if (
+                          STATUS_TRANSITIONS[
+                            status as ReportStatus
+                          ].canSet.includes(role!) &&
+                          statusButtons[targetStatus]
+                        ) {
+                          const { label, color } = statusButtons[targetStatus];
+
+                          return (
+                            <div key={targetStatus} className="relative group">
+                              <button
+                                className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                                onClick={() =>
+                                  requestStatusChange(targetStatus)
+                                }
+                                title={formatStatusText(targetStatus)}
+                              >
+                                {busy === "STATUS" && <Spinner />}
+                                {label === "Approve" ? "Approve" : label}
+                              </button>
+
+                              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                                {label} → {formatStatusText(targetStatus)}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })}
+                    </>
+                  );
+                })()}
             </div>
           </div>
         )}
