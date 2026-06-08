@@ -223,3 +223,28 @@ export const AUDIT_ACTION_COLORS: Record<string, string> = {
 
   DEFAULT: "bg-slate-100 text-slate-700 border border-slate-300",
 };
+
+
+
+export function getDaysFromDateSent(dateSent?: string | null) {
+  if (!dateSent) return null;
+
+  const sent = new Date(dateSent);
+  if (Number.isNaN(sent.getTime())) return null;
+
+  const today = new Date();
+
+  sent.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  return Math.floor(
+    (today.getTime() - sent.getTime()) / (1000 * 60 * 60 * 24),
+  );
+}
+
+export function getDayCountClass(days: number | null) {
+  if (days == null) return "bg-slate-100 text-slate-500 ring-slate-200";
+  if (days >= 10) return "bg-red-100 text-red-700 ring-red-300";
+  if (days >= 5) return "bg-amber-100 text-amber-700 ring-amber-300";
+  return "bg-emerald-100 text-emerald-700 ring-emerald-300";
+}

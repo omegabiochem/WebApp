@@ -37,6 +37,8 @@ import COAReportFormView from "../Reports/COAReportFormView";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -727,18 +729,17 @@ export default function AdminDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  // const [refreshing, setRefreshing] = useState(false);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
 
-   const [modalUploading, setModalUploading] = useState(false);
-    const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
-    // const [refreshing, setRefreshing] = useState(false);
-    const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
-  
-    const defaultAttachmentVisibility =
-      user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
-  
-    const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
-      defaultAttachmentVisibility,
-    );
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
@@ -2116,31 +2117,29 @@ export default function AdminDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
 
-  
-    async function uploadAttachmentForReport(r: Report, file: File) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "manual-upload");
-      form.append("createdBy", user?.name || user?.role || "micro");
-      form.append("kind", "SIGNED_FORM");
-      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
-      form.append("visibility", attachmentVisibility);
-  
-      const token = localStorage.getItem("token");
-  
-      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: form,
-      });
-  
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2644,6 +2643,9 @@ export default function AdminDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2831,6 +2833,28 @@ export default function AdminDashboard() {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3137,8 +3161,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
-
-                  <input
+                <input
                   ref={modalUploadInputRef}
                   type="file"
                   className="hidden"
@@ -3262,7 +3285,7 @@ export default function AdminDashboard() {
             <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3271,7 +3294,7 @@ export default function AdminDashboard() {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

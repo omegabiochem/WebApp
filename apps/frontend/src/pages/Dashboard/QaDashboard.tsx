@@ -43,6 +43,8 @@ import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Eye, EyeOff, Pin } from "lucide-react";
@@ -723,17 +725,16 @@ export default function QaDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
-  
-     const [modalUploading, setModalUploading] = useState(false);
-      const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
-      const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
-    
-      const defaultAttachmentVisibility =
-        user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
-    
-      const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
-        defaultAttachmentVisibility,
-      );
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   const isRowSelected = (id: string) => selectedIds.includes(id);
 
@@ -1116,7 +1117,6 @@ export default function QaDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
-
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
 
@@ -1139,8 +1139,6 @@ export default function QaDashboard() {
     setSearchParams(sp, { replace: true });
     setPage(nextPage);
   }
-
-
 
   useEffect(() => {
     setPage(1);
@@ -1180,7 +1178,7 @@ export default function QaDashboard() {
     sp.set("pp", String(perPage));
     // sp.set("p", String(pageClamped));
 
-     if (page !== 1) {
+    if (page !== 1) {
       sp.set("p", String(page));
     } else {
       sp.delete("p");
@@ -2074,32 +2072,29 @@ export default function QaDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
 
+    const token = localStorage.getItem("token");
 
-  
-    async function uploadAttachmentForReport(r: Report, file: File) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "manual-upload");
-      form.append("createdBy", user?.name || user?.role || "micro");
-      form.append("kind", "SIGNED_FORM");
-      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
-      form.append("visibility", attachmentVisibility);
-  
-      const token = localStorage.getItem("token");
-  
-      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: form,
-      });
-  
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2608,7 +2603,9 @@ export default function QaDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
-
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2795,6 +2792,28 @@ export default function QaDashboard() {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3046,7 +3065,7 @@ export default function QaDashboard() {
                 ))}
               </select>
 
-             <button
+              <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
                 // onClick={() => setPage((p: number) => Math.max(1, p - 1))}
                 onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
@@ -3116,7 +3135,7 @@ export default function QaDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
-                  <input
+                <input
                   ref={modalUploadInputRef}
                   type="file"
                   className="hidden"
@@ -3259,7 +3278,7 @@ export default function QaDashboard() {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
-                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}  
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

@@ -31,7 +31,13 @@ import {
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
-import { COLS, isTerminalStatus, type ColKey } from "../../utils/globalUtils";
+import {
+  COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
+  isTerminalStatus,
+  type ColKey,
+} from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 
 // -----------------------------
@@ -89,7 +95,7 @@ type Report = {
 // Statuses
 // -----------------------------
 // Micro + Micro Water (prelim/final workflow)
-const MICRO_ONLY_STATUSES:("ALL" |ReportStatus )[] = [
+const MICRO_ONLY_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
   // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
@@ -130,10 +136,10 @@ const MICRO_ONLY_STATUSES:("ALL" |ReportStatus )[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] ;
+];
 
 // Sterility (chemistry-like workflow)
-const STERILITY_ONLY_STATUSES:("ALL" |SterilityReportStatus )[] = [
+const STERILITY_ONLY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
   // "CLIENT_NEEDS_CORRECTION",
@@ -162,7 +168,7 @@ const STERILITY_ONLY_STATUSES:("ALL" |SterilityReportStatus )[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] ;
+];
 
 type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY";
 
@@ -266,7 +272,7 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
-  printPane ,
+  printPane,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
@@ -2073,9 +2079,7 @@ export default function MicroDashboard() {
                   ? selectedReportObjects
                   : [singlePrintJob?.report!]
               }
-               printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 if (singlePrintJob) setSinglePrintJob(null);
@@ -2481,6 +2485,10 @@ export default function MicroDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2675,6 +2683,28 @@ export default function MicroDashboard() {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3042,7 +3072,7 @@ export default function MicroDashboard() {
                 />
               ) : selectedReport.formType === "STERILITY" ? (
                 <SterilityReportFormView
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3051,7 +3081,7 @@ export default function MicroDashboard() {
                 />
               ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

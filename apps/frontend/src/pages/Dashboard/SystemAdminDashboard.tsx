@@ -37,6 +37,8 @@ import COAReportFormView from "../Reports/COAReportFormView";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -726,17 +728,16 @@ export default function SystemAdminDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
-  
-     const [modalUploading, setModalUploading] = useState(false);
-      const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
-      const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
-    
-      const defaultAttachmentVisibility =
-        user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
-    
-      const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
-        defaultAttachmentVisibility,
-      );
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
@@ -2108,32 +2109,29 @@ export default function SystemAdminDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
 
+    const token = localStorage.getItem("token");
 
-  
-    async function uploadAttachmentForReport(r: Report, file: File) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "manual-upload");
-      form.append("createdBy", user?.name || user?.role || "micro");
-      form.append("kind", "SIGNED_FORM");
-      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
-      form.append("visibility", attachmentVisibility);
-  
-      const token = localStorage.getItem("token");
-  
-      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: form,
-      });
-  
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2202,9 +2200,7 @@ export default function SystemAdminDashboard() {
                     ? [singlePrintJob.report]
                     : []
               }
-              printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 setSinglePrintJob(null);
@@ -2641,6 +2637,9 @@ export default function SystemAdminDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2835,6 +2834,28 @@ export default function SystemAdminDashboard() {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3157,7 +3178,7 @@ export default function SystemAdminDashboard() {
               </div>
 
               <div className="flex items-center gap-2 justify-self-end">
-                  <input
+                <input
                   ref={modalUploadInputRef}
                   type="file"
                   className="hidden"

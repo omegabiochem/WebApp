@@ -52,6 +52,8 @@ import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   isTerminalStatus,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -201,7 +203,7 @@ function intersectAll(lists: string[][]): string[] {
 // ----------------------------------
 // Status lists (same as your pages)
 // ----------------------------------
-const MICRO_STATUSES:("ALL" |ReportStatus )[] = [
+const MICRO_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
@@ -245,7 +247,7 @@ const MICRO_STATUSES:("ALL" |ReportStatus )[] = [
   "CHANGE_REQUESTED",
 ];
 
-const STERILITY_STATUSES:("ALL" |SterilityReportStatus )[] = [
+const STERILITY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
@@ -275,9 +277,9 @@ const STERILITY_STATUSES:("ALL" |SterilityReportStatus )[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] ;
+];
 
-const CHEMISTRY_STATUSES:("ALL" |ChemistryReportStatus )[] = [
+const CHEMISTRY_STATUSES: ("ALL" | ChemistryReportStatus)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
@@ -449,15 +451,13 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
-
-
-const paneToPrint =
-  printPane ??
-  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
-    String(r.status)
-  )
-    ? "FORM"
-    : "REPORT");
+        const paneToPrint =
+          printPane ??
+          (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+            String(r.status),
+          )
+            ? "FORM"
+            : "REPORT");
         if (r.kind === "MICRO") {
           if (r.formType === "MICRO_MIX") {
             return (
@@ -2625,9 +2625,7 @@ export default function MCDashboard() {
                     ? [singlePrintJob.report]
                     : []
               }
-              printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 setSinglePrintJob(null);
@@ -3139,6 +3137,9 @@ export default function MCDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -3335,6 +3336,28 @@ export default function MCDashboard() {
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (

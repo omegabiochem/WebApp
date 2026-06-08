@@ -27,6 +27,8 @@ import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   isTerminalStatus,
   type ChemistryColKey,
 } from "../../utils/globalUtils";
@@ -102,7 +104,7 @@ const CHEMISTRY_STATUSES: ("ALL" | ChemistryReportStatus)[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] ;
+];
 
 // -----------------------------
 // Utilities
@@ -221,14 +223,13 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
-
         const paneToPrint =
-  printpane ??
-  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
-    String(r.status)
-  )
-    ? "FORM"
-    : "REPORT");
+          printpane ??
+          (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+            String(r.status),
+          )
+            ? "FORM"
+            : "REPORT");
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -553,17 +554,16 @@ export default function ChemistryDashboard() {
   const [printingSingle, setPrintingSingle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
 
-   const [modalUploading, setModalUploading] = useState(false);
-    const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
-    const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
-  
-    const defaultAttachmentVisibility =
-      user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
-  
-    const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
-      defaultAttachmentVisibility,
-    );
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   // ✅ Per-row update guard
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -1031,28 +1031,28 @@ export default function ChemistryDashboard() {
   const end = start + perPage;
   const pageRows = processed.slice(start, end);
 
-useEffect(() => {
-  setPage(1);
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  sortBy,
-  sortDir,
-  perPage,
-  activeFilter,
-  datePreset,
-  fromDate,
-  toDate,
-]);
-  
+  useEffect(() => {
+    setPage(1);
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+  ]);
+
   useEffect(() => {
     setSelectedIds([]);
   }, [
@@ -1395,7 +1395,6 @@ useEffect(() => {
 
     return nextStatus;
   }
-
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1923,31 +1922,29 @@ useEffect(() => {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
 
-  
-    async function uploadAttachmentForReport(r: Report, file: File) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "manual-upload");
-      form.append("createdBy", user?.name || user?.role || "micro");
-      form.append("kind", "SIGNED_FORM");
-      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
-      form.append("visibility", attachmentVisibility);
-  
-      const token = localStorage.getItem("token");
-  
-      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: form,
-      });
-  
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2013,9 +2010,7 @@ useEffect(() => {
                     ? [singlePrintJob.report]
                     : []
               }
-              printpane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printpane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 setSinglePrintJob(null);
@@ -2468,6 +2463,9 @@ useEffect(() => {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2648,6 +2646,28 @@ useEffect(() => {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -2868,7 +2888,7 @@ useEffect(() => {
               </div>
 
               <div className="flex items-center gap-2">
-                  <input
+                <input
                   ref={modalUploadInputRef}
                   type="file"
                   className="hidden"
@@ -2969,8 +2989,8 @@ useEffect(() => {
 
             <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
-                <ChemistryMixReportFormView 
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -2979,7 +2999,7 @@ useEffect(() => {
                 />
               ) : selectedReport.formType === "COA" ? (
                 <COAReportFormView
-                key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

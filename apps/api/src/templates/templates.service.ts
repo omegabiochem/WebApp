@@ -308,6 +308,9 @@ export class TemplatesService {
     // ✅ sanitize template.data before nested create
     const clean = this.coerceTemplateDetails(template.formType, template.data);
 
+    // ✅ when creating a report from a template, always use today's date
+    clean.dateSent = new Date();
+
     // small unique form number helper (you can swap to your clientSequence logic later)
     const seq = await this.prisma.clientSequence.upsert({
       where: { clientCode },
@@ -523,6 +526,7 @@ export class TemplatesService {
     delete obj.updatedBy;
     delete obj.version;
     delete obj.corrections;
+    delete obj.dateSent;
 
     // -------- date coercion (MICRO/WATER/STERILITY/ CHEM)
     const dateKeys = [

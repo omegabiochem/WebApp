@@ -1360,7 +1360,7 @@ export default function MicroMixReportForm({
   function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
     // data is what you stored in template.data (your payload)
     setClient(data?.client ?? "");
-    setDateSent(data?.dateSent ?? "");
+setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
     setTypeOfTest(data?.typeOfTest ?? "");
     setSampleType(data?.sampleType ?? "");
     setFormulaNo(data?.formulaNo ?? "");

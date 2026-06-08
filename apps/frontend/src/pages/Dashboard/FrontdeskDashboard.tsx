@@ -41,6 +41,8 @@ import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
@@ -199,15 +201,13 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
-
-
-const paneToPrint =
-  printPane ??
-  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
-    String(r.status)
-  )
-    ? "FORM"
-    : "REPORT");
+        const paneToPrint =
+          printPane ??
+          (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+            String(r.status),
+          )
+            ? "FORM"
+            : "REPORT");
         if (r.formType === "MICRO_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -1608,9 +1608,6 @@ export default function FrontDeskDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-
-  
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1709,9 +1706,7 @@ export default function FrontDeskDashboard() {
                     ? [singlePrintJob.report]
                     : []
               }
-              printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 setSinglePrintJob(null);
@@ -2085,6 +2080,9 @@ export default function FrontDeskDashboard() {
                       disabled={printingBulk}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2269,6 +2267,28 @@ export default function FrontDeskDashboard() {
                             onChange={() => toggleRow(r.id)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -2720,7 +2740,6 @@ export default function FrontDeskDashboard() {
             <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
-
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
