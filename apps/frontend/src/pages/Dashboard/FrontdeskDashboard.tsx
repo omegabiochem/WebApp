@@ -167,11 +167,11 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
-  printPane = "REPORT",
+  printPane,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
-  printPane: "FORM" | "REPORT";
+  printPane?: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -199,6 +199,15 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
+
+
+const paneToPrint =
+  printPane ??
+  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+    String(r.status)
+  )
+    ? "FORM"
+    : "REPORT");
         if (r.formType === "MICRO_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -208,7 +217,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -221,7 +230,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -234,7 +243,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -247,7 +256,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -260,7 +269,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -1698,7 +1707,7 @@ export default function FrontDeskDashboard() {
                     : []
               }
               printPane={
-                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
+                isBulkPrinting ? undefined : singlePrintJob!.pane
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
