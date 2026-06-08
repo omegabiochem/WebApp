@@ -222,4 +222,18 @@ export class AuthController {
   ) {
     return this.auth.selectCommonIdentity(body, req);
   }
+
+
+  // auth.controller.ts
+
+@Post("activity")
+@UseGuards(JwtAuthGuard)
+async activity(@Req() req) {
+  await this.prisma.user.update({
+    where: { id: req.user.sub },
+    data: { lastActivityAt: new Date() },
+  });
+
+  return { ok: true };
+}
 }

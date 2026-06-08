@@ -306,7 +306,7 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
-  printPane = "REPORT",
+  printPane,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
@@ -343,6 +343,13 @@ function BulkPrintArea({
         //   pageBreakAfter: "always",
         //   breakAfter: "page",
         // };
+        const paneToPrint =
+          printPane ??
+          (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+            String(r.status),
+          )
+            ? "FORM"
+            : "REPORT");
 
         if (r.formType === "MICRO_MIX") {
           return (
@@ -353,7 +360,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -366,7 +373,20 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
+              />
+            </div>
+          );
+        } else if (r.formType === "MICRO_MIX_WATER") {
+          return (
+            <div key={r.id} className="report-page">
+              <MicroMixWaterReportFormView
+                report={r}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -379,7 +399,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -392,7 +412,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -405,7 +425,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -2007,7 +2027,7 @@ export default function ClientDashboard() {
                   ? selectedReportObjects
                   : [singlePrintJob!.report]
               }
-              printPane={isBulkPrinting ? "REPORT" : singlePrintJob!.pane}
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 if (singlePrintJob) setSinglePrintJob(null);
