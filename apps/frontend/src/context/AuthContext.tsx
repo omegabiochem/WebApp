@@ -66,9 +66,9 @@ function connectSocketWithToken(t: string) {
   socket.connect();
 }
 
-// const IDLE_MS = 15 * 60 * 1000; // 15 minutes
+const IDLE_MS = 15 * 60 * 1000; // 15 minutes
 
-const IDLE_MS = 60 * 1000;
+// const IDLE_MS = 60 * 1000;
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
