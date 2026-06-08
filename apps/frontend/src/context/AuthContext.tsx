@@ -68,6 +68,9 @@ function connectSocketWithToken(t: string) {
 
 const IDLE_MS = 15 * 60 * 1000; // 15 minutes
 
+// const IDLE_MS = 60 * 1000;
+
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [token, setTokenState] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(idleTimerRef.current);
     }
     idleTimerRef.current = window.setTimeout(() => {
+      // console.log("Idle timeout reached");
       logout();
     }, IDLE_MS);
   }, [logout]);
@@ -156,21 +160,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // useEffect(() => {
+  //   if (!token) return;
+
+  //   const onActivity = () => {
+  //     console.log("Activity detected", new Date().toISOString());
+  //     scheduleIdleLogout();
+  //     refreshSessionIfNeeded();
+  //   };
+
+  //   scheduleIdleLogout();
+
+  //   const events: Array<keyof WindowEventMap> = [
+  //     "mousemove",
+  //     "mousedown",
+  //     "keydown",
+  //     "scroll",
+  //     "touchstart",
+  //   ];
+
+  //   events.forEach((e) =>
+  //     window.addEventListener(e, onActivity, { passive: true }),
+  //   );
+
+  //   return () => {
+  //     events.forEach((e) => window.removeEventListener(e, onActivity as any));
+  //   };
+  // }, [token, scheduleIdleLogout, refreshSessionIfNeeded]);
+
+  const lastActivityPingRef = useRef(0);
+
+  const pingActivity = useCallback(async () => {
+    if (!getToken()) return;
+
+    const now = Date.now();
+
+    // do not call API every mouse move
+    if (now - lastActivityPingRef.current < 60_000) return;
+
+    lastActivityPingRef.current = now;
+
+    try {
+      await api("/auth/activity", { method: "POST" });
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!token) return;
 
+    // const onActivity = () => {
+    //   console.log("Activity detected", new Date().toISOString());
+    //   scheduleIdleLogout();
+    // };
+
     const onActivity = () => {
+      // console.log("Activity detected", new Date().toISOString());
       scheduleIdleLogout();
-      refreshSessionIfNeeded();
+      pingActivity();
     };
 
     scheduleIdleLogout();
 
     const events: Array<keyof WindowEventMap> = [
       "mousemove",
+      "mouseenter",
       "mousedown",
+      "click",
       "keydown",
       "scroll",
+      "wheel",
       "touchstart",
     ];
 
@@ -179,9 +239,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
-      events.forEach((e) => window.removeEventListener(e, onActivity as any));
+      events.forEach((e) => window.removeEventListener(e, onActivity));
     };
-  }, [token, scheduleIdleLogout, refreshSessionIfNeeded]);
+  }, [token, scheduleIdleLogout,pingActivity]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = window.setInterval(
+      () => {
+        refreshSessionIfNeeded();
+      },
+      5 * 60 * 1000,
+    );
+
+    return () => window.clearInterval(interval);
+  }, [token, refreshSessionIfNeeded]);
 
   // init session on load
   useEffect(() => {

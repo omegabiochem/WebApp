@@ -33,6 +33,14 @@ export class IdleTimeoutGuard implements CanActivate {
       });
     }
 
+
+    //    if (last && now.getTime() - new Date(last).getTime() > 30 * 1000) {
+    //   throw new UnauthorizedException({
+    //     code: 'IDLE_TIMEOUT',
+    //     message: 'Session expired due to inactivity. Please sign in again.',
+    //   });
+    // }
+
     // update activity (avoid auditing noise if you want)
     await this.prisma.user.update({
       where: { id: user.sub },
