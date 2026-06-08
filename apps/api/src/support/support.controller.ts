@@ -16,6 +16,7 @@ import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 import { SupportTicketCategory, SupportTicketStatus } from '@prisma/client';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('support')
 export class SupportController {
@@ -28,7 +29,7 @@ export class SupportController {
   });
   constructor(private readonly support: SupportService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Post('tickets')
   async create(@Req() req: Request, @Body() dto: CreateSupportTicketDto) {
     const user = (req as any).user;
@@ -41,7 +42,7 @@ export class SupportController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('tickets')
   async list(
     @Query('q') q?: string,
@@ -59,13 +60,13 @@ export class SupportController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('tickets/:id')
   async getOne(@Param('id') id: string) {
     return this.support.getTicket(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Patch('tickets/:id/status')
   async setStatus(
     @Req() req: Request,
@@ -80,7 +81,7 @@ export class SupportController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Patch('tickets/:id/assign')
   async assign(
     @Req() req: Request,
@@ -95,7 +96,7 @@ export class SupportController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('docs/user-manual-url')
   async getUserManualUrl() {
     const bucket = process.env.S3_BUCKET!;

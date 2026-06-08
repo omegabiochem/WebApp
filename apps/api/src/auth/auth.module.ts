@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from 'src/common/jwt.strategy';
 import { PrismaService } from 'prisma/prisma.service';
 import { MailModule } from 'src/mail/mail.module';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { MailModule } from 'src/mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, PrismaService],
+  providers: [AuthService, JwtStrategy, PrismaService,IdleTimeoutGuard],
   exports: [JwtModule],
 })
 export class AuthModule {}
