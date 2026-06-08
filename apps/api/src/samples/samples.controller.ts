@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { SamplesService } from './samples.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 @Controller('samples')
 export class SamplesController {
   constructor(private samplesService: SamplesService) {}

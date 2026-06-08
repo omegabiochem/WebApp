@@ -19,6 +19,7 @@ import {
   withRequestContext,
 } from 'src/common/request-context';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 type CreateCorrectionsDto = {
   items: { fieldKey: string; message: string }[];
@@ -57,7 +58,7 @@ type CreateAttachmentDto = {
   kind?: 'SIGNED_FORM' | 'RAW_SCAN' | 'OTHER';
 };
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 @Controller(['chemistry-reports', 'chemistry-reports/chemistry-mix'])
 // @Controller(['chemistry-reports','coa-reports'])
 export class ChemistryReportsController {
