@@ -440,23 +440,52 @@ function BulkPrintArea({
   );
 }
 
-type ReportFamily = "MICRO" | "STERILITY" | "CHEMISTRY";
+type ReportFamily = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
 
 function getReportFamily(r: Report): ReportFamily {
-  if (r.formType === "STERILITY") return "STERILITY";
-  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
-    return "CHEMISTRY";
-  return "MICRO";
+  switch (r.formType) {
+    case "MICRO_MIX":
+      return "MICRO";
+    case "MICRO_MIX_WATER":
+      return "MICRO_WATER";
+    case "STERILITY":
+      return "STERILITY";
+    case "CHEMISTRY_MIX":
+      return "CHEMISTRY";
+    case "COA":
+      return "COA";
+    default:
+      return "MICRO";
+  }
 }
 
 function getStatusesForReportFamily(family: ReportFamily): string[] {
-  if (family === "CHEMISTRY") {
+  if (family === "CHEMISTRY" || family === "COA") {
     return ADMIN_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
   }
+
   if (family === "STERILITY") {
     return ADMIN_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
   }
+
   return ADMIN_MICRO_STATUSES.filter((s) => s !== "ALL").map(String);
+}
+
+function getReportFamilyLabel(family: ReportFamily | null) {
+  switch (family) {
+    case "MICRO":
+      return "Micro";
+    case "MICRO_WATER":
+      return "Micro Water";
+    case "STERILITY":
+      return "Sterility";
+    case "CHEMISTRY":
+      return "Chemistry";
+    case "COA":
+      return "COA";
+    default:
+      return "Report";
+  }
 }
 
 const DEFAULT_ADMIN_FILTERS = {
@@ -2163,9 +2192,7 @@ export default function SystemAdminDashboard() {
                     ? [singlePrintJob.report]
                     : []
               }
-              printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 setSinglePrintJob(null);
@@ -3767,80 +3794,226 @@ export default function SystemAdminDashboard() {
 
       {bulkChangeReports.length > 0 && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-label="Bulk change status"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !bulkSaving) {
+              setBulkChangeReports([]);
+              setBulkNewStatus("");
+              setBulkReason("");
+              setBulkESignPassword("");
+              setBulkESignError("");
+            }
+          }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">Bulk Change Status</h2>
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Bulk Change Status</h2>
+                  <p className="mt-1 text-sm text-white/85">
+                    {bulkChangeReports.length} selected{" "}
+                    {getReportFamilyLabel(selectedFamily)} report(s) will be
+                    updated
+                  </p>
+                </div>
 
-            <p className="mb-3 text-sm text-slate-600">
-              <strong>Selected reports:</strong> {bulkChangeReports.length}
-            </p>
+                <button
+                  type="button"
+                  disabled={bulkSaving}
+                  onClick={() => {
+                    setBulkChangeReports([]);
+                    setBulkNewStatus("");
+                    setBulkReason("");
+                    setBulkESignPassword("");
+                    setBulkESignError("");
+                  }}
+                  className="rounded-md px-2 py-1 text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
 
             <form
               autoComplete="off"
+              name="bulk-status-change-form"
+              action="about:blank"
               onSubmit={(e) => {
                 e.preventDefault();
                 handleBulkChangeStatus(bulkChangeReports, bulkNewStatus);
               }}
+              className="px-5 py-4"
             >
-              <select
-                value={bulkNewStatus}
-                onChange={(e) => {
-                  setBulkNewStatus(e.target.value);
-                  setBulkESignError("");
-                }}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              >
-                {bulkStatusOptions.map((s) => (
-                  <option key={String(s)} value={String(s)}>
-                    {niceStatus(String(s))}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="text"
-                placeholder="Reason for change"
-                value={bulkReason}
-                onChange={(e) => setBulkReason(e.target.value)}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              />
-
-              {needsESign(bulkNewStatus) && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                    <span>E-signature password</span>
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Selected Reports
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-800">
+                      {bulkChangeReports.length}
+                    </div>
                   </div>
 
-                  <input
-                    type="password"
-                    placeholder="Enter e-signature password"
-                    value={bulkESignPassword}
-                    onChange={(e) => {
-                      setBulkESignPassword(e.target.value);
-                      setBulkESignError("");
-                    }}
-                    className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-                    aria-invalid={!!bulkESignError}
-                    autoComplete="off"
-                    name="bulk_esign_pwd_manual_only"
-                  />
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      New Status
+                    </div>
+                    <div className="mt-1 font-semibold text-violet-700">
+                      {niceStatus(bulkNewStatus)}
+                    </div>
+                  </div>
+                </div>
 
-                  {bulkESignError && (
-                    <p className="mb-2 mt-2 text-xs text-rose-600">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Reports
+                  </div>
+                </div>
+
+                <div className="max-h-44 overflow-auto rounded-lg bg-white ring-1 ring-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-slate-600">
+                        <th className="px-3 py-2 font-medium">Form #</th>
+                        <th className="px-3 py-2 font-medium">Report #</th>
+                        <th className="px-3 py-2 font-medium">
+                          Current Status
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {bulkChangeReports.map((r) => (
+                        <tr key={r.id} className="border-t">
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            {r.formNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {r.reportNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={classNames(
+                                "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1",
+                                badgeClasses(r),
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  New Status
+                </label>
+                <select
+                  value={bulkNewStatus}
+                  onChange={(e) => {
+                    setBulkNewStatus(e.target.value);
+                    setBulkESignError("");
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500"
+                >
+                  {bulkStatusOptions.map((s) => (
+                    <option key={String(s)} value={String(s)}>
+                      {niceStatus(String(s))}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Reason for Change
+                </label>
+                <textarea
+                  placeholder="Explain why these statuses are being changed..."
+                  value={bulkReason}
+                  onChange={(e) => setBulkReason(e.target.value)}
+                  rows={3}
+                  disabled={bulkSaving}
+                  className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  This reason will be captured for audit and e-sign review.
+                </p>
+              </div>
+
+              {needsESign(bulkNewStatus) && (
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    E-signature Password
+                  </label>
+
+                  <div className="relative">
+                    <input
+                      type={showESignPassword ? "text" : "password"}
+                      placeholder="Enter e-signature password"
+                      value={bulkESignPassword}
+                      onChange={(e) => {
+                        setBulkESignPassword(e.target.value);
+                        setBulkESignError("");
+                      }}
+                      disabled={bulkSaving}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-11 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                      aria-invalid={!!bulkESignError}
+                      autoComplete="off"
+                      name="bulk_esign_pwd_manual_only"
+                      inputMode="text"
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowESignPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                      title={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showESignPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {bulkESignError ? (
+                    <p className="mt-2 text-xs text-rose-600">
                       {bulkESignError}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Required for controlled workflow transitions.
                     </p>
                   )}
                 </div>
               )}
 
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4">
                 <button
                   type="button"
-                  className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   onClick={() => {
                     setBulkChangeReports([]);
                     setBulkNewStatus("");
@@ -3855,7 +4028,7 @@ export default function SystemAdminDashboard() {
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
                   disabled={
                     bulkSaving ||
                     !bulkReason.trim() ||
@@ -3863,7 +4036,7 @@ export default function SystemAdminDashboard() {
                   }
                 >
                   {bulkSaving ? <Spinner /> : null}
-                  {bulkSaving ? "Saving…" : "Save"}
+                  {bulkSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
