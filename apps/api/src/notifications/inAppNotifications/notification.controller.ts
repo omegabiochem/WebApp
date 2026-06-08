@@ -1,9 +1,10 @@
 import { Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from 'src/common/jwt-auth.guard';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('/notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 export class NotificationController {
   constructor(private readonly svc: NotificationService) {}
 

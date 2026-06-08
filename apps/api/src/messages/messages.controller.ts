@@ -25,9 +25,10 @@ import { UserRole } from '@prisma/client';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
 import * as os from 'os';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('messages')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 export class MessagesController {
   constructor(
     private readonly storage: StorageService,

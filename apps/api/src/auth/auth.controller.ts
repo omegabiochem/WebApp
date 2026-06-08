@@ -17,6 +17,7 @@ import { Public } from 'src/common/public.decorator';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import type { Response } from 'express';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -37,7 +38,7 @@ export class AuthController {
     return this.auth.loginWithUserId(body.userId, body.password, req, res);
   }
   // ✅ Who am I?
-  // @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   // @Get('me')
   // // async getMe(@Req() req: any) {
   // //   const dbId = req.user?.userId as string; // JwtStrategy maps sub → userId
@@ -48,7 +49,7 @@ export class AuthController {
   //   return req.user; // sub, role, uid, etc.
   // }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('me')
   async getMe(@Req() req: any) {
     const dbId = req.user?.sub as string; // JWT subject = DB user id
@@ -100,7 +101,7 @@ export class AuthController {
   }
 
   // ✅ Regular authenticated password change (pass req so we can audit)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Post('change-password')
   async changePassword(
     @Req() req: any,
@@ -121,7 +122,7 @@ export class AuthController {
   }
 
   // ✅ NEW: Logout endpoint (audited)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Post('logout')
   logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { sub, role, uid, jti, clientCode } = req.user ?? {};
@@ -227,7 +228,7 @@ export class AuthController {
   // auth.controller.ts
 
 @Post("activity")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 async activity(@Req() req) {
   await this.prisma.user.update({
     where: { id: req.user.sub },
