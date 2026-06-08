@@ -449,6 +449,15 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
+
+
+const paneToPrint =
+  printPane ??
+  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+    String(r.status)
+  )
+    ? "FORM"
+    : "REPORT");
         if (r.kind === "MICRO") {
           if (r.formType === "MICRO_MIX") {
             return (
@@ -459,7 +468,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
-                  pane={printPane}
+                  pane={paneToPrint}
                 />
               </div>
             );
@@ -473,7 +482,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
-                  pane={printPane}
+                  pane={paneToPrint}
                 />
               </div>
             );
@@ -487,7 +496,7 @@ function BulkPrintArea({
                   showSwitcher={false}
                   isBulkPrint={true}
                   isSingleBulk={isSingle}
-                  pane={printPane}
+                  pane={paneToPrint}
                 />
               </div>
             );
@@ -510,7 +519,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -526,7 +535,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printPane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -2617,7 +2626,7 @@ export default function MCDashboard() {
                     : []
               }
               printPane={
-                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
+                isBulkPrinting ? undefined : singlePrintJob!.pane
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);

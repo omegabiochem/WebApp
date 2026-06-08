@@ -266,21 +266,22 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
+  printPane ,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
+  printPane?: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
   const isSingle = reports.length === 1;
+
   React.useEffect(() => {
-    const tid = setTimeout(() => {
-      window.print();
-    }, 200);
+    const tid = window.setTimeout(() => window.print(), 200);
 
     const handleAfterPrint = () => onAfterPrint();
-
     window.addEventListener("afterprint", handleAfterPrint);
+
     return () => {
       clearTimeout(tid);
       window.removeEventListener("afterprint", handleAfterPrint);
@@ -288,46 +289,56 @@ function BulkPrintArea({
   }, [reports, onAfterPrint]);
 
   return (
-    <div
-      id="bulk-print-root"
-      className={
-        isSingle ? "hidden print:block" : "hidden print:block multi-print"
-      }
-    >
+    <div id="bulk-print-root" className="hidden print:block">
       {reports.map((r) => {
+        const paneToPrint =
+          printPane ??
+          (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+            String(r.status),
+          )
+            ? "FORM"
+            : "REPORT");
+
         if (r.formType === "MICRO_MIX") {
           return (
             <div key={r.id} className="report-page">
               <MicroMixReportFormView
-                report={r}
+                report={r as any}
                 onClose={() => {}}
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={paneToPrint}
               />
             </div>
           );
-        } else if (r.formType === "STERILITY") {
-          return (
-            <div key={r.id} className="report-page">
-              <SterilityReportFormView
-                report={r}
-                onClose={() => {}}
-                showSwitcher={false}
-                isBulkPrint={true}
-                isSingleBulk={isSingle}
-              />
-            </div>
-          );
-        } else if (r.formType === "MICRO_MIX_WATER") {
+        }
+
+        if (r.formType === "MICRO_MIX_WATER") {
           return (
             <div key={r.id} className="report-page">
               <MicroMixWaterReportFormView
-                report={r}
+                report={r as any}
                 onClose={() => {}}
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
+                pane={paneToPrint}
+              />
+            </div>
+          );
+        }
+
+        if (r.formType === "STERILITY") {
+          return (
+            <div key={r.id} className="report-page">
+              <SterilityReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -2061,6 +2072,9 @@ export default function MicroDashboard() {
                 isBulkPrinting
                   ? selectedReportObjects
                   : [singlePrintJob?.report!]
+              }
+               printPane={
+                isBulkPrinting ? undefined : singlePrintJob!.pane
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);

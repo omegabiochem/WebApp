@@ -190,11 +190,11 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
-  printpane = "REPORT",
+  printpane,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
-  printpane: "FORM" | "REPORT";
+  printpane?: "FORM" | "REPORT";
 }) {
   if (!reports.length) return null;
 
@@ -221,6 +221,14 @@ function BulkPrintArea({
       }
     >
       {reports.map((r) => {
+
+        const paneToPrint =
+  printpane ??
+  (["DRAFT", "UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"].includes(
+    String(r.status)
+  )
+    ? "FORM"
+    : "REPORT");
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -230,7 +238,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printpane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -244,7 +252,7 @@ function BulkPrintArea({
                 showSwitcher={false}
                 isBulkPrint={true}
                 isSingleBulk={isSingle}
-                pane={printpane}
+                pane={paneToPrint}
               />
             </div>
           );
@@ -2006,7 +2014,7 @@ useEffect(() => {
                     : []
               }
               printpane={
-                isBulkPrinting ? "REPORT" : (singlePrintJob?.pane ?? "REPORT")
+                isBulkPrinting ? undefined : singlePrintJob!.pane
               }
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
