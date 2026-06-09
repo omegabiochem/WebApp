@@ -2065,21 +2065,29 @@ export default function MicroMixReportForm({
     return false;
   }
 
-  function shouldBlockStatusChangeForUnresolvedCorrections() {
-    const pending = openCorrections.filter(
-      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
-    );
-
-    if (pending.length > 0) {
-      alert(
-        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
-          `Please click the green tick / Resolve before changing status.`,
-      );
-      return true; // ✅ block
-    }
-
-    return false; // ✅ allow
+function shouldBlockStatusChangeForUnresolvedCorrections() {
+  if (
+    role === "SYSTEMADMIN" ||
+    role === "ADMIN" ||
+    role === "QA"
+  ) {
+    return false;
   }
+
+  const pending = openCorrections.filter(
+    (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+  );
+
+  if (pending.length > 0) {
+    alert(
+      `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+      `Please click the green tick / Resolve before changing status.`,
+    );
+    return true;
+  }
+
+  return false;
+}
 
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
