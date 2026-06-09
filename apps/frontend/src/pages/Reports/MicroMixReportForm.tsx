@@ -772,8 +772,8 @@ export default function MicroMixReportForm({
       case "tbc_result":
         return tbc_result;
 
-      case "tbc_spec":
-        return tbc_spec;
+  case "tbc_spec":
+  return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
 
       case "tmy_gram":
         return tmy_gram;
@@ -781,8 +781,8 @@ export default function MicroMixReportForm({
       case "tmy_result":
         return tmy_result;
 
-      case "tmy_spec":
-        return tmy_spec;
+  case "tmy_spec":
+  return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
 
       case "comments":
         return comments;
@@ -2915,7 +2915,7 @@ export default function MicroMixReportForm({
                 setAddForField("tbc_spec");
                 setAddMessage("");
               }}
-              className="py-1 px-2 flex relative"
+       className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
