@@ -75,6 +75,7 @@ export default function ManageReports() {
     formType: string;
     formNumber: string;
     reportNumber: string | null;
+    typeOfTest?: string | null;
     status: string;
     clientCode: string | null;
     createdAt: string | null;
@@ -491,47 +492,36 @@ export default function ManageReports() {
       </div>
 
       <div className={cx(card, "overflow-hidden")}>
-        <div
-          className={cx(
-            cardHeader,
-            "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
-          )}
-        >
-          <div>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 font-semibold text-slate-900">
-              <CalendarDays size={18} />
-              Monthly Calendar - Created At
+              <CalendarDays size={16} />
+              Monthly Calendar
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Month Total:{" "}
-              <span className="font-semibold text-slate-900">
-                {monthTotalReports}
-              </span>{" "}
-              report(s)
-              {selectedDay && (
-                <>
-                  {" "}
-                  • Selected Day:{" "}
-                  <span className="font-semibold text-indigo-700">
-                    {selectedDay}
-                  </span>
-                </>
-              )}
+
+            <div className="text-xs text-slate-500">
+              Total: <span className="font-semibold">{monthTotalReports}</span>
             </div>
+
+            {selectedDay && (
+              <div className="text-xs text-indigo-700 font-semibold">
+                {selectedDay}
+              </div>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
             <button
               type="button"
-              className={btn.outline}
+              className={cx(btn.outline, "h-8 min-h-8 px-2")}
               onClick={() => changeMonth(-1)}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={14} />
             </button>
 
             <input
               type="month"
-              className={cx(inputBase, "w-auto")}
+              className={cx(inputBase, "w-[140px] h-8 py-1")}
               value={calendarMonth}
               onChange={(e) => {
                 setCalendarMonth(e.target.value);
@@ -543,16 +533,16 @@ export default function ManageReports() {
 
             <button
               type="button"
-              className={btn.outline}
+              className={cx(btn.outline, "h-8 min-h-8 px-2")}
               onClick={() => changeMonth(1)}
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={14} />
             </button>
 
             {selectedDay && (
               <button
                 type="button"
-                className={btn.outline}
+                className="h-8 min-h-8 shrink-0 whitespace-nowrap px-4 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-colors"
                 onClick={() => {
                   setSelectedDay(null);
                   setSelectedMetric(null);
@@ -565,7 +555,7 @@ export default function ManageReports() {
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="p-2">
           {calendarLoading ? (
             <div className="text-sm text-slate-500">Loading calendar...</div>
           ) : (
@@ -612,14 +602,28 @@ export default function ManageReports() {
                             );
                           }}
                           className={cx(
-                        "rounded-lg border p-3 text-left min-h-[125px] transition hover:shadow-sm",
+                            "relative rounded-lg border p-3 pt-12 text-left min-h-[125px] transition hover:shadow-md",
                             countTone(d.count),
+                            d.count > 0 && "shadow-sm",
                             selectedDay === d.key &&
-                              "ring-2 ring-indigo-500 border-indigo-400",
+                              "ring-2 ring-indigo-600 border-indigo-500 bg-indigo-100",
                           )}
                         >
-                          <div className="text-sm font-bold">{d.day}</div>
-                          <div className="mt-2 text-xs font-semibold">
+                          <div className="absolute top-2 left-2">
+                            <div
+                              className={cx(
+                                "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold shadow-sm",
+                                d.count > 0
+                                  ? "bg-indigo-600 text-white"
+                                  : "bg-slate-200 text-slate-600",
+                                selectedDay === d.key &&
+                                  "bg-indigo-800 text-white ring-2 ring-indigo-300",
+                              )}
+                            >
+                              {d.day}
+                            </div>
+                          </div>
+                          <div className="text-xs font-semibold">
                             {d.count} report(s)
                           </div>
 
@@ -642,7 +646,7 @@ export default function ManageReports() {
                       ) : (
                         <div
                           key={`blank-${weekIndex}-${dayIndex}`}
-               className="rounded-lg border border-dashed border-slate-200 bg-white/60 min-h-[125px]"
+                          className="rounded-lg border border-dashed border-slate-200 bg-white/60 min-h-[125px]"
                         />
                       ),
                     )}
@@ -704,64 +708,61 @@ export default function ManageReports() {
               </div>
             ) : (
               <div className="p-3">
-                <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
-                  <div>Client</div>
-                  <div>Form Type</div>
-                  <div>Form #</div>
-                  <div>Report #</div>
-                  <div>Status</div>
-                  <div>Created At</div>
-                </div>
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full min-w-[1050px] table-fixed border-collapse">
+                    <colgroup>
+                      <col className="w-[8%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[23%]" />
+                      <col className="w-[29%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[17%]" />
+                    </colgroup>
 
-                <div className="divide-y divide-slate-200">
-                  {detailItems.map((r) => (
-                    <div key={`${r.formType}-${r.id}`} className="py-3">
-                      <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-3">
-                        <div className="font-semibold text-slate-900">
-                          {r.clientCode ?? "—"}
-                        </div>
-                        <div className="text-slate-900">{r.formType}</div>
-                        <div className="text-slate-900">{r.formNumber}</div>
-                        <div className="text-slate-900">
-                          {r.reportNumber ?? "—"}
-                        </div>
-                        <div className="text-slate-900">{r.status}</div>
-                        <div className="text-slate-900">
-                          {fmtDate(r.createdAt)}
-                        </div>
-                      </div>
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                        <th className="px-4 py-3 text-left">Form Type</th>
+                        <th className="px-4 py-3 text-left">Form #</th>
+                        <th className="px-4 py-3 text-left">Type Of Test</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                        <th className="px-4 py-3 text-left">Client</th>
+                        <th className="px-4 py-3 text-left">Created At</th>
+                      </tr>
+                    </thead>
 
-                      <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="font-semibold text-slate-900">
+                    <tbody>
+                      {detailItems.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="border-b border-slate-100 text-sm"
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {reportTypeLabel(r.formType)}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
+                            {r.formNumber}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
+                            {r.typeOfTest ?? "—"}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700 break-words">
+                            {r.status}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
                             {r.clientCode ?? "—"}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {fmtDate(r.createdAt)}
-                          </div>
-                        </div>
+                          </td>
 
-                        <div className="text-sm text-slate-700">
-                          Form Type:{" "}
-                          <span className="font-medium">{r.formType}</span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Form #:{" "}
-                          <span className="font-medium">{r.formNumber}</span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Report #:{" "}
-                          <span className="font-medium">
-                            {r.reportNumber ?? "—"}
-                          </span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Status:{" "}
-                          <span className="font-medium">{r.status}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                          <td className="px-4 py-3 text-slate-700 whitespace-normal">
+                            {fmtDate(r.createdAt)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
                 <div className="px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-sm text-slate-600">
