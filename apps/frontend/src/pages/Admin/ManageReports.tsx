@@ -44,11 +44,35 @@ const statCardStyles = {
   violet: "bg-violet-50 border-violet-200",
   rose: "bg-rose-50 border-rose-200",
 };
-function fmtDate(x: string | null) {
-  if (!x) return "—";
-  const d = new Date(x);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString();
+
+function dateSentKey(x: string | null) {
+  if (!x) return "";
+
+  const text = String(x).trim();
+
+  // If backend sends ISO/date string, use the stored date part directly.
+  // Example: 2026-06-10T00:00:00.000Z -> 2026-06-10
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+  const d = new Date(text);
+  if (isNaN(d.getTime())) return "";
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
+
+function fmtDate(x: string | null) {
+  const key = dateSentKey(x);
+  if (!key) return "—";
+
+  const [year, month, day] = key.split("-");
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
 
 export default function ManageReports() {
   type MetricType =
@@ -78,7 +102,7 @@ export default function ManageReports() {
     typeOfTest?: string | null;
     status: string;
     clientCode: string | null;
-    createdAt: string | null;
+    dateSent: string | null;
   };
 
   const [clientCode, setClientCode] = useState("ALL");
@@ -136,16 +160,22 @@ export default function ManageReports() {
     }
   }
 
-  function monthBounds(monthValue = calendarMonth) {
-    const [year, month] = monthValue.split("-").map(Number);
-    const first = new Date(year, month - 1, 1);
-    const last = new Date(year, month, 0);
-
-    const fromKey = first.toISOString().slice(0, 10);
-    const toKey = last.toISOString().slice(0, 10);
-
-    return { fromKey, toKey };
+  function makeDateKey(year: number, month: number, day: number) {
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+      2,
+      "0",
+    )}`;
   }
+
+function monthBounds(monthValue = calendarMonth) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const last = new Date(year, month, 0);
+
+  return {
+    fromKey: makeDateKey(year, month, 1),
+    toKey: makeDateKey(year, month, last.getDate()),
+  };
+}
 
   async function loadDetail(
     metric: MetricType,
@@ -298,10 +328,7 @@ export default function ManageReports() {
   }
 
   function toDateKey(x: string | null) {
-    if (!x) return "";
-    const d = new Date(x);
-    if (isNaN(d.getTime())) return "";
-    return d.toISOString().slice(0, 10);
+    return dateSentKey(x);
   }
 
   function changeMonth(delta: number) {
@@ -330,7 +357,7 @@ export default function ManageReports() {
     const counts = calendarItems.reduce<
       Record<string, { total: number; types: Record<string, number> }>
     >((acc, report) => {
-      const key = toDateKey(report.createdAt);
+      const key = toDateKey(report.dateSent);
       if (!key) return acc;
 
       if (!acc[key]) {
@@ -347,8 +374,7 @@ export default function ManageReports() {
     const days = [];
 
     for (let i = 1; i <= last.getDate(); i++) {
-      const d = new Date(year, month - 1, i);
-      const key = d.toISOString().slice(0, 10);
+      const key = makeDateKey(year, month, i);
 
       days.push({
         day: i,
@@ -404,7 +430,7 @@ export default function ManageReports() {
           Manage Reports
         </h1>
         <p className="text-sm text-slate-600">
-          View report counts and details by client and created date.
+          View report counts and details by client and date sent.
         </p>
       </div>
 
@@ -594,12 +620,8 @@ export default function ManageReports() {
                             setSelectedDay(d.key);
                             setPage(1);
                             setDetailPage(1);
-                            loadDetail(
-                              selectedMetric ?? "ALL",
-                              1,
-                              detailPageSize,
-                              d.key,
-                            );
+                            setSelectedMetric("ALL");
+                            loadDetail("ALL", 1, detailPageSize, d.key);
                           }}
                           className={cx(
                             "relative rounded-lg border p-3 pt-12 text-left min-h-[125px] transition hover:shadow-md",
@@ -726,7 +748,7 @@ export default function ManageReports() {
                         <th className="px-4 py-3 text-left">Type Of Test</th>
                         <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Client</th>
-                        <th className="px-4 py-3 text-left">Created At</th>
+                        <th className="px-4 py-3 text-left">Date Sent</th>
                       </tr>
                     </thead>
 
@@ -757,7 +779,7 @@ export default function ManageReports() {
                           </td>
 
                           <td className="px-4 py-3 text-slate-700 whitespace-normal">
-                            {fmtDate(r.createdAt)}
+                            {fmtDate(r.dateSent)}
                           </td>
                         </tr>
                       ))}
