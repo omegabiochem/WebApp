@@ -1623,19 +1623,41 @@ export default function SterilityReportForm({
         <div className="w-full border border-black text-[15px]">
           {/* CLIENT / DATE SENT */}
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div
+              id="f-client"
+              onClick={() => {
+                if (!selectingCorrections) return;
+                setAddForField("client");
+                setAddMessage("");
+              }}
+              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
+                "client",
+              )}`}
+            >
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
+              <FieldErrorBadge name="client" errors={errors} />
+              <ResolveOverlay field="client" />
+
               {lock("client") ? (
-                <div className="flex-1  min-h-[14px]">{client}</div>
+                <div className="flex-1 min-h-[14px]">{client}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
+                    errors.client
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("client")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
                   value={client.toUpperCase()}
                   onChange={(e) => {
                     setClient(e.target.value.toUpperCase());
+                    clearError("client");
                     markDirty();
                   }}
-                  // disabled={role === "CLIENT"}
+                  aria-invalid={!!errors.client}
                 />
               )}
             </div>
@@ -1672,7 +1694,7 @@ export default function SterilityReportForm({
                       : ""
                   }`}
                   type="date"
-                   min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
+                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
                   value={formatDateForInput(dateSent)}
                   onChange={(e) => {
                     setDateSent(e.target.value);

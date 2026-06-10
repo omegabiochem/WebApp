@@ -945,8 +945,13 @@ export default function ClientDashboard() {
         setLoading(true);
         setError(null);
 
-        const micro = await api<Report[]>("/reports");
-        const chemistry = await api<Report[]>("/chemistry-reports");
+        // const micro = await api<Report[]>("/reports");
+        // const chemistry = await api<Report[]>("/chemistry-reports");
+
+        const [micro, chemistry] = await Promise.all([
+          api<Report[]>("/reports"),
+          api<Report[]>("/chemistry-reports"),
+        ]);
 
         const all = [...micro, ...chemistry];
 
