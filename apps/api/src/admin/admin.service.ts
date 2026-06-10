@@ -543,6 +543,9 @@ export class AdminService {
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
         : {}),
+      status: {
+        notIn: ['DRAFT', 'VOID', 'UNDER_DRAFT_REVIEW'],
+      },
       ...(metric !== 'ALL' &&
       ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'].includes(metric)
         ? { formType: metric as any }
@@ -554,6 +557,9 @@ export class AdminService {
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
         : {}),
+      status: {
+        notIn: ['DRAFT', 'VOID', 'UNDER_DRAFT_REVIEW'],
+      },
       ...(metric !== 'ALL' && ['CHEMISTRY_MIX', 'COA'].includes(metric)
         ? { formType: metric as any }
         : {}),
@@ -580,6 +586,15 @@ export class AdminService {
             status: true,
             clientCode: true,
             createdAt: true,
+            microMix: {
+              select: { typeOfTest: true },
+            },
+            microMixWater: {
+              select: { typeOfTest: true },
+            },
+            sterility: {
+              select: { typeOfTest: true },
+            },
           },
         })
       : [];
@@ -596,6 +611,11 @@ export class AdminService {
             status: true,
             clientCode: true,
             createdAt: true,
+            chemistryMix: {
+              select: {
+                testTypes: true,
+              },
+            },
           },
         })
       : [];
@@ -606,6 +626,11 @@ export class AdminService {
         formType: r.formType,
         formNumber: r.formNumber,
         reportNumber: r.reportNumber,
+        typeOfTest:
+          r.microMix?.typeOfTest ??
+          r.microMixWater?.typeOfTest ??
+          r.sterility?.typeOfTest ??
+          null,
         status: String(r.status),
         clientCode: r.clientCode,
         createdAt: r.createdAt.toISOString(),
@@ -615,6 +640,7 @@ export class AdminService {
         formType: r.formType,
         formNumber: r.formNumber,
         reportNumber: r.reportNumber,
+        typeOfTest: r.chemistryMix?.testTypes?.join(', ') ?? null,
         status: String(r.status),
         clientCode: r.clientCode,
         createdAt: r.createdAt.toISOString(),
