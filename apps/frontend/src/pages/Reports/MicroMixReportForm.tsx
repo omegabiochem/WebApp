@@ -772,8 +772,8 @@ export default function MicroMixReportForm({
       case "tbc_result":
         return tbc_result;
 
-  case "tbc_spec":
-  return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
+      case "tbc_spec":
+        return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
 
       case "tmy_gram":
         return tmy_gram;
@@ -781,8 +781,8 @@ export default function MicroMixReportForm({
       case "tmy_result":
         return tmy_result;
 
-  case "tmy_spec":
-  return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
+      case "tmy_spec":
+        return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
 
       case "comments":
         return comments;
@@ -2065,29 +2065,25 @@ export default function MicroMixReportForm({
     return false;
   }
 
-function shouldBlockStatusChangeForUnresolvedCorrections() {
-  if (
-    role === "SYSTEMADMIN" ||
-    role === "ADMIN" ||
-    role === "QA"
-  ) {
+  function shouldBlockStatusChangeForUnresolvedCorrections() {
+    if (role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA") {
+      return false;
+    }
+
+    const pending = openCorrections.filter(
+      (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
+    );
+
+    if (pending.length > 0) {
+      alert(
+        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
+          `Please click the green tick / Resolve before changing status.`,
+      );
+      return true;
+    }
+
     return false;
   }
-
-  const pending = openCorrections.filter(
-    (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
-  );
-
-  if (pending.length > 0) {
-    alert(
-      `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
-      `Please click the green tick / Resolve before changing status.`,
-    );
-    return true;
-  }
-
-  return false;
-}
 
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
@@ -2243,19 +2239,41 @@ function shouldBlockStatusChangeForUnresolvedCorrections() {
         <div className="w-full border border-black text-[15px]">
           {/* CLIENT / DATE SENT */}
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div
+              id="f-client"
+              onClick={() => {
+                if (!selectingCorrections) return;
+                setAddForField("client");
+                setAddMessage("");
+              }}
+              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
+                "client",
+              )}`}
+            >
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
+              <FieldErrorBadge name="client" errors={errors} />
+              <ResolveOverlay field="client" />
+
               {lock("client") ? (
-                <div className="flex-1  min-h-[14px]">{client}</div>
+                <div className="flex-1 min-h-[14px]">{client}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
+                    errors.client
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("client")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
                   value={client.toUpperCase()}
                   onChange={(e) => {
                     setClient(e.target.value.toUpperCase());
+                    clearError("client");
                     markDirty();
                   }}
-                  // disabled={role === "CLIENT"}
+                  aria-invalid={!!errors.client}
                 />
               )}
             </div>
@@ -2923,7 +2941,7 @@ function shouldBlockStatusChangeForUnresolvedCorrections() {
                 setAddForField("tbc_spec");
                 setAddMessage("");
               }}
-       className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
+              className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
