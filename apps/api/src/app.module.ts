@@ -26,6 +26,7 @@ import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
 import { TemplatesModule } from './templates/templates.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SystemAdminDashboardModule } from './dashboards/system-admin-dashboard/system-admin-dashboard.module';
 
 @Module({
   imports: [
@@ -44,7 +45,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     AttachmentsGlobalModule,
     AdminModule,
     SupportModule,
-    TemplatesModule
+    TemplatesModule,
+    SystemAdminDashboardModule
   ],
   controllers: [HealthController, FaviconController],
   providers: [
