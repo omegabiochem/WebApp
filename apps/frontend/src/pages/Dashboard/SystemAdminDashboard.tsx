@@ -950,7 +950,16 @@ export default function SystemAdminDashboard() {
       try {
         setLoading(true);
         setError(null);
+
+        const startedAt = performance.now();
         const allReports = await fetchAll();
+
+        const apiFinishedAt = performance.now();
+
+        console.log("Reports API load time:", {
+          totalMs: Math.round(apiFinishedAt - startedAt),
+          totalCount: allReports.length,
+        });
         if (!abort) setReports(allReports);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
@@ -3809,7 +3818,7 @@ export default function SystemAdminDashboard() {
           }}
         >
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
+            <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Bulk Change Status</h2>

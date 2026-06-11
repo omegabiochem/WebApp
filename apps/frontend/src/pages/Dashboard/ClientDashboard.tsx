@@ -947,11 +947,20 @@ export default function ClientDashboard() {
 
         // const micro = await api<Report[]>("/reports");
         // const chemistry = await api<Report[]>("/chemistry-reports");
+        const startedAt = performance.now();
 
         const [micro, chemistry] = await Promise.all([
           api<Report[]>("/reports"),
           api<Report[]>("/chemistry-reports"),
         ]);
+
+        const apiFinishedAt = performance.now();
+
+        console.log("Reports API load time:", {
+          totalMs: Math.round(apiFinishedAt - startedAt),
+          microCount: micro.length,
+          chemistryCount: chemistry.length,
+        });
 
         const all = [...micro, ...chemistry];
 
