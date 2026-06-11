@@ -10,7 +10,7 @@ import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+// import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 
 import {
@@ -28,7 +28,7 @@ import {
 
 import {
   formatDate,
-  matchesDateRange,
+  // matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
@@ -46,7 +46,7 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+// import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import { Eye, EyeOff, Pin } from "lucide-react";
 
 // ---------------------------------
@@ -518,51 +518,51 @@ const DEFAULT_ADMIN_FILTERS = {
     | "updatedAt",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
+// function extractYearAndSequence(value?: string | number | null): {
+//   year: number | null;
+//   sequence: number | null;
+// } {
+//   if (value == null) return { year: null, sequence: null };
 
-  const text = String(value).trim();
+//   const text = String(value).trim();
 
-  // Example:
-  // ABC-20260001  => year=2026, sequence=1
-  // XYZ20260025   => year=2026, sequence=25
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
+//   // Example:
+//   // ABC-20260001  => year=2026, sequence=1
+//   // XYZ20260025   => year=2026, sequence=25
+//   const match = text.match(/(\d{5,})$/);
+//   if (!match) return { year: null, sequence: null };
 
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
+//   const digits = match[1];
+//   if (digits.length < 5) return { year: null, sequence: null };
 
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
+//   const yearPart = digits.slice(0, 4);
+//   const seqPart = digits.slice(4);
 
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
+//   const year = Number(yearPart);
+//   const sequence = Number(seqPart);
 
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
+//   return {
+//     year: Number.isFinite(year) ? year : null,
+//     sequence: Number.isFinite(sequence) ? sequence : null,
+//   };
+// }
 
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
+// function inRange(
+//   value: number | null,
+//   fromRaw?: string,
+//   toRaw?: string,
+// ): boolean {
+//   if (value == null) return false;
 
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+//   const from =
+//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
 
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
+//   if (from != null && Number.isFinite(from) && value < from) return false;
+//   if (to != null && Number.isFinite(to) && value > to) return false;
 
-  return true;
-}
+//   return true;
+// }
 
 // ---------------------------------
 // Component
@@ -577,7 +577,13 @@ export default function SystemAdminDashboard() {
     (user as any)?.userId ||
     (user as any)?.sub ||
     (user as any)?.uid;
+  // const [reports, setReports] = useState<Report[]>([]);
+
   const [reports, setReports] = useState<Report[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -771,8 +777,8 @@ export default function SystemAdminDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+  // const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  // const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
 
@@ -938,40 +944,131 @@ export default function SystemAdminDashboard() {
     );
   }
 
-  const fetchAll = async () => {
-    const microReports = await api<Report[]>("/reports");
-    const chemistryReports = await api<Report[]>("/chemistry-reports");
-    return [...microReports, ...chemistryReports];
+  // const fetchAll = async () => {
+  //   const microReports = await api<Report[]>("/reports");
+  //   const chemistryReports = await api<Report[]>("/chemistry-reports");
+  //   return [...microReports, ...chemistryReports];
+  // };
+
+  const fetchDashboardReports = async () => {
+    const params = new URLSearchParams();
+
+    params.set("page", String(page));
+    params.set("perPage", String(perPage));
+    params.set("form", formFilter);
+    params.set("status", String(statusFilter));
+    params.set("dateField", dateField);
+    params.set("sort", sortOrder);
+    params.set("rangeType", numberRangeType);
+
+    if (searchClient.trim()) params.set("client", searchClient.trim());
+    if (searchReport.trim()) params.set("report", searchReport.trim());
+    if (searchText.trim()) params.set("q", searchText.trim());
+
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+
+    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+    return api<{
+      rows: Report[];
+      total: number;
+      page: number;
+      perPage: number;
+      totalPages: number;
+    }>(`/system-admin-dashboard/reports?${params.toString()}`);
   };
+
+  // useEffect(() => {
+  //   let abort = false;
+  //   (async () => {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
+
+  //       const startedAt = performance.now();
+  //       const allReports = await fetchAll();
+
+  //       const apiFinishedAt = performance.now();
+
+  //       console.log("Reports API load time:", {
+  //         totalMs: Math.round(apiFinishedAt - startedAt),
+  //         totalCount: allReports.length,
+  //       });
+  //       if (!abort) setReports(allReports);
+  //     } catch (e: any) {
+  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
+  //     } finally {
+  //       if (!abort) setLoading(false);
+  //     }
+  //   })();
+  //   return () => {
+  //     abort = true;
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []);
 
   useEffect(() => {
     let abort = false;
-    (async () => {
+
+    async function loadDashboardReports() {
       try {
         setLoading(true);
         setError(null);
 
         const startedAt = performance.now();
-        const allReports = await fetchAll();
-
+        const res = await fetchDashboardReports();
         const apiFinishedAt = performance.now();
 
-        console.log("Reports API load time:", {
+        console.log("SystemAdmin dashboard API load time:", {
           totalMs: Math.round(apiFinishedAt - startedAt),
-          totalCount: allReports.length,
+          totalCount: res.total,
+          pageCount: res.rows.length,
         });
-        if (!abort) setReports(allReports);
+
+        if (abort) return;
+
+        setReports(res.rows);
+        setServerTotal(res.total);
+        setServerTotalPages(res.totalPages);
       } catch (e: any) {
         if (!abort) setError(e?.message ?? "Failed to fetch reports");
       } finally {
-        if (!abort) setLoading(false);
+        if (!abort) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-    })();
+    }
+
+    loadDashboardReports();
+
     return () => {
       abort = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    dateField,
+    sortOrder,
+    refreshKey,
+  ]);
 
   // ✅ Reset invalid status when switching formFilter
   useEffect(() => {
@@ -987,187 +1084,196 @@ export default function SystemAdminDashboard() {
     }
   }, [formFilter, statusFilter]);
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
+  // const reportsWithSearch = useMemo(() => {
+  //   return reports.map((r) => ({
+  //     ...r,
+  //     _searchBlob: getReportSearchBlob(r),
+  //   }));
+  // }, [reports]);
 
-  const processed = useMemo(() => {
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
-            if (formFilter === "COA") return r.formType === "COA";
-            return true;
-          });
+  // const processed = useMemo(() => {
+  //   const byForm =
+  //     formFilter === "ALL"
+  //       ? reportsWithSearch
+  //       : reportsWithSearch.filter((r) => {
+  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+  //           if (formFilter === "MICROWATER")
+  //             return r.formType === "MICRO_MIX_WATER";
+  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
+  //           if (formFilter === "CHEMISTRY")
+  //             return r.formType === "CHEMISTRY_MIX";
+  //           if (formFilter === "COA") return r.formType === "COA";
+  //           return true;
+  //         });
 
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => String(r.status) === String(statusFilter));
+  //   const byStatus =
+  //     statusFilter === "ALL"
+  //       ? byForm
+  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-    const byClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return (
-            (r.client || "").toLowerCase().includes(q) ||
-            (r.clientCode || "").toLowerCase().includes(q)
-          );
-        })
-      : byStatus;
+  //   const byClient = searchClient.trim()
+  //     ? byStatus.filter((r) => {
+  //         const q = searchClient.toLowerCase();
+  //         return (
+  //           (r.client || "").toLowerCase().includes(q) ||
+  //           (r.clientCode || "").toLowerCase().includes(q)
+  //         );
+  //       })
+  //     : byStatus;
 
-    const byReport = searchReport.trim()
-      ? byClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return (
-            String(displayReportNo(r)).toLowerCase().includes(q) ||
-            (r.formNumber || "").toLowerCase().includes(q)
-          );
-        })
-      : byClient;
+  //   const byReport = searchReport.trim()
+  //     ? byClient.filter((r) => {
+  //         const q = searchReport.toLowerCase();
+  //         return (
+  //           String(displayReportNo(r)).toLowerCase().includes(q) ||
+  //           (r.formNumber || "").toLowerCase().includes(q)
+  //         );
+  //       })
+  //     : byClient;
 
-    const bySearchText = searchText.trim()
-      ? byReport.filter((r) => {
-          const q = searchText.trim().toLowerCase();
-          return (r._searchBlob || "").includes(q);
-        })
-      : byReport;
+  //   const bySearchText = searchText.trim()
+  //     ? byReport.filter((r) => {
+  //         const q = searchText.trim().toLowerCase();
+  //         return (r._searchBlob || "").includes(q);
+  //       })
+  //     : byReport;
 
-    const byNumberRange = (
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-        : reportNoFrom.trim() || reportNoTo.trim()
-    )
-      ? bySearchText.filter((r) => {
-          if (numberRangeType === "FORM") {
-            return inRange(
-              extractYearAndSequence(r.formNumber).sequence,
-              formNoFrom,
-              formNoTo,
-            );
-          }
+  //   const byNumberRange = (
+  //     numberRangeType === "FORM"
+  //       ? formNoFrom.trim() || formNoTo.trim()
+  //       : reportNoFrom.trim() || reportNoTo.trim()
+  //   )
+  //     ? bySearchText.filter((r) => {
+  //         if (numberRangeType === "FORM") {
+  //           return inRange(
+  //             extractYearAndSequence(r.formNumber).sequence,
+  //             formNoFrom,
+  //             formNoTo,
+  //           );
+  //         }
 
-          return inRange(
-            extractYearAndSequence(r.reportNumber).sequence,
-            reportNoFrom,
-            reportNoTo,
-          );
-        })
-      : bySearchText;
+  //         return inRange(
+  //           extractYearAndSequence(r.reportNumber).sequence,
+  //           reportNoFrom,
+  //           reportNoTo,
+  //         );
+  //       })
+  //     : bySearchText;
 
-    const getDateValue = (r: Report): string | null => {
-      switch (dateField) {
-        case "dateTested":
-          return r.dateTested ?? null;
-        case "dateReceived":
-          return r.dateReceived ?? null;
-        case "createdAt":
-          return r.createdAt ?? null;
-        case "updatedAt":
-          return r.updatedAt ?? null;
-        default:
-          return r.dateSent ?? null;
-      }
-    };
+  //   const getDateValue = (r: Report): string | null => {
+  //     switch (dateField) {
+  //       case "dateTested":
+  //         return r.dateTested ?? null;
+  //       case "dateReceived":
+  //         return r.dateReceived ?? null;
+  //       case "createdAt":
+  //         return r.createdAt ?? null;
+  //       case "updatedAt":
+  //         return r.updatedAt ?? null;
+  //       default:
+  //         return r.dateSent ?? null;
+  //     }
+  //   };
 
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        getDateValue(r),
-        dateFrom || undefined,
-        dateTo || undefined,
-      ),
-    );
+  //   const byDate = byNumberRange.filter((r) =>
+  //     matchesDateRange(
+  //       getDateValue(r),
+  //       dateFrom || undefined,
+  //       dateTo || undefined,
+  //     ),
+  //   );
 
-    const getTime = (r: Report) => {
-      const val = getDateValue(r);
-      return val ? new Date(val).getTime() : 0;
-    };
+  //   const getTime = (r: Report) => {
+  //     const val = getDateValue(r);
+  //     return val ? new Date(val).getTime() : 0;
+  //   };
 
-    return [...byDate].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  //   return [...byDate].sort((a, b) => {
+  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned;
-      }
+  //     if (aPinned !== bPinned) {
+  //       return bPinned - aPinned;
+  //     }
 
-      const diff = getTime(a) - getTime(b);
+  //     const diff = getTime(a) - getTime(b);
 
-      return sortOrder === "asc" ? diff : -diff;
-    });
-  }, [
-    reportsWithSearch,
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    dateFrom,
-    dateTo,
-    pinnedIds,
-    dateField,
-    sortOrder,
-  ]);
+  //     return sortOrder === "asc" ? diff : -diff;
+  //   });
+  // }, [
+  //   reportsWithSearch,
+  //   formFilter,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   searchText,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   dateFrom,
+  //   dateTo,
+  //   pinnedIds,
+  //   dateField,
+  //   sortOrder,
+  // ]);
 
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
+  // const processed = reports;
 
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
+  // useEffect(() => {
+  //   const map: Record<string, DOMRect> = {};
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     if (el) {
+  //       map[r.id] = el.getBoundingClientRect();
+  //     }
+  //   }
+  //   prevPositions.current = map;
+  // }, [processed.length, page, perPage]);
 
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
+  // useEffect(() => {
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     const prev = prevPositions.current[r.id];
+  //     if (!el || !prev) continue;
 
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
+  //     const next = el.getBoundingClientRect();
+  //     const dy = prev.top - next.top;
 
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
+  //     if (dy !== 0) {
+  //       el.style.transition = "none";
+  //       el.style.transform = `translateY(${dy}px)`;
 
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
+  //       requestAnimationFrame(() => {
+  //         el.style.transition = "transform 280ms ease";
+  //         el.style.transform = "translateY(0)";
+  //       });
 
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
+  //       const cleanup = () => {
+  //         el.style.transition = "";
+  //         el.style.transform = "";
+  //         el.removeEventListener("transitionend", cleanup);
+  //       };
 
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  //       el.addEventListener("transitionend", cleanup);
+  //     }
+  //   }
+  // }, [processed]);
+
+  // const total = processed.length;
+  // const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // const pageClamped = Math.min(page, totalPages);
+  // const start = (pageClamped - 1) * perPage;
+  // const end = start + perPage;
+  // const pageRows = processed.slice(start, end);
+
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
   const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + reports.length;
+  const pageRows = reports;
 
   // const didMountPageResetRef = React.useRef(false);
 
@@ -1247,7 +1353,7 @@ export default function SystemAdminDashboard() {
     } else {
       sp.delete("p");
     }
-    if (selectedIds.length) sp.set("sel", selectedIds.join(","));
+    // if (selectedIds.length) sp.set("sel", selectedIds.join(","));
 
     if (sp.toString() !== searchParams.toString()) {
       setSearchParams(sp, { replace: true });
@@ -1422,24 +1528,44 @@ export default function SystemAdminDashboard() {
   };
 
   // optional: clear selection when filters change (avoids printing hidden rows)
+  // useEffect(() => {
+  //   setSelectedIds([]);
+  // }, [
+  //   formFilter,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   searchText,
+  //   datePreset,
+  //   dateFrom,
+  //   dateTo,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   perPage,
+  // ]);
+
   useEffect(() => {
-    setSelectedIds([]);
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
-    datePreset,
-    dateFrom,
-    dateTo,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    perPage,
-  ]);
+  setSelectedIds([]);
+}, [
+  page,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  searchText,
+  datePreset,
+  dateFrom,
+  dateTo,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1689,7 +1815,7 @@ export default function SystemAdminDashboard() {
     }
   }
 
-  useLiveReportStatus(setReports);
+  // useLiveReportStatus(setReports);
 
   const handleVoidSelected = async (reason: string, password: string) => {
     if (!voidableSelected.length) return;
@@ -2363,13 +2489,28 @@ export default function SystemAdminDashboard() {
           </button>
 
           {/* Refresh */}
-          <button
+          {/* <button
             type="button"
             disabled={refreshing}
             onClick={() => {
               if (refreshing) return;
               setRefreshing(true);
               window.location.reload();
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            aria-label="Refresh"
+          >
+            {refreshing ? <SpinnerDark /> : "↻"}
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button> */}
+
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => {
+              if (refreshing) return;
+              setRefreshing(true);
+              setRefreshKey((x) => x + 1);
             }}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
             aria-label="Refresh"
@@ -2791,11 +2932,18 @@ export default function SystemAdminDashboard() {
                       //     isPinned(r.id) && "bg-blue-50/40",
                       //   )}
                       // >
+                      // <tr
+                      //   key={r.id}
+                      //   ref={(el) => {
+                      //     rowRefs.current[r.id] = el;
+                      //   }}
+                      //   className={classNames(
+                      //     "border-t hover:bg-slate-50",
+                      //     isPinned(r.id) && "bg-blue-50/40",
+                      //   )}
+                      // >
                       <tr
                         key={r.id}
-                        ref={(el) => {
-                          rowRefs.current[r.id] = el;
-                        }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
                           isPinned(r.id) && "bg-blue-50/40",

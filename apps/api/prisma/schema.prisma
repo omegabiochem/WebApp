@@ -37,6 +37,16 @@ model Report {
   microMixWater MicroMixWaterDetails?
   sterility     sterilityDetails?
   statusHistory StatusHistory[]
+
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([formType])
+  @@index([clientCode])
+  @@index([clientCode, createdAt])
+  @@index([clientCode, status])
+  @@index([clientCode, formType])
 }
 
 model MicroMixDetails {
@@ -430,6 +440,16 @@ model ChemistryReport {
   chemistryMix  ChemistryMixDetails?
   coa          COADetails?
   statusHistory ChemistryReportStatusHistory[]
+
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([formType])
+  @@index([clientCode])
+  @@index([clientCode, createdAt])
+  @@index([clientCode, status])
+  @@index([clientCode, formType])
 }
 
 model ChemistryMixDetails {
