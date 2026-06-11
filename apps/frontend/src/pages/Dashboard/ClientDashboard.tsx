@@ -24,7 +24,7 @@ import {
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
 import {
-  matchesDateRange,
+  // matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
@@ -34,7 +34,7 @@ import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
 import {
   COLS,
-  getReportSearchBlob,
+  // getReportSearchBlob,
   parseIntSafe,
   type ColKey,
 } from "../../utils/clientDashboardutils";
@@ -486,47 +486,47 @@ const DEFAULT_CLIENT_FILTERS = {
   toDate: "",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
+// function extractYearAndSequence(value?: string | number | null): {
+//   year: number | null;
+//   sequence: number | null;
+// } {
+//   if (value == null) return { year: null, sequence: null };
 
-  const text = String(value).trim();
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
+//   const text = String(value).trim();
+//   const match = text.match(/(\d{5,})$/);
+//   if (!match) return { year: null, sequence: null };
 
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
+//   const digits = match[1];
+//   if (digits.length < 5) return { year: null, sequence: null };
 
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
+//   const yearPart = digits.slice(0, 4);
+//   const seqPart = digits.slice(4);
 
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
+//   const year = Number(yearPart);
+//   const sequence = Number(seqPart);
 
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
+//   return {
+//     year: Number.isFinite(year) ? year : null,
+//     sequence: Number.isFinite(sequence) ? sequence : null,
+//   };
+// }
 
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
+// function inRange(
+//   value: number | null,
+//   fromRaw?: string,
+//   toRaw?: string,
+// ): boolean {
+//   if (value == null) return false;
 
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+//   const from =
+//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
 
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
+//   if (from != null && Number.isFinite(from) && value < from) return false;
+//   if (to != null && Number.isFinite(to) && value > to) return false;
 
-  return true;
-}
+//   return true;
+// }
 
 // -----------------------------
 // Component
@@ -536,6 +536,10 @@ export default function ClientDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -767,7 +771,7 @@ export default function ClientDashboard() {
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+  // const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
   const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -938,125 +942,61 @@ export default function ClientDashboard() {
     );
   };
 
-  useEffect(() => {
-    let abort = false;
-    async function fetchReports() {
-      try {
-        setLoading(true);
-        setError(null);
+  // useEffect(() => {
+  //   let abort = false;
+  //   async function fetchReports() {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
 
-        // const micro = await api<Report[]>("/reports");
-        // const chemistry = await api<Report[]>("/chemistry-reports");
-        const startedAt = performance.now();
+  //       // const micro = await api<Report[]>("/reports");
+  //       // const chemistry = await api<Report[]>("/chemistry-reports");
+  //       const startedAt = performance.now();
 
-        const [micro, chemistry] = await Promise.all([
-          api<Report[]>("/reports"),
-          api<Report[]>("/chemistry-reports"),
-        ]);
+  //       const [micro, chemistry] = await Promise.all([
+  //         api<Report[]>("/reports"),
+  //         api<Report[]>("/chemistry-reports"),
+  //       ]);
 
-        const apiFinishedAt = performance.now();
+  //       const apiFinishedAt = performance.now();
 
-        console.log("Reports API load time:", {
-          totalMs: Math.round(apiFinishedAt - startedAt),
-          microCount: micro.length,
-          chemistryCount: chemistry.length,
-        });
+  //       console.log("Reports API load time:", {
+  //         totalMs: Math.round(apiFinishedAt - startedAt),
+  //         microCount: micro.length,
+  //         chemistryCount: chemistry.length,
+  //       });
 
-        const all = [...micro, ...chemistry];
+  //       const all = [...micro, ...chemistry];
 
-        if (abort) return;
+  //       if (abort) return;
 
-        const clientReports = all.filter(
-          (r) => getFormPrefix(r.formNumber) === user?.clientCode,
-        );
-        setReports(clientReports);
-      } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
-      } finally {
-        if (!abort) setLoading(false);
-      }
-    }
+  //       const clientReports = all.filter(
+  //         (r) => getFormPrefix(r.formNumber) === user?.clientCode,
+  //       );
+  //       setReports(clientReports);
+  //     } catch (e: any) {
+  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
+  //     } finally {
+  //       if (!abort) setLoading(false);
+  //     }
+  //   }
 
-    fetchReports();
-    return () => {
-      abort = true;
-    };
-  }, [user?.clientCode]);
+  //   fetchReports();
+  //   return () => {
+  //     abort = true;
+  //   };
+  // }, [user?.clientCode]);
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
+  const fetchClientDashboardReports = async () => {
+    const params = new URLSearchParams();
 
-  // Derived table data
-  const processed = useMemo(() => {
-    // 1) form type filter
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
-            if (formFilter === "COA") return r.formType === "COA";
-            return true;
-          });
+    params.set("page", String(page));
+    params.set("perPage", String(perPage));
+    params.set("form", formFilter);
+    params.set("status", String(statusFilter));
 
-    // 2) status filter – compare as strings so enums from both worlds work
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => String(r.status) === String(statusFilter));
-
-    // 3) search
-    const bySearchClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return (r.client || "").toLowerCase().includes(q);
-        })
-      : byStatus;
-
-    const bySearchReport = searchReport.trim()
-      ? bySearchClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return String(r.formNumber || "")
-            .toLowerCase()
-            .includes(q);
-        })
-      : bySearchClient;
-
-    const bySearch = search.trim()
-      ? bySearchReport.filter((r) => {
-          const q = search.trim().toLowerCase();
-          return r._searchBlob.includes(q);
-        })
-      : bySearchReport;
-
-    const byNumberRange =
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.formNumber).sequence,
-                formNoFrom,
-                formNoTo,
-              ),
-            )
-          : bySearch
-        : reportNoFrom.trim() || reportNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.reportNumber).sequence,
-                reportNoFrom,
-                reportNoTo,
-              ),
-            )
-          : bySearch;
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
 
     const dateField =
       sortBy === "createdAt"
@@ -1065,50 +1005,76 @@ export default function ClientDashboard() {
           ? "updatedAt"
           : "dateSent";
 
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        (r as any)[dateField] ?? null,
-        fromDate || undefined,
-        toDate || undefined,
-      ),
-    );
+    params.set("dateField", dateField);
 
-    // 4) sort (same as you already have)
-    const sorted = [...byDate].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+    params.set("rangeType", numberRangeType);
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
+    if (searchClient.trim()) params.set("client", searchClient.trim());
+    if (searchReport.trim()) params.set("report", searchReport.trim());
+    if (search.trim()) params.set("q", search.trim());
+
+    if (fromDate) params.set("from", fromDate);
+    if (toDate) params.set("to", toDate);
+
+    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+    return api<{
+      rows: Report[];
+      total: number;
+      page: number;
+      perPage: number;
+      totalPages: number;
+    }>(`/client-dashboard/reports?${params.toString()}`);
+  };
+
+  useEffect(() => {
+    let abort = false;
+
+    async function loadClientDashboardReports() {
+      if (!user?.clientCode) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const startedAt = performance.now();
+        const res = await fetchClientDashboardReports();
+        const apiFinishedAt = performance.now();
+
+        console.log("Client dashboard API load time:", {
+          totalMs: Math.round(apiFinishedAt - startedAt),
+          totalCount: res.total,
+          pageCount: res.rows.length,
+        });
+
+        if (abort) return;
+
+        setReports(res.rows);
+        setServerTotal(res.total);
+        setServerTotalPages(res.totalPages);
+      } catch (e: any) {
+        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+      } finally {
+        if (!abort) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
+    }
 
-      if (sortBy === "formNumber") {
-        const aN = (a.formNumber || "").toLowerCase();
-        const bN = (b.formNumber || "").toLowerCase();
-        return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
-      }
+    loadClientDashboardReports();
 
-      if (sortBy === "createdAt") {
-        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "updatedAt") {
-        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return sortDir === "asc" ? aT - bT : bT - aT;
-    });
-
-    return sorted;
+    return () => {
+      abort = true;
+    };
   }, [
-    reports,
-    reportsWithSearch,
+    user?.clientCode,
+    page,
+    perPage,
     formFilter,
     statusFilter,
     searchClient,
@@ -1123,56 +1089,208 @@ export default function ClientDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
-    pinnedIds,
+    refreshKey,
   ]);
 
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
+  // const reportsWithSearch = useMemo(() => {
+  //   return reports.map((r) => ({
+  //     ...r,
+  //     _searchBlob: getReportSearchBlob(r),
+  //   }));
+  // }, [reports]);
 
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
+  // // Derived table data
+  // const processed = useMemo(() => {
+  //   // 1) form type filter
+  //   const byForm =
+  //     formFilter === "ALL"
+  //       ? reportsWithSearch
+  //       : reportsWithSearch.filter((r) => {
+  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+  //           if (formFilter === "MICROWATER")
+  //             return r.formType === "MICRO_MIX_WATER";
+  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
+  //           if (formFilter === "CHEMISTRY")
+  //             return r.formType === "CHEMISTRY_MIX";
+  //           if (formFilter === "COA") return r.formType === "COA";
+  //           return true;
+  //         });
 
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
+  //   // 2) status filter – compare as strings so enums from both worlds work
+  //   const byStatus =
+  //     statusFilter === "ALL"
+  //       ? byForm
+  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
+  //   // 3) search
+  //   const bySearchClient = searchClient.trim()
+  //     ? byStatus.filter((r) => {
+  //         const q = searchClient.toLowerCase();
+  //         return (r.client || "").toLowerCase().includes(q);
+  //       })
+  //     : byStatus;
 
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
+  //   const bySearchReport = searchReport.trim()
+  //     ? bySearchClient.filter((r) => {
+  //         const q = searchReport.toLowerCase();
+  //         return String(r.formNumber || "")
+  //           .toLowerCase()
+  //           .includes(q);
+  //       })
+  //     : bySearchClient;
 
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
+  //   const bySearch = search.trim()
+  //     ? bySearchReport.filter((r) => {
+  //         const q = search.trim().toLowerCase();
+  //         return r._searchBlob.includes(q);
+  //       })
+  //     : bySearchReport;
 
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
+  //   const byNumberRange =
+  //     numberRangeType === "FORM"
+  //       ? formNoFrom.trim() || formNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.formNumber).sequence,
+  //               formNoFrom,
+  //               formNoTo,
+  //             ),
+  //           )
+  //         : bySearch
+  //       : reportNoFrom.trim() || reportNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.reportNumber).sequence,
+  //               reportNoFrom,
+  //               reportNoTo,
+  //             ),
+  //           )
+  //         : bySearch;
+
+  //   const dateField =
+  //     sortBy === "createdAt"
+  //       ? "createdAt"
+  //       : sortBy === "updatedAt"
+  //         ? "updatedAt"
+  //         : "dateSent";
+
+  //   const byDate = byNumberRange.filter((r) =>
+  //     matchesDateRange(
+  //       (r as any)[dateField] ?? null,
+  //       fromDate || undefined,
+  //       toDate || undefined,
+  //     ),
+  //   );
+
+  //   // 4) sort (same as you already have)
+  //   const sorted = [...byDate].sort((a, b) => {
+  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+  //     if (aPinned !== bPinned) {
+  //       return bPinned - aPinned; // pinned first
+  //     }
+
+  //     if (sortBy === "formNumber") {
+  //       const aN = (a.formNumber || "").toLowerCase();
+  //       const bN = (b.formNumber || "").toLowerCase();
+  //       return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
+  //     }
+
+  //     if (sortBy === "createdAt") {
+  //       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  //       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
+
+  //     if (sortBy === "updatedAt") {
+  //       const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+  //       const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
+
+  //     const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+  //     const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+  //     return sortDir === "asc" ? aT - bT : bT - aT;
+  //   });
+
+  //   return sorted;
+  // }, [
+  //   reports,
+  //   reportsWithSearch,
+  //   formFilter,
+  //   statusFilter,
+  //   searchClient,
+  //   searchReport,
+  //   search,
+  //   sortBy,
+  //   sortDir,
+  //   fromDate,
+  //   toDate,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   pinnedIds,
+  // ]);
+
+  // useEffect(() => {
+  //   const map: Record<string, DOMRect> = {};
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     if (el) {
+  //       map[r.id] = el.getBoundingClientRect();
+  //     }
+  //   }
+  //   prevPositions.current = map;
+  // }, [processed.length, page, perPage]);
+
+  // useEffect(() => {
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     const prev = prevPositions.current[r.id];
+  //     if (!el || !prev) continue;
+
+  //     const next = el.getBoundingClientRect();
+  //     const dy = prev.top - next.top;
+
+  //     if (dy !== 0) {
+  //       el.style.transition = "none";
+  //       el.style.transform = `translateY(${dy}px)`;
+
+  //       requestAnimationFrame(() => {
+  //         el.style.transition = "transform 280ms ease";
+  //         el.style.transform = "translateY(0)";
+  //       });
+
+  //       const cleanup = () => {
+  //         el.style.transition = "";
+  //         el.style.transform = "";
+  //         el.removeEventListener("transitionend", cleanup);
+  //       };
+
+  //       el.addEventListener("transitionend", cleanup);
+  //     }
+  //   }
+  // }, [processed]);
 
   // Pagination
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+  // const processed = reports;
+  // const total = processed.length;
+  // const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // const pageClamped = Math.min(page, totalPages);
+  // const start = (pageClamped - 1) * perPage;
+  // const end = start + perPage;
+  // const pageRows = processed.slice(start, end);
+
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
   const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + reports.length;
+  const pageRows = reports;
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1229,6 +1347,7 @@ export default function ClientDashboard() {
   useEffect(() => {
     setSelectedIds([]);
   }, [
+    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -2210,10 +2329,15 @@ export default function ClientDashboard() {
 
           <button
             type="button"
+            // onClick={() => {
+            //   if (refreshing) return;
+            //   setRefreshing(true);
+            //   window.location.reload();
+            // }}
             onClick={() => {
               if (refreshing) return;
               setRefreshing(true);
-              window.location.reload();
+              setRefreshKey((x) => x + 1);
             }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60"
