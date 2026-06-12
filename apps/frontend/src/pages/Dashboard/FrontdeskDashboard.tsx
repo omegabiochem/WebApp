@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -23,24 +23,25 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import {
   formatDate,
-  matchesDateRange,
+  // matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+// import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { parseIntSafe } from "../../utils/commonDashboardUtil";
+// import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import {
   STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+// import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
+  getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
@@ -112,13 +113,13 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
 ];
 
 // used to know which viewer to render
-const formTypeToSlug: Record<string, string> = {
-  MICRO_MIX: "micro-mix",
-  MICRO_MIX_WATER: "micro-mix-water",
-  STERILITY: "sterility",
-  CHEMISTRY_MIX: "chemistry-mix",
-  COA: "coa",
-};
+// const formTypeToSlug: Record<string, string> = {
+//   MICRO_MIX: "micro-mix",
+//   MICRO_MIX_WATER: "micro-mix-water",
+//   STERILITY: "sterility",
+//   CHEMISTRY_MIX: "chemistry-mix",
+//   COA: "coa",
+// };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
@@ -376,47 +377,47 @@ const DEFAULT_FRONTDESK_FILTERS = {
   modalPane: "FORM" as "FORM" | "ATTACHMENTS",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
+// function extractYearAndSequence(value?: string | number | null): {
+//   year: number | null;
+//   sequence: number | null;
+// } {
+//   if (value == null) return { year: null, sequence: null };
 
-  const text = String(value).trim();
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
+//   const text = String(value).trim();
+//   const match = text.match(/(\d{5,})$/);
+//   if (!match) return { year: null, sequence: null };
 
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
+//   const digits = match[1];
+//   if (digits.length < 5) return { year: null, sequence: null };
 
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
+//   const yearPart = digits.slice(0, 4);
+//   const seqPart = digits.slice(4);
 
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
+//   const year = Number(yearPart);
+//   const sequence = Number(seqPart);
 
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
+//   return {
+//     year: Number.isFinite(year) ? year : null,
+//     sequence: Number.isFinite(sequence) ? sequence : null,
+//   };
+// }
 
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
+// function inRange(
+//   value: number | null,
+//   fromRaw?: string,
+//   toRaw?: string,
+// ): boolean {
+//   if (value == null) return false;
 
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+//   const from =
+//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
 
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
+//   if (from != null && Number.isFinite(from) && value < from) return false;
+//   if (to != null && Number.isFinite(to) && value > to) return false;
 
-  return true;
-}
+//   return true;
+// }
 
 function getInitialFrontDeskFilters(
   searchParams: URLSearchParams,
@@ -495,8 +496,8 @@ function getInitialFrontDeskFilters(
             | "updatedAt") || DEFAULT_FRONTDESK_FILTERS.sortBy,
         sortDir:
           (spSortDir as "asc" | "desc") || DEFAULT_FRONTDESK_FILTERS.sortDir,
-        perPage: parseIntSafe(spPp, DEFAULT_FRONTDESK_FILTERS.perPage),
-        page: parseIntSafe(spP, DEFAULT_FRONTDESK_FILTERS.page),
+        perPage: getInt(searchParams, "pp", DEFAULT_FRONTDESK_FILTERS.perPage),
+        page: getInt(searchParams, "p", DEFAULT_FRONTDESK_FILTERS.page),
         modalPane:
           (spPane as "FORM" | "ATTACHMENTS") ||
           DEFAULT_FRONTDESK_FILTERS.modalPane,
@@ -527,11 +528,15 @@ function getInitialFrontDeskFilters(
 // -----------------------------
 export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const { user } = useAuth();
 
   const userKey =
@@ -606,8 +611,10 @@ export default function FrontDeskDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
+
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
@@ -680,176 +687,268 @@ export default function FrontDeskDashboard() {
   }, [workspaceIds, reports]);
 
   // Fetch reports
-  useEffect(() => {
-    let abort = false;
-    async function fetchReports() {
-      try {
-        setLoading(true);
-        setError(null);
-        const micro = await api<Report[]>("/reports");
-        const chemistry = await api<Report[]>("/chemistry-reports");
+  // useEffect(() => {
+  //   let abort = false;
+  //   async function fetchReports() {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
+  //       const micro = await api<Report[]>("/reports");
+  //       const chemistry = await api<Report[]>("/chemistry-reports");
 
-        const all = [...micro, ...chemistry];
+  //       const all = [...micro, ...chemistry];
 
-        const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
-        const filtered = all.filter((r) => keep.has(r.status as any));
-        if (!abort) setReports(filtered);
-      } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
-      } finally {
-        if (!abort) setLoading(false);
+  //       const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+  //       const filtered = all.filter((r) => keep.has(r.status as any));
+  //       if (!abort) setReports(filtered);
+  //     } catch (e: any) {
+  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
+  //     } finally {
+  //       if (!abort) setLoading(false);
+  //     }
+  //   }
+
+  //   fetchReports();
+  //   return () => {
+  //     abort = true;
+  //   };
+  // }, []);
+
+
+  const fetchDashboardReports = async () => {
+  const params = new URLSearchParams();
+
+  params.set("page", String(page));
+  params.set("perPage", String(perPage));
+  params.set("form", formFilter);
+  params.set("status", String(statusFilter));
+  params.set("dateField", sortBy === "reportNumber" ? "dateSent" : sortBy);
+  params.set("sort", sortDir);
+  params.set("rangeType", numberRangeType);
+
+  if (searchClient.trim()) params.set("client", searchClient.trim());
+  if (searchReport.trim()) params.set("report", searchReport.trim());
+  if (search.trim()) params.set("q", search.trim());
+
+  if (fromDate) params.set("from", fromDate);
+  if (toDate) params.set("to", toDate);
+
+  if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+  if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+  if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+  if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+  return api<{
+    rows: Report[];
+    total: number;
+    page: number;
+    perPage: number;
+    totalPages: number;
+  }>(`/frontdesk-dashboard/reports?${params.toString()}`);
+};
+
+useEffect(() => {
+  let abort = false;
+
+  async function loadDashboardReports() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const startedAt = performance.now();
+      const res = await fetchDashboardReports();
+      const apiFinishedAt = performance.now();
+
+      console.log("Frontdesk dashboard API load time:", {
+        totalMs: Math.round(apiFinishedAt - startedAt),
+        totalCount: res.total,
+        pageCount: res.rows.length,
+      });
+
+      if (abort) return;
+
+      setReports(res.rows);
+      setServerTotal(res.total);
+      setServerTotalPages(res.totalPages);
+    } catch (e: any) {
+      if (!abort) setError(e?.message ?? "Failed to fetch reports");
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        setRefreshing(false);
       }
     }
+  }
 
-    fetchReports();
-    return () => {
-      abort = true;
-    };
-  }, []);
+  loadDashboardReports();
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
+  return () => {
+    abort = true;
+  };
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
 
-  // Derived table data
-  const processed = useMemo(() => {
-    // 1) form type filter
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
-            if (formFilter === "COA") return r.formType === "COA";
-            return true;
-          });
+  // const reportsWithSearch = useMemo(() => {
+  //   return reports.map((r) => ({
+  //     ...r,
+  //     _searchBlob: getReportSearchBlob(r),
+  //   }));
+  // }, [reports]);
 
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => String(r.status) === String(statusFilter));
+  // // Derived table data
+  // const processed = useMemo(() => {
+  //   // 1) form type filter
+  //   const byForm =
+  //     formFilter === "ALL"
+  //       ? reportsWithSearch
+  //       : reportsWithSearch.filter((r) => {
+  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+  //           if (formFilter === "MICROWATER")
+  //             return r.formType === "MICRO_MIX_WATER";
+  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
+  //           if (formFilter === "CHEMISTRY")
+  //             return r.formType === "CHEMISTRY_MIX";
+  //           if (formFilter === "COA") return r.formType === "COA";
+  //           return true;
+  //         });
 
-    const byClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return String(r.formNumber || "")
-            .toLowerCase()
-            .includes(q);
-        })
-      : byStatus;
+  //   const byStatus =
+  //     statusFilter === "ALL"
+  //       ? byForm
+  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-    const byReport = searchReport.trim()
-      ? byClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return (
-            String(r.reportNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q)
-          );
-        })
-      : byClient;
+  //   const byClient = searchClient.trim()
+  //     ? byStatus.filter((r) => {
+  //         const q = searchClient.toLowerCase();
+  //         return String(r.formNumber || "")
+  //           .toLowerCase()
+  //           .includes(q);
+  //       })
+  //     : byStatus;
 
-    const bySearch = search.trim()
-      ? byReport.filter((r) => {
-          const q = search.trim().toLowerCase();
-          return (r._searchBlob || "").includes(q);
-        })
-      : byReport;
+  //   const byReport = searchReport.trim()
+  //     ? byClient.filter((r) => {
+  //         const q = searchReport.toLowerCase();
+  //         return (
+  //           String(r.reportNumber || "")
+  //             .toLowerCase()
+  //             .includes(q) ||
+  //           String(r.formNumber || "")
+  //             .toLowerCase()
+  //             .includes(q)
+  //         );
+  //       })
+  //     : byClient;
 
-    const byNumberRange =
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.formNumber).sequence,
-                formNoFrom,
-                formNoTo,
-              ),
-            )
-          : bySearch
-        : reportNoFrom.trim() || reportNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.reportNumber).sequence,
-                reportNoFrom,
-                reportNoTo,
-              ),
-            )
-          : bySearch;
-    const dateField =
-      sortBy === "createdAt"
-        ? "createdAt"
-        : sortBy === "updatedAt"
-          ? "updatedAt"
-          : "dateSent";
+  //   const bySearch = search.trim()
+  //     ? byReport.filter((r) => {
+  //         const q = search.trim().toLowerCase();
+  //         return (r._searchBlob || "").includes(q);
+  //       })
+  //     : byReport;
 
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        (r as any)[dateField] ?? null,
-        fromDate || undefined,
-        toDate || undefined,
-      ),
-    );
+  //   const byNumberRange =
+  //     numberRangeType === "FORM"
+  //       ? formNoFrom.trim() || formNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.formNumber).sequence,
+  //               formNoFrom,
+  //               formNoTo,
+  //             ),
+  //           )
+  //         : bySearch
+  //       : reportNoFrom.trim() || reportNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.reportNumber).sequence,
+  //               reportNoFrom,
+  //               reportNoTo,
+  //             ),
+  //           )
+  //         : bySearch;
+  //   const dateField =
+  //     sortBy === "createdAt"
+  //       ? "createdAt"
+  //       : sortBy === "updatedAt"
+  //         ? "updatedAt"
+  //         : "dateSent";
 
-    const sorted = [...byDate].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  //   const byDate = byNumberRange.filter((r) =>
+  //     matchesDateRange(
+  //       (r as any)[dateField] ?? null,
+  //       fromDate || undefined,
+  //       toDate || undefined,
+  //     ),
+  //   );
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
-      }
-      if (sortBy === "reportNumber") {
-        const aN = a.reportNumber.toLowerCase();
-        const bN = b.reportNumber.toLowerCase();
-        return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
-      }
+  //   const sorted = [...byDate].sort((a, b) => {
+  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (sortBy === "createdAt") {
-        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
+  //     if (aPinned !== bPinned) {
+  //       return bPinned - aPinned; // pinned first
+  //     }
+  //     if (sortBy === "reportNumber") {
+  //       const aN = a.reportNumber.toLowerCase();
+  //       const bN = b.reportNumber.toLowerCase();
+  //       return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
+  //     }
 
-      if (sortBy === "updatedAt") {
-        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return sortDir === "asc" ? aT - bT : bT - aT;
-    });
+  //     if (sortBy === "createdAt") {
+  //       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  //       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
 
-    return sorted;
-  }, [
-    reportsWithSearch,
-    formFilter,
-    statusFilter,
-    search,
-    sortBy,
-    sortDir,
-    fromDate,
-    toDate,
-    datePreset,
-    searchClient,
-    searchReport,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    pinnedIds,
-  ]);
+  //     if (sortBy === "updatedAt") {
+  //       const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+  //       const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
+  //     const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+  //     const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+  //     return sortDir === "asc" ? aT - bT : bT - aT;
+  //   });
+
+  //   return sorted;
+  // }, [
+  //   reportsWithSearch,
+  //   formFilter,
+  //   statusFilter,
+  //   search,
+  //   sortBy,
+  //   sortDir,
+  //   fromDate,
+  //   toDate,
+  //   datePreset,
+  //   searchClient,
+  //   searchReport,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   pinnedIds,
+  // ]);
 
   useEffect(() => {
     const next = getInitialFrontDeskFilters(searchParams, FILTER_STORAGE_KEY);
@@ -927,68 +1026,180 @@ export default function FrontDeskDashboard() {
     page,
   ]);
 
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
+  // useEffect(() => {
+  //   const map: Record<string, DOMRect> = {};
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     if (el) {
+  //       map[r.id] = el.getBoundingClientRect();
+  //     }
+  //   }
+  //   prevPositions.current = map;
+  // }, [processed.length, page, perPage]);
 
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
+  // useEffect(() => {
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     const prev = prevPositions.current[r.id];
+  //     if (!el || !prev) continue;
 
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
+  //     const next = el.getBoundingClientRect();
+  //     const dy = prev.top - next.top;
 
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
+  //     if (dy !== 0) {
+  //       el.style.transition = "none";
+  //       el.style.transform = `translateY(${dy}px)`;
 
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
+  //       requestAnimationFrame(() => {
+  //         el.style.transition = "transform 280ms ease";
+  //         el.style.transform = "translateY(0)";
+  //       });
 
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
+  //       const cleanup = () => {
+  //         el.style.transition = "";
+  //         el.style.transform = "";
+  //         el.removeEventListener("transitionend", cleanup);
+  //       };
 
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
+  //       el.addEventListener("transitionend", cleanup);
+  //     }
+  //   }
+  // }, [processed]);
 
   // Pagination
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
+  // const total = processed.length;
+  // const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // const pageClamped = Math.min(page, totalPages);
+  // const start = (pageClamped - 1) * perPage;
+  // const end = start + perPage;
+  // const pageRows = processed.slice(start, end);
+
+const displayRows = useMemo(() => {
+  return [...reports].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
+
+    return 0;
+  });
+}, [reports, pinnedIds]);
+
+const total = serverTotal;
+const totalPages = serverTotalPages;
+const pageClamped = Math.min(page, totalPages);
+const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+const end = start + displayRows.length;
+const pageRows = displayRows;
+
+React.useLayoutEffect(() => {
+  if (loading) return;
+
+  const nextPositions: Record<string, DOMRect> = {};
+
+  for (const r of pageRows) {
+    const el = rowRefs.current[r.id];
+
+    if (!el) continue;
+
+    const next = el.getBoundingClientRect();
+    const prev = prevPositions.current[r.id];
+
+    nextPositions[r.id] = next;
+
+    if (!prev) continue;
+
+    const dy = prev.top - next.top;
+
+    if (Math.abs(dy) < 1) continue;
+
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
+
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 280ms ease";
+      el.style.transform = "translateY(0)";
+    });
+
+    const cleanup = () => {
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
+
+    el.addEventListener("transitionend", cleanup);
+  }
+
+  prevPositions.current = nextPositions;
+}, [pageRows, loading, selectedCols]);
+
+useEffect(() => {
+  rowRefs.current = {};
+  prevPositions.current = {};
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  datePreset,
+  fromDate,
+  toDate,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
+
+useEffect(() => {
+  setPage(1);
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+  sortBy,
+  sortDir,
+]);
 
   // Reset to page 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [
-    statusFilter,
-    search,
-    perPage,
-    formFilter,
-    sortBy,
-    sortDir,
-    fromDate,
-    toDate,
-    datePreset,
-  ]);
+useEffect(() => {
+  setSelectedIds([]);
+}, [
+  page,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+]);
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -1002,8 +1213,6 @@ export default function FrontDeskDashboard() {
 
     if (sortBy !== "dateSent") sp.set("sb", sortBy);
     if (sortDir !== "desc") sp.set("sd", sortDir);
-
-    if (sortBy !== "dateSent") sp.set("sb", sortBy);
 
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
@@ -1134,14 +1343,14 @@ export default function FrontDeskDashboard() {
     }
   }
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(`/chemistry-reports/${slug}/${r.id}`);
-    } else {
-      navigate(`/reports/${slug}/${r.id}`);
-    }
-  }
+  // function goToReportEditor(r: Report) {
+  //   const slug = formTypeToSlug[r.formType] || "micro-mix";
+  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+  //     navigate(`/chemistry-reports/${slug}/${r.id}`);
+  //   } else {
+  //     navigate(`/reports/${slug}/${r.id}`);
+  //   }
+  // }
 
   // checkbox helpers
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -1367,12 +1576,12 @@ export default function FrontDeskDashboard() {
     }
   }, [formFilter, statusFilter]);
 
-  useLiveReportStatus(setReports, {
-    shouldKeep: (r) =>
-      r.status === "RECEIVED_BY_FRONTDESK" ||
-      r.status === "FRONTDESK_ON_HOLD" ||
-      r.status === "FRONTDESK_NEEDS_CORRECTION",
-  });
+  // useLiveReportStatus(setReports, {
+  //   shouldKeep: (r) =>
+  //     r.status === "RECEIVED_BY_FRONTDESK" ||
+  //     r.status === "FRONTDESK_ON_HOLD" ||
+  //     r.status === "FRONTDESK_NEEDS_CORRECTION",
+  // });
 
   // ---------------- E-VERIFY (Bulk) ----------------
   const [bulkESignOpen, setBulkESignOpen] = useState(false);
@@ -1467,16 +1676,37 @@ export default function FrontDeskDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToReportEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
     setWorkspaceLayout("VERTICAL");
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
+  }
+
+  function handleWorkspaceReportChanged(updated: any) {
+    if (!updated?.id) return;
+
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
   }
 
   const DASHBOARD_COLS = useMemo(() => {
@@ -1547,11 +1777,11 @@ export default function FrontDeskDashboard() {
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-  const togglePin = (id: string) => {
-    setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+const togglePin = (id: string) => {
+  setPinnedIds((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+  );
+};
 
   useEffect(() => {
     if (!colOpen) return;
@@ -1605,12 +1835,23 @@ export default function FrontDeskDashboard() {
         return formatDate(r.updatedAt ?? null);
 
       case "actives": {
-        if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
+  if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
 
-        if (typeof r.actives === "string") return r.actives || "-";
-        if (Array.isArray(r.actives)) return r.actives.join(", ") || "-";
-        return "-";
-      }
+  const list =
+    typeof (r as any).selectedActivesText === "string" &&
+    (r as any).selectedActivesText.trim()
+      ? (r as any).selectedActivesText
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : Array.isArray((r as any).selectedActives)
+        ? (r as any).selectedActives
+            .map((s: any) => String(s).trim())
+            .filter(Boolean)
+        : [];
+
+  return list.length ? list.join(", ") : "-";
+}
 
       default: {
         const v = (r as any)[key];
@@ -1630,6 +1871,30 @@ export default function FrontDeskDashboard() {
   if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
+
+
+  function saveDashboardPage(nextPage: number) {
+  const sp = new URLSearchParams(searchParams);
+
+  if (nextPage > 1) {
+    sp.set("p", String(nextPage));
+  } else {
+    sp.delete("p");
+  }
+
+  sessionStorage.setItem(
+    "/frontdeskDashboard:lastSearch",
+    `?${sp.toString()}`,
+  );
+
+  sessionStorage.setItem(
+    "lastSearch:/frontdeskDashboard",
+    `?${sp.toString()}`,
+  );
+
+  setSearchParams(sp, { replace: true });
+  setPage(nextPage);
+}
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1860,8 +2125,10 @@ export default function FrontDeskDashboard() {
             type="button"
             onClick={() => {
               if (refreshing) return;
+              // setRefreshing(true);
+              // window.location.reload();
               setRefreshing(true);
-              window.location.reload();
+setRefreshKey((x) => x + 1);
             }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2572,7 +2839,7 @@ export default function FrontDeskDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2582,9 +2849,9 @@ export default function FrontDeskDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
-                }
+           onClick={() =>
+  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
+}
                 disabled={pageClamped === totalPages}
               >
                 Next
@@ -2800,7 +3067,7 @@ export default function FrontDeskDashboard() {
             }}
           >
             <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-    <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
+              <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">
@@ -2975,6 +3242,7 @@ export default function FrontDeskDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );

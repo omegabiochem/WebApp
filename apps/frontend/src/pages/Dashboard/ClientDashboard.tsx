@@ -25,7 +25,7 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import {
   // matchesDateRange,
-  toDateOnlyISO_UTC,
+  // toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
@@ -73,6 +73,10 @@ type Report = {
   manufactureDate?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+
+   actives?: unknown;
+  selectedActives?: string[];
+  selectedActivesText?: string | null;
 
   _searchBlob?: string;
 };
@@ -770,8 +774,8 @@ export default function ClientDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-  // const prevPositions = React.useRef<Record<string, DOMRect>>({});
+const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
   const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -936,56 +940,12 @@ export default function ClientDashboard() {
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-  const togglePin = (id: string) => {
-    setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+const togglePin = (id: string) => {
+  setPinnedIds((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+  );
+};
 
-  // useEffect(() => {
-  //   let abort = false;
-  //   async function fetchReports() {
-  //     try {
-  //       setLoading(true);
-  //       setError(null);
-
-  //       // const micro = await api<Report[]>("/reports");
-  //       // const chemistry = await api<Report[]>("/chemistry-reports");
-  //       const startedAt = performance.now();
-
-  //       const [micro, chemistry] = await Promise.all([
-  //         api<Report[]>("/reports"),
-  //         api<Report[]>("/chemistry-reports"),
-  //       ]);
-
-  //       const apiFinishedAt = performance.now();
-
-  //       console.log("Reports API load time:", {
-  //         totalMs: Math.round(apiFinishedAt - startedAt),
-  //         microCount: micro.length,
-  //         chemistryCount: chemistry.length,
-  //       });
-
-  //       const all = [...micro, ...chemistry];
-
-  //       if (abort) return;
-
-  //       const clientReports = all.filter(
-  //         (r) => getFormPrefix(r.formNumber) === user?.clientCode,
-  //       );
-  //       setReports(clientReports);
-  //     } catch (e: any) {
-  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
-  //     } finally {
-  //       if (!abort) setLoading(false);
-  //     }
-  //   }
-
-  //   fetchReports();
-  //   return () => {
-  //     abort = true;
-  //   };
-  // }, [user?.clientCode]);
 
   const fetchClientDashboardReports = async () => {
     const params = new URLSearchParams();
@@ -1013,8 +973,10 @@ export default function ClientDashboard() {
     if (searchReport.trim()) params.set("report", searchReport.trim());
     if (search.trim()) params.set("q", search.trim());
 
-    if (fromDate) params.set("from", fromDate);
-    if (toDate) params.set("to", toDate);
+const dateRange = getPresetRange(datePreset, fromDate, toDate);
+
+if (dateRange.from) params.set("from", dateRange.from);
+if (dateRange.to) params.set("to", dateRange.to);
 
     if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
     if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
@@ -1082,6 +1044,7 @@ export default function ClientDashboard() {
     search,
     sortBy,
     sortDir,
+       datePreset,
     fromDate,
     toDate,
     numberRangeType,
@@ -1092,205 +1055,91 @@ export default function ClientDashboard() {
     refreshKey,
   ]);
 
-  // const reportsWithSearch = useMemo(() => {
-  //   return reports.map((r) => ({
-  //     ...r,
-  //     _searchBlob: getReportSearchBlob(r),
-  //   }));
-  // }, [reports]);
 
-  // // Derived table data
-  // const processed = useMemo(() => {
-  //   // 1) form type filter
-  //   const byForm =
-  //     formFilter === "ALL"
-  //       ? reportsWithSearch
-  //       : reportsWithSearch.filter((r) => {
-  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-  //           if (formFilter === "MICROWATER")
-  //             return r.formType === "MICRO_MIX_WATER";
-  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
-  //           if (formFilter === "CHEMISTRY")
-  //             return r.formType === "CHEMISTRY_MIX";
-  //           if (formFilter === "COA") return r.formType === "COA";
-  //           return true;
-  //         });
+const displayRows = useMemo(() => {
+  return [...reports].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-  //   // 2) status filter – compare as strings so enums from both worlds work
-  //   const byStatus =
-  //     statusFilter === "ALL"
-  //       ? byForm
-  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
 
-  //   // 3) search
-  //   const bySearchClient = searchClient.trim()
-  //     ? byStatus.filter((r) => {
-  //         const q = searchClient.toLowerCase();
-  //         return (r.client || "").toLowerCase().includes(q);
-  //       })
-  //     : byStatus;
+    return 0;
+  });
+}, [reports, pinnedIds]);
 
-  //   const bySearchReport = searchReport.trim()
-  //     ? bySearchClient.filter((r) => {
-  //         const q = searchReport.toLowerCase();
-  //         return String(r.formNumber || "")
-  //           .toLowerCase()
-  //           .includes(q);
-  //       })
-  //     : bySearchClient;
+const total = serverTotal;
+const totalPages = serverTotalPages;
+const pageClamped = Math.min(page, totalPages);
+const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+const end = start + displayRows.length;
+const pageRows = displayRows;
 
-  //   const bySearch = search.trim()
-  //     ? bySearchReport.filter((r) => {
-  //         const q = search.trim().toLowerCase();
-  //         return r._searchBlob.includes(q);
-  //       })
-  //     : bySearchReport;
+React.useLayoutEffect(() => {
+  if (loading) return;
 
-  //   const byNumberRange =
-  //     numberRangeType === "FORM"
-  //       ? formNoFrom.trim() || formNoTo.trim()
-  //         ? bySearch.filter((r) =>
-  //             inRange(
-  //               extractYearAndSequence(r.formNumber).sequence,
-  //               formNoFrom,
-  //               formNoTo,
-  //             ),
-  //           )
-  //         : bySearch
-  //       : reportNoFrom.trim() || reportNoTo.trim()
-  //         ? bySearch.filter((r) =>
-  //             inRange(
-  //               extractYearAndSequence(r.reportNumber).sequence,
-  //               reportNoFrom,
-  //               reportNoTo,
-  //             ),
-  //           )
-  //         : bySearch;
+  const nextPositions: Record<string, DOMRect> = {};
 
-  //   const dateField =
-  //     sortBy === "createdAt"
-  //       ? "createdAt"
-  //       : sortBy === "updatedAt"
-  //         ? "updatedAt"
-  //         : "dateSent";
+  for (const r of pageRows) {
+    const el = rowRefs.current[r.id];
 
-  //   const byDate = byNumberRange.filter((r) =>
-  //     matchesDateRange(
-  //       (r as any)[dateField] ?? null,
-  //       fromDate || undefined,
-  //       toDate || undefined,
-  //     ),
-  //   );
+    if (!el) continue;
 
-  //   // 4) sort (same as you already have)
-  //   const sorted = [...byDate].sort((a, b) => {
-  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+    const next = el.getBoundingClientRect();
+    const prev = prevPositions.current[r.id];
 
-  //     if (aPinned !== bPinned) {
-  //       return bPinned - aPinned; // pinned first
-  //     }
+    nextPositions[r.id] = next;
 
-  //     if (sortBy === "formNumber") {
-  //       const aN = (a.formNumber || "").toLowerCase();
-  //       const bN = (b.formNumber || "").toLowerCase();
-  //       return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
-  //     }
+    if (!prev) continue;
 
-  //     if (sortBy === "createdAt") {
-  //       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-  //       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-  //       return sortDir === "asc" ? aT - bT : bT - aT;
-  //     }
+    const dy = prev.top - next.top;
 
-  //     if (sortBy === "updatedAt") {
-  //       const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-  //       const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-  //       return sortDir === "asc" ? aT - bT : bT - aT;
-  //     }
+    if (Math.abs(dy) < 1) continue;
 
-  //     const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-  //     const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-  //     return sortDir === "asc" ? aT - bT : bT - aT;
-  //   });
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
 
-  //   return sorted;
-  // }, [
-  //   reports,
-  //   reportsWithSearch,
-  //   formFilter,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   search,
-  //   sortBy,
-  //   sortDir,
-  //   fromDate,
-  //   toDate,
-  //   numberRangeType,
-  //   formNoFrom,
-  //   formNoTo,
-  //   reportNoFrom,
-  //   reportNoTo,
-  //   pinnedIds,
-  // ]);
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 280ms ease";
+      el.style.transform = "translateY(0)";
+    });
 
-  // useEffect(() => {
-  //   const map: Record<string, DOMRect> = {};
-  //   for (const r of processed) {
-  //     const el = rowRefs.current[r.id];
-  //     if (el) {
-  //       map[r.id] = el.getBoundingClientRect();
-  //     }
-  //   }
-  //   prevPositions.current = map;
-  // }, [processed.length, page, perPage]);
+    const cleanup = () => {
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
 
-  // useEffect(() => {
-  //   for (const r of processed) {
-  //     const el = rowRefs.current[r.id];
-  //     const prev = prevPositions.current[r.id];
-  //     if (!el || !prev) continue;
+    el.addEventListener("transitionend", cleanup);
+  }
 
-  //     const next = el.getBoundingClientRect();
-  //     const dy = prev.top - next.top;
+  prevPositions.current = nextPositions;
+}, [pageRows, loading, selectedCols]);
 
-  //     if (dy !== 0) {
-  //       el.style.transition = "none";
-  //       el.style.transform = `translateY(${dy}px)`;
-
-  //       requestAnimationFrame(() => {
-  //         el.style.transition = "transform 280ms ease";
-  //         el.style.transform = "translateY(0)";
-  //       });
-
-  //       const cleanup = () => {
-  //         el.style.transition = "";
-  //         el.style.transform = "";
-  //         el.removeEventListener("transitionend", cleanup);
-  //       };
-
-  //       el.addEventListener("transitionend", cleanup);
-  //     }
-  //   }
-  // }, [processed]);
-
-  // Pagination
-
-  // const processed = reports;
-  // const total = processed.length;
-  // const totalPages = Math.max(1, Math.ceil(total / perPage));
-  // const pageClamped = Math.min(page, totalPages);
-  // const start = (pageClamped - 1) * perPage;
-  // const end = start + perPage;
-  // const pageRows = processed.slice(start, end);
-
-  const total = serverTotal;
-  const totalPages = serverTotalPages;
-  const pageClamped = Math.min(page, totalPages);
-  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
-  const end = start + reports.length;
-  const pageRows = reports;
+useEffect(() => {
+  rowRefs.current = {};
+  prevPositions.current = {};
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  datePreset,
+  fromDate,
+  toDate,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1489,20 +1338,20 @@ export default function ClientDashboard() {
     );
   }
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
-    const returnTo = location.pathname + location.search;
+  // function goToReportEditor(r: Report) {
+  //   const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
+  //   const returnTo = location.pathname + location.search;
 
-    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(
-        `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-      );
-    } else {
-      navigate(
-        `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-      );
-    }
-  }
+  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+  //     navigate(
+  //       `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+  //     );
+  //   } else {
+  //     navigate(
+  //       `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+  //     );
+  //   }
+  // }
 
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -1632,76 +1481,76 @@ export default function ClientDashboard() {
     return () => window.removeEventListener("click", close);
   }, []);
 
-  useEffect(() => {
-    const now = new Date();
+  // useEffect(() => {
+  //   const now = new Date();
 
-    const setRange = (from: Date, to: Date) => {
-      setFromDate(toDateOnlyISO_UTC(from));
-      setToDate(toDateOnlyISO_UTC(to));
-    };
+  //   const setRange = (from: Date, to: Date) => {
+  //     setFromDate(toDateOnlyISO_UTC(from));
+  //     setToDate(toDateOnlyISO_UTC(to));
+  //   };
 
-    if (datePreset === "ALL") {
-      setFromDate("");
-      setToDate("");
-      return;
-    }
+  //   if (datePreset === "ALL") {
+  //     setFromDate("");
+  //     setToDate("");
+  //     return;
+  //   }
 
-    if (datePreset === "CUSTOM") return;
+  //   if (datePreset === "CUSTOM") return;
 
-    if (datePreset === "TODAY") {
-      setRange(now, now);
-      return;
-    }
+  //   if (datePreset === "TODAY") {
+  //     setRange(now, now);
+  //     return;
+  //   }
 
-    if (datePreset === "YESTERDAY") {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      setRange(y, y);
-      return;
-    }
+  //   if (datePreset === "YESTERDAY") {
+  //     const y = new Date(now);
+  //     y.setDate(now.getDate() - 1);
+  //     setRange(y, y);
+  //     return;
+  //   }
 
-    if (datePreset === "LAST_7_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 7);
-      setRange(from, now);
-      return;
-    }
+  //   if (datePreset === "LAST_7_DAYS") {
+  //     const from = new Date(now);
+  //     from.setDate(now.getDate() - 7);
+  //     setRange(from, now);
+  //     return;
+  //   }
 
-    if (datePreset === "LAST_30_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 30);
-      setRange(from, now);
-      return;
-    }
+  //   if (datePreset === "LAST_30_DAYS") {
+  //     const from = new Date(now);
+  //     from.setDate(now.getDate() - 30);
+  //     setRange(from, now);
+  //     return;
+  //   }
 
-    if (datePreset === "THIS_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setRange(from, to);
-      return;
-    }
+  //   if (datePreset === "THIS_MONTH") {
+  //     const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  //     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  //     setRange(from, to);
+  //     return;
+  //   }
 
-    if (datePreset === "LAST_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      setRange(from, to);
-      return;
-    }
+  //   if (datePreset === "LAST_MONTH") {
+  //     const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  //     const to = new Date(now.getFullYear(), now.getMonth(), 0);
+  //     setRange(from, to);
+  //     return;
+  //   }
 
-    if (datePreset === "THIS_YEAR") {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      setRange(from, to);
-      return;
-    }
+  //   if (datePreset === "THIS_YEAR") {
+  //     const from = new Date(now.getFullYear(), 0, 1);
+  //     const to = new Date(now.getFullYear(), 11, 31);
+  //     setRange(from, to);
+  //     return;
+  //   }
 
-    if (datePreset === "LAST_YEAR") {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      setRange(from, to);
-      return;
-    }
-  }, [datePreset]);
+  //   if (datePreset === "LAST_YEAR") {
+  //     const from = new Date(now.getFullYear() - 1, 0, 1);
+  //     const to = new Date(now.getFullYear() - 1, 11, 31);
+  //     setRange(from, to);
+  //     return;
+  //   }
+  // }, [datePreset]);
 
   const hasActiveFilters = useMemo(() => {
     let dateActive = false;
@@ -1800,6 +1649,143 @@ export default function ClientDashboard() {
     }
   }
 
+  function getSelectedActivesList(r: Report): string[] {
+  if (r.selectedActivesText?.trim()) {
+    return r.selectedActivesText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(r.selectedActives) && r.selectedActives.length) {
+    return r.selectedActives.map((s) => String(s).trim()).filter(Boolean);
+  }
+
+  const getName = (x: any): string => {
+    if (!x || typeof x !== "object") return "";
+
+    return String(
+      x?.name ?? x?.active ?? x?.label ?? x?.title ?? x?.ingredient ?? "",
+    ).trim();
+  };
+
+  const isSelected = (x: any): boolean => {
+    if (!x || typeof x !== "object") return false;
+
+    return (
+      x.selected === true ||
+      x.checked === true ||
+      x.enabled === true ||
+      x.isSelected === true ||
+      x.isChecked === true ||
+      x.include === true ||
+      x.included === true ||
+      x.selected === "true" ||
+      x.checked === "true" ||
+      x.enabled === "true" ||
+      x.isSelected === "true" ||
+      x.isChecked === "true" ||
+      x.include === "true" ||
+      x.included === "true"
+    );
+  };
+
+  if (Array.isArray(r.actives)) {
+    return r.actives
+      .filter((x: any) => isSelected(x))
+      .map((x: any) => getName(x))
+      .filter(Boolean);
+  }
+
+  if (r.actives && typeof r.actives === "object") {
+    return Object.values(r.actives as any)
+      .filter((x: any) => isSelected(x))
+      .map((x: any) => getName(x))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function ActivesCell({ report }: { report: Report }) {
+  const list = React.useMemo(() => getSelectedActivesList(report), [report]);
+
+  const first = list[0];
+  const rest = list.slice(1);
+  const moreCount = rest.length;
+
+  const [open, setOpen] = React.useState(false);
+  const btnRef = React.useRef<HTMLButtonElement | null>(null);
+  const popRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (popRef.current?.contains(t)) return;
+      if (btnRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!list.length) return <span className="text-slate-500">-</span>;
+
+  return (
+    <div className="relative inline-flex items-center gap-2">
+      <span className="truncate max-w-[220px]">{first}</span>
+
+      {moreCount > 0 && (
+        <>
+          <button
+            ref={btnRef}
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="rounded-full border bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            title={rest.join(", ")}
+          >
+            +{moreCount}
+          </button>
+
+          {open && (
+            <div
+              ref={popRef}
+              className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border bg-white p-2 shadow-lg"
+            >
+              <div className="px-2 pb-1 text-xs font-semibold text-slate-600">
+                Other actives
+              </div>
+
+              <div className="max-h-44 overflow-auto">
+                {rest.map((a, i) => (
+                  <div
+                    key={`${a}-${i}`}
+                    className="rounded-lg px-2 py-1 text-sm text-slate-800 hover:bg-slate-50"
+                  >
+                    {a}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
   function getCellValue(r: Report, key: ColKey) {
     switch (key) {
       case "formNumber":
@@ -1819,6 +1805,10 @@ export default function ClientDashboard() {
 
       case "updatedAt":
         return formatDate(r.updatedAt ?? null);
+              case "actives": {
+        const list = getSelectedActivesList(r);
+        return list.length ? list.join(", ") : "-";
+      }
 
       default: {
         const v = (r as any)[key];
@@ -1965,7 +1955,6 @@ export default function ClientDashboard() {
       setSelectedViewPane(defaultViewPane());
       setSelectedReport(clicked);
       return;
-      return;
     }
 
     setWorkspaceIds(targets.map((r) => r.id));
@@ -1985,10 +1974,10 @@ export default function ClientDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToReportEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
@@ -1996,6 +1985,27 @@ export default function ClientDashboard() {
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
   }
+
+  function handleWorkspaceReportChanged(updated: any) {
+  if (!updated?.id) return;
+
+  setReports((prev) =>
+    prev.map((r) =>
+      r.id === updated.id
+        ? {
+            ...r,
+            ...updated,
+            status: updated.status ?? r.status,
+            reportNumber: updated.reportNumber ?? r.reportNumber,
+            version:
+              typeof updated.version === "number"
+                ? updated.version
+                : (r.version ?? 0) + 1,
+          }
+        : r,
+    ),
+  );
+}
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
     const selected = selectedIds
@@ -2097,6 +2107,83 @@ export default function ClientDashboard() {
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
+
+
+  function toDateOnlyLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getPresetRange(
+  preset: DatePreset,
+  customFrom: string,
+  customTo: string,
+) {
+  const now = new Date();
+
+  const range = (from: Date, to: Date) => ({
+    from: toDateOnlyLocal(from),
+    to: toDateOnlyLocal(to),
+  });
+
+  switch (preset) {
+    case "ALL":
+      return { from: "", to: "" };
+
+    case "CUSTOM":
+      return { from: customFrom, to: customTo };
+
+    case "TODAY":
+      return range(now, now);
+
+    case "YESTERDAY": {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      return range(y, y);
+    }
+
+    case "LAST_7_DAYS": {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 6); // includes today + previous 6 days
+      return range(from, now);
+    }
+
+    case "LAST_30_DAYS": {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 29); // includes today + previous 29 days
+      return range(from, now);
+    }
+
+    case "THIS_MONTH": {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return range(from, to);
+    }
+
+    case "LAST_MONTH": {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      return range(from, to);
+    }
+
+    case "THIS_YEAR": {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31);
+      return range(from, to);
+    }
+
+    case "LAST_YEAR": {
+      const from = new Date(now.getFullYear() - 1, 0, 1);
+      const to = new Date(now.getFullYear() - 1, 11, 31);
+      return range(from, to);
+    }
+
+    default:
+      return { from: "", to: "" };
+  }
+}
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2807,17 +2894,17 @@ export default function ClientDashboard() {
                             onChange={() => toggleRow(r.id)}
                           />
                         </td>
-                        {selectedCols.map((k) => (
-                          <td key={k} className="px-4 py-3 whitespace-nowrap">
-                            {k === "formNumber" ? (
-                              <span className="font-medium">
-                                {getCellValue(r, k)}
-                              </span>
-                            ) : (
-                              getCellValue(r, k)
-                            )}
-                          </td>
-                        ))}
+                      {selectedCols.map((k) => (
+  <td key={k} className="px-4 py-3 whitespace-nowrap">
+    {k === "formNumber" ? (
+      <span className="font-medium">{getCellValue(r, k)}</span>
+    ) : k === "actives" ? (
+      <ActivesCell report={r} />
+    ) : (
+      getCellValue(r, k)
+    )}
+  </td>
+))}
                         <td className="px-4 py-3">
                           <span
                             className={classNames(
@@ -3599,6 +3686,8 @@ export default function ClientDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+
+         onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );
