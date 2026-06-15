@@ -382,7 +382,15 @@ export default function MicroMixReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+  const [dateSent, setDateSent] = useState(() => {
+    // Existing saved report: keep saved date
+    if (report?.id) {
+      return report?.dateSent || todayISO();
+    }
+
+    // New form / template selected to create form: always today
+    return todayISO();
+  });
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -1183,7 +1191,7 @@ export default function MicroMixReportForm({
   function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
     // data is what you stored in template.data (your payload)
     setClient(data?.client ?? "");
-    setDateSent(data?.dateSent ?? "");
+    setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
     setTypeOfTest(data?.typeOfTest ?? "");
     setSampleType(data?.sampleType ?? "");
     setFormulaNo(data?.formulaNo ?? "");
@@ -1445,10 +1453,18 @@ export default function MicroMixReportForm({
               return false;
             }
             // ✅ template payload: store data + formType + name
+            // const templatePayload = {
+            //   name,
+            //   formType: "MICRO_MIX",
+            //   data: { ...payload }, // store only allowed fields
+            // };
+
+            const { dateSent: _dateSent, ...templateData } = payload;
+
             const templatePayload = {
               name,
               formType: "MICRO_MIX",
-              data: { ...payload }, // store only allowed fields
+              data: templateData,
             };
 
             if (templateId) {
@@ -2945,15 +2961,29 @@ export default function MicroMixReportForm({
             {/* SPECIFICATION */}
             <div
               id="f-tbc_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_spec");
-                setAddMessage("");
-              }}
               className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tbc_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TBC specification"
+                  aria-label="Add correction for TBC specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select
@@ -2981,7 +3011,6 @@ export default function MicroMixReportForm({
                   )}
                 </select>
 
-                {/* + Add new */}
                 {!lock("tbc_spec") && (
                   <button
                     type="button"
@@ -3085,15 +3114,29 @@ export default function MicroMixReportForm({
             {/* SPECIFICATION */}
             <div
               id="f-tmy_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_spec");
-                setAddMessage("");
-              }}
               className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
             >
               <FieldErrorBadge name="tmy_spec" errors={errors} />
               <ResolveOverlay field="tmy_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tmy_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TMY specification"
+                  aria-label="Add correction for TMY specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select

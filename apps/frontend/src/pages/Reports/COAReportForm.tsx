@@ -282,7 +282,17 @@ export default function COAReportForm({
   const [client, setClient] = useState(
     report?.client ?? (user?.role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+  // const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+
+  const [dateSent, setDateSent] = useState(() => {
+    // Existing saved COA report: keep saved date
+    if (report?.id) {
+      return report?.dateSent || todayISO();
+    }
+
+    // New COA form / template-created COA form: always today
+    return todayISO();
+  });
 
   // ---- SAMPLE DESCRIPTION BLOCK ----
   const [sampleDescription, setSampleDescription] = useState(
@@ -450,7 +460,7 @@ export default function COAReportForm({
   function hydrateForm(r?: any) {
     // header fields
     setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
-    setDateSent(r?.dateSent ?? "");
+    setDateSent(isTemplateViewMode ? (r?.dateSent ?? "") : todayISO());
     setSampleDescription(r?.sampleDescription ?? "");
     setCoaVerification(!!r?.coaVerification);
 
@@ -927,10 +937,18 @@ export default function COAReportForm({
               return false;
             }
             // ✅ template payload: store data + formType + name
+            // const templatePayload = {
+            //   name,
+            //   formType: "COA",
+            //   data: { ...payload }, // store only allowed fields
+            // };
+
+            const { dateSent: _dateSent, ...templateData } = payload;
+
             const templatePayload = {
               name,
               formType: "COA",
-              data: { ...payload }, // store only allowed fields
+              data: templateData,
             };
 
             if (templateId) {
@@ -989,11 +1007,11 @@ export default function COAReportForm({
           );
 
           setIsDirty(false);
-      onSaved?.({
-  ...report,
-  ...saved,
-  id: saved.id ?? reportId,
-});
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1107,11 +1125,11 @@ export default function COAReportForm({
         );
         setIsDirty(false);
         onStatusChanged?.({
-  ...report,
-  ...updated,
-  id: reportId,
-  status: updated.status ?? newStatus,
-});
+          ...report,
+          ...updated,
+          id: reportId,
+          status: updated.status ?? newStatus,
+        });
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)
