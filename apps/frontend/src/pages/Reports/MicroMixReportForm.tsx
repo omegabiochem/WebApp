@@ -382,7 +382,15 @@ export default function MicroMixReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+  const [dateSent, setDateSent] = useState(() => {
+    // Existing saved report: keep saved date
+    if (report?.id) {
+      return report?.dateSent || todayISO();
+    }
+
+    // New form / template selected to create form: always today
+    return todayISO();
+  });
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -1183,7 +1191,7 @@ export default function MicroMixReportForm({
   function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
     // data is what you stored in template.data (your payload)
     setClient(data?.client ?? "");
-    setDateSent(data?.dateSent ?? "");
+    setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
     setTypeOfTest(data?.typeOfTest ?? "");
     setSampleType(data?.sampleType ?? "");
     setFormulaNo(data?.formulaNo ?? "");
@@ -1445,10 +1453,18 @@ export default function MicroMixReportForm({
               return false;
             }
             // ✅ template payload: store data + formType + name
+            // const templatePayload = {
+            //   name,
+            //   formType: "MICRO_MIX",
+            //   data: { ...payload }, // store only allowed fields
+            // };
+
+            const { dateSent: _dateSent, ...templateData } = payload;
+
             const templatePayload = {
               name,
               formType: "MICRO_MIX",
-              data: { ...payload }, // store only allowed fields
+              data: templateData,
             };
 
             if (templateId) {
