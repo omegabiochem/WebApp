@@ -258,7 +258,10 @@ export default function Verify2FA() {
         user: {
           id: string;
           email: string;
-          role: Role;
+          role: Role; // active session role
+          actualRole?: Role; // optional original/default user role
+          roles?: Role[];
+          isCommonSession?: boolean;
           name?: string;
           mustChangePassword?: boolean;
           clientCode?: string;
@@ -288,119 +291,119 @@ export default function Verify2FA() {
 
       setBanner({ type: "success", text: "Verified. Signing you in…" });
       nav(roleHomePath[res.user.role] ?? "/home", { replace: true });
-  } catch (err: any) {
-  const codeErr = err?.body?.code;
+    } catch (err: any) {
+      const codeErr = err?.body?.code;
 
-  if (codeErr === "OTP_INVALID") {
-    const nextAttempts = getOtpAttempts() + 1;
-    setOtpAttempts(nextAttempts);
+      if (codeErr === "OTP_INVALID") {
+        const nextAttempts = getOtpAttempts() + 1;
+        setOtpAttempts(nextAttempts);
 
-    if (nextAttempts >= MAX_OTP_ATTEMPTS) {
-      try {
-        if (cooldown > 0) {
-          setBanner({
-            type: "error",
-            text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
-          });
-          return;
+        if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+          try {
+            if (cooldown > 0) {
+              setBanner({
+                type: "error",
+                text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
+              });
+              return;
+            }
+
+            await resendOtpNow(
+              "You entered the wrong code 5 times. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
+            );
+            return;
+          } catch (e: any) {
+            const resendCode = e?.body?.code;
+            const resendMsg =
+              resendCode === "OTP_RESEND_THROTTLED"
+                ? "Too many incorrect attempts. Please wait before requesting another code."
+                : "Too many incorrect attempts. Unable to auto-send a new code right now.";
+            setBanner({ type: "error", text: resendMsg });
+            return;
+          }
         }
 
-        await resendOtpNow(
-          "You entered the wrong code 5 times. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
-        );
-        return;
-      } catch (e: any) {
-        const resendCode = e?.body?.code;
-        const resendMsg =
-          resendCode === "OTP_RESEND_THROTTLED"
-            ? "Too many incorrect attempts. Please wait before requesting another code."
-            : "Too many incorrect attempts. Unable to auto-send a new code right now.";
-        setBanner({ type: "error", text: resendMsg });
-        return;
-      }
-    }
-
-    setBanner({
-      type: "error",
-      text: `That code doesn’t match. Please try again. Attempts left: ${
-        MAX_OTP_ATTEMPTS - nextAttempts
-      }.`,
-    });
-    return;
-  }
-
-  if (codeErr === "OTP_LOCKED") {
-    try {
-      if (cooldown > 0) {
         setBanner({
           type: "error",
-          text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
+          text: `That code doesn’t match. Please try again. Attempts left: ${
+            MAX_OTP_ATTEMPTS - nextAttempts
+          }.`,
         });
         return;
       }
 
-      await resendOtpNow(
-        "Too many incorrect attempts. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
-      );
-      return;
-    } catch {
-      setBanner({
-        type: "error",
-        text: "Too many incorrect attempts. Please sign in again.",
-      });
-      clearAllPendingAuth();
-      nav("/home", { replace: true });
-      return;
-    }
-  }
+      if (codeErr === "OTP_LOCKED") {
+        try {
+          if (cooldown > 0) {
+            setBanner({
+              type: "error",
+              text: `Too many incorrect attempts. Please wait ${cooldown}s before a new code can be sent.`,
+            });
+            return;
+          }
 
-  const msg =
-    codeErr === "OTP_EXPIRED"
-      ? "This code has expired. Please sign in again to get a new one."
-      : "We couldn’t verify that code. Please try again.";
+          await resendOtpNow(
+            "Too many incorrect attempts. A new OTP has been sent automatically. Please wait 2 minutes before requesting another one.",
+          );
+          return;
+        } catch {
+          setBanner({
+            type: "error",
+            text: "Too many incorrect attempts. Please sign in again.",
+          });
+          clearAllPendingAuth();
+          nav("/home", { replace: true });
+          return;
+        }
+      }
 
-  setBanner({ type: "error", text: msg });
+      const msg =
+        codeErr === "OTP_EXPIRED"
+          ? "This code has expired. Please sign in again to get a new one."
+          : "We couldn’t verify that code. Please try again.";
 
-  if (codeErr === "OTP_EXPIRED") {
-    clearAllPendingAuth();
-    nav("/home", { replace: true });
-  }
-} finally {
+      setBanner({ type: "error", text: msg });
+
+      if (codeErr === "OTP_EXPIRED") {
+        clearAllPendingAuth();
+        nav("/home", { replace: true });
+      }
+    } finally {
       setBusy(false);
     }
   };
 
   const onResend = async () => {
-  setBanner(null);
+    setBanner(null);
 
-  if (!hasPendingSession) {
-    setBanner({
-      type: "error",
-      text: "Please sign in again to resend a code.",
-    });
-    clearAllPendingAuth();
-    nav("/home", { replace: true });
-    return;
-  }
+    if (!hasPendingSession) {
+      setBanner({
+        type: "error",
+        text: "Please sign in again to resend a code.",
+      });
+      clearAllPendingAuth();
+      nav("/home", { replace: true });
+      return;
+    }
 
-  if (cooldown > 0) return;
+    if (cooldown > 0) return;
 
-  try {
-    setBusy(true);
-    await resendOtpNow(
-      "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine. Please wait 2 minutes before requesting another one.",
-    );
-  } catch (e: any) {
-    const codeErr = e?.body?.code;
-    const msg =
-      codeErr === "OTP_RESEND_THROTTLED"
-        ? "Please wait 2 minutes before requesting a new code."
-        : "Unable to resend. Please try again.";
-    setBanner({ type: "error", text: msg });
-  } finally {
-    setBusy(false);
-  }
-};
+    try {
+      setBusy(true);
+      await resendOtpNow(
+        "We sent a new code. If you don’t see it in 1–2 minutes, check Spam/Junk/Quarantine. Please wait 2 minutes before requesting another one.",
+      );
+    } catch (e: any) {
+      const codeErr = e?.body?.code;
+      const msg =
+        codeErr === "OTP_RESEND_THROTTLED"
+          ? "Please wait 2 minutes before requesting a new code."
+          : "Unable to resend. Please try again.";
+      setBanner({ type: "error", text: msg });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // const onResend = async () => {
   //   setBanner(null);
