@@ -161,6 +161,22 @@ export default function Header() {
     return `${path}${saved}`;
   };
 
+  const normalizePath = (p: string) => p.replace(/\/+$/, "") || "/";
+
+  const isActivePath = (path: string) => {
+    const current = normalizePath(pathname);
+    const target = normalizePath(path);
+
+    return current === target || current.startsWith(`${target}/`);
+  };
+
+  const navBase =
+    "relative inline-flex items-center px-2.5 py-1.5 text-sm font-medium transition-colors duration-150";
+
+  const navNormal = "text-slate-600 hover:text-slate-950";
+
+  const navActive =
+    "cursor-default text-[var(--brand)] font-semibold after:absolute after:left-2 after:right-2 after:-bottom-1 after:h-[2px] after:rounded-full after:bg-[var(--brand)] after:content-['']";
   useEffect(() => {
     setNotificationsOpen(false);
   }, [pathname, search]);
@@ -305,21 +321,56 @@ export default function Header() {
         <nav className="flex items-center gap-4 text-sm">
           {!user ? (
             <>
-              <Link to={toRemembered("/home")} className="hover:underline">
-                Home
-              </Link>
-              <Link
-                to={toRemembered("/publicsupport")}
-                className="hover:underline"
-              >
-                Support
-              </Link>
-              <Link
-                to={toRemembered("/login")}
-                className="px-3 py-1 rounded-md bg-[var(--brand)] text-white hover:opacity-90 transition"
-              >
-                Login
-              </Link>
+              {isActivePath("/home") ? (
+                <span
+                  aria-current="page"
+                  className={`${navBase} ${navActive}`}
+                  title="Current page"
+                >
+                  Home
+                </span>
+              ) : (
+                <Link
+                  to={toRemembered("/home")}
+                  className={`${navBase} ${navNormal}`}
+                >
+                  Home
+                </Link>
+              )}
+
+              {isActivePath("/publicsupport") ? (
+                <span
+                  aria-current="page"
+                  className={`${navBase} ${navActive}`}
+                  title="Current page"
+                >
+                  Support
+                </span>
+              ) : (
+                <Link
+                  to={toRemembered("/publicsupport")}
+                  className={`${navBase} ${navNormal}`}
+                >
+                  Support
+                </Link>
+              )}
+
+              {isActivePath("/login") ? (
+                <span
+                  aria-current="page"
+                  className={`${navBase} ${navActive}`}
+                  title="Current page"
+                >
+                  Login
+                </span>
+              ) : (
+                <Link
+                  to={toRemembered("/login")}
+                  className="px-3 py-1 rounded-md bg-[var(--brand)] text-white hover:opacity-90 transition"
+                >
+                  Login
+                </Link>
+              )}
             </>
           ) : isReportRoute ? (
             <>
@@ -467,56 +518,73 @@ export default function Header() {
                     )}
                   </div>
                 ) : item.label === "Results" ? (
-                  <Link
-                    key={item.path}
-                    to={toRemembered(item.path)}
-                    className="relative inline-flex items-center hover:underline"
-                    onClick={async () => {
-                      setUnreadResults(0); // immediate UI clear
+                  isActivePath(item.path) ? (
+                    <span
+                      key={item.path}
+                      aria-current="page"
+                      className={`${navBase} ${navActive} relative`}
+                      title="Current page"
+                    >
+                      <span className="relative">
+                        {item.label}
 
-                      try {
-                        await api("/attachments/mark-results-read", {
-                          method: "POST",
-                        });
-                      } catch {}
-
-                      try {
-                        const r = await api<{ count: number }>(
-                          "/attachments/unread-count",
-                        );
-                        setUnreadResults(r.count ?? 0);
-                      } catch {}
-                    }}
-                  >
-                    <span className="relative">
-                      {item.label}
-
-                      {unreadResults > 0 && (
-                        <sup className="absolute -top-2 -right-3 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white shadow">
-                          {unreadResults > 99 ? "99+" : unreadResults}
-                        </sup>
-                      )}
+                        {unreadResults > 0 && (
+                          <sup className="absolute -top-2 -right-3 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white shadow">
+                            {unreadResults > 99 ? "99+" : unreadResults}
+                          </sup>
+                        )}
+                      </span>
                     </span>
-                  </Link>
+                  ) : (
+                    <Link
+                      key={item.path}
+                      to={toRemembered(item.path)}
+                      className={`${navBase} ${navNormal} relative`}
+                      onClick={async () => {
+                        setUnreadResults(0);
+
+                        try {
+                          await api("/attachments/mark-results-read", {
+                            method: "POST",
+                          });
+                        } catch {}
+
+                        try {
+                          const r = await api<{ count: number }>(
+                            "/attachments/unread-count",
+                          );
+                          setUnreadResults(r.count ?? 0);
+                        } catch {}
+                      }}
+                    >
+                      <span className="relative">
+                        {item.label}
+
+                        {unreadResults > 0 && (
+                          <sup className="absolute -top-2 -right-3 flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white shadow">
+                            {unreadResults > 99 ? "99+" : unreadResults}
+                          </sup>
+                        )}
+                      </span>
+                    </Link>
+                  )
+                ) : isActivePath(item.path) ? (
+                  <span
+                    key={item.path}
+                    aria-current="page"
+                    className={`${navBase} ${navActive}`}
+                    title="Current page"
+                  >
+                    {item.label}
+                  </span>
                 ) : (
                   <Link
                     key={item.path}
                     to={toRemembered(item.path)}
-                    className="hover:underline"
+                    className={`${navBase} ${navNormal}`}
                   >
                     {item.label}
                   </Link>
-                  // <Link
-                  //   key={item.path}
-                  //   to={
-                  //     item.label === "Home"
-                  //       ? item.path
-                  //       : toRemembered(item.path)
-                  //   }
-                  //   className="hover:underline"
-                  // >
-                  //   {item.label}
-                  // </Link>
                 ),
               )}
               {/* {(role === "ADMIN" || role === "SYSTEMADMIN") && (

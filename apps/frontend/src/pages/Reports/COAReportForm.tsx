@@ -989,7 +989,11 @@ export default function COAReportForm({
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+      onSaved?.({
+  ...report,
+  ...saved,
+  id: saved.id ?? reportId,
+});
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1102,7 +1106,12 @@ export default function COAReportForm({
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
         setIsDirty(false);
-        onStatusChanged?.(updated);
+        onStatusChanged?.({
+  ...report,
+  ...updated,
+  id: reportId,
+  status: updated.status ?? newStatus,
+});
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)

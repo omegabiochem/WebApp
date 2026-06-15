@@ -1025,6 +1025,9 @@ model DashboardReport {
   testedBy          String?
   reviewedBy        String?
 
+  actives Json?
+  selectedActivesText String?
+
   searchableText String?
 
   @@unique([sourceType, sourceId])

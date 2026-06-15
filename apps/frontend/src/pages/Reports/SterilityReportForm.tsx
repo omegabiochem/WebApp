@@ -1042,7 +1042,11 @@ export default function SterilityReportForm({
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+      onSaved?.({
+  ...report,
+  ...saved,
+  id: saved.id ?? reportId,
+});
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {

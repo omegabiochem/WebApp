@@ -34,6 +34,7 @@ type Props = {
   onClose: () => void;
   onLayoutChange: (layout: WorkspaceLayout) => void;
   onFocus?: (id: string) => void;
+  onReportChanged?: (updated: any) => void;
 };
 
 function paneFor(status: string): "FORM" | "ATTACHMENTS" {
@@ -54,6 +55,7 @@ export default function ReportWorkspaceModal({
   onClose,
   onLayoutChange,
   onFocus,
+  onReportChanged,
 }: Props) {
   const reportRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
   const scrollAreaRef = React.useRef<HTMLDivElement | null>(null);
@@ -180,6 +182,22 @@ export default function ReportWorkspaceModal({
   const shouldLaunchCorrectionInUpdate =
     mode === "UPDATE" && correctionKinds.length > 0;
 
+  const isSingleReport = sortedReports.length === 1;
+
+  function handleReportChanged(original: ReportItem, updated: any) {
+    onReportChanged?.({
+      ...original,
+      ...updated,
+      id: original.id,
+      status: updated?.status ?? original.status,
+      reportNumber: updated?.reportNumber ?? original.reportNumber,
+      version:
+        typeof updated?.version === "number"
+          ? updated.version
+          : (original as any).version,
+    });
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-black/40 p-4"
@@ -187,8 +205,14 @@ export default function ReportWorkspaceModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex h-[94vh] w-full flex-col rounded-2xl bg-white shadow-2xl">
-  <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
+      <div
+        className={
+          isSingleReport
+            ? "mx-auto flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            : "flex h-[94vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        }
+      >
+        <div className="sticky top-0 z-10 relative flex items-center justify-between border-b bg-white px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold">
               {mode === "VIEW"
@@ -208,29 +232,33 @@ export default function ReportWorkspaceModal({
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => onLayoutChange("VERTICAL")}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
-                layout === "VERTICAL"
-                  ? "bg-blue-600 text-white"
-                  : "border hover:bg-slate-50"
-              }`}
-            >
-              Vertical
-            </button>
+            {!isSingleReport && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onLayoutChange("VERTICAL")}
+                  className={`rounded-lg px-3 py-1.5 text-sm ${
+                    layout === "VERTICAL"
+                      ? "bg-blue-600 text-white"
+                      : "border hover:bg-slate-50"
+                  }`}
+                >
+                  Vertical
+                </button>
 
-            <button
-              type="button"
-              onClick={() => onLayoutChange("HORIZONTAL")}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
-                layout === "HORIZONTAL"
-                  ? "bg-blue-600 text-white"
-                  : "border hover:bg-slate-50"
-              }`}
-            >
-              Horizontal
-            </button>
+                <button
+                  type="button"
+                  onClick={() => onLayoutChange("HORIZONTAL")}
+                  className={`rounded-lg px-3 py-1.5 text-sm ${
+                    layout === "HORIZONTAL"
+                      ? "bg-blue-600 text-white"
+                      : "border hover:bg-slate-50"
+                  }`}
+                >
+                  Horizontal
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -242,37 +270,48 @@ export default function ReportWorkspaceModal({
           </div>
         </div>
 
-        <div className="border-b px-6 py-2">
-          <div className="flex gap-2 overflow-auto">
-            {sortedReports.map((r) => (
-              <button
-                key={r.id}
-                ref={(el) => {
-                  topChipRefs.current[r.id] = el;
-                }}
-                type="button"
-                onClick={() => {
-                  onFocus?.(r.id);
-                  scrollToReport(r.id);
-                }}
-                className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
-                  activeId === r.id
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "hover:bg-slate-50"
-                }`}
-              >
-                {getChipLabel(r)}
-              </button>
-            ))}
+        {!isSingleReport && (
+          <div className="border-b px-6 py-2">
+            <div className="flex gap-2 overflow-auto">
+              {sortedReports.map((r) => (
+                <button
+                  key={r.id}
+                  ref={(el) => {
+                    topChipRefs.current[r.id] = el;
+                  }}
+                  type="button"
+                  onClick={() => {
+                    onFocus?.(r.id);
+                    scrollToReport(r.id);
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
+                    activeId === r.id
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "hover:bg-slate-50"
+                  }`}
+                >
+                  {getChipLabel(r)}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div ref={scrollAreaRef} className="flex-1 overflow-auto px-6 py-4">
+        <div
+          ref={scrollAreaRef}
+          className={
+            isSingleReport
+              ? "flex-1 overflow-auto bg-slate-100 px-4 py-5"
+              : "flex-1 overflow-auto px-6 py-4"
+          }
+        >
           <div
             className={
-              layout === "VERTICAL"
-                ? "space-y-6"
-                : "flex min-w-max gap-6 items-start"
+              isSingleReport
+                ? "mx-auto max-w-[920px]"
+                : layout === "VERTICAL"
+                  ? "space-y-6"
+                  : "flex min-w-max gap-6 items-start"
             }
           >
             {sortedReports.map((r) => (
@@ -283,16 +322,34 @@ export default function ReportWorkspaceModal({
                   reportRefs.current[r.id] = el;
                 }}
                 className={
-                  layout === "VERTICAL"
-                    ? "rounded-2xl border bg-slate-50 p-4"
-                    : "w-[920px] shrink-0 rounded-2xl border bg-slate-50 p-4"
+                  isSingleReport
+                    ? "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                    : layout === "VERTICAL"
+                      ? "rounded-2xl border bg-slate-50 p-4"
+                      : "w-[920px] shrink-0 rounded-2xl border bg-slate-50 p-4"
                 }
               >
-                <div className="mb-3">
-                  <div className="font-semibold">{getChipLabel(r)}</div>
-                  <div className="text-xs text-slate-500">
-                    {r.formType} • {r.status}
+                <div
+                  className={
+                    isSingleReport
+                      ? "mb-4 flex items-center justify-between rounded-xl border bg-slate-50 px-4 py-3"
+                      : "mb-3"
+                  }
+                >
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {getChipLabel(r)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {r.formType} • {r.status}
+                    </div>
                   </div>
+
+                  {isSingleReport && (
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                      {mode === "VIEW" ? "View Mode" : "Update Mode"}
+                    </span>
+                  )}
                 </div>
 
                 {mode === "VIEW" ? (
@@ -356,6 +413,10 @@ export default function ReportWorkspaceModal({
                         correctionKinds={correctionKinds}
                         isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
                       />
                     )}
                     {r.formType === "MICRO_MIX_WATER" && (
@@ -370,6 +431,10 @@ export default function ReportWorkspaceModal({
                         correctionKinds={correctionKinds}
                         isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
                       />
                     )}
                     {r.formType === "STERILITY" && (
@@ -384,6 +449,10 @@ export default function ReportWorkspaceModal({
                         correctionKinds={correctionKinds}
                         isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
                       />
                     )}
                     {r.formType === "COA" && (
@@ -398,6 +467,10 @@ export default function ReportWorkspaceModal({
                         correctionKinds={correctionKinds}
                         isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
                       />
                     )}
 
@@ -413,6 +486,10 @@ export default function ReportWorkspaceModal({
                         correctionKinds={correctionKinds}
                         isWorkspaceActive={activeId === r.id}
                         onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
                       />
                     )}
 
