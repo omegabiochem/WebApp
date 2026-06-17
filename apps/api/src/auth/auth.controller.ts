@@ -76,7 +76,8 @@ export class AuthController {
     return {
       id: dbUser.id,
       email: dbUser.email,
-      role: dbUser.role,
+     role: req.user?.role ?? dbUser.role,
+      actualRole: dbUser.role,
       name: dbUser.name ?? undefined,
       userId: dbUser.userId ?? undefined,
       uid: dbUser.userId ?? undefined,

@@ -1488,7 +1488,11 @@ export default function MicroMixWaterReportForm({
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1614,7 +1618,12 @@ export default function MicroMixWaterReportForm({
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
         setIsDirty(false);
-        onStatusChanged?.(updated);
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: updated.status ?? newStatus,
+        });
         alert(`✅ Status changed to ${newStatus}`);
         // if (role === "CLIENT") {
         //   backToDashboard();
@@ -2874,17 +2883,32 @@ export default function MicroMixWaterReportForm({
             </div>
 
             {/* SPECIFICATION */}
+            {/* SPECIFICATION */}
             <div
               id="f-tbc_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_spec");
-                setAddMessage("");
-              }}
-              className="py-1 px-2 flex relative"
+              className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tbc_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TBC specification"
+                  aria-label="Add correction for TBC specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select
@@ -2910,7 +2934,6 @@ export default function MicroMixWaterReportForm({
                   ))}
                 </select>
 
-                {/* + Add new */}
                 {!lock("tbc_spec") && (
                   <button
                     type="button"
@@ -3012,17 +3035,32 @@ export default function MicroMixWaterReportForm({
             </div>
 
             {/* SPECIFICATION */}
+            {/* SPECIFICATION */}
             <div
               id="f-tmy_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_spec");
-                setAddMessage("");
-              }}
               className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
             >
               <FieldErrorBadge name="tmy_spec" errors={errors} />
               <ResolveOverlay field="tmy_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tmy_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TMY specification"
+                  aria-label="Add correction for TMY specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select

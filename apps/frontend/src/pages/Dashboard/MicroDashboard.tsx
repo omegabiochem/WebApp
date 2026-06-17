@@ -15,11 +15,9 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import { createPortal } from "react-dom";
 import {
   formatDate,
-  matchesDateRange,
-  toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
@@ -30,7 +28,6 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import { COLS, isTerminalStatus, type ColKey } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 
@@ -380,50 +377,7 @@ const DEFAULT_MICRO_FILTERS = {
   toDate: "",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
 
-  const text = String(value).trim();
-
-  // Example:
-  // ABC-20260001 => year: 2026, sequence: 1
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
-
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
-
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
-
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
-
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
-
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
-
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
-
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
-
-  return true;
-}
 
 // -----------------------------
 // Component
@@ -439,7 +393,15 @@ export default function MicroDashboard() {
     (user as any)?.uid ||
     "micro";
   const [reports, setReports] = useState<Report[]>([]);
+
+  
   const [loading, setLoading] = useState<boolean>(true);
+
+  const [serverTotal, setServerTotal] = useState(0);
+const [serverTotalPages, setServerTotalPages] = useState(1);
+const [refreshKey, setRefreshKey] = useState(0);
+
+
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -633,11 +595,11 @@ export default function MicroDashboard() {
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-  const togglePin = (id: string) => {
-    setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+const togglePin = (id: string) => {
+  setPinnedIds((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+  );
+};
 
   useEffect(() => {
     if (!colOpen) return;
@@ -797,33 +759,182 @@ export default function MicroDashboard() {
       .filter(Boolean) as Report[];
   }, [workspaceIds, reports]);
 
-  // fetch
-  useEffect(() => {
-    let abort = false;
-    async function fetchReports() {
-      try {
-        setLoading(true);
-        setError(null);
-        const all = await api<Report[]>("/reports");
-        if (abort) return;
-        const KEEP_STATUSES = new Set<string>([
-          ...MICRO_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
-          ...STERILITY_ONLY_STATUSES.filter((s) => s !== "ALL").map(String),
-        ]);
+  const fetchMicroDashboardReports = async () => {
+  const params = new URLSearchParams();
 
-        setReports(all.filter((r) => KEEP_STATUSES.has(String(r.status))));
-      } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
-      } finally {
-        if (!abort) setLoading(false);
+  params.set("page", String(page));
+  params.set("perPage", String(perPage));
+
+  params.set("form", formFilter);
+  params.set("status", String(statusFilter));
+
+  params.set("sortBy", sortBy);
+  params.set("sortDir", sortDir);
+
+  const dateField =
+    sortBy === "dateTested"
+      ? "dateTested"
+      : sortBy === "createdAt"
+        ? "createdAt"
+        : sortBy === "updatedAt"
+          ? "updatedAt"
+          : "dateSent";
+
+  params.set("dateField", dateField);
+  params.set("rangeType", numberRangeType);
+
+  if (searchClient.trim()) params.set("client", searchClient.trim());
+  if (searchReport.trim()) params.set("report", searchReport.trim());
+  if (searchText.trim()) params.set("q", searchText.trim());
+
+  const dateRange = getPresetRange(datePreset, fromDate, toDate);
+
+  if (dateRange.from) params.set("from", dateRange.from);
+  if (dateRange.to) params.set("to", dateRange.to);
+
+  if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+  if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+  if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+  if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+  return api<{
+    rows: Report[];
+    total: number;
+    page: number;
+    perPage: number;
+    totalPages: number;
+  }>(`/micro-dashboard/reports?${params.toString()}`);
+};
+
+
+useEffect(() => {
+  let abort = false;
+
+  async function loadMicroDashboardReports() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetchMicroDashboardReports();
+
+      if (abort) return;
+
+      setReports(res.rows);
+      setServerTotal(res.total);
+      setServerTotalPages(res.totalPages);
+    } catch (e: any) {
+      if (!abort) setError(e?.message ?? "Failed to fetch micro dashboard");
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        setRefreshing(false);
       }
     }
-    fetchReports();
-    return () => {
-      abort = true;
-    };
-  }, []);
+  }
 
+  loadMicroDashboardReports();
+
+  return () => {
+    abort = true;
+  };
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  searchText,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+  datePreset,
+  fromDate,
+  toDate,
+  refreshKey,
+]);
+
+  
+function toDateOnlyLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getPresetRange(
+  preset: DatePreset,
+  customFrom: string,
+  customTo: string,
+) {
+  const now = new Date();
+
+  const range = (from: Date, to: Date) => ({
+    from: toDateOnlyLocal(from),
+    to: toDateOnlyLocal(to),
+  });
+
+  switch (preset) {
+    case "ALL":
+      return { from: "", to: "" };
+
+    case "CUSTOM":
+      return { from: customFrom, to: customTo };
+
+    case "TODAY":
+      return range(now, now);
+
+    case "YESTERDAY": {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      return range(y, y);
+    }
+
+    case "LAST_7_DAYS": {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 6);
+      return range(from, now);
+    }
+
+    case "LAST_30_DAYS": {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 29);
+      return range(from, now);
+    }
+
+    case "THIS_MONTH": {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return range(from, to);
+    }
+
+    case "LAST_MONTH": {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      return range(from, to);
+    }
+
+    case "THIS_YEAR": {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31);
+      return range(from, to);
+    }
+
+    case "LAST_YEAR": {
+      const from = new Date(now.getFullYear() - 1, 0, 1);
+      const to = new Date(now.getFullYear() - 1, 11, 31);
+      return range(from, to);
+    }
+
+    default:
+      return { from: "", to: "" };
+  }
+}
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
   >([]);
@@ -865,155 +976,6 @@ export default function MicroDashboard() {
     return MICRO_ONLY_STATUSES;
   }, [formFilter]);
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
-
-  // derived
-  const processed = useMemo(() => {
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICRO_WATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            return true;
-          });
-
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => r.status === statusFilter);
-
-    const byClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return (
-            (r.client || "").toLowerCase().includes(q) ||
-            (r.clientCode || "").toLowerCase().includes(q)
-          );
-        })
-      : byStatus;
-
-    const byReport = searchReport.trim()
-      ? byClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return (
-            String(displayReportNo(r)).toLowerCase().includes(q) ||
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q)
-          );
-        })
-      : byClient;
-
-    const bySearchText = searchText.trim()
-      ? byReport.filter((r) => {
-          const q = searchText.trim().toLowerCase();
-          return (r._searchBlob || "").includes(q);
-        })
-      : byReport;
-
-    const byNumberRange =
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-          ? bySearchText.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.formNumber).sequence,
-                formNoFrom,
-                formNoTo,
-              ),
-            )
-          : bySearchText
-        : reportNoFrom.trim() || reportNoTo.trim()
-          ? bySearchText.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.reportNumber).sequence,
-                reportNoFrom,
-                reportNoTo,
-              ),
-            )
-          : bySearchText;
-
-    // const byDate = byNumberRange.filter((r) =>
-    //   matchesDateRange(r.dateSent, fromDate || undefined, toDate || undefined),
-    // );
-
-    const dateField =
-      sortBy === "dateTested"
-        ? "dateTested"
-        : sortBy === "createdAt"
-          ? "createdAt"
-          : sortBy === "updatedAt"
-            ? "updatedAt"
-            : "dateSent";
-
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        (r as any)[dateField] ?? null,
-        fromDate || undefined,
-        toDate || undefined,
-      ),
-    );
-
-    return [...byDate].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
-
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
-      }
-      if (sortBy === "reportNumber") {
-        const aK = String(a.reportNumber || "").toLowerCase();
-        const bK = String(b.reportNumber || "").toLowerCase();
-        return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
-      }
-
-      if (sortBy === "dateTested") {
-        const aT = a.dateTested ? new Date(a.dateTested).getTime() : 0;
-        const bT = b.dateTested ? new Date(b.dateTested).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "createdAt") {
-        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "updatedAt") {
-        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return sortDir === "asc" ? aT - bT : bT - aT;
-    });
-  }, [
-    reportsWithSearch,
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    sortBy,
-    sortDir,
-    fromDate,
-    toDate,
-    pinnedIds,
-  ]);
 
   useEffect(() => {
     if (!statusOptions.includes(statusFilter as any)) {
@@ -1021,53 +983,94 @@ export default function MicroDashboard() {
     }
   }, [statusOptions, statusFilter]);
 
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
 
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
-
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
-
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
-
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
-
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
-
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
 
   // pagination
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
+const displayRows = useMemo(() => {
+  return [...reports].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
+
+    return 0;
+  });
+}, [reports, pinnedIds]);
+
+const total = serverTotal;
+const totalPages = serverTotalPages;
+const pageClamped = Math.min(page, totalPages);
+const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+const end = start + displayRows.length;
+const pageRows = displayRows;
+
+React.useLayoutEffect(() => {
+  if (loading) return;
+
+  const nextPositions: Record<string, DOMRect> = {};
+
+  for (const r of pageRows) {
+    const el = rowRefs.current[r.id];
+
+    if (!el) continue;
+
+    const next = el.getBoundingClientRect();
+    const prev = prevPositions.current[r.id];
+
+    nextPositions[r.id] = next;
+
+    if (!prev) continue;
+
+    const dy = prev.top - next.top;
+
+    if (Math.abs(dy) < 1) continue;
+
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
+
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 280ms ease";
+      el.style.transform = "translateY(0)";
+    });
+
+    const cleanup = () => {
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
+
+    el.addEventListener("transitionend", cleanup);
+  }
+
+  prevPositions.current = nextPositions;
+}, [pageRows, loading, selectedCols]);
+
+
+useEffect(() => {
+  rowRefs.current = {};
+  prevPositions.current = {};
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  searchText,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  datePreset,
+  fromDate,
+  toDate,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1288,14 +1291,14 @@ export default function MicroDashboard() {
     return () => window.clearTimeout(tid);
   }, [statusFilter, statusOptions, formFilter, searchParams]);
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    const returnTo = encodeURIComponent(
-      window.location.pathname + window.location.search,
-    );
+  // function goToReportEditor(r: Report) {
+  //   const slug = formTypeToSlug[r.formType] || "micro-mix";
+  //   const returnTo = encodeURIComponent(
+  //     window.location.pathname + window.location.search,
+  //   );
 
-    navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
-  }
+  //   navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
+  // }
 
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -1501,76 +1504,7 @@ export default function MicroDashboard() {
     selectedReport.formType !== "STERILITY" &&
     (selectedReport.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
       selectedReport.status === "PRELIMINARY_APPROVED");
-  useEffect(() => {
-    const now = new Date();
-
-    const setRange = (from: Date, to: Date) => {
-      setFromDate(toDateOnlyISO_UTC(from));
-      setToDate(toDateOnlyISO_UTC(to));
-    };
-
-    if (datePreset === "ALL") {
-      setFromDate("");
-      setToDate("");
-      return;
-    }
-
-    if (datePreset === "CUSTOM") return;
-
-    if (datePreset === "TODAY") {
-      setRange(now, now);
-      return;
-    }
-
-    if (datePreset === "YESTERDAY") {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      setRange(y, y);
-      return;
-    }
-
-    if (datePreset === "LAST_7_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 7);
-      setRange(from, now);
-      return;
-    }
-
-    if (datePreset === "LAST_30_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 30);
-      setRange(from, now);
-      return;
-    }
-
-    if (datePreset === "THIS_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setRange(from, to);
-      return;
-    }
-
-    if (datePreset === "LAST_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      setRange(from, to);
-      return;
-    }
-
-    if (datePreset === "THIS_YEAR") {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      setRange(from, to);
-      return;
-    }
-
-    if (datePreset === "LAST_YEAR") {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      setRange(from, to);
-      return;
-    }
-  }, [datePreset]);
+ 
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -1639,64 +1573,6 @@ export default function MicroDashboard() {
     }
   };
 
-  // useEffect(() => {
-  //   setStatusFilter("ALL");
-  // }, [formFilter]);
-
-  useLiveReportStatus(setReports);
-
-  // useEffect(() => {
-  //   const nextForm = (searchParams.get("form") as FormFilter) || "ALL";
-  //   const nextStatus = searchParams.get("status") || "ALL";
-  //   const nextClient = searchParams.get("client") || "";
-  //   const nextReport = searchParams.get("report") || "";
-  //   const nextQ = searchParams.get("q") || "";
-  //   const nextSortBy = ((searchParams.get("sortBy") as any) || "dateSent") as
-  //     | "dateSent"
-  //     | "reportNumber"
-  //     | "dateTested"
-  //     | "createdAt"
-  //     | "updatedAt";
-  //   const nextSortDir = ((searchParams.get("sortDir") as any) || "desc") as
-  //     | "asc"
-  //     | "desc";
-
-  //   const nextPp = parseIntSafe(searchParams.get("pp"), 10);
-  //   const nextP = parseIntSafe(searchParams.get("p"), 1);
-
-  //   const nextDp = ((searchParams.get("dp") as any) || "ALL") as DatePreset;
-  //   const nextFrom = searchParams.get("from") || "";
-  //   const nextTo = searchParams.get("to") || "";
-
-  //   const nextRangeType =
-  //     (searchParams.get("rangeType") as "FORM" | "REPORT") || "FORM";
-
-  //   const nextFormFrom = searchParams.get("formFrom") || "";
-  //   const nextFormTo = searchParams.get("formTo") || "";
-  //   const nextReportFrom = searchParams.get("reportFrom") || "";
-  //   const nextReportTo = searchParams.get("reportTo") || "";
-
-  //   if (nextForm !== formFilter) setFormFilter(nextForm);
-  //   if (nextStatus !== statusFilter) setStatusFilter(nextStatus);
-  //   if (nextClient !== searchClient) setSearchClient(nextClient);
-  //   if (nextReport !== searchReport) setSearchReport(nextReport);
-  //   if (nextQ !== searchText) setSearchText(nextQ);
-
-  //   if (nextSortBy !== sortBy) setSortBy(nextSortBy);
-  //   if (nextSortDir !== sortDir) setSortDir(nextSortDir);
-  //   if (nextPp !== perPage) setPerPage(nextPp);
-  //   if (nextP !== page) setPage(nextP);
-
-  //   if (nextDp !== datePreset) setDatePreset(nextDp);
-  //   if (nextFrom !== fromDate) setFromDate(nextFrom);
-  //   if (nextTo !== toDate) setToDate(nextTo);
-
-  //   if (nextRangeType !== numberRangeType) setNumberRangeType(nextRangeType);
-  //   if (nextFormFrom !== formNoFrom) setFormNoFrom(nextFormFrom);
-  //   if (nextFormTo !== formNoTo) setFormNoTo(nextFormTo);
-  //   if (nextReportFrom !== reportNoFrom) setReportNoFrom(nextReportFrom);
-  //   if (nextReportTo !== reportNoTo) setReportNoTo(nextReportTo);
-  // }, [searchParams]);
 
   async function applyBulkStatusChange(toStatus: string) {
     setBulkUpdating(true);
@@ -1802,6 +1678,7 @@ export default function MicroDashboard() {
   useEffect(() => {
     setSelectedIds([]);
   }, [
+    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -1860,10 +1737,10 @@ export default function MicroDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToReportEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
@@ -1871,6 +1748,28 @@ export default function MicroDashboard() {
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
   }
+
+
+  function handleWorkspaceReportChanged(updated: any) {
+  if (!updated?.id) return;
+
+  setReports((prev) =>
+    prev.map((r) =>
+      r.id === updated.id
+        ? {
+            ...r,
+            ...updated,
+            status: updated.status ?? r.status,
+            reportNumber: updated.reportNumber ?? r.reportNumber,
+            version:
+              typeof updated.version === "number"
+                ? updated.version
+                : (r.version ?? 0) + 1,
+          }
+        : r,
+    ),
+  );
+}
 
   if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
@@ -2177,11 +2076,11 @@ export default function MicroDashboard() {
 
           <button
             type="button"
-            onClick={() => {
-              if (refreshing) return;
-              setRefreshing(true);
-              window.location.reload();
-            }}
+         onClick={() => {
+  if (refreshing) return;
+  setRefreshing(true);
+  setRefreshKey((x) => x + 1);
+}}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60"
           >
@@ -3072,6 +2971,7 @@ export default function MicroDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+         onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );
