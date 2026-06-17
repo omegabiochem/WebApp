@@ -9,9 +9,10 @@ import { AttachmentsController } from 'src/attachments/attachments.controller';
 import { AttachmentsService } from 'src/attachments/attachments.service';
 import { StorageService } from 'src/storage/storage.service';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { DashboardReportModule } from 'src/dashboards/dashboard-report.module';
 
 @Module({
-  imports:[NotificationsModule],
+  imports:[NotificationsModule,DashboardReportModule],
   controllers: [ReportsController,AttachmentsController],
   providers: [ReportsService,ReportsGateway,PrismaService,ESignService,AttachmentsService,StorageService],
 })

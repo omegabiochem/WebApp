@@ -294,7 +294,17 @@ export default function COAReportForm({
   const [client, setClient] = useState(
     report?.client ?? (user?.role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+  // const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+
+  const [dateSent, setDateSent] = useState(() => {
+    // Existing saved COA report: keep saved date
+    if (report?.id) {
+      return report?.dateSent || todayISO();
+    }
+
+    // New COA form / template-created COA form: always today
+    return todayISO();
+  });
 
   // ---- SAMPLE DESCRIPTION BLOCK ----
   const [sampleDescription, setSampleDescription] = useState(
@@ -447,7 +457,7 @@ export default function COAReportForm({
   function hydrateForm(r?: any) {
     // header fields
     setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
-    setDateSent(r?.dateSent ?? "");
+    setDateSent(isTemplateViewMode ? (r?.dateSent ?? "") : todayISO());
     setSampleDescription(r?.sampleDescription ?? "");
     setCoaVerification(!!r?.coaVerification);
 
@@ -1091,10 +1101,18 @@ export default function COAReportForm({
               return false;
             }
             // ✅ template payload: store data + formType + name
+            // const templatePayload = {
+            //   name,
+            //   formType: "COA",
+            //   data: { ...payload }, // store only allowed fields
+            // };
+
+            const { dateSent: _dateSent, ...templateData } = payload;
+
             const templatePayload = {
               name,
               formType: "COA",
-              data: { ...payload }, // store only allowed fields
+              data: templateData,
             };
 
             if (templateId) {
@@ -1153,7 +1171,11 @@ export default function COAReportForm({
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1266,7 +1288,12 @@ export default function COAReportForm({
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
         setIsDirty(false);
-        onStatusChanged?.(updated);
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: updated.status ?? newStatus,
+        });
         alert(`✅ Status changed to ${newStatus}`);
 
         // navigate per role (same as micro)
@@ -1743,18 +1770,41 @@ export default function COAReportForm({
         {/* CLIENT / DATE SENT */}
         <div className="w-full border border-black text-[12px]">
           <div className="grid grid-cols-[67%_33%] border-b border-black">
-            <div className="px-2 border-r border-black flex items-center gap-1">
-              <div className="whitespace-nowrap font-medium">CLIENT :</div>
+            <div
+              id="f-client"
+              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
+                "client",
+              )}`}
+            >
+              <div
+                className={`whitespace-nowrap font-medium ${corrCursor}`}
+                onClick={corrClick("client")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
+                CLIENT :
+              </div>
+
+              <FieldErrorBadge name="client" errors={errors} />
+              <ResolveOverlay field="client" />
+
               {lock("client") ? (
-                <div className="flex-1  min-h-[14px]">{client}</div>
+                <div className="flex-1 min-h-[14px]">{client}</div>
               ) : (
                 <input
-                  className="flex-1 border-none  text-[12px]"
+                  className={inputClass(
+                    "client",
+                    "flex-1 border-none text-[12px]",
+                  )}
                   value={client}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setClient(e.target.value.toUpperCase());
+                    clearError("client");
                     markDirty();
                   }}
+                  aria-invalid={!!errors.client}
                 />
               )}
             </div>

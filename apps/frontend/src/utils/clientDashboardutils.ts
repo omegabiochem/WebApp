@@ -10,7 +10,8 @@ export type ColKey =
   | "lotNo"
   | "manufactureDate"
   | "createdAt"
-  | "updatedAt";
+  | "updatedAt"
+  | "actives";
 
 export const COLS: Array<{ key: ColKey; label: string }> = [
   { key: "formNumber", label: "Form #" },
@@ -26,6 +27,7 @@ export const COLS: Array<{ key: ColKey; label: string }> = [
   { key: "manufactureDate", label: "manufactureDate" },
   { key: "createdAt", label: "createdAt" },
   { key: "updatedAt", label: "updatedAt" },
+  { key: "actives", label: "Actives" }
 ];
 
 export const MAX_COLS = 4;

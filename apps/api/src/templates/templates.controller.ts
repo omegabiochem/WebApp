@@ -17,9 +17,10 @@ import { UpdateTemplateDto } from './dto/update-template.dto';
 import { FormType } from '@prisma/client';
 import type { Request } from 'express';
 import { RemoveTemplateDto } from './dto/remove-template.dto';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('templates')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 export class TemplatesController {
   constructor(private readonly service: TemplatesService) {}
 

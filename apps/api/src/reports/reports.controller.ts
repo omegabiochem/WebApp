@@ -19,6 +19,7 @@ import {
   setRequestContext,
   withRequestContext,
 } from 'src/common/request-context';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 type CreateCorrectionsDto = {
   items: { fieldKey: string; message: string }[];
@@ -59,7 +60,7 @@ export class ChangeStatusDto {
 }
 
 // Accept both the old base path and the new generic one
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 @Controller(['reports', 'reports/micro-mix'])
 export class ReportsController {
   constructor(private svc: ReportsService) {}

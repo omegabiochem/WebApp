@@ -484,7 +484,7 @@ export const router = createBrowserRouter([
         path: "chemistryLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CHEMISTRY", "MC", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CHEMISTRY", "MC", "SYSTEMADMIN","ADMIN", "QA"]}>
               <ChemistryLoginBook />
             </RequireRole>
           </RequireAuth>
@@ -495,7 +495,7 @@ export const router = createBrowserRouter([
         path: "microLoginBook",
         element: (
           <RequireAuth>
-            <RequireRole roles={["MICRO", "MC", "SYSTEMADMIN"]}>
+            <RequireRole roles={["MICRO", "MC", "SYSTEMADMIN","ADMIN","QA"]}>
               <MicroLoginBook />
             </RequireRole>
           </RequireAuth>

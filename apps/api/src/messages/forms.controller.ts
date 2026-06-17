@@ -2,9 +2,10 @@ import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { PrismaService } from 'prisma/prisma.service';
 import { UserRole } from '@prisma/client';
+import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
 @Controller('forms')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
 export class FormsController {
   constructor(private prisma: PrismaService) {}
 

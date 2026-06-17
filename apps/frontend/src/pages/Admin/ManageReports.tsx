@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { RefreshCw, Shield } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+} from "lucide-react";
 import { api } from "../../lib/api";
 
 function cx(...classes: Array<string | false | undefined | null>) {
@@ -19,15 +24,16 @@ const btn = {
   ),
 };
 
-const card = "rounded-xl border border-slate-200 bg-white shadow-sm";
+const card = "rounded-2xl border border-slate-200 bg-white shadow-sm";
 const cardHeader =
-  "px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-white to-slate-50";
+  "px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-white via-slate-50 to-indigo-50";
 
 const inputBase =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 " +
   "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300";
 
-const statCardBase = "rounded-xl border shadow-sm p-4 text-left transition";
+const statCardBase =
+  "rounded-2xl border shadow-sm p-4 text-left transition hover:-translate-y-0.5";
 
 const statCardStyles = {
   slate: "bg-white border-slate-200",
@@ -38,23 +44,37 @@ const statCardStyles = {
   violet: "bg-violet-50 border-violet-200",
   rose: "bg-rose-50 border-rose-200",
 };
-function fmtDate(x: string | null) {
-  if (!x) return "—";
-  const d = new Date(x);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString();
+
+function dateSentKey(x: string | null) {
+  if (!x) return "";
+
+  const text = String(x).trim();
+
+  // If backend sends ISO/date string, use the stored date part directly.
+  // Example: 2026-06-10T00:00:00.000Z -> 2026-06-10
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+  const d = new Date(text);
+  if (isNaN(d.getTime())) return "";
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
-export default function ManageReports() {
-  type RangeType =
-    | "ALL"
-    | "TODAY"
-    | "TOMORROW"
-    | "YESTERDAY"
-    | "LAST_7_DAYS"
-    | "LAST_30_DAYS"
-    | "THIS_MONTH"
-    | "CUSTOM";
+function fmtDate(x: string | null) {
+  const key = dateSentKey(x);
+  if (!key) return "—";
 
+  const [year, month, day] = key.split("-");
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+
+export default function ManageReports() {
   type MetricType =
     | "ALL"
     | "MICRO_MIX"
@@ -79,18 +99,14 @@ export default function ManageReports() {
     formType: string;
     formNumber: string;
     reportNumber: string | null;
+    typeOfTest?: string | null;
     status: string;
     clientCode: string | null;
-    createdAt: string;
+    dateSent: string | null;
   };
 
   const [clientCode, setClientCode] = useState("ALL");
   const [clientCodes, setClientCodes] = useState<string[]>(["ALL"]);
-  const [range, setRange] = useState<RangeType>("ALL");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-
-  const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ClientReportSummaryRow[]>([]);
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null);
@@ -98,11 +114,19 @@ export default function ManageReports() {
   const [detailItems, setDetailItems] = useState<ReportListRow[]>([]);
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
+  const [pageSize] = useState(5000);
   const [detailPage, setDetailPage] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(10);
   const [detailTotal, setDetailTotal] = useState(0);
+
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [calendarItems, setCalendarItems] = useState<ReportListRow[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   async function loadClientCodes() {
     try {
@@ -118,7 +142,6 @@ export default function ManageReports() {
   }, []);
 
   async function load() {
-    setLoading(true);
     try {
       const res = await api<{
         items: ClientReportSummaryRow[];
@@ -128,27 +151,43 @@ export default function ManageReports() {
       }>(
         `/admin/reports/client-summary?clientCode=${encodeURIComponent(
           clientCode,
-        )}&range=${encodeURIComponent(range)}&from=${encodeURIComponent(
-          from,
-        )}&to=${encodeURIComponent(to)}&page=${page}&pageSize=${pageSize}`,
+        )}&range=ALL&from=&to=&page=${page}&pageSize=${pageSize}`,
       );
 
       setItems(res.items);
-      setTotal(res.total);
     } catch (e: any) {
       toast.error(e?.message || "Failed to load client report summary");
-    } finally {
-      setLoading(false);
     }
   }
+
+  function makeDateKey(year: number, month: number, day: number) {
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+      2,
+      "0",
+    )}`;
+  }
+
+function monthBounds(monthValue = calendarMonth) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const last = new Date(year, month, 0);
+
+  return {
+    fromKey: makeDateKey(year, month, 1),
+    toKey: makeDateKey(year, month, last.getDate()),
+  };
+}
 
   async function loadDetail(
     metric: MetricType,
     nextPage = 1,
     nextPageSize = detailPageSize,
+    dayKey = selectedDay,
   ) {
     setSelectedMetric(metric);
     setDetailLoading(true);
+
+    const effectiveFrom = dayKey ?? "";
+    const effectiveTo = dayKey ?? "";
 
     try {
       const res = await api<{
@@ -159,9 +198,11 @@ export default function ManageReports() {
       }>(
         `/admin/reports/client-summary/details?clientCode=${encodeURIComponent(
           clientCode,
-        )}&range=${encodeURIComponent(range)}&from=${encodeURIComponent(
-          from,
-        )}&to=${encodeURIComponent(to)}&metric=${encodeURIComponent(
+        )}&range=${encodeURIComponent(
+          dayKey ? "CUSTOM" : "ALL",
+        )}&from=${encodeURIComponent(effectiveFrom)}&to=${encodeURIComponent(
+          effectiveTo,
+        )}&metric=${encodeURIComponent(
           metric,
         )}&page=${nextPage}&pageSize=${nextPageSize}`,
       );
@@ -177,27 +218,53 @@ export default function ManageReports() {
     }
   }
 
+  async function loadCalendarMonth(monthValue = calendarMonth) {
+    setCalendarLoading(true);
+
+    const { fromKey, toKey } = monthBounds(monthValue);
+
+    try {
+      const res = await api<{
+        items: ReportListRow[];
+        total: number;
+        page: number;
+        pageSize: number;
+      }>(
+        `/admin/reports/client-summary/details?clientCode=${encodeURIComponent(
+          clientCode,
+        )}&range=CUSTOM&from=${encodeURIComponent(
+          fromKey,
+        )}&to=${encodeURIComponent(toKey)}&metric=ALL&page=1&pageSize=5000`,
+      );
+
+      setCalendarItems(res.items);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load calendar reports");
+    } finally {
+      setCalendarLoading(false);
+    }
+  }
+
   useEffect(() => {
     const t = setTimeout(() => load(), 250);
     return () => clearTimeout(t);
-  }, [clientCode, range, from, to, page, pageSize]);
+  }, [clientCode, page, pageSize]);
 
   useEffect(() => {
     setSelectedMetric(null);
     setDetailItems([]);
-  }, [clientCode, range, from, to]);
-
-  useEffect(() => {
-    setSelectedMetric(null);
-    setDetailItems([]);
+    setSelectedDay(null);
     setPage(1);
     setDetailPage(1);
-  }, [clientCode, range, from, to]);
+  }, [clientCode]);
+
+  useEffect(() => {
+    loadCalendarMonth(calendarMonth);
+  }, [clientCode, calendarMonth]);
 
   const summary = useMemo(() => {
     return items.reduce(
       (acc, row) => {
-        acc.clients += 1;
         acc.totalReports += row.totalReports;
         acc.microReports += row.microReports;
         acc.microWaterReports += row.microWaterReports;
@@ -207,7 +274,6 @@ export default function ManageReports() {
         return acc;
       },
       {
-        clients: 0,
         totalReports: 0,
         microReports: 0,
         microWaterReports: 0,
@@ -261,14 +327,124 @@ export default function ManageReports() {
     );
   }
 
+  function toDateKey(x: string | null) {
+    return dateSentKey(x);
+  }
+
+  function changeMonth(delta: number) {
+    const [y, m] = calendarMonth.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setCalendarMonth(nextMonth);
+    setSelectedDay(null);
+    setDetailItems([]);
+    setSelectedMetric(null);
+  }
+
+  function countTone(count: number) {
+    if (count >= 41) return "bg-emerald-50 border-emerald-300 text-emerald-900";
+    if (count >= 21) return "bg-sky-100 border-sky-300 text-sky-900";
+    if (count >= 11) return "bg-amber-100 border-amber-300 text-amber-900";
+    if (count > 0) return "bg-rose-100 border-rose-300 text-rose-900";
+    return "bg-white border-slate-200 text-slate-700";
+  }
+
+  const calendarDays = useMemo(() => {
+    const [year, month] = calendarMonth.split("-").map(Number);
+    const first = new Date(year, month - 1, 1);
+    const last = new Date(year, month, 0);
+
+    const counts = calendarItems.reduce<
+      Record<string, { total: number; types: Record<string, number> }>
+    >((acc, report) => {
+      const key = toDateKey(report.dateSent);
+      if (!key) return acc;
+
+      if (!acc[key]) {
+        acc[key] = { total: 0, types: {} };
+      }
+
+      acc[key].total += 1;
+      acc[key].types[report.formType] =
+        (acc[key].types[report.formType] ?? 0) + 1;
+
+      return acc;
+    }, {});
+
+    const days = [];
+
+    for (let i = 1; i <= last.getDate(); i++) {
+      const key = makeDateKey(year, month, i);
+
+      days.push({
+        day: i,
+        key,
+        count: counts[key]?.total ?? 0,
+        types: counts[key]?.types ?? {},
+      });
+    }
+
+    const blanks = Array.from({ length: first.getDay() }, () => null);
+    return [...blanks, ...days];
+  }, [calendarMonth, calendarItems]);
+
+  const calendarWeeks = useMemo(() => {
+    const weeks = [];
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      const week = calendarDays.slice(i, i + 7);
+      while (week.length < 7) week.push(null);
+      weeks.push({
+        days: week,
+        total: week.reduce((sum, d) => sum + (d?.count ?? 0), 0),
+      });
+    }
+    return weeks;
+  }, [calendarDays]);
+
+  const monthTotalReports = useMemo(
+    () => calendarItems.length,
+    [calendarItems],
+  );
+
+  function reportTypeLabel(type: string) {
+    switch (type) {
+      case "MICRO_MIX":
+        return "Micro";
+      case "MICRO_MIX_WATER":
+        return "Water";
+      case "STERILITY":
+        return "Sterility";
+      case "CHEMISTRY_MIX":
+        return "Chem";
+      case "COA":
+        return "COA";
+      default:
+        return type || "Other";
+    }
+  }
+
   return (
-    <div className="p-6 space-y-5 bg-slate-50 text-slate-900 min-h-[calc(100vh-64px)]">
+    <div className="min-h-[calc(100vh-64px)] bg-slate-50 p-4 sm:p-6 space-y-5 text-slate-900">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          Manage Reports
+        </h1>
+        <p className="text-sm text-slate-600">
+          View report counts and details by client and date sent.
+        </p>
+      </div>
+
       <div className={cx(card, "overflow-hidden")}>
-        <div className={cx(cardHeader, "flex items-center justify-between")}>
-          <div className="flex items-center gap-2">
-            <Shield size={18} className="text-slate-600" />
-            <div className="font-semibold text-slate-900">
-              Client Report Summary
+        <div
+          className={cx(
+            cardHeader,
+            "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          )}
+        >
+          <div>
+            <div className="font-semibold text-slate-900">Clients</div>
+            <div className="mt-1 text-xs text-slate-500">
+              Click a client to filter the calendar and report counts.
             </div>
           </div>
 
@@ -278,254 +454,46 @@ export default function ManageReports() {
           </button>
         </div>
 
-        <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">Client</label>
-            <select
-              className={cx(inputBase, "cursor-pointer")}
-              value={clientCode}
-              onChange={(e) => {
-                setClientCode(e.target.value);
-                setItems([]);
-                setPage(1);
-              }}
-            >
-              {clientCodes.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">Range</label>
-            <select
-              className={cx(inputBase, "cursor-pointer")}
-              value={range}
-              onChange={(e) => {
-                setRange(e.target.value as RangeType);
-                setPage(1);
-              }}
-            >
-              <option value="ALL">ALL</option>
-              <option value="TODAY">TODAY</option>
-              <option value="TOMORROW">TOMORROW</option>
-              <option value="YESTERDAY">YESTERDAY</option>
-              <option value="LAST_7_DAYS">LAST 7 DAYS</option>
-              <option value="LAST_30_DAYS">LAST 30 DAYS</option>
-              <option value="THIS_MONTH">THIS MONTH</option>
-              <option value="CUSTOM">CUSTOM</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">From</label>
-            <input
-              type="date"
-              disabled={range !== "CUSTOM"}
-              className={cx(
-                inputBase,
-                range !== "CUSTOM" &&
-                  "opacity-60 cursor-not-allowed bg-slate-100",
-              )}
-              value={from}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-600 mb-1">To</label>
-            <input
-              type="date"
-              disabled={range !== "CUSTOM"}
-              className={cx(
-                inputBase,
-                range !== "CUSTOM" &&
-                  "opacity-60 cursor-not-allowed bg-slate-100",
-              )}
-              value={to}
-              onChange={(e) => {
-                setTo(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="border-t border-slate-200">
-          {loading ? (
-            <div className="p-4 text-sm text-slate-500">Loading...</div>
-          ) : items.length === 0 ? (
-            <div className="p-4 text-sm text-slate-500">
-              No client report data found.
+        <div className="p-4">
+          {clientCodes.length <= 1 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              No clients found.
             </div>
           ) : (
-            <div className="p-3">
-              <div className="hidden lg:grid grid-cols-[1fr_0.8fr_0.8fr_0.9fr_0.8fr_0.9fr_0.7fr_1fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
-                <div>Client</div>
-                <div>Total</div>
-                <div>Micro</div>
-                <div>Micro Water</div>
-                <div>Sterility</div>
-                <div>Chemistry</div>
-                <div>COA</div>
-                <div>Latest Report</div>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              {clientCodes.map((code) => {
+                const active = clientCode === code;
 
-              <div className="divide-y divide-slate-200">
-                {items.map((r) => (
-                  <div key={r.clientCode} className="py-3">
-                    <div className="hidden lg:grid grid-cols-[1fr_0.8fr_0.8fr_0.9fr_0.8fr_0.9fr_0.7fr_1fr] gap-3 items-start px-3">
-                      <div className="font-semibold text-slate-900">
-                        {r.clientCode}
-                      </div>
-                      <div className="text-slate-900">{r.totalReports}</div>
-                      <div className="text-slate-900">{r.microReports}</div>
-                      <div className="text-slate-900">
-                        {r.microWaterReports}
-                      </div>
-                      <div className="text-slate-900">{r.sterilityReports}</div>
-                      <div className="text-slate-900">{r.chemistryReports}</div>
-                      <div className="text-slate-900">{r.coaReports}</div>
-                      <div className="text-slate-900">
-                        {fmtDate(r.latestReportAt)}
-                      </div>
-                    </div>
-
-                    <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="font-semibold text-slate-900">
-                          {r.clientCode}
-                        </div>
-                        <div className="text-sm font-medium text-slate-700">
-                          Total: {r.totalReports}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="text-slate-500">
-                          Micro
-                          <div className="text-slate-900 font-medium">
-                            {r.microReports}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Micro Water
-                          <div className="text-slate-900 font-medium">
-                            {r.microWaterReports}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Sterility
-                          <div className="text-slate-900 font-medium">
-                            {r.sterilityReports}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Chemistry
-                          <div className="text-slate-900 font-medium">
-                            {r.chemistryReports}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          COA
-                          <div className="text-slate-900 font-medium">
-                            {r.coaReports}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Latest Report
-                          <div className="text-slate-900 font-medium">
-                            {fmtDate(r.latestReportAt)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="px-3 pt-3 text-xs text-slate-600">
-                This view is based on actual report records grouped by client
-                code.
-              </div>
-              <div className="px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-sm text-slate-600">
-                  Page{" "}
-                  <span className="font-semibold text-slate-900">{page}</span>{" "}
-                  of{" "}
-                  <span className="font-semibold text-slate-900">
-                    {Math.max(1, Math.ceil(total / pageSize))}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    className={cx(inputBase, "w-auto cursor-pointer")}
-                    value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(Number(e.target.value));
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      setClientCode(code);
+                      setItems([]);
+                      setSelectedMetric(null);
+                      setDetailItems([]);
+                      setSelectedDay(null);
                       setPage(1);
+                      setDetailPage(1);
                     }}
+                    className={cx(
+                      "rounded-full border px-3 py-2 text-xs font-semibold transition",
+                      active
+                        ? "border-indigo-400 bg-indigo-600 text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700",
+                    )}
                   >
-                    {[5, 10, 20, 50].map((n) => (
-                      <option key={n} value={n}>
-                        {n} / page
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    className={btn.outline}
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    type="button"
-                  >
-                    Prev
+                    {code === "ALL" ? "All Clients" : code}
                   </button>
-
-                  <button
-                    className={btn.outline}
-                    disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
-                    onClick={() =>
-                      setPage((p) =>
-                        Math.min(
-                          Math.max(1, Math.ceil(total / pageSize)),
-                          p + 1,
-                        ),
-                      )
-                    }
-                    type="button"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Manage Reports
-        </h1>
-        <p className="text-sm text-slate-600">
-          View report counts and details by client and date range.
-        </p>
-      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <div className={cx(statCardBase, statCardStyles.slate)}>
-          <div className="text-xs font-medium text-slate-600">Clients</div>
-          <div className="mt-2 text-2xl font-bold text-slate-900">
-            {summary.clients}
-          </div>
-        </div>
-
         {summaryCard("Total Reports", summary.totalReports, "ALL", "indigo")}
         {summaryCard("Micro", summary.microReports, "MICRO_MIX", "sky")}
         {summaryCard(
@@ -547,6 +515,191 @@ export default function ManageReports() {
           "emerald",
         )}
         {summaryCard("COA", summary.coaReports, "COA", "rose")}
+      </div>
+
+      <div className={cx(card, "overflow-hidden")}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 font-semibold text-slate-900">
+              <CalendarDays size={16} />
+              Monthly Calendar
+            </div>
+
+            <div className="text-xs text-slate-500">
+              Total: <span className="font-semibold">{monthTotalReports}</span>
+            </div>
+
+            {selectedDay && (
+              <div className="text-xs text-indigo-700 font-semibold">
+                {selectedDay}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+            <button
+              type="button"
+              className={cx(btn.outline, "h-8 min-h-8 px-2")}
+              onClick={() => changeMonth(-1)}
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            <input
+              type="month"
+              className={cx(inputBase, "w-[140px] h-8 py-1")}
+              value={calendarMonth}
+              onChange={(e) => {
+                setCalendarMonth(e.target.value);
+                setSelectedDay(null);
+                setSelectedMetric(null);
+                setDetailItems([]);
+              }}
+            />
+
+            <button
+              type="button"
+              className={cx(btn.outline, "h-8 min-h-8 px-2")}
+              onClick={() => changeMonth(1)}
+            >
+              <ChevronRight size={14} />
+            </button>
+
+            {selectedDay && (
+              <button
+                type="button"
+                className="h-8 min-h-8 shrink-0 whitespace-nowrap px-4 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 transition-colors"
+                onClick={() => {
+                  setSelectedDay(null);
+                  setSelectedMetric(null);
+                  setDetailItems([]);
+                }}
+              >
+                Clear Day
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="p-2">
+          {calendarLoading ? (
+            <div className="text-sm text-slate-500">Loading calendar...</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-8 gap-2 text-center text-xs font-semibold text-slate-500 mb-2">
+                <div>Sun</div>
+                <div>Mon</div>
+                <div>Tue</div>
+                <div>Wed</div>
+                <div>Thu</div>
+                <div>Fri</div>
+                <div>Sat</div>
+                <div>Week Total</div>
+              </div>
+
+              <div className="space-y-2">
+                {calendarWeeks.map((week, weekIndex) => (
+                  <div
+                    key={`week-${weekIndex}`}
+                    className={cx(
+                      "grid grid-cols-8 gap-2 rounded-xl border p-2",
+                      weekIndex % 4 === 0 && "bg-slate-50 border-slate-200",
+                      weekIndex % 4 === 1 &&
+                        "bg-indigo-50/50 border-indigo-100",
+                      weekIndex % 4 === 2 && "bg-sky-50/50 border-sky-100",
+                      weekIndex % 4 === 3 &&
+                        "bg-emerald-50/50 border-emerald-100",
+                    )}
+                  >
+                    {week.days.map((d, dayIndex) =>
+                      d ? (
+                        <button
+                          key={d.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDay(d.key);
+                            setPage(1);
+                            setDetailPage(1);
+                            setSelectedMetric("ALL");
+                            loadDetail("ALL", 1, detailPageSize, d.key);
+                          }}
+                          className={cx(
+                            "relative rounded-lg border p-3 pt-12 text-left min-h-[125px] transition hover:shadow-md",
+                            countTone(d.count),
+                            d.count > 0 && "shadow-sm",
+                            selectedDay === d.key &&
+                              "ring-2 ring-indigo-600 border-indigo-500 bg-indigo-100",
+                          )}
+                        >
+                          <div className="absolute top-2 left-2">
+                            <div
+                              className={cx(
+                                "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold shadow-sm",
+                                d.count > 0
+                                  ? "bg-indigo-600 text-white"
+                                  : "bg-slate-200 text-slate-600",
+                                selectedDay === d.key &&
+                                  "bg-indigo-800 text-white ring-2 ring-indigo-300",
+                              )}
+                            >
+                              {d.day}
+                            </div>
+                          </div>
+                          <div className="text-xs font-semibold">
+                            {d.count} report(s)
+                          </div>
+
+                          {d.count > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {Object.entries(d.types).map(([type, count]) => (
+                                <div
+                                  key={type}
+                                  className="flex items-center justify-between gap-2 rounded-md bg-white/70 px-2 py-1 text-[10px] font-medium"
+                                >
+                                  <span className="truncate">
+                                    {reportTypeLabel(type)}
+                                  </span>
+                                  <span>{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      ) : (
+                        <div
+                          key={`blank-${weekIndex}-${dayIndex}`}
+                          className="rounded-lg border border-dashed border-slate-200 bg-white/60 min-h-[125px]"
+                        />
+                      ),
+                    )}
+
+                    <div className="rounded-lg border border-slate-300 bg-white p-3 min-h-[78px] flex flex-col justify-center text-center">
+                      <div className="text-xs text-slate-500">Week</div>
+                      <div className="text-xl font-bold text-slate-900">
+                        {week.total}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1">
+                  1-10 reports
+                </span>
+                <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-1">
+                  11-20 reports
+                </span>
+                <span className="rounded-full border border-sky-300 bg-sky-100 px-2 py-1">
+                  21-40 reports
+                </span>
+                <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-1">
+                  40+ reports
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {selectedMetric && (
@@ -577,64 +730,61 @@ export default function ManageReports() {
               </div>
             ) : (
               <div className="p-3">
-                <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
-                  <div>Client</div>
-                  <div>Form Type</div>
-                  <div>Form #</div>
-                  <div>Report #</div>
-                  <div>Status</div>
-                  <div>Created</div>
-                </div>
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full min-w-[1050px] table-fixed border-collapse">
+                    <colgroup>
+                      <col className="w-[8%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[23%]" />
+                      <col className="w-[29%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[17%]" />
+                    </colgroup>
 
-                <div className="divide-y divide-slate-200">
-                  {detailItems.map((r) => (
-                    <div key={`${r.formType}-${r.id}`} className="py-3">
-                      <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-3">
-                        <div className="font-semibold text-slate-900">
-                          {r.clientCode ?? "—"}
-                        </div>
-                        <div className="text-slate-900">{r.formType}</div>
-                        <div className="text-slate-900">{r.formNumber}</div>
-                        <div className="text-slate-900">
-                          {r.reportNumber ?? "—"}
-                        </div>
-                        <div className="text-slate-900">{r.status}</div>
-                        <div className="text-slate-900">
-                          {fmtDate(r.createdAt)}
-                        </div>
-                      </div>
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                        <th className="px-4 py-3 text-left">Form Type</th>
+                        <th className="px-4 py-3 text-left">Form #</th>
+                        <th className="px-4 py-3 text-left">Type Of Test</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                        <th className="px-4 py-3 text-left">Client</th>
+                        <th className="px-4 py-3 text-left">Date Sent</th>
+                      </tr>
+                    </thead>
 
-                      <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="font-semibold text-slate-900">
+                    <tbody>
+                      {detailItems.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="border-b border-slate-100 text-sm"
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {reportTypeLabel(r.formType)}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
+                            {r.formNumber}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
+                            {r.typeOfTest ?? "—"}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700 break-words">
+                            {r.status}
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
                             {r.clientCode ?? "—"}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {fmtDate(r.createdAt)}
-                          </div>
-                        </div>
+                          </td>
 
-                        <div className="text-sm text-slate-700">
-                          Form Type:{" "}
-                          <span className="font-medium">{r.formType}</span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Form #:{" "}
-                          <span className="font-medium">{r.formNumber}</span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Report #:{" "}
-                          <span className="font-medium">
-                            {r.reportNumber ?? "—"}
-                          </span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          Status:{" "}
-                          <span className="font-medium">{r.status}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                          <td className="px-4 py-3 text-slate-700 whitespace-normal">
+                            {fmtDate(r.dateSent)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
                 <div className="px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-sm text-slate-600">

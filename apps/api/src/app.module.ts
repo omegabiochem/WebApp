@@ -26,6 +26,15 @@ import { AdminModule } from './admin/admin.module';
 import { SupportModule } from './support/support.module';
 import { TemplatesModule } from './templates/templates.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SystemAdminDashboardModule } from './dashboards/system-admin-dashboard/system-admin-dashboard.module';
+import { ClientDashboardModule } from './dashboards/client-dashboard/client-dashboard.module';
+import { AdminDashboardModule } from './dashboards/admin-dashboard/admin-dashboard.module';
+import { FrontdeskDashboardModule } from './dashboards/frontdesk-dashboard/frontdesk-dashboard.module';
+
+import { McDashboardModule } from './dashboards/mc-dashboard/mc-dashboard.module';
+import { MicroDashboardModule } from './dashboards/micro-dashboard/micro-dashboard.module';
+import { QaDashboardModule } from './dashboards/qa-dashboard/qa-dashboard.module';
+import { ChemistryDashboardModule } from './dashboards/chemistry-dashboard/chemistry-dashbaord.module';
 
 @Module({
   imports: [
@@ -44,7 +53,15 @@ import { ScheduleModule } from '@nestjs/schedule';
     AttachmentsGlobalModule,
     AdminModule,
     SupportModule,
-    TemplatesModule
+    TemplatesModule,
+    SystemAdminDashboardModule,
+    ClientDashboardModule,
+    AdminDashboardModule,
+    FrontdeskDashboardModule,
+    ChemistryDashboardModule,
+    McDashboardModule,
+    MicroDashboardModule,
+    QaDashboardModule
   ],
   controllers: [HealthController, FaviconController],
   providers: [

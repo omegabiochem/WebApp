@@ -24,7 +24,7 @@ import { ReportNotificationsService } from 'src/notifications/report-notificatio
 import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
 import { ReportsGateway } from './reports.gateway';
-import { ReportStatus } from 'src/generated/client/client';
+import { DashboardReportSyncService } from 'src/dashboards/dashboard-report-sync.service';
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
@@ -446,6 +446,7 @@ export class ChemistryReportsService {
     private readonly esign: ESignService,
     private readonly attachments: ChemistryAttachmentsService,
     private readonly chemistryNotifications: ChemistryReportNotificationsService,
+    private readonly dashboardSync: DashboardReportSyncService,
   ) {}
 
   // 👇 add this inside the class
@@ -559,6 +560,8 @@ export class ChemistryReportsService {
         },
       },
     });
+
+    await this.dashboardSync.syncChemistryReport(created.id);
 
     const flat = flattenReport(created);
     this.reportsGateway.notifyReportCreated(flat);
@@ -1161,6 +1164,8 @@ export class ChemistryReportsService {
       });
     }
 
+    await this.dashboardSync.syncChemistryReport(id);
+
     return flattenReport(updated);
   }
 
@@ -1540,6 +1545,8 @@ export class ChemistryReportsService {
       });
     }
 
+    await this.dashboardSync.syncChemistryReport(id);
+
     return flattenReport(updated);
   }
 
@@ -1783,6 +1790,8 @@ export class ChemistryReportsService {
           version: { increment: 1 },
         },
       });
+
+      await this.dashboardSync.syncChemistryReport(id);
 
       await this.logCorrectionAudit({
         reportId: report.id,

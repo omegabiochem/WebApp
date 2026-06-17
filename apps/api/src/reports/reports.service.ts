@@ -24,6 +24,7 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { AttachmentsService } from 'src/attachments/attachments.service';
 import { ReportNotificationsService } from 'src/notifications/report-notifications.service';
+import { DashboardReportSyncService } from 'src/dashboards/dashboard-report-sync.service';
 
 // ----------------------------
 // Which roles may edit which fields (unchanged)
@@ -1349,6 +1350,7 @@ export class ReportsService {
     private readonly esign: ESignService,
     private readonly attachments: AttachmentsService,
     private readonly reportNotifications: ReportNotificationsService,
+    private readonly dashboardSync: DashboardReportSyncService,
   ) {}
 
   // 👇 add this inside the class
@@ -1471,6 +1473,8 @@ export class ReportsService {
         },
       },
     });
+
+    await this.dashboardSync.syncMicroReport(created.id);
 
     const flat = flattenReport(created);
     this.reportsGateway.notifyReportCreated(flat);
@@ -2007,6 +2011,8 @@ export class ReportsService {
       });
     }
 
+    await this.dashboardSync.syncMicroReport(id);
+
     return flattenReport(updated);
   }
 
@@ -2387,6 +2393,8 @@ export class ReportsService {
       });
     }
 
+    await this.dashboardSync.syncMicroReport(id);
+
     return flattenReport(updated);
   }
 
@@ -2647,6 +2655,8 @@ export class ReportsService {
           version: { increment: 1 },
         },
       });
+
+      await this.dashboardSync.syncMicroReport(id);
 
       await this.logCorrectionAudit({
         reportId: report.id,

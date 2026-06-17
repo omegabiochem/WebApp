@@ -29,57 +29,81 @@ type ClientReportSummaryArgs = {
   pageSize?: number;
 };
 
+function makeUtcDate(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function parseDateKeyUtc(value?: string): Date | undefined {
+  if (!value) return undefined;
+
+  const text = String(value).trim();
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!m) return undefined;
+
+  return makeUtcDate(Number(m[1]), Number(m[2]), Number(m[3]));
+}
+
+function addUtcDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
 function getDateRange(range?: string, from?: string, to?: string) {
   const now = new Date();
 
-  const startOfDay = (d: Date) => {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x;
-  };
+  const todayUtc = makeUtcDate(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    now.getUTCDate(),
+  );
 
-  const endOfDay = (d: Date) => {
-    const x = new Date(d);
-    x.setHours(23, 59, 59, 999);
-    return x;
-  };
+  const rangeUpper = (range ?? 'ALL').toUpperCase();
 
-  switch ((range ?? 'ALL').toUpperCase()) {
+  switch (rangeUpper) {
     case 'TODAY': {
-      return { gte: startOfDay(now), lte: endOfDay(now) };
+      return { gte: todayUtc, lt: addUtcDays(todayUtc, 1) };
     }
+
     case 'YESTERDAY': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 1);
-      return { gte: startOfDay(d), lte: endOfDay(d) };
+      const start = addUtcDays(todayUtc, -1);
+      return { gte: start, lt: todayUtc };
     }
+
     case 'TOMORROW': {
-      const d = new Date(now);
-      d.setDate(d.getDate() + 1);
-      return { gte: startOfDay(d), lte: endOfDay(d) };
+      const start = addUtcDays(todayUtc, 1);
+      return { gte: start, lt: addUtcDays(start, 1) };
     }
+
     case 'LAST_7_DAYS': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 6);
-      return { gte: startOfDay(d), lte: endOfDay(now) };
+      const start = addUtcDays(todayUtc, -6);
+      return { gte: start, lt: addUtcDays(todayUtc, 1) };
     }
+
     case 'LAST_30_DAYS': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 29);
-      return { gte: startOfDay(d), lte: endOfDay(now) };
+      const start = addUtcDays(todayUtc, -29);
+      return { gte: start, lt: addUtcDays(todayUtc, 1) };
     }
+
     case 'THIS_MONTH': {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { gte: startOfDay(first), lte: endOfDay(last) };
+      const start = makeUtcDate(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+
+      const end = makeUtcDate(now.getUTCFullYear(), now.getUTCMonth() + 2, 1);
+
+      return { gte: start, lt: end };
     }
+
     case 'CUSTOM': {
-      if (!from && !to) return undefined;
+      const start = parseDateKeyUtc(from);
+      const end = parseDateKeyUtc(to);
+
       return {
-        ...(from ? { gte: new Date(`${from}T00:00:00.000`) } : {}),
-        ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+        ...(start ? { gte: start } : {}),
+        ...(end ? { lt: addUtcDays(end, 1) } : {}),
       };
     }
+
     case 'ALL':
     default:
       return undefined;
@@ -415,22 +439,37 @@ export class AdminService {
 
   async listClientReportSummary(args: ClientReportSummaryArgs) {
     const selectedClientCode = (args.clientCode ?? 'ALL').trim().toUpperCase();
-    const createdAt = getDateRange(args.range, args.from, args.to);
+    const dateSent = getDateRange(args.range, args.from, args.to);
 
     const page = Math.max(1, Number(args.page ?? 1));
     const pageSize = Math.max(1, Number(args.pageSize ?? 10));
 
     const microWhere: any = {
-      ...(createdAt ? { createdAt } : {}),
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
+        : {}),
+      ...(dateSent
+        ? {
+            OR: [
+              { microMix: { is: { dateSent } } },
+              { microMixWater: { is: { dateSent } } },
+              { sterility: { is: { dateSent } } },
+            ],
+          }
         : {}),
     };
 
     const chemWhere: any = {
-      ...(createdAt ? { createdAt } : {}),
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
+        : {}),
+      ...(dateSent
+        ? {
+            OR: [
+              { chemistryMix: { is: { dateSent } } },
+              { coa: { is: { dateSent } } },
+            ],
+          }
         : {}),
     };
 
@@ -439,7 +478,9 @@ export class AdminService {
       select: {
         clientCode: true,
         formType: true,
-        createdAt: true,
+        microMix: { select: { dateSent: true } },
+        microMixWater: { select: { dateSent: true } },
+        sterility: { select: { dateSent: true } },
       },
     });
 
@@ -448,7 +489,8 @@ export class AdminService {
       select: {
         clientCode: true,
         formType: true,
-        createdAt: true,
+        chemistryMix: { select: { dateSent: true } },
+        coa: { select: { dateSent: true } },
       },
     });
 
@@ -491,7 +533,13 @@ export class AdminService {
       if (r.formType === 'MICRO_MIX_WATER') row.microWaterReports += 1;
       if (r.formType === 'STERILITY') row.sterilityReports += 1;
 
-      const iso = r.createdAt.toISOString();
+      const iso =
+        r.microMix?.dateSent?.toISOString() ??
+        r.microMixWater?.dateSent?.toISOString() ??
+        r.sterility?.dateSent?.toISOString() ??
+        null;
+
+      if (!iso) continue;
       if (!row.latestReportAt || iso > row.latestReportAt) {
         row.latestReportAt = iso;
       }
@@ -505,7 +553,12 @@ export class AdminService {
       if (r.formType === 'CHEMISTRY_MIX') row.chemistryReports += 1;
       if (r.formType === 'COA') row.coaReports += 1;
 
-      const iso = r.createdAt.toISOString();
+      const iso =
+        r.chemistryMix?.dateSent?.toISOString() ??
+        r.coa?.dateSent?.toISOString() ??
+        null;
+
+      if (!iso) continue;
       if (!row.latestReportAt || iso > row.latestReportAt) {
         row.latestReportAt = iso;
       }
@@ -533,29 +586,46 @@ export class AdminService {
   async listClientReportSummaryDetails(args: ClientReportDetailArgs) {
     const selectedClientCode = (args.clientCode ?? 'ALL').trim().toUpperCase();
     const metric = (args.metric ?? 'ALL').trim().toUpperCase();
-    const createdAt = getDateRange(args.range, args.from, args.to);
+    const dateSent = getDateRange(args.range, args.from, args.to);
 
     const page = Math.max(1, Number(args.page ?? 1));
     const pageSize = Math.max(1, Number(args.pageSize ?? 10));
 
     const microWhere: any = {
-      ...(createdAt ? { createdAt } : {}),
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
         : {}),
+      status: { notIn: ['DRAFT', 'VOID', 'UNDER_DRAFT_REVIEW'] },
       ...(metric !== 'ALL' &&
       ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'].includes(metric)
         ? { formType: metric as any }
         : {}),
+      ...(dateSent
+        ? {
+            OR: [
+              { microMix: { is: { dateSent } } },
+              { microMixWater: { is: { dateSent } } },
+              { sterility: { is: { dateSent } } },
+            ],
+          }
+        : {}),
     };
 
     const chemWhere: any = {
-      ...(createdAt ? { createdAt } : {}),
       ...(selectedClientCode !== 'ALL'
         ? { clientCode: selectedClientCode }
         : {}),
+      status: { notIn: ['DRAFT', 'VOID', 'UNDER_DRAFT_REVIEW'] },
       ...(metric !== 'ALL' && ['CHEMISTRY_MIX', 'COA'].includes(metric)
         ? { formType: metric as any }
+        : {}),
+      ...(dateSent
+        ? {
+            OR: [
+              { chemistryMix: { is: { dateSent } } },
+              { coa: { is: { dateSent } } },
+            ],
+          }
         : {}),
     };
 
@@ -580,6 +650,9 @@ export class AdminService {
             status: true,
             clientCode: true,
             createdAt: true,
+            microMix: { select: { dateSent: true, typeOfTest: true } },
+            microMixWater: { select: { dateSent: true, typeOfTest: true } },
+            sterility: { select: { dateSent: true, typeOfTest: true } },
           },
         })
       : [];
@@ -596,6 +669,8 @@ export class AdminService {
             status: true,
             clientCode: true,
             createdAt: true,
+            chemistryMix: { select: { dateSent: true, testTypes: true } },
+            coa: { select: { dateSent: true } },
           },
         })
       : [];
@@ -606,6 +681,16 @@ export class AdminService {
         formType: r.formType,
         formNumber: r.formNumber,
         reportNumber: r.reportNumber,
+        typeOfTest:
+          r.microMix?.typeOfTest ??
+          r.microMixWater?.typeOfTest ??
+          r.sterility?.typeOfTest ??
+          null,
+        dateSent:
+          r.microMix?.dateSent?.toISOString() ??
+          r.microMixWater?.dateSent?.toISOString() ??
+          r.sterility?.dateSent?.toISOString() ??
+          null,
         status: String(r.status),
         clientCode: r.clientCode,
         createdAt: r.createdAt.toISOString(),
@@ -615,11 +700,16 @@ export class AdminService {
         formType: r.formType,
         formNumber: r.formNumber,
         reportNumber: r.reportNumber,
+        typeOfTest: r.chemistryMix?.testTypes?.join(', ') ?? null,
+        dateSent:
+          r.chemistryMix?.dateSent?.toISOString() ??
+          r.coa?.dateSent?.toISOString() ??
+          null,
         status: String(r.status),
         clientCode: r.clientCode,
         createdAt: r.createdAt.toISOString(),
       })),
-    ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    ].sort((a, b) => ((a.dateSent ?? '') < (b.dateSent ?? '') ? 1 : -1));
 
     const total = allItems.length;
     const start = (page - 1) * pageSize;

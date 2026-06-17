@@ -37,6 +37,16 @@ model Report {
   microMixWater MicroMixWaterDetails?
   sterility     sterilityDetails?
   statusHistory StatusHistory[]
+
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([formType])
+  @@index([clientCode])
+  @@index([clientCode, createdAt])
+  @@index([clientCode, status])
+  @@index([clientCode, formType])
 }
 
 model MicroMixDetails {
@@ -430,6 +440,16 @@ model ChemistryReport {
   chemistryMix  ChemistryMixDetails?
   coa          COADetails?
   statusHistory ChemistryReportStatusHistory[]
+
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([formType])
+  @@index([clientCode])
+  @@index([clientCode, createdAt])
+  @@index([clientCode, status])
+  @@index([clientCode, formType])
 }
 
 model ChemistryMixDetails {
@@ -960,4 +980,75 @@ enum AttachmentVisibility {
   ALL
   LAB_ONLY
   CLIENT_ONLY
+}
+
+
+
+model DashboardReport {
+  id String @id @default(cuid())
+
+  // Source tracking
+  sourceType String // MICRO_REPORT or CHEMISTRY_REPORT
+  sourceId   String // Report.id or ChemistryReport.id
+
+  // Dashboard common fields
+  formType     FormType
+  formNumber   String?
+  reportNumber String?
+  client       String?
+  clientCode   String?
+  status       String
+  version      Int      @default(1)
+
+  // Important dates
+  dateSent     DateTime?
+  dateTested   DateTime?
+  dateReceived DateTime?
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  // Extra dashboard/search fields
+  typeOfTest        String?
+  sampleType        String?
+  formulaNo         String?
+  description       String?
+  lotNo             String?
+  manufactureDate   DateTime?
+  sampleDescription String?
+  lotBatchNo        String?
+  formulaId         String?
+  sampleSize        String?
+  numberOfActives   String?
+  comments          String?
+  idNo              String?
+  samplingDate      DateTime?
+  testedBy          String?
+  reviewedBy        String?
+
+  actives Json?
+  selectedActivesText String?
+
+  searchableText String?
+
+  @@unique([sourceType, sourceId])
+
+  @@index([sourceType])
+  @@index([formType])
+  @@index([status])
+  @@index([clientCode])
+  @@index([client])
+  @@index([formNumber])
+  @@index([reportNumber])
+
+  @@index([dateSent])
+  @@index([dateTested])
+  @@index([dateReceived])
+  @@index([createdAt])
+  @@index([updatedAt])
+
+  @@index([clientCode, dateSent])
+  @@index([clientCode, createdAt])
+  @@index([formType, dateSent])
+  @@index([status, dateSent])
+  @@index([formType, status, dateSent])
 }

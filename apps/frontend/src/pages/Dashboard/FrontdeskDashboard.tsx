@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -23,26 +23,27 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import {
   formatDate,
-  matchesDateRange,
+  // matchesDateRange,
   toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
+// import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import COAReportFormView from "../Reports/COAReportFormView";
-import { parseIntSafe } from "../../utils/commonDashboardUtil";
+// import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import {
   STERILITY_STATUS_TRANSITIONS,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+// import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
   getDayCountClass,
   getDaysFromDateSent,
+  getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
@@ -114,13 +115,13 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
 ];
 
 // used to know which viewer to render
-const formTypeToSlug: Record<string, string> = {
-  MICRO_MIX: "micro-mix",
-  MICRO_MIX_WATER: "micro-mix-water",
-  STERILITY: "sterility",
-  CHEMISTRY_MIX: "chemistry-mix",
-  COA: "coa",
-};
+// const formTypeToSlug: Record<string, string> = {
+//   MICRO_MIX: "micro-mix",
+//   MICRO_MIX_WATER: "micro-mix-water",
+//   STERILITY: "sterility",
+//   CHEMISTRY_MIX: "chemistry-mix",
+//   COA: "coa",
+// };
 
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
@@ -286,21 +287,47 @@ function BulkPrintArea({
   );
 }
 
-type ReportKind = "MICRO" | "STERILITY" | "CHEMISTRY";
+type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
 
 function getReportKind(r: Report): ReportKind {
-  if (r.formType === "STERILITY") return "STERILITY";
-  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
-    return "CHEMISTRY";
-  return "MICRO"; // MICRO_MIX + MICRO_MIX_WATER
+  switch (r.formType) {
+    case "MICRO_MIX":
+      return "MICRO";
+    case "MICRO_MIX_WATER":
+      return "MICRO_WATER";
+    case "STERILITY":
+      return "STERILITY";
+    case "CHEMISTRY_MIX":
+      return "CHEMISTRY";
+    case "COA":
+      return "COA";
+    default:
+      return "MICRO";
+  }
+}
+
+function getReportKindLabel(kind: ReportKind | null) {
+  switch (kind) {
+    case "MICRO":
+      return "Micro";
+    case "MICRO_WATER":
+      return "Micro Water";
+    case "STERILITY":
+      return "Sterility";
+    case "CHEMISTRY":
+      return "Chemistry";
+    case "COA":
+      return "COA";
+    default:
+      return "Report";
+  }
 }
 
 function getNextStatusesForReport(r: Report): string[] {
   const s = String(r.status);
-
   const kind = getReportKind(r);
 
-  if (kind === "MICRO") {
+  if (kind === "MICRO" || kind === "MICRO_WATER") {
     return MICRO_STATUS_TRANSITIONS?.[s as ReportStatus]?.next ?? [];
   }
 
@@ -310,7 +337,6 @@ function getNextStatusesForReport(r: Report): string[] {
     );
   }
 
-  // CHEMISTRY
   return CHEM_STATUS_TRANSITIONS?.[s as ChemistryReportStatus]?.next ?? [];
 }
 
@@ -353,47 +379,47 @@ const DEFAULT_FRONTDESK_FILTERS = {
   modalPane: "FORM" as "FORM" | "ATTACHMENTS",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
+// function extractYearAndSequence(value?: string | number | null): {
+//   year: number | null;
+//   sequence: number | null;
+// } {
+//   if (value == null) return { year: null, sequence: null };
 
-  const text = String(value).trim();
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
+//   const text = String(value).trim();
+//   const match = text.match(/(\d{5,})$/);
+//   if (!match) return { year: null, sequence: null };
 
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
+//   const digits = match[1];
+//   if (digits.length < 5) return { year: null, sequence: null };
 
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
+//   const yearPart = digits.slice(0, 4);
+//   const seqPart = digits.slice(4);
 
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
+//   const year = Number(yearPart);
+//   const sequence = Number(seqPart);
 
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
+//   return {
+//     year: Number.isFinite(year) ? year : null,
+//     sequence: Number.isFinite(sequence) ? sequence : null,
+//   };
+// }
 
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
+// function inRange(
+//   value: number | null,
+//   fromRaw?: string,
+//   toRaw?: string,
+// ): boolean {
+//   if (value == null) return false;
 
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
+//   const from =
+//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
+//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
 
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
+//   if (from != null && Number.isFinite(from) && value < from) return false;
+//   if (to != null && Number.isFinite(to) && value > to) return false;
 
-  return true;
-}
+//   return true;
+// }
 
 function getInitialFrontDeskFilters(
   searchParams: URLSearchParams,
@@ -472,8 +498,8 @@ function getInitialFrontDeskFilters(
             | "updatedAt") || DEFAULT_FRONTDESK_FILTERS.sortBy,
         sortDir:
           (spSortDir as "asc" | "desc") || DEFAULT_FRONTDESK_FILTERS.sortDir,
-        perPage: parseIntSafe(spPp, DEFAULT_FRONTDESK_FILTERS.perPage),
-        page: parseIntSafe(spP, DEFAULT_FRONTDESK_FILTERS.page),
+        perPage: getInt(searchParams, "pp", DEFAULT_FRONTDESK_FILTERS.perPage),
+        page: getInt(searchParams, "p", DEFAULT_FRONTDESK_FILTERS.page),
         modalPane:
           (spPane as "FORM" | "ATTACHMENTS") ||
           DEFAULT_FRONTDESK_FILTERS.modalPane,
@@ -504,11 +530,15 @@ function getInitialFrontDeskFilters(
 // -----------------------------
 export default function FrontDeskDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const { user } = useAuth();
 
   const userKey =
@@ -583,8 +613,10 @@ export default function FrontDeskDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-  const prevPositions = React.useRef<Record<string, DOMRect>>({});
+const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+const prevPositions = React.useRef<Record<string, DOMRect>>({});
+
+
   // whether we are currently rendering for print
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   // single-report print from modal
@@ -657,176 +689,268 @@ export default function FrontDeskDashboard() {
   }, [workspaceIds, reports]);
 
   // Fetch reports
-  useEffect(() => {
-    let abort = false;
-    async function fetchReports() {
-      try {
-        setLoading(true);
-        setError(null);
-        const micro = await api<Report[]>("/reports");
-        const chemistry = await api<Report[]>("/chemistry-reports");
+  // useEffect(() => {
+  //   let abort = false;
+  //   async function fetchReports() {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
+  //       const micro = await api<Report[]>("/reports");
+  //       const chemistry = await api<Report[]>("/chemistry-reports");
 
-        const all = [...micro, ...chemistry];
+  //       const all = [...micro, ...chemistry];
 
-        const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
-        const filtered = all.filter((r) => keep.has(r.status as any));
-        if (!abort) setReports(filtered);
-      } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
-      } finally {
-        if (!abort) setLoading(false);
+  //       const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+  //       const filtered = all.filter((r) => keep.has(r.status as any));
+  //       if (!abort) setReports(filtered);
+  //     } catch (e: any) {
+  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
+  //     } finally {
+  //       if (!abort) setLoading(false);
+  //     }
+  //   }
+
+  //   fetchReports();
+  //   return () => {
+  //     abort = true;
+  //   };
+  // }, []);
+
+
+  const fetchDashboardReports = async () => {
+  const params = new URLSearchParams();
+
+  params.set("page", String(page));
+  params.set("perPage", String(perPage));
+  params.set("form", formFilter);
+  params.set("status", String(statusFilter));
+  params.set("dateField", sortBy === "reportNumber" ? "dateSent" : sortBy);
+  params.set("sort", sortDir);
+  params.set("rangeType", numberRangeType);
+
+  if (searchClient.trim()) params.set("client", searchClient.trim());
+  if (searchReport.trim()) params.set("report", searchReport.trim());
+  if (search.trim()) params.set("q", search.trim());
+
+  if (fromDate) params.set("from", fromDate);
+  if (toDate) params.set("to", toDate);
+
+  if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+  if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+  if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+  if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+  return api<{
+    rows: Report[];
+    total: number;
+    page: number;
+    perPage: number;
+    totalPages: number;
+  }>(`/frontdesk-dashboard/reports?${params.toString()}`);
+};
+
+useEffect(() => {
+  let abort = false;
+
+  async function loadDashboardReports() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const startedAt = performance.now();
+      const res = await fetchDashboardReports();
+      const apiFinishedAt = performance.now();
+
+      console.log("Frontdesk dashboard API load time:", {
+        totalMs: Math.round(apiFinishedAt - startedAt),
+        totalCount: res.total,
+        pageCount: res.rows.length,
+      });
+
+      if (abort) return;
+
+      setReports(res.rows);
+      setServerTotal(res.total);
+      setServerTotalPages(res.totalPages);
+    } catch (e: any) {
+      if (!abort) setError(e?.message ?? "Failed to fetch reports");
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        setRefreshing(false);
       }
     }
+  }
 
-    fetchReports();
-    return () => {
-      abort = true;
-    };
-  }, []);
+  loadDashboardReports();
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
+  return () => {
+    abort = true;
+  };
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
 
-  // Derived table data
-  const processed = useMemo(() => {
-    // 1) form type filter
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
-            if (formFilter === "COA") return r.formType === "COA";
-            return true;
-          });
+  // const reportsWithSearch = useMemo(() => {
+  //   return reports.map((r) => ({
+  //     ...r,
+  //     _searchBlob: getReportSearchBlob(r),
+  //   }));
+  // }, [reports]);
 
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => String(r.status) === String(statusFilter));
+  // // Derived table data
+  // const processed = useMemo(() => {
+  //   // 1) form type filter
+  //   const byForm =
+  //     formFilter === "ALL"
+  //       ? reportsWithSearch
+  //       : reportsWithSearch.filter((r) => {
+  //           if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
+  //           if (formFilter === "MICROWATER")
+  //             return r.formType === "MICRO_MIX_WATER";
+  //           if (formFilter === "STERILITY") return r.formType === "STERILITY";
+  //           if (formFilter === "CHEMISTRY")
+  //             return r.formType === "CHEMISTRY_MIX";
+  //           if (formFilter === "COA") return r.formType === "COA";
+  //           return true;
+  //         });
 
-    const byClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return String(r.formNumber || "")
-            .toLowerCase()
-            .includes(q);
-        })
-      : byStatus;
+  //   const byStatus =
+  //     statusFilter === "ALL"
+  //       ? byForm
+  //       : byForm.filter((r) => String(r.status) === String(statusFilter));
 
-    const byReport = searchReport.trim()
-      ? byClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return (
-            String(r.reportNumber || "")
-              .toLowerCase()
-              .includes(q) ||
-            String(r.formNumber || "")
-              .toLowerCase()
-              .includes(q)
-          );
-        })
-      : byClient;
+  //   const byClient = searchClient.trim()
+  //     ? byStatus.filter((r) => {
+  //         const q = searchClient.toLowerCase();
+  //         return String(r.formNumber || "")
+  //           .toLowerCase()
+  //           .includes(q);
+  //       })
+  //     : byStatus;
 
-    const bySearch = search.trim()
-      ? byReport.filter((r) => {
-          const q = search.trim().toLowerCase();
-          return (r._searchBlob || "").includes(q);
-        })
-      : byReport;
+  //   const byReport = searchReport.trim()
+  //     ? byClient.filter((r) => {
+  //         const q = searchReport.toLowerCase();
+  //         return (
+  //           String(r.reportNumber || "")
+  //             .toLowerCase()
+  //             .includes(q) ||
+  //           String(r.formNumber || "")
+  //             .toLowerCase()
+  //             .includes(q)
+  //         );
+  //       })
+  //     : byClient;
 
-    const byNumberRange =
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.formNumber).sequence,
-                formNoFrom,
-                formNoTo,
-              ),
-            )
-          : bySearch
-        : reportNoFrom.trim() || reportNoTo.trim()
-          ? bySearch.filter((r) =>
-              inRange(
-                extractYearAndSequence(r.reportNumber).sequence,
-                reportNoFrom,
-                reportNoTo,
-              ),
-            )
-          : bySearch;
-    const dateField =
-      sortBy === "createdAt"
-        ? "createdAt"
-        : sortBy === "updatedAt"
-          ? "updatedAt"
-          : "dateSent";
+  //   const bySearch = search.trim()
+  //     ? byReport.filter((r) => {
+  //         const q = search.trim().toLowerCase();
+  //         return (r._searchBlob || "").includes(q);
+  //       })
+  //     : byReport;
 
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        (r as any)[dateField] ?? null,
-        fromDate || undefined,
-        toDate || undefined,
-      ),
-    );
+  //   const byNumberRange =
+  //     numberRangeType === "FORM"
+  //       ? formNoFrom.trim() || formNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.formNumber).sequence,
+  //               formNoFrom,
+  //               formNoTo,
+  //             ),
+  //           )
+  //         : bySearch
+  //       : reportNoFrom.trim() || reportNoTo.trim()
+  //         ? bySearch.filter((r) =>
+  //             inRange(
+  //               extractYearAndSequence(r.reportNumber).sequence,
+  //               reportNoFrom,
+  //               reportNoTo,
+  //             ),
+  //           )
+  //         : bySearch;
+  //   const dateField =
+  //     sortBy === "createdAt"
+  //       ? "createdAt"
+  //       : sortBy === "updatedAt"
+  //         ? "updatedAt"
+  //         : "dateSent";
 
-    const sorted = [...byDate].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  //   const byDate = byNumberRange.filter((r) =>
+  //     matchesDateRange(
+  //       (r as any)[dateField] ?? null,
+  //       fromDate || undefined,
+  //       toDate || undefined,
+  //     ),
+  //   );
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
-      }
-      if (sortBy === "reportNumber") {
-        const aN = a.reportNumber.toLowerCase();
-        const bN = b.reportNumber.toLowerCase();
-        return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
-      }
+  //   const sorted = [...byDate].sort((a, b) => {
+  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (sortBy === "createdAt") {
-        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
+  //     if (aPinned !== bPinned) {
+  //       return bPinned - aPinned; // pinned first
+  //     }
+  //     if (sortBy === "reportNumber") {
+  //       const aN = a.reportNumber.toLowerCase();
+  //       const bN = b.reportNumber.toLowerCase();
+  //       return sortDir === "asc" ? aN.localeCompare(bN) : bN.localeCompare(aN);
+  //     }
 
-      if (sortBy === "updatedAt") {
-        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return sortDir === "asc" ? aT - bT : bT - aT;
-    });
+  //     if (sortBy === "createdAt") {
+  //       const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  //       const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
 
-    return sorted;
-  }, [
-    reportsWithSearch,
-    formFilter,
-    statusFilter,
-    search,
-    sortBy,
-    sortDir,
-    fromDate,
-    toDate,
-    datePreset,
-    searchClient,
-    searchReport,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    pinnedIds,
-  ]);
+  //     if (sortBy === "updatedAt") {
+  //       const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+  //       const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  //       return sortDir === "asc" ? aT - bT : bT - aT;
+  //     }
+  //     const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
+  //     const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
+  //     return sortDir === "asc" ? aT - bT : bT - aT;
+  //   });
+
+  //   return sorted;
+  // }, [
+  //   reportsWithSearch,
+  //   formFilter,
+  //   statusFilter,
+  //   search,
+  //   sortBy,
+  //   sortDir,
+  //   fromDate,
+  //   toDate,
+  //   datePreset,
+  //   searchClient,
+  //   searchReport,
+  //   numberRangeType,
+  //   formNoFrom,
+  //   formNoTo,
+  //   reportNoFrom,
+  //   reportNoTo,
+  //   pinnedIds,
+  // ]);
 
   useEffect(() => {
     const next = getInitialFrontDeskFilters(searchParams, FILTER_STORAGE_KEY);
@@ -904,68 +1028,180 @@ export default function FrontDeskDashboard() {
     page,
   ]);
 
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
+  // useEffect(() => {
+  //   const map: Record<string, DOMRect> = {};
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     if (el) {
+  //       map[r.id] = el.getBoundingClientRect();
+  //     }
+  //   }
+  //   prevPositions.current = map;
+  // }, [processed.length, page, perPage]);
 
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
+  // useEffect(() => {
+  //   for (const r of processed) {
+  //     const el = rowRefs.current[r.id];
+  //     const prev = prevPositions.current[r.id];
+  //     if (!el || !prev) continue;
 
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
+  //     const next = el.getBoundingClientRect();
+  //     const dy = prev.top - next.top;
 
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
+  //     if (dy !== 0) {
+  //       el.style.transition = "none";
+  //       el.style.transform = `translateY(${dy}px)`;
 
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
+  //       requestAnimationFrame(() => {
+  //         el.style.transition = "transform 280ms ease";
+  //         el.style.transform = "translateY(0)";
+  //       });
 
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
+  //       const cleanup = () => {
+  //         el.style.transition = "";
+  //         el.style.transform = "";
+  //         el.removeEventListener("transitionend", cleanup);
+  //       };
 
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
+  //       el.addEventListener("transitionend", cleanup);
+  //     }
+  //   }
+  // }, [processed]);
 
   // Pagination
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
+  // const total = processed.length;
+  // const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // const pageClamped = Math.min(page, totalPages);
+  // const start = (pageClamped - 1) * perPage;
+  // const end = start + perPage;
+  // const pageRows = processed.slice(start, end);
+
+const displayRows = useMemo(() => {
+  return [...reports].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
+
+    return 0;
+  });
+}, [reports, pinnedIds]);
+
+const total = serverTotal;
+const totalPages = serverTotalPages;
+const pageClamped = Math.min(page, totalPages);
+const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+const end = start + displayRows.length;
+const pageRows = displayRows;
+
+React.useLayoutEffect(() => {
+  if (loading) return;
+
+  const nextPositions: Record<string, DOMRect> = {};
+
+  for (const r of pageRows) {
+    const el = rowRefs.current[r.id];
+
+    if (!el) continue;
+
+    const next = el.getBoundingClientRect();
+    const prev = prevPositions.current[r.id];
+
+    nextPositions[r.id] = next;
+
+    if (!prev) continue;
+
+    const dy = prev.top - next.top;
+
+    if (Math.abs(dy) < 1) continue;
+
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
+
+    requestAnimationFrame(() => {
+      el.style.transition = "transform 280ms ease";
+      el.style.transform = "translateY(0)";
+    });
+
+    const cleanup = () => {
+      el.style.transition = "";
+      el.style.transform = "";
+      el.removeEventListener("transitionend", cleanup);
+    };
+
+    el.addEventListener("transitionend", cleanup);
+  }
+
+  prevPositions.current = nextPositions;
+}, [pageRows, loading, selectedCols]);
+
+useEffect(() => {
+  rowRefs.current = {};
+  prevPositions.current = {};
+}, [
+  page,
+  perPage,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  datePreset,
+  fromDate,
+  toDate,
+  sortBy,
+  sortDir,
+  refreshKey,
+]);
+
+useEffect(() => {
+  setPage(1);
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+  sortBy,
+  sortDir,
+]);
 
   // Reset to page 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [
-    statusFilter,
-    search,
-    perPage,
-    formFilter,
-    sortBy,
-    sortDir,
-    fromDate,
-    toDate,
-    datePreset,
-  ]);
+useEffect(() => {
+  setSelectedIds([]);
+}, [
+  page,
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  datePreset,
+  fromDate,
+  toDate,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+]);
 
   useEffect(() => {
     const sp = new URLSearchParams();
@@ -979,8 +1215,6 @@ export default function FrontDeskDashboard() {
 
     if (sortBy !== "dateSent") sp.set("sb", sortBy);
     if (sortDir !== "desc") sp.set("sd", sortDir);
-
-    if (sortBy !== "dateSent") sp.set("sb", sortBy);
 
     sp.set("dp", datePreset);
     if (fromDate) sp.set("from", fromDate);
@@ -1111,14 +1345,14 @@ export default function FrontDeskDashboard() {
     }
   }
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(`/chemistry-reports/${slug}/${r.id}`);
-    } else {
-      navigate(`/reports/${slug}/${r.id}`);
-    }
-  }
+  // function goToReportEditor(r: Report) {
+  //   const slug = formTypeToSlug[r.formType] || "micro-mix";
+  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+  //     navigate(`/chemistry-reports/${slug}/${r.id}`);
+  //   } else {
+  //     navigate(`/reports/${slug}/${r.id}`);
+  //   }
+  // }
 
   // checkbox helpers
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -1344,12 +1578,12 @@ export default function FrontDeskDashboard() {
     }
   }, [formFilter, statusFilter]);
 
-  useLiveReportStatus(setReports, {
-    shouldKeep: (r) =>
-      r.status === "RECEIVED_BY_FRONTDESK" ||
-      r.status === "FRONTDESK_ON_HOLD" ||
-      r.status === "FRONTDESK_NEEDS_CORRECTION",
-  });
+  // useLiveReportStatus(setReports, {
+  //   shouldKeep: (r) =>
+  //     r.status === "RECEIVED_BY_FRONTDESK" ||
+  //     r.status === "FRONTDESK_ON_HOLD" ||
+  //     r.status === "FRONTDESK_NEEDS_CORRECTION",
+  // });
 
   // ---------------- E-VERIFY (Bulk) ----------------
   const [bulkESignOpen, setBulkESignOpen] = useState(false);
@@ -1373,7 +1607,7 @@ export default function FrontDeskDashboard() {
     const from = String(report.status);
     const kind = getReportKind(report);
 
-    if (kind === "MICRO") {
+    if (kind === "MICRO" || kind === "MICRO_WATER") {
       const t = MICRO_STATUS_TRANSITIONS?.[from as ReportStatus];
       return Boolean(
         (t as any)?.requireESign?.includes?.(toStatus) ||
@@ -1444,16 +1678,37 @@ export default function FrontDeskDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToReportEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
     setWorkspaceLayout("VERTICAL");
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
+  }
+
+  function handleWorkspaceReportChanged(updated: any) {
+    if (!updated?.id) return;
+
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
   }
 
   const DASHBOARD_COLS = useMemo(() => {
@@ -1524,11 +1779,11 @@ export default function FrontDeskDashboard() {
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-  const togglePin = (id: string) => {
-    setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+const togglePin = (id: string) => {
+  setPinnedIds((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+  );
+};
 
   useEffect(() => {
     if (!colOpen) return;
@@ -1582,12 +1837,23 @@ export default function FrontDeskDashboard() {
         return formatDate(r.updatedAt ?? null);
 
       case "actives": {
-        if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
+  if (r.formType !== "CHEMISTRY_MIX" && r.formType !== "COA") return "-";
 
-        if (typeof r.actives === "string") return r.actives || "-";
-        if (Array.isArray(r.actives)) return r.actives.join(", ") || "-";
-        return "-";
-      }
+  const list =
+    typeof (r as any).selectedActivesText === "string" &&
+    (r as any).selectedActivesText.trim()
+      ? (r as any).selectedActivesText
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : Array.isArray((r as any).selectedActives)
+        ? (r as any).selectedActives
+            .map((s: any) => String(s).trim())
+            .filter(Boolean)
+        : [];
+
+  return list.length ? list.join(", ") : "-";
+}
 
       default: {
         const v = (r as any)[key];
@@ -1607,6 +1873,30 @@ export default function FrontDeskDashboard() {
   if (!filtersHydrated || !colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
+
+
+  function saveDashboardPage(nextPage: number) {
+  const sp = new URLSearchParams(searchParams);
+
+  if (nextPage > 1) {
+    sp.set("p", String(nextPage));
+  } else {
+    sp.delete("p");
+  }
+
+  sessionStorage.setItem(
+    "/frontdeskDashboard:lastSearch",
+    `?${sp.toString()}`,
+  );
+
+  sessionStorage.setItem(
+    "lastSearch:/frontdeskDashboard",
+    `?${sp.toString()}`,
+  );
+
+  setSearchParams(sp, { replace: true });
+  setPage(nextPage);
+}
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1837,8 +2127,10 @@ export default function FrontDeskDashboard() {
             type="button"
             onClick={() => {
               if (refreshing) return;
+              // setRefreshing(true);
+              // window.location.reload();
               setRefreshing(true);
-              window.location.reload();
+setRefreshKey((x) => x + 1);
             }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2574,7 +2866,7 @@ export default function FrontDeskDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+          onClick={() => saveDashboardPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -2584,9 +2876,9 @@ export default function FrontDeskDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
-                }
+           onClick={() =>
+  saveDashboardPage(Math.min(totalPages, pageClamped + 1))
+}
                 disabled={pageClamped === totalPages}
               >
                 Next
@@ -2792,98 +3084,173 @@ export default function FrontDeskDashboard() {
       {bulkESignOpen &&
         createPortal(
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
             role="dialog"
             aria-modal="true"
             onClick={(e) => {
-              if (e.target === e.currentTarget && !bulkUpdating)
+              if (e.target === e.currentTarget && !bulkUpdating) {
                 setBulkESignOpen(false);
+              }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
-              <div className="border-b px-5 py-4">
-                <div className="text-lg font-semibold">E-Verify required</div>
-                <div className="text-sm text-slate-500 mt-1">
-                  You’re changing status for{" "}
-                  <span className="font-medium">{selectedIds.length}</span>{" "}
-                  reports to{" "}
-                  <span className="font-medium">
-                    {niceStatus(bulkPendingStatus)}
-                  </span>
-                  .
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      Bulk Change Status
+                    </h2>
+                    <p className="mt-1 text-sm text-white/85">
+                      {selected.length} selected{" "}
+                      {getReportKindLabel(getReportKind(selected[0]))} report(s)
+                      will be updated
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={bulkUpdating}
+                    onClick={() => setBulkESignOpen(false)}
+                    className="rounded-md px-2 py-1 text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
 
-              <div className="px-5 py-4 space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Reason
+              <form
+                className="px-5 py-4"
+                autoComplete="off"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                }}
+              >
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Selected Reports
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-800">
+                        {selected.length}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        New Status
+                      </div>
+                      <div className="mt-1 font-semibold text-violet-700">
+                        {niceStatus(bulkPendingStatus)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Reports
+                  </div>
+
+                  <div className="max-h-44 overflow-auto rounded-lg bg-white ring-1 ring-slate-200">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-slate-600">
+                          <th className="px-3 py-2 font-medium">Form #</th>
+                          <th className="px-3 py-2 font-medium">Report #</th>
+                          <th className="px-3 py-2 font-medium">
+                            Current Status
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {selected.map((r) => (
+                          <tr key={r.id} className="border-t">
+                            <td className="px-3 py-2 font-medium text-slate-900">
+                              {r.formNumber || "-"}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {r.reportNumber || "-"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-800 ring-1 ring-slate-200">
+                                {niceStatus(String(r.status))}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Reason for Change
                   </label>
-                  <input
+                  <textarea
                     value={bulkESignReason}
                     onChange={(e) => setBulkESignReason(e.target.value)}
-                    placeholder="Enter change reason (21 CFR Part 11)"
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    rows={3}
+                    placeholder="Explain why these statuses are being changed..."
                     disabled={bulkUpdating}
+                    className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Password
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    E-signature Password
                   </label>
                   <input
                     type="password"
                     value={bulkESignPassword}
                     onChange={(e) => setBulkESignPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter e-signature password"
                     disabled={bulkUpdating}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Required for controlled workflow transitions.
+                  </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                  This will be recorded in the audit trail as an electronically
-                  signed status change.
-                </div>
-              </div>
+                <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4">
+                  <button
+                    type="button"
+                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => setBulkESignOpen(false)}
+                    disabled={bulkUpdating}
+                  >
+                    Cancel
+                  </button>
 
-              <div className="border-t px-5 py-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
-                  onClick={() => setBulkESignOpen(false)}
-                  disabled={bulkUpdating}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-2"
-                  disabled={
-                    bulkUpdating ||
-                    !bulkPendingStatus ||
-                    bulkESignReason.trim().length < 3 ||
-                    bulkESignPassword.trim().length < 3
-                  }
-                  onClick={async () => {
-                    try {
-                      await applyBulkStatusChange(
-                        bulkPendingStatus,
-                        bulkESignReason.trim(),
-                        bulkESignPassword,
-                      );
-                      setBulkESignOpen(false);
-                    } catch (e: any) {
-                      alert(e?.message || "❌ Bulk status update failed");
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+                    disabled={
+                      bulkUpdating ||
+                      !bulkPendingStatus ||
+                      bulkESignReason.trim().length < 3 ||
+                      bulkESignPassword.trim().length < 3
                     }
-                  }}
-                >
-                  {bulkUpdating ? <Spinner /> : null}
-                  {bulkUpdating ? "Signing..." : "E-Verify & Apply"}
-                </button>
-              </div>
+                    onClick={async () => {
+                      try {
+                        await applyBulkStatusChange(
+                          bulkPendingStatus,
+                          bulkESignReason.trim(),
+                          bulkESignPassword,
+                        );
+                        setBulkESignOpen(false);
+                      } catch (e: any) {
+                        alert(e?.message || "❌ Bulk status update failed");
+                      }
+                    }}
+                  >
+                    {bulkUpdating ? <Spinner /> : null}
+                    {bulkUpdating ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>,
           document.body,
@@ -2902,6 +3269,7 @@ export default function FrontDeskDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );

@@ -528,6 +528,8 @@ export class TemplatesService {
     delete obj.corrections;
     delete obj.dateSent;
 
+      obj.dateSent = new Date();
+
     // -------- date coercion (MICRO/WATER/STERILITY/ CHEM)
     const dateKeys = [
       'dateSent',

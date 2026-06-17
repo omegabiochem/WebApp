@@ -26,14 +26,8 @@ import {
   type ChemistryReportStatus,
 } from "../../utils/chemistryReportFormWorkflow";
 
-import {
-  formatDate,
-  matchesDateRange,
-  toDateOnlyISO_UTC,
-  type DatePreset,
-} from "../../utils/dashboardsSharedTypes";
+import { formatDate, type DatePreset } from "../../utils/dashboardsSharedTypes";
 
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 import {
@@ -48,7 +42,6 @@ import {
   COA_STATUS_COLORS,
 } from "../../utils/COAReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
@@ -712,47 +705,6 @@ const DEFAULT_MC_FILTERS = {
   page: 1,
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
-
-  const text = String(value).trim();
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
-
-  const digits = match[1];
-  if (digits.length < 5) return { year: null, sequence: null };
-
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
-
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
-
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
-
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
-
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
-
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
-
-  return true;
-}
 function getInitialMCFilters(
   searchParams: URLSearchParams,
   storageKey?: string,
@@ -870,6 +822,10 @@ export default function MCDashboard() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Filters
   type Category = "ALL" | "MICRO" | "CHEMISTRY";
@@ -1047,24 +1003,18 @@ export default function MCDashboard() {
   // Merge into unified list
   // -----------------------------
   const unified: UnifiedRow[] = useMemo(() => {
-    const m = microReports.map((r) => ({
-      ...r,
-      kind: "MICRO" as const,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-
-    const c = chemReports.map((r) => ({
-      ...r,
-      kind: "CHEMISTRY" as const,
-      _searchBlob: getReportSearchBlob({
+    return [
+      ...microReports.map((r) => ({
         ...r,
-        actives:
-          r.actives ?? r.selectedActives ?? r.selectedActivesText ?? null,
-      }),
-    }));
-
-    return [...m, ...c];
+        kind: "MICRO" as const,
+      })),
+      ...chemReports.map((r) => ({
+        ...r,
+        kind: "CHEMISTRY" as const,
+      })),
+    ];
   }, [microReports, chemReports]);
+
   const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
 
   const workspaceReports = useMemo(() => {
@@ -1079,112 +1029,204 @@ export default function MCDashboard() {
   // -----------------------------
   // Fetch both queues
   // -----------------------------
+
+  function toDateOnlyLocal(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getPresetRange(
+    preset: DatePreset,
+    customFrom: string,
+    customTo: string,
+  ) {
+    const now = new Date();
+
+    const range = (from: Date, to: Date) => ({
+      from: toDateOnlyLocal(from),
+      to: toDateOnlyLocal(to),
+    });
+
+    switch (preset) {
+      case "ALL":
+        return { from: "", to: "" };
+
+      case "CUSTOM":
+        return { from: customFrom, to: customTo };
+
+      case "TODAY":
+        return range(now, now);
+
+      case "YESTERDAY": {
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        return range(y, y);
+      }
+
+      case "LAST_7_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 6);
+        return range(from, now);
+      }
+
+      case "LAST_30_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 29);
+        return range(from, now);
+      }
+
+      case "THIS_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        return range(from, to);
+      }
+
+      case "LAST_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const to = new Date(now.getFullYear(), now.getMonth(), 0);
+        return range(from, to);
+      }
+
+      case "THIS_YEAR": {
+        const from = new Date(now.getFullYear(), 0, 1);
+        const to = new Date(now.getFullYear(), 11, 31);
+        return range(from, to);
+      }
+
+      case "LAST_YEAR": {
+        const from = new Date(now.getFullYear() - 1, 0, 1);
+        const to = new Date(now.getFullYear() - 1, 11, 31);
+        return range(from, to);
+      }
+
+      default:
+        return { from: "", to: "" };
+    }
+  }
+
+  async function fetchMCDashboardReports() {
+    const params = new URLSearchParams();
+
+    params.set("page", String(page));
+    params.set("perPage", String(perPage));
+
+    params.set("cat", category);
+    params.set("status", statusFilter);
+
+    params.set("type", allTypeFilter);
+    params.set("mtype", microFormFilter);
+    params.set("ctype", chemFormFilter);
+
+    params.set("active", activeFilter);
+
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
+
+    const dateField =
+      sortBy === "dateTested"
+        ? "dateTested"
+        : sortBy === "dateReceived"
+          ? "dateReceived"
+          : sortBy === "createdAt"
+            ? "createdAt"
+            : sortBy === "updatedAt"
+              ? "updatedAt"
+              : "dateSent";
+
+    params.set("dateField", dateField);
+
+    params.set("rangeType", numberRangeType);
+
+    if (searchClient.trim()) params.set("client", searchClient.trim());
+    if (searchReport.trim()) params.set("report", searchReport.trim());
+    if (search.trim()) params.set("q", search.trim());
+
+    const dateRange = getPresetRange(datePreset, fromDate, toDate);
+
+    if (dateRange.from) params.set("from", dateRange.from);
+    if (dateRange.to) params.set("to", dateRange.to);
+
+    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+    return api<{
+      rows: UnifiedRow[];
+      total: number;
+      page: number;
+      perPage: number;
+      totalPages: number;
+    }>(`/mc-dashboard/reports?${params.toString()}`);
+  }
+
   useEffect(() => {
     let abort = false;
 
-    async function fetchAll() {
+    async function loadMCDashboardReports() {
       try {
         setLoading(true);
         setError(null);
 
-        const [allMicro, allChem] = await Promise.all([
-          api<MicroReport[]>("/reports"),
-          api<ChemReport[]>("/chemistry-reports"),
-        ]);
+        const res = await fetchMCDashboardReports();
 
         if (abort) return;
 
-        // const keepMicro = new Set(MICRO_STATUSES.filter((s) => s !== "ALL"));
-        const keepMicro = new Set<string>([
-          ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
-          ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
-        ]);
-        const keepChem = new Set<string>([
-          ...CHEMISTRY_STATUSES.filter((s) => s !== "ALL").map(String),
-          ...Object.keys(COA_STATUS_COLORS), // ✅ include all COA statuses
-        ]);
+        const microRows = res.rows.filter(
+          (r) => r.kind === "MICRO",
+        ) as MicroReport[];
 
-        setMicroReports(allMicro.filter((r) => keepMicro.has(r.status as any)));
-        setChemReports(allChem.filter((r) => keepChem.has(String(r.status))));
+        const chemRows = res.rows.filter(
+          (r) => r.kind === "CHEMISTRY",
+        ) as ChemReport[];
+
+        setMicroReports(microRows);
+        setChemReports(chemRows);
+
+        setServerTotal(res.total);
+        setServerTotalPages(res.totalPages);
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+        if (!abort) setError(e?.message ?? "Failed to fetch MC dashboard");
       } finally {
-        if (!abort) setLoading(false);
+        if (!abort) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     }
 
-    fetchAll();
+    loadMCDashboardReports();
+
     return () => {
       abort = true;
     };
-  }, []);
-
-  // Live status updates (if your hook works generically)
-  useLiveReportStatus(setMicroReports as any);
-  useLiveReportStatus(setChemReports as any);
-
-  // -----------------------------
-  // Date preset → from/to
-  // -----------------------------
-  useEffect(() => {
-    const now = new Date();
-
-    const setRange = (from: Date, to: Date) => {
-      setFromDate(toDateOnlyISO_UTC(from));
-      setToDate(toDateOnlyISO_UTC(to));
-    };
-
-    if (datePreset === "ALL") {
-      setFromDate("");
-      setToDate("");
-      return;
-    }
-    if (datePreset === "CUSTOM") return;
-
-    if (datePreset === "TODAY") return setRange(now, now);
-
-    if (datePreset === "YESTERDAY") {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      return setRange(y, y);
-    }
-
-    if (datePreset === "LAST_7_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 7);
-      return setRange(from, now);
-    }
-
-    if (datePreset === "LAST_30_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 30);
-      return setRange(from, now);
-    }
-
-    if (datePreset === "THIS_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "LAST_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "THIS_YEAR") {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "LAST_YEAR") {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      return setRange(from, to);
-    }
-  }, [datePreset]);
+  }, [
+    page,
+    perPage,
+    category,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    refreshKey,
+  ]);
 
   const statusOptions = useMemo(() => {
     // MICRO tab
@@ -1300,289 +1342,164 @@ export default function MCDashboard() {
     location.search,
   ]);
 
+  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const colUserKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    "mc";
+
+  const COL_STORAGE_KEY = `mcDashboardCols:user:${colUserKey}`;
+
+  const [colOpen, setColOpen] = useState(false);
+  const DEFAULT_COLS: DashboardColKey[] = [
+    "formType",
+    "reportNumber",
+    "formNumber",
+    "dateSent",
+    "actives",
+  ];
+
+  const [selectedCols, setSelectedCols] =
+    useState<DashboardColKey[]>(DEFAULT_COLS);
+  const [colsHydrated, setColsHydrated] = useState(false);
+
+  const DASHBOARD_COLS = useMemo(() => {
+    const map = new Map<string, { key: DashboardColKey; label: string }>();
+
+    for (const c of COLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    for (const c of ChemistryCOLS) {
+      map.set(c.key, c as { key: DashboardColKey; label: string });
+    }
+
+    return Array.from(map.values());
+  }, []);
+
   // -----------------------------
   // Filtering + sorting
   // -----------------------------
-  const processed = useMemo(() => {
-    // 0) category filter
-    let rows = unified;
 
-    if (category === "MICRO") {
-      rows = rows.filter((r) => r.kind === "MICRO");
-    } else if (category === "CHEMISTRY") {
-      // ✅ show CHEMISTRY_MIX + COA together
-      rows = rows.filter((r) => r.kind === "CHEMISTRY");
-    }
-
-    // ✅ ADD THIS BLOCK (ONLY when category === ALL)
-    if (category === "ALL" && allTypeFilter !== "ALL") {
-      rows = rows.filter((r) => r.formType === allTypeFilter);
-    }
-
-    // 0.5) micro subtype filter (ONLY when category === "MICRO")
-    if (category === "MICRO" && microFormFilter !== "ALL") {
-      rows = rows.filter((r) => {
-        if (r.kind !== "MICRO") return false; // only show micro rows in micro tab
-        if (microFormFilter === "MICRO") return r.formType === "MICRO_MIX";
-        if (microFormFilter === "MICRO_WATER")
-          return r.formType === "MICRO_MIX_WATER";
-        if (microFormFilter === "STERILITY") return r.formType === "STERILITY";
-        return true;
-      });
-    }
-    // 0.6) chemistry subtype filter
-    // 0.6) chemistry subtype filter (ONLY when category === "CHEMISTRY")
-    if (category === "CHEMISTRY" && chemFormFilter !== "ALL") {
-      rows = rows.filter((r) => {
-        if (r.kind !== "CHEMISTRY") return false; // only show chemistry rows in chemistry tab
-        if (chemFormFilter === "CHEMISTRY_MIX")
-          return r.formType === "CHEMISTRY_MIX";
-        if (chemFormFilter === "COA") return r.formType === "COA";
-        return true;
-      });
-    }
-
-    // 1) status
-    if (statusFilter !== "ALL") {
-      rows = rows.filter((r) => String(r.status) === String(statusFilter));
-    }
-
-    // 2) search client
-    if (searchClient.trim()) {
-      const q = searchClient.toLowerCase();
-      rows = rows.filter((r) => r.client.toLowerCase().includes(q));
-    }
-
-    // 3) search report
-    if (searchReport.trim()) {
-      const q = searchReport.toLowerCase();
-      rows = rows.filter((r) => {
-        return (
-          String(displayReportNo(r)).toLowerCase().includes(q) ||
-          String(r.formNumber || "")
-            .toLowerCase()
-            .includes(q)
-        );
-      });
-    }
-
-    // 4) global search
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-
-      rows = rows.filter((r) => {
-        return (r._searchBlob || "").includes(q);
-      });
-    }
-
-    // 5) number range
-    if (numberRangeType === "FORM") {
-      if (formNoFrom.trim() || formNoTo.trim()) {
-        rows = rows.filter((r) =>
-          inRange(
-            extractYearAndSequence(r.formNumber).sequence,
-            formNoFrom,
-            formNoTo,
-          ),
-        );
-      }
-    } else {
-      if (reportNoFrom.trim() || reportNoTo.trim()) {
-        rows = rows.filter((r) =>
-          inRange(
-            extractYearAndSequence(r.reportNumber).sequence,
-            reportNoFrom,
-            reportNoTo,
-          ),
-        );
-      }
-    }
-
-    // 6) chemistry actives filter
-    if (activeFilter !== "ALL") {
-      rows = rows.filter((r) => {
-        if (r.kind !== "CHEMISTRY") return false;
-
-        const list = r.selectedActivesText?.trim()
-          ? r.selectedActivesText
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : (r.selectedActives ?? [])
-              .map((s) => String(s).trim())
-              .filter(Boolean);
-
-        return list.some(
-          (a) => a.trim().toLowerCase() === activeFilter.trim().toLowerCase(),
-        );
-      });
-    }
-
-    // 7) date range
-    rows = rows.filter((r) => {
-      const dateValue =
-        sortBy === "dateTested"
-          ? r.kind === "MICRO"
-            ? r.dateTested
-            : null
-          : sortBy === "dateReceived"
-            ? r.kind === "CHEMISTRY"
-              ? r.dateReceived
-              : null
-            : sortBy === "createdAt"
-              ? r.createdAt
-              : sortBy === "updatedAt"
-                ? r.updatedAt
-                : r.dateSent;
-
-      return matchesDateRange(
-        dateValue ?? null,
-        fromDate || undefined,
-        toDate || undefined,
-      );
-    });
-    // 4) sort
-    const sorted = [...rows].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  const displayRows = useMemo(() => {
+    return [...unified].sort((a, b) => {
+      const aPinned = pinnedIds.includes(rowKey(a)) ? 1 : 0;
+      const bPinned = pinnedIds.includes(rowKey(b)) ? 1 : 0;
 
       if (aPinned !== bPinned) {
-        return bPinned - aPinned; // pinned first
+        return bPinned - aPinned;
       }
 
-      if (sortBy === "reportNumber") {
-        const aK = (a.reportNumber || "").toLowerCase();
-        const bK = (b.reportNumber || "").toLowerCase();
-        return sortDir === "asc" ? aK.localeCompare(bK) : bK.localeCompare(aK);
-      }
-
-      if (sortBy === "dateTested") {
-        const aT =
-          a.kind === "MICRO" && a.dateTested
-            ? new Date(a.dateTested).getTime()
-            : 0;
-
-        const bT =
-          b.kind === "MICRO" && b.dateTested
-            ? new Date(b.dateTested).getTime()
-            : 0;
-
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "dateReceived") {
-        const aT = (a as any).dateReceived
-          ? new Date((a as any).dateReceived).getTime()
-          : 0;
-        const bT = (b as any).dateReceived
-          ? new Date((b as any).dateReceived).getTime()
-          : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "createdAt") {
-        const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      if (sortBy === "updatedAt") {
-        const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return sortDir === "asc" ? aT - bT : bT - aT;
-      }
-
-      const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-      const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-      return sortDir === "asc" ? aT - bT : bT - aT;
+      return 0;
     });
+  }, [unified, pinnedIds]);
 
-    return sorted;
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
+
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const key = rowKey(r);
+      const el = rowRefs.current[key];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[key];
+
+      nextPositions[key] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
+    }
+
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
+
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
   }, [
-    unified,
+    page,
+    perPage,
     category,
     allTypeFilter,
     microFormFilter,
     chemFormFilter,
     statusFilter,
-    search,
-    activeFilter,
-    fromDate,
-    toDate,
-    sortBy,
-    sortDir,
     searchClient,
     searchReport,
+    search,
+    activeFilter,
+    datePreset,
+    fromDate,
+    toDate,
     numberRangeType,
     formNoFrom,
     formNoTo,
     reportNoFrom,
     reportNoTo,
-    pinnedIds,
+    sortBy,
+    sortDir,
   ]);
 
   useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
-
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
-
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
-
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
-
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
-
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
-
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
-
-  // Pagination
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
-
-  useEffect(() => {
     setPage(1);
+    setSelectedIds([]);
   }, [
     category,
     allTypeFilter,
     microFormFilter,
     chemFormFilter,
     statusFilter,
+    searchClient,
+    searchReport,
     search,
     perPage,
     datePreset,
     fromDate,
     toDate,
     activeFilter,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
   ]);
 
   useEffect(() => {
@@ -1820,22 +1737,22 @@ export default function MCDashboard() {
     );
   }
 
-  function goToEditor(r: UnifiedRow) {
-    const returnTo = location.pathname + location.search;
+  // function goToEditor(r: UnifiedRow) {
+  //   const returnTo = location.pathname + location.search;
 
-    if (r.kind === "MICRO") {
-      const slug = microFormTypeToSlug[r.formType] || "micro-mix";
-      navigate(
-        `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-      );
-      return;
-    }
+  //   if (r.kind === "MICRO") {
+  //     const slug = microFormTypeToSlug[r.formType] || "micro-mix";
+  //     navigate(
+  //       `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+  //     );
+  //     return;
+  //   }
 
-    const slug = chemFormTypeToSlug[r.formType] || "chemistry-mix";
-    navigate(
-      `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-    );
-  }
+  //   const slug = chemFormTypeToSlug[r.formType] || "chemistry-mix";
+  //   navigate(
+  //     `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
+  //   );
+  // }
   // -----------------------------
   // Selection
   // -----------------------------
@@ -2257,10 +2174,10 @@ export default function MCDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => rowKey(r)));
     setWorkspaceMode("UPDATE");
@@ -2269,46 +2186,51 @@ export default function MCDashboard() {
     setWorkspaceOpen(true);
   }
 
-  const colBtnRef = React.useRef<HTMLButtonElement | null>(null);
-  const [colPos, setColPos] = useState<{ top: number; left: number } | null>(
-    null,
-  );
+  function handleWorkspaceReportChanged(updated: any) {
+    if (!updated?.id) return;
 
-  const colUserKey =
-    (user as any)?.id ||
-    (user as any)?.userId ||
-    (user as any)?.sub ||
-    (user as any)?.uid ||
-    "mc";
+    const isChemistry =
+      updated.kind === "CHEMISTRY" ||
+      updated.formType === "CHEMISTRY_MIX" ||
+      updated.formType === "COA";
 
-  const COL_STORAGE_KEY = `mcDashboardCols:user:${colUserKey}`;
-
-  const [colOpen, setColOpen] = useState(false);
-  const DEFAULT_COLS: DashboardColKey[] = [
-    "formType",
-    "reportNumber",
-    "formNumber",
-    "dateSent",
-    "actives",
-  ];
-
-  const [selectedCols, setSelectedCols] =
-    useState<DashboardColKey[]>(DEFAULT_COLS);
-  const [colsHydrated, setColsHydrated] = useState(false);
-
-  const DASHBOARD_COLS = useMemo(() => {
-    const map = new Map<string, { key: DashboardColKey; label: string }>();
-
-    for (const c of COLS) {
-      map.set(c.key, c as { key: DashboardColKey; label: string });
+    if (isChemistry) {
+      setChemReports((prev) =>
+        prev.map((r) =>
+          r.id === updated.id
+            ? {
+                ...r,
+                ...updated,
+                status: updated.status ?? r.status,
+                reportNumber: updated.reportNumber ?? r.reportNumber,
+                version:
+                  typeof updated.version === "number"
+                    ? updated.version
+                    : (r.version ?? 0) + 1,
+              }
+            : r,
+        ),
+      );
+      return;
     }
 
-    for (const c of ChemistryCOLS) {
-      map.set(c.key, c as { key: DashboardColKey; label: string });
-    }
-
-    return Array.from(map.values());
-  }, []);
+    setMicroReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
+  }
 
   useEffect(() => {
     try {
@@ -2361,12 +2283,13 @@ export default function MCDashboard() {
     if (!pinsHydrated) return;
     localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedIds));
   }, [PIN_STORAGE_KEY, pinsHydrated, pinnedIds]);
+  const isPinned = (r: UnifiedRow) => pinnedIds.includes(rowKey(r));
 
-  const isPinned = (id: string) => pinnedIds.includes(id);
+  const togglePin = (r: UnifiedRow) => {
+    const key = rowKey(r);
 
-  const togglePin = (id: string) => {
     setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(key) ? prev.filter((x) => x !== key) : [key, ...prev],
     );
   };
 
@@ -2762,7 +2685,7 @@ export default function MCDashboard() {
             onClick={() => {
               if (refreshing) return;
               setRefreshing(true);
-              window.location.reload();
+              setRefreshKey((x) => x + 1);
             }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60"
@@ -3297,13 +3220,13 @@ export default function MCDashboard() {
 
                     return (
                       <tr
-                        key={r.id}
+                        key={rowKey(r)}
                         ref={(el) => {
-                          rowRefs.current[r.id] = el;
+                          rowRefs.current[rowKey(r)] = el;
                         }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
-                          isPinned(r.id) && "bg-blue-50/40",
+                          isPinned(r) && "bg-blue-50/40",
                         )}
                       >
                         <td className="pl-2 pr-1 py-3 text-center">
@@ -3311,18 +3234,18 @@ export default function MCDashboard() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              togglePin(r.id);
+                              togglePin(r);
                             }}
                             className="inline-flex items-center justify-center transition hover:scale-110"
                             aria-label={
-                              isPinned(r.id) ? "Unpin report" : "Pin report"
+                              isPinned(r) ? "Unpin report" : "Pin report"
                             }
-                            title={isPinned(r.id) ? "Unpin" : "Pin"}
+                            title={isPinned(r) ? "Unpin" : "Pin"}
                           >
                             <Pin
                               className={classNames(
                                 "h-3 w-3 rotate-45 transition",
-                                isPinned(r.id)
+                                isPinned(r)
                                   ? "text-blue-600 fill-blue-600"
                                   : "text-slate-400 hover:text-slate-600",
                               )}
@@ -3569,7 +3492,7 @@ export default function MCDashboard() {
               </select>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                onClick={() => setPage(Math.max(1, pageClamped - 1))}
                 disabled={pageClamped === 1}
               >
                 Prev
@@ -3579,9 +3502,7 @@ export default function MCDashboard() {
               </span>
               <button
                 className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
-                onClick={() =>
-                  setPage((p: number) => Math.min(totalPages, p + 1))
-                }
+                onClick={() => setPage(Math.min(totalPages, pageClamped + 1))}
                 disabled={pageClamped === totalPages}
               >
                 Next
@@ -3906,6 +3827,7 @@ export default function MCDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );

@@ -10,7 +10,6 @@ import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 import { useAuth } from "../../context/AuthContext";
 import { api, API_URL } from "../../lib/api";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 
 import {
@@ -26,8 +25,6 @@ import {
 } from "../../utils/chemistryReportFormWorkflow";
 import {
   formatDate,
-  matchesDateRange,
-  toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
@@ -39,7 +36,6 @@ import {
 import COAReportFormView from "../Reports/COAReportFormView";
 import { parseIntSafe } from "../../utils/commonDashboardUtil";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import {
   ChemistryCOLS,
   COLS,
@@ -405,21 +401,52 @@ function BulkPrintAreaQA({
   );
 }
 
-type ReportFamily = "MICRO" | "STERILITY" | "CHEMISTRY";
+type ReportFamily = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
 
 function getReportFamily(r: Report): ReportFamily {
-  if (r.formType === "STERILITY") return "STERILITY";
-  if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA")
-    return "CHEMISTRY";
-  return "MICRO"; // MICRO_MIX + MICRO_MIX_WATER
+  switch (r.formType) {
+    case "MICRO_MIX":
+      return "MICRO";
+    case "MICRO_MIX_WATER":
+      return "MICRO_WATER";
+    case "STERILITY":
+      return "STERILITY";
+    case "CHEMISTRY_MIX":
+      return "CHEMISTRY";
+    case "COA":
+      return "COA";
+    default:
+      return "MICRO";
+  }
 }
 
-function getStatusesForFamily(family: ReportFamily): string[] {
-  if (family === "CHEMISTRY")
+function getStatusesForReportFamily(family: ReportFamily): string[] {
+  if (family === "CHEMISTRY" || family === "COA") {
     return QA_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
-  if (family === "STERILITY")
+  }
+
+  if (family === "STERILITY") {
     return QA_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
+  }
+
   return QA_MICRO_STATUSES.filter((s) => s !== "ALL").map(String);
+}
+
+function getReportFamilyLabel(family: ReportFamily | null) {
+  switch (family) {
+    case "MICRO":
+      return "Micro";
+    case "MICRO_WATER":
+      return "Micro Water";
+    case "STERILITY":
+      return "Sterility";
+    case "CHEMISTRY":
+      return "Chemistry";
+    case "COA":
+      return "COA";
+    default:
+      return "Report";
+  }
 }
 
 const DEFAULT_QA_FILTERS = {
@@ -452,59 +479,17 @@ const DEFAULT_QA_FILTERS = {
     | "updatedAt",
 };
 
-function extractYearAndSequence(value?: string | number | null): {
-  year: number | null;
-  sequence: number | null;
-} {
-  if (value == null) return { year: null, sequence: null };
-
-  const text = String(value).trim();
-
-  // take the last continuous digit block, e.g. ABC-20260001 -> 20260001
-  const match = text.match(/(\d{5,})$/);
-  if (!match) return { year: null, sequence: null };
-
-  const digits = match[1];
-
-  // expect YYYY + sequence
-  if (digits.length < 5) {
-    return { year: null, sequence: null };
-  }
-
-  const yearPart = digits.slice(0, 4);
-  const seqPart = digits.slice(4);
-
-  const year = Number(yearPart);
-  const sequence = Number(seqPart);
-
-  return {
-    year: Number.isFinite(year) ? year : null,
-    sequence: Number.isFinite(sequence) ? sequence : null,
-  };
-}
-
-function inRange(
-  value: number | null,
-  fromRaw?: string,
-  toRaw?: string,
-): boolean {
-  if (value == null) return false;
-
-  const from =
-    fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-  const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
-
-  if (from != null && Number.isFinite(from) && value < from) return false;
-  if (to != null && Number.isFinite(to) && value > to) return false;
-
-  return true;
-}
 
 // ---------------------------------
 // Component
 // ---------------------------------
 export default function QaDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
+
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -883,33 +868,173 @@ export default function QaDashboard() {
     );
   }
 
-  const fetchAll = async () => {
-    const microReports = await api<Report[]>("/reports");
-    const chemistryReports = await api<Report[]>("/chemistry-reports");
-    return [...microReports, ...chemistryReports];
-  };
-
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [showVoidPassword, setShowVoidPassword] = useState(false);
 
+  function toDateOnlyLocal(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getPresetRange(
+    preset: DatePreset,
+    customFrom: string,
+    customTo: string,
+  ) {
+    const now = new Date();
+
+    const range = (from: Date, to: Date) => ({
+      from: toDateOnlyLocal(from),
+      to: toDateOnlyLocal(to),
+    });
+
+    switch (preset) {
+      case "ALL":
+        return { from: "", to: "" };
+
+      case "CUSTOM":
+        return { from: customFrom, to: customTo };
+
+      case "TODAY":
+        return range(now, now);
+
+      case "YESTERDAY": {
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        return range(y, y);
+      }
+
+      case "LAST_7_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 6);
+        return range(from, now);
+      }
+
+      case "LAST_30_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 29);
+        return range(from, now);
+      }
+
+      case "THIS_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        return range(from, to);
+      }
+
+      case "LAST_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const to = new Date(now.getFullYear(), now.getMonth(), 0);
+        return range(from, to);
+      }
+
+      case "THIS_YEAR": {
+        const from = new Date(now.getFullYear(), 0, 1);
+        const to = new Date(now.getFullYear(), 11, 31);
+        return range(from, to);
+      }
+
+      case "LAST_YEAR": {
+        const from = new Date(now.getFullYear() - 1, 0, 1);
+        const to = new Date(now.getFullYear() - 1, 11, 31);
+        return range(from, to);
+      }
+
+      default:
+        return { from: "", to: "" };
+    }
+  }
+
+  const fetchQaDashboardReports = async () => {
+    const params = new URLSearchParams();
+
+    params.set("page", String(page));
+    params.set("perPage", String(perPage));
+
+    params.set("form", formFilter);
+    params.set("status", String(statusFilter));
+
+    params.set("dateField", dateField);
+    params.set("sort", sortOrder);
+
+    params.set("rangeType", numberRangeType);
+
+    if (searchClient.trim()) params.set("client", searchClient.trim());
+    if (searchReport.trim()) params.set("report", searchReport.trim());
+    if (searchText.trim()) params.set("q", searchText.trim());
+
+    const dateRange = getPresetRange(datePreset, dateFrom, dateTo);
+
+    if (dateRange.from) params.set("from", dateRange.from);
+    if (dateRange.to) params.set("to", dateRange.to);
+
+    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+
+    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+
+    return api<{
+      rows: Report[];
+      total: number;
+      page: number;
+      perPage: number;
+      totalPages: number;
+    }>(`/qa-dashboard/reports?${params.toString()}`);
+  };
+
   useEffect(() => {
     let abort = false;
-    (async () => {
+
+    async function loadQaDashboardReports() {
       try {
         setLoading(true);
         setError(null);
-        const allReports = await fetchAll();
-        if (!abort) setReports(allReports);
+
+        const res = await fetchQaDashboardReports();
+
+        if (abort) return;
+
+        setReports(res.rows);
+        setServerTotal(res.total);
+        setServerTotalPages(res.totalPages);
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+        if (!abort) setError(e?.message ?? "Failed to fetch QA dashboard");
       } finally {
-        if (!abort) setLoading(false);
+        if (!abort) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-    })();
+    }
+
+    loadQaDashboardReports();
+
     return () => {
       abort = true;
     };
-  }, []);
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    dateField,
+    sortOrder,
+    refreshKey,
+  ]);
 
   // ✅ Reset invalid status when switching formFilter
   useEffect(() => {
@@ -919,203 +1044,90 @@ export default function QaDashboard() {
     }
   }, [formFilter, statusOptions]); // ✅ include statusOptions
 
-  const reportsWithSearch = useMemo(() => {
-    return reports.map((r) => ({
-      ...r,
-      _searchBlob: getReportSearchBlob(r),
-    }));
-  }, [reports]);
-
-  // Derived rows (filter → search → sort)
-  const processed = useMemo(() => {
-    const byForm =
-      formFilter === "ALL"
-        ? reportsWithSearch
-        : reportsWithSearch.filter((r) => {
-            if (formFilter === "MICRO") return r.formType === "MICRO_MIX";
-            if (formFilter === "MICROWATER")
-              return r.formType === "MICRO_MIX_WATER";
-            if (formFilter === "STERILITY") return r.formType === "STERILITY";
-            if (formFilter === "CHEMISTRY")
-              return r.formType === "CHEMISTRY_MIX";
-            if (formFilter === "COA") return r.formType === "COA";
-            return true;
-          });
-
-    const byStatus =
-      statusFilter === "ALL"
-        ? byForm
-        : byForm.filter((r) => String(r.status) === String(statusFilter));
-
-    const byClient = searchClient.trim()
-      ? byStatus.filter((r) => {
-          const q = searchClient.toLowerCase();
-          return (
-            (r.client || "").toLowerCase().includes(q) ||
-            (r.clientCode || "").toLowerCase().includes(q)
-          );
-        })
-      : byStatus;
-
-    const byReport = searchReport.trim()
-      ? byClient.filter((r) => {
-          const q = searchReport.toLowerCase();
-          return (
-            String(displayReportNo(r)).toLowerCase().includes(q) ||
-            (r.formNumber || "").toLowerCase().includes(q)
-          );
-        })
-      : byClient;
-
-    const bySearchText = searchText.trim()
-      ? byReport.filter((r) => {
-          const q = searchText.trim().toLowerCase();
-          return (r._searchBlob || "").includes(q);
-        })
-      : byReport;
-
-    const byNumberRange = (
-      numberRangeType === "FORM"
-        ? formNoFrom.trim() || formNoTo.trim()
-        : reportNoFrom.trim() || reportNoTo.trim()
-    )
-      ? bySearchText.filter((r) => {
-          if (numberRangeType === "FORM") {
-            return inRange(
-              extractYearAndSequence(r.formNumber).sequence,
-              formNoFrom,
-              formNoTo,
-            );
-          }
-
-          return inRange(
-            extractYearAndSequence(
-              typeof r.reportNumber === "number" && r.formNumber
-                ? r.formNumber.replace(/\d+$/, String(r.reportNumber))
-                : r.reportNumber,
-            ).sequence,
-            reportNoFrom,
-            reportNoTo,
-          );
-        })
-      : bySearchText;
-
-    // keep your behavior: filter/sort using dateSent
-    const getDateValue = (r: Report): string | null => {
-      switch (dateField) {
-        case "dateTested":
-          return r.dateTested ?? null;
-        case "dateReceived":
-          return r.dateReceived ?? null;
-        case "createdAt":
-          return r.createdAt ?? null;
-        case "updatedAt":
-          return r.updatedAt ?? null;
-        default:
-          return r.dateSent ?? null;
-      }
-    };
-
-    const byDate = byNumberRange.filter((r) =>
-      matchesDateRange(
-        getDateValue(r),
-        dateFrom || undefined,
-        dateTo || undefined,
-      ),
-    );
-
-    const getTime = (r: Report) => {
-      const val = getDateValue(r);
-      return val ? new Date(val).getTime() : 0;
-    };
-
-    return [...byDate].sort((a, b) => {
+  const displayRows = useMemo(() => {
+    return [...reports].sort((a, b) => {
       const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
       const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (aPinned !== bPinned) return bPinned - aPinned;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
 
-      const diff = getTime(a) - getTime(b);
-
-      return sortOrder === "asc" ? diff : -diff;
+      return 0;
     });
+  }, [reports, pinnedIds]);
 
-    // return [...byDate].sort((a, b) => {
-    //   const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-    //   const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
 
-    //   if (aPinned !== bPinned) {
-    //     return bPinned - aPinned; // pinned first
-    //   }
-    //   const aT = a.dateSent ? new Date(a.dateSent).getTime() : 0;
-    //   const bT = b.dateSent ? new Date(b.dateSent).getTime() : 0;
-    //   return bT - aT;
-    // });
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const el = rowRefs.current[r.id];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[r.id];
+
+      nextPositions[r.id] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
+    }
+
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
+
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
   }, [
-    reportsWithSearch,
+    page,
+    perPage,
     formFilter,
     statusFilter,
     searchClient,
     searchReport,
     searchText,
-    formNoFrom,
-    formNoTo,
-    numberRangeType,
-    reportNoFrom,
-    reportNoTo,
+    datePreset,
     dateFrom,
     dateTo,
-    pinnedIds,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
     dateField,
     sortOrder,
+    refreshKey,
   ]);
-
-  useEffect(() => {
-    const map: Record<string, DOMRect> = {};
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      if (el) {
-        map[r.id] = el.getBoundingClientRect();
-      }
-    }
-    prevPositions.current = map;
-  }, [processed.length, page, perPage]);
-
-  useEffect(() => {
-    for (const r of processed) {
-      const el = rowRefs.current[r.id];
-      const prev = prevPositions.current[r.id];
-      if (!el || !prev) continue;
-
-      const next = el.getBoundingClientRect();
-      const dy = prev.top - next.top;
-
-      if (dy !== 0) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
-
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 280ms ease";
-          el.style.transform = "translateY(0)";
-        });
-
-        const cleanup = () => {
-          el.style.transition = "";
-          el.style.transform = "";
-          el.removeEventListener("transitionend", cleanup);
-        };
-
-        el.addEventListener("transitionend", cleanup);
-      }
-    }
-  }, [processed]);
-
-  const total = processed.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const start = (pageClamped - 1) * perPage;
-  const end = start + perPage;
-  const pageRows = processed.slice(start, end);
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1125,16 +1137,8 @@ export default function QaDashboard() {
     } else {
       sp.delete("p");
     }
-
-    sessionStorage.setItem(
-      "/systemAdminDashboard:lastSearch",
-      `?${sp.toString()}`,
-    );
-
-    sessionStorage.setItem(
-      "lastSearch:/systemAdminDashboard",
-      `?${sp.toString()}`,
-    );
+    sessionStorage.setItem("/qaDashboard:lastSearch", `?${sp.toString()}`);
+    sessionStorage.setItem("lastSearch:/qaDashboard", `?${sp.toString()}`);
 
     setSearchParams(sp, { replace: true });
     setPage(nextPage);
@@ -1157,6 +1161,8 @@ export default function QaDashboard() {
     dateFrom,
     dateTo,
     perPage,
+    dateField,
+    sortOrder,
   ]);
 
   useEffect(() => {
@@ -1411,16 +1417,16 @@ export default function QaDashboard() {
     }
   }
 
-  function goToReportEditor(r: Report) {
-    const slug = formTypeToSlug[r.formType] || "micro-mix";
-    const returnTo = encodeURIComponent(location.pathname + location.search);
+  // function goToReportEditor(r: Report) {
+  //   const slug = formTypeToSlug[r.formType] || "micro-mix";
+  //   const returnTo = encodeURIComponent(location.pathname + location.search);
 
-    if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-      navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
-    } else {
-      navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
-    }
-  }
+  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
+  //     navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
+  //   } else {
+  //     navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
+  //   }
+  // }
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
@@ -1434,67 +1440,6 @@ export default function QaDashboard() {
       "bg-slate-100 text-slate-800 ring-1 ring-slate-200"
     );
   };
-
-  useEffect(() => {
-    const now = new Date();
-
-    const setRange = (from: Date, to: Date) => {
-      setDateFrom(toDateOnlyISO_UTC(from));
-      setDateTo(toDateOnlyISO_UTC(to));
-    };
-
-    if (datePreset === "ALL") {
-      setDateFrom("");
-      setDateTo("");
-      return;
-    }
-
-    if (datePreset === "CUSTOM") return;
-
-    if (datePreset === "TODAY") return setRange(now, now);
-
-    if (datePreset === "YESTERDAY") {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      return setRange(y, y);
-    }
-
-    if (datePreset === "LAST_7_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 7);
-      return setRange(from, now);
-    }
-
-    if (datePreset === "LAST_30_DAYS") {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 30);
-      return setRange(from, now);
-    }
-
-    if (datePreset === "THIS_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "LAST_MONTH") {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "THIS_YEAR") {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      return setRange(from, to);
-    }
-
-    if (datePreset === "LAST_YEAR") {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      return setRange(from, to);
-    }
-  }, [datePreset]);
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -1579,8 +1524,6 @@ export default function QaDashboard() {
     }
   }
 
-  useLiveReportStatus(setReports);
-
   const handleVoidSelected = async (reason: string, password: string) => {
     if (!voidableSelected.length) return;
 
@@ -1623,9 +1566,8 @@ export default function QaDashboard() {
   const selectedFamily = selectedSameFamily ? selectedFamilies[0] : null;
 
   const bulkStatusOptions = selectedFamily
-    ? getStatusesForFamily(selectedFamily)
+    ? getStatusesForReportFamily(selectedFamily)
     : [];
-
   async function handleBulkChangeStatus(
     reportsToChange: Report[],
     nextStatus: string,
@@ -1814,16 +1756,37 @@ export default function QaDashboard() {
       return;
     }
 
-    if (targets.length <= 1) {
-      goToReportEditor(clicked);
-      return;
-    }
+    // if (targets.length <= 1) {
+    //   goToReportEditor(clicked);
+    //   return;
+    // }
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
     setWorkspaceLayout("VERTICAL");
     setWorkspaceActiveId(clicked.id);
     setWorkspaceOpen(true);
+  }
+
+  function handleWorkspaceReportChanged(updated: any) {
+    if (!updated?.id) return;
+
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
   }
 
   const DASHBOARD_COLS = useMemo(() => {
@@ -1896,7 +1859,7 @@ export default function QaDashboard() {
 
   const togglePin = (id: string) => {
     setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
     );
   };
 
@@ -2331,7 +2294,7 @@ export default function QaDashboard() {
             onClick={() => {
               if (refreshing) return;
               setRefreshing(true);
-              window.location.reload();
+              setRefreshKey((x) => x + 1);
             }}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
             aria-label="Refresh"
@@ -2377,7 +2340,7 @@ export default function QaDashboard() {
                       : ft === "STERILITY"
                         ? "Sterility"
                         : ft === "COA"
-                          ? "Coa"
+                          ? "COA"
                           : "Chemistry"}
               </button>
             );
@@ -3821,7 +3784,7 @@ export default function QaDashboard() {
 
       {bulkChangeReports.length > 0 && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-label="Bulk change status"
@@ -3835,75 +3798,212 @@ export default function QaDashboard() {
             }
           }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">Bulk Change Status</h2>
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Bulk Change Status</h2>
+                  <p className="mt-1 text-sm text-white/85">
+                    {bulkChangeReports.length} selected{" "}
+                    {getReportFamilyLabel(selectedFamily)} report(s) will be
+                    updated
+                  </p>
+                </div>
 
-            <p className="mb-3 text-sm text-slate-600">
-              <strong>Selected reports:</strong> {bulkChangeReports.length}
-            </p>
+                <button
+                  type="button"
+                  disabled={bulkSaving}
+                  onClick={() => {
+                    setBulkChangeReports([]);
+                    setBulkNewStatus("");
+                    setBulkReason("");
+                    setBulkESignPassword("");
+                    setBulkESignError("");
+                  }}
+                  className="rounded-md px-2 py-1 text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
 
             <form
               autoComplete="off"
+              name="bulk-status-change-form"
+              action="about:blank"
               onSubmit={(e) => {
                 e.preventDefault();
                 handleBulkChangeStatus(bulkChangeReports, bulkNewStatus);
               }}
+              className="px-5 py-4"
             >
-              <select
-                value={bulkNewStatus}
-                onChange={(e) => {
-                  setBulkNewStatus(e.target.value);
-                  setBulkESignError("");
-                }}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              >
-                {bulkStatusOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {niceStatus(s)}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="text"
-                placeholder="Reason for change"
-                value={bulkReason}
-                onChange={(e) => setBulkReason(e.target.value)}
-                className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-              />
-
-              {needsESign(bulkNewStatus) && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                    <span>E-signature password</span>
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Selected Reports
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-800">
+                      {bulkChangeReports.length}
+                    </div>
                   </div>
 
-                  <input
-                    type="password"
-                    placeholder="Enter e-signature password"
-                    value={bulkESignPassword}
-                    onChange={(e) => {
-                      setBulkESignPassword(e.target.value);
-                      setBulkESignError("");
-                    }}
-                    className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-                    aria-invalid={!!bulkESignError}
-                    autoComplete="off"
-                    name="bulk_esign_pwd_manual_only"
-                  />
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      New Status
+                    </div>
+                    <div className="mt-1 font-semibold text-violet-700">
+                      {niceStatus(bulkNewStatus)}
+                    </div>
+                  </div>
+                </div>
 
-                  {bulkESignError && (
-                    <p className="mb-2 mt-2 text-xs text-rose-600">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Reports
+                  </div>
+                </div>
+
+                <div className="max-h-44 overflow-auto rounded-lg bg-white ring-1 ring-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-slate-600">
+                        <th className="px-3 py-2 font-medium">Form #</th>
+                        <th className="px-3 py-2 font-medium">Report #</th>
+                        <th className="px-3 py-2 font-medium">
+                          Current Status
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {bulkChangeReports.map((r) => (
+                        <tr key={r.id} className="border-t">
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            {r.formNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {r.reportNumber || "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={classNames(
+                                "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1",
+                                badgeClasses(r),
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  New Status
+                </label>
+                <select
+                  value={bulkNewStatus}
+                  onChange={(e) => {
+                    setBulkNewStatus(e.target.value);
+                    setBulkESignError("");
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500"
+                >
+                  {bulkStatusOptions.map((s) => (
+                    <option key={String(s)} value={String(s)}>
+                      {niceStatus(String(s))}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Reason for Change
+                </label>
+                <textarea
+                  placeholder="Explain why these statuses are being changed..."
+                  value={bulkReason}
+                  onChange={(e) => setBulkReason(e.target.value)}
+                  rows={3}
+                  disabled={bulkSaving}
+                  className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  This reason will be captured for audit and e-sign review.
+                </p>
+              </div>
+
+              {needsESign(bulkNewStatus) && (
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    E-signature Password
+                  </label>
+
+                  <div className="relative">
+                    <input
+                      type={showESignPassword ? "text" : "password"}
+                      placeholder="Enter e-signature password"
+                      value={bulkESignPassword}
+                      onChange={(e) => {
+                        setBulkESignPassword(e.target.value);
+                        setBulkESignError("");
+                      }}
+                      disabled={bulkSaving}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-11 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                      aria-invalid={!!bulkESignError}
+                      autoComplete="off"
+                      name="bulk_esign_pwd_manual_only"
+                      inputMode="text"
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowESignPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                      title={
+                        showESignPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showESignPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {bulkESignError ? (
+                    <p className="mt-2 text-xs text-rose-600">
                       {bulkESignError}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Required for controlled workflow transitions.
                     </p>
                   )}
                 </div>
               )}
 
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4">
                 <button
                   type="button"
-                  className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   onClick={() => {
                     setBulkChangeReports([]);
                     setBulkNewStatus("");
@@ -3918,7 +4018,7 @@ export default function QaDashboard() {
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
                   disabled={
                     bulkSaving ||
                     !bulkReason.trim() ||
@@ -3926,7 +4026,7 @@ export default function QaDashboard() {
                   }
                 >
                   {bulkSaving ? <Spinner /> : null}
-                  {bulkSaving ? "Saving…" : "Save"}
+                  {bulkSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -4008,6 +4108,7 @@ export default function QaDashboard() {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );

@@ -1363,7 +1363,11 @@ export default function ChemistryMixSubmissionForm({
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+      onSaved?.({
+  ...report,
+  ...saved,
+  id: saved.id ?? reportId,
+});
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1483,7 +1487,12 @@ export default function ChemistryMixSubmissionForm({
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
         setIsDirty(false);
-        onStatusChanged?.(updated);
+        onStatusChanged?.({
+  ...report,
+  ...updated,
+  id: reportId,
+  status: updated.status ?? newStatus,
+});
         alert(`✅ Status changed to ${newStatus}`);
 
         // // navigate per role (same as micro)
@@ -2011,18 +2020,41 @@ export default function ChemistryMixSubmissionForm({
         {/* CLIENT / DATE SENT */}
         <div className="w-full border border-black text-[12px]">
           <div className="grid grid-cols-[67%_33%] border-b border-black">
-            <div className="px-2 border-r border-black flex items-center gap-1">
-              <div className="whitespace-nowrap font-medium">CLIENT :</div>
+            <div
+              id="f-client"
+              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
+                "client",
+              )}`}
+            >
+              <div
+                className={`whitespace-nowrap font-medium ${corrCursor}`}
+                onClick={corrClick("client")}
+                title={
+                  selectingCorrections ? "Click to add correction" : undefined
+                }
+              >
+                CLIENT :
+              </div>
+
+              <FieldErrorBadge name="client" errors={errors} />
+              <ResolveOverlay field="client" />
+
               {lock("client") ? (
-                <div className="flex-1  min-h-[14px]">{client}</div>
+                <div className="flex-1 min-h-[14px]">{client}</div>
               ) : (
                 <input
-                  className="flex-1 border-none  text-[12px]"
+                  className={inputClass(
+                    "client",
+                    "flex-1 border-none text-[12px]",
+                  )}
                   value={client}
                   onChange={(e) => {
+                    if (selectingCorrections) return;
                     setClient(e.target.value.toUpperCase());
+                    clearError("client");
                     markDirty();
                   }}
+                  aria-invalid={!!errors.client}
                 />
               )}
             </div>

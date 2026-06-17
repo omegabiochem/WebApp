@@ -384,7 +384,15 @@ export default function MicroMixReportForm({
     report?.client ??
       (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
   );
-  const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
+  const [dateSent, setDateSent] = useState(() => {
+    // Existing saved report: keep saved date
+    if (report?.id) {
+      return report?.dateSent || todayISO();
+    }
+
+    // New form / template selected to create form: always today
+    return todayISO();
+  });
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
   const [formulaNo, setFormulaNo] = useState(report?.formulaNo || "");
@@ -822,7 +830,7 @@ export default function MicroMixReportForm({
         return tbc_result;
 
       case "tbc_spec":
-        return tbc_spec;
+        return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
 
       case "tmy_gram":
         return tmy_gram;
@@ -831,7 +839,7 @@ export default function MicroMixReportForm({
         return tmy_result;
 
       case "tmy_spec":
-        return tmy_spec;
+        return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
 
       case "comments":
         return comments;
@@ -1360,7 +1368,7 @@ export default function MicroMixReportForm({
   function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
     // data is what you stored in template.data (your payload)
     setClient(data?.client ?? "");
-setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
+    setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
     setTypeOfTest(data?.typeOfTest ?? "");
     setSampleType(data?.sampleType ?? "");
     setFormulaNo(data?.formulaNo ?? "");
@@ -1622,10 +1630,18 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
               return false;
             }
             // ✅ template payload: store data + formType + name
+            // const templatePayload = {
+            //   name,
+            //   formType: "MICRO_MIX",
+            //   data: { ...payload }, // store only allowed fields
+            // };
+
+            const { dateSent: _dateSent, ...templateData } = payload;
+
             const templatePayload = {
               name,
               formType: "MICRO_MIX",
-              data: { ...payload }, // store only allowed fields
+              data: templateData,
             };
 
             if (templateId) {
@@ -1684,7 +1700,11 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
           );
 
           setIsDirty(false);
-          onSaved?.(saved);
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1809,7 +1829,12 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
         );
         setReportNumber(updated.reportNumber || reportNumber);
         setIsDirty(false);
-        onStatusChanged?.(updated);
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: updated.status ?? newStatus,
+        });
         alert(`✅ Status changed to ${newStatus}`);
 
         if (embedded) return true;
@@ -2211,6 +2236,10 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
   }
 
   function shouldBlockStatusChangeForUnresolvedCorrections() {
+    if (role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA") {
+      return false;
+    }
+
     const pending = openCorrections.filter(
       (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
     );
@@ -2220,10 +2249,10 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
         `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
           `Please click the green tick / Resolve before changing status.`,
       );
-      return true; // ✅ block
+      return true;
     }
 
-    return false; // ✅ allow
+    return false;
   }
 
   function formatStatusText(status: string) {
@@ -2415,19 +2444,41 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
         <div className="w-full border border-black text-[15px]">
           {/* CLIENT / DATE SENT */}
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1">
+            <div
+              id="f-client"
+              onClick={() => {
+                if (!selectingCorrections) return;
+                setAddForField("client");
+                setAddMessage("");
+              }}
+              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
+                "client",
+              )}`}
+            >
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
+              <FieldErrorBadge name="client" errors={errors} />
+              <ResolveOverlay field="client" />
+
               {lock("client") ? (
-                <div className="flex-1  min-h-[14px]">{client}</div>
+                <div className="flex-1 min-h-[14px]">{client}</div>
               ) : (
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
+                    errors.client
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("client")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }`}
                   value={client.toUpperCase()}
                   onChange={(e) => {
                     setClient(e.target.value.toUpperCase());
+                    clearError("client");
                     markDirty();
                   }}
-                  // disabled={role === "CLIENT"}
+                  aria-invalid={!!errors.client}
                 />
               )}
             </div>
@@ -3090,15 +3141,29 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
             {/* SPECIFICATION */}
             <div
               id="f-tbc_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_spec");
-                setAddMessage("");
-              }}
-              className="py-1 px-2 flex relative"
+              className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
               <ResolveOverlay field="tbc_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tbc_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TBC specification"
+                  aria-label="Add correction for TBC specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select
@@ -3126,7 +3191,6 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
                   )}
                 </select>
 
-                {/* + Add new */}
                 {!lock("tbc_spec") && (
                   <button
                     type="button"
@@ -3230,15 +3294,29 @@ setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
             {/* SPECIFICATION */}
             <div
               id="f-tmy_spec"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_spec");
-                setAddMessage("");
-              }}
               className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
             >
               <FieldErrorBadge name="tmy_spec" errors={errors} />
               <ResolveOverlay field="tmy_spec" />
+
+              {selectingCorrections && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddForField("tmy_spec");
+                    setAddMessage("");
+                  }}
+                  title="Click to add correction for TMY specification"
+                  aria-label="Add correction for TMY specification"
+                />
+              )}
 
               <div className="flex w-full items-center gap-2">
                 <select
