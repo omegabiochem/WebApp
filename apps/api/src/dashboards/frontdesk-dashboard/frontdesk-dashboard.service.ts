@@ -154,13 +154,38 @@ export class FrontdeskDashboardService {
     const and: Prisma.DashboardReportWhereInput[] = [];
 
     if (q) {
-      and.push({
-        searchableText: {
-          contains: q,
-          mode: 'insensitive',
-        },
-      });
-    }
+  and.push({
+    OR: [
+      { searchableText: { contains: q, mode: 'insensitive' } },
+
+      // direct dashboard columns
+      { typeOfTest: { contains: q, mode: 'insensitive' } },
+      { sampleType: { contains: q, mode: 'insensitive' } },
+      { formulaNo: { contains: q, mode: 'insensitive' } },
+      { description: { contains: q, mode: 'insensitive' } },
+      { lotNo: { contains: q, mode: 'insensitive' } },
+      { client: { contains: q, mode: 'insensitive' } },
+      { clientCode: { contains: q, mode: 'insensitive' } },
+      { formNumber: { contains: q, mode: 'insensitive' } },
+      { reportNumber: { contains: q, mode: 'insensitive' } },
+
+      // chemistry fields
+      { sampleDescription: { contains: q, mode: 'insensitive' } },
+      { lotBatchNo: { contains: q, mode: 'insensitive' } },
+      { formulaId: { contains: q, mode: 'insensitive' } },
+      { sampleSize: { contains: q, mode: 'insensitive' } },
+      { numberOfActives: { contains: q, mode: 'insensitive' } },
+      { selectedActivesText: { contains: q, mode: 'insensitive' } },
+
+      // extra searchable fields
+      { comments: { contains: q, mode: 'insensitive' } },
+      { idNo: { contains: q, mode: 'insensitive' } },
+      { testedBy: { contains: q, mode: 'insensitive' } },
+      { reviewedBy: { contains: q, mode: 'insensitive' } },
+      { status: { contains: q, mode: 'insensitive' } },
+    ],
+  });
+}
 
     if (client) {
       and.push({

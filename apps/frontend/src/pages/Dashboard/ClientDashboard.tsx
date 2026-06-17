@@ -490,47 +490,7 @@ const DEFAULT_CLIENT_FILTERS = {
   toDate: "",
 };
 
-// function extractYearAndSequence(value?: string | number | null): {
-//   year: number | null;
-//   sequence: number | null;
-// } {
-//   if (value == null) return { year: null, sequence: null };
 
-//   const text = String(value).trim();
-//   const match = text.match(/(\d{5,})$/);
-//   if (!match) return { year: null, sequence: null };
-
-//   const digits = match[1];
-//   if (digits.length < 5) return { year: null, sequence: null };
-
-//   const yearPart = digits.slice(0, 4);
-//   const seqPart = digits.slice(4);
-
-//   const year = Number(yearPart);
-//   const sequence = Number(seqPart);
-
-//   return {
-//     year: Number.isFinite(year) ? year : null,
-//     sequence: Number.isFinite(sequence) ? sequence : null,
-//   };
-// }
-
-// function inRange(
-//   value: number | null,
-//   fromRaw?: string,
-//   toRaw?: string,
-// ): boolean {
-//   if (value == null) return false;
-
-//   const from =
-//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
-
-//   if (from != null && Number.isFinite(from) && value < from) return false;
-//   if (to != null && Number.isFinite(to) && value > to) return false;
-
-//   return true;
-// }
 
 // -----------------------------
 // Component
@@ -1338,20 +1298,6 @@ useEffect(() => {
     );
   }
 
-  // function goToReportEditor(r: Report) {
-  //   const slug = formTypeToSlug[(r.formType ?? "").trim()] || "micro-mix";
-  //   const returnTo = location.pathname + location.search;
-
-  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-  //     navigate(
-  //       `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-  //     );
-  //   } else {
-  //     navigate(
-  //       `/reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-  //     );
-  //   }
-  // }
 
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
@@ -1481,76 +1427,7 @@ useEffect(() => {
     return () => window.removeEventListener("click", close);
   }, []);
 
-  // useEffect(() => {
-  //   const now = new Date();
-
-  //   const setRange = (from: Date, to: Date) => {
-  //     setFromDate(toDateOnlyISO_UTC(from));
-  //     setToDate(toDateOnlyISO_UTC(to));
-  //   };
-
-  //   if (datePreset === "ALL") {
-  //     setFromDate("");
-  //     setToDate("");
-  //     return;
-  //   }
-
-  //   if (datePreset === "CUSTOM") return;
-
-  //   if (datePreset === "TODAY") {
-  //     setRange(now, now);
-  //     return;
-  //   }
-
-  //   if (datePreset === "YESTERDAY") {
-  //     const y = new Date(now);
-  //     y.setDate(now.getDate() - 1);
-  //     setRange(y, y);
-  //     return;
-  //   }
-
-  //   if (datePreset === "LAST_7_DAYS") {
-  //     const from = new Date(now);
-  //     from.setDate(now.getDate() - 7);
-  //     setRange(from, now);
-  //     return;
-  //   }
-
-  //   if (datePreset === "LAST_30_DAYS") {
-  //     const from = new Date(now);
-  //     from.setDate(now.getDate() - 30);
-  //     setRange(from, now);
-  //     return;
-  //   }
-
-  //   if (datePreset === "THIS_MONTH") {
-  //     const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  //     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  //     setRange(from, to);
-  //     return;
-  //   }
-
-  //   if (datePreset === "LAST_MONTH") {
-  //     const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  //     const to = new Date(now.getFullYear(), now.getMonth(), 0);
-  //     setRange(from, to);
-  //     return;
-  //   }
-
-  //   if (datePreset === "THIS_YEAR") {
-  //     const from = new Date(now.getFullYear(), 0, 1);
-  //     const to = new Date(now.getFullYear(), 11, 31);
-  //     setRange(from, to);
-  //     return;
-  //   }
-
-  //   if (datePreset === "LAST_YEAR") {
-  //     const from = new Date(now.getFullYear() - 1, 0, 1);
-  //     const to = new Date(now.getFullYear() - 1, 11, 31);
-  //     setRange(from, to);
-  //     return;
-  //   }
-  // }, [datePreset]);
+  
 
   const hasActiveFilters = useMemo(() => {
     let dateActive = false;

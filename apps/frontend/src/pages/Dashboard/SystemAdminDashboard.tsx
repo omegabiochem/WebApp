@@ -589,7 +589,7 @@ export default function SystemAdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const FILTER_STORAGE_KEY = `adminDashboardFilters:user:${userKey || "systemadmin"}`;
+const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "systemadmin"}`;
 
   function getInitialAdminFilters(
     searchParams: URLSearchParams,
@@ -772,9 +772,9 @@ export default function SystemAdminDashboard() {
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-  const PIN_STORAGE_KEY = userKey
-    ? `adminDashboardPinned:user:${userKey}`
-    : null;
+const PIN_STORAGE_KEY = userKey
+  ? `systemAdminDashboardPinned:user:${userKey}`
+  : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
@@ -801,7 +801,7 @@ export default function SystemAdminDashboard() {
     (user as any)?.uid ||
     "qa";
 
-  const COL_STORAGE_KEY = `adminDashboardCols:user:${colUserKey}`;
+const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
 
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [showVoidPassword, setShowVoidPassword] = useState(false);

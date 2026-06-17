@@ -30,11 +30,10 @@ export default function Header() {
     ADMIN: [
       { label: "Home", path: "/adminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
-      { label: "Balancer", path: "/balancer" },
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
       { label: "Report Management", path: "/manage-reports" },
-      { label: "Support", path: "/support" },
+         { label: "More", path: "/more" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
@@ -74,7 +73,10 @@ export default function Header() {
     ],
     QA: [
       { label: "Home", path: "/qaDashboard" },
+      { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
+      { label: "Micro Login Book", path: "/microLoginBook" },
+      { label: "Chemistry Login Book", path: "/chemistryLoginBook" },
       { label: "Support", path: "/support" },
     ],
     FRONTDESK: [
@@ -587,11 +589,7 @@ export default function Header() {
                   </Link>
                 ),
               )}
-              {/* {(role === "ADMIN" || role === "SYSTEMADMIN") && (
-                <Link to="/admin" className="hover:underline">
-                  User Management
-                </Link>
-              )} */}
+      
 
               <div className="relative" ref={notificationsRef}>
                 <button
