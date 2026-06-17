@@ -160,30 +160,7 @@ export class AuthService {
   private clearRefreshCookie(res: any) {
     res.clearCookie(REFRESH_COOKIE_NAME, this.cookieOpts());
   }
-  // private setRefreshCookie(res: any, token: string, expAt: Date) {
-  //   const isProd = process.env.NODE_ENV === 'production';
 
-  //   res.cookie('omega_rt', token, {
-  //     httpOnly: true,
-  //     secure: isProd,
-  //     sameSite: isProd ? 'lax' : 'lax',
-  //     ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
-  //     path: '/auth/refresh',
-  //     expires: expAt,
-  //   });
-  // }
-
-  // private clearRefreshCookie(res: any) {
-  //   const isProd = process.env.NODE_ENV === 'production';
-
-  //   res.clearCookie('omega_rt', {
-  //     httpOnly: true,
-  //     secure: isProd,
-  //     sameSite: isProd ? 'lax' : 'lax',
-  //     ...(isProd ? { domain: '.omegabiochemlab.com' } : {}),
-  //     path: '/auth/refresh',
-  //   });
-  // }
 
   private async issueRefreshForUser(session: SessionContext, res: any) {
     const { token, jti } = this.signRefreshToken(session);
@@ -203,54 +180,7 @@ export class AuthService {
 
     this.setRefreshCookie(res, token, expAt);
   }
-  // private async start2FA(
-  //   user: {
-  //     id: string;
-  //     email: string;
-  //     role: any;
-  //     phoneNumber?: string | null;
-  //     name?: string | null;
-  //   },
-  //   req?: any,
-  // ) {
-  //   // const method = user.role === 'CLIENT' ? 'EMAIL' : 'SMS';
-
-  //   // if (method === 'SMS' && !user.phoneNumber) {
-  //   //   throw new BadRequestException({
-  //   //     code: 'PHONE_REQUIRED',
-  //   //     message:
-  //   //       'Phone number is required for 2-factor authentication. Contact admin.',
-  //   //   });
-  //   // }
-
-  //   const method: 'EMAIL' | 'SMS' = 'EMAIL'; // ✅ temporary until A2P is approved
-
-  //   const code = this.generateOtp6();
-  //   const codeHash = await bcrypt.hash(code, 12);
-  //   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-  //   await this.prisma.user.update({
-  //     where: { id: user.id },
-  //     data: {
-  //       twoFactorCodeHash: codeHash,
-  //       twoFactorExpiresAt: expiresAt,
-  //       twoFactorAttempts: 0,
-  //     } as any,
-  //   });
-
-  //   if (method === 'EMAIL') {
-  //     await this.mail.sendTwoFactorOtpEmail({
-  //       to: user.email,
-  //       name: user.name ?? null,
-  //       code,
-  //       expiresAt,
-  //     });
-  //   } else {
-  //     await this.sms.sendOtp(user.phoneNumber!, code);
-  //   }
-
-  //   return { method, expiresAt };
-  // }
+ 
 
   private envBool(name: string, def = false) {
     const v = (process.env[name] ?? '').trim().toLowerCase();
@@ -443,144 +373,7 @@ export class AuthService {
     return { method: 'EMAIL' as const, expiresAt };
   }
 
-  // private async loginCommonAccount(
-  //   userIdRaw: string,
-  //   password: string,
-  //   req?: any,
-  // ) {
-  //   const userId = (userIdRaw ?? '').trim().toLowerCase();
-  //   const ip = this.getIp(req);
-  //   const ua = this.getUA(req);
 
-  //   const common = await this.prisma.commonAccount.findUnique({
-  //     where: { userId },
-  //     include: {
-  //       members: {
-  //         where: { active: true },
-  //         include: {
-  //           user: {
-  //             select: {
-  //               id: true,
-  //               name: true,
-  //               email: true,
-  //               active: true,
-  //             },
-  //           },
-  //         },
-  //       },
-  //     },
-  //   });
-
-  //   if (!common || !common.active) {
-  //     await this.logAuthEvent({
-  //       action: 'LOGIN_FAILED',
-  //       userId: null,
-  //       role: null,
-  //       clientCode: null,
-  //       ip,
-  //       entityId: userId,
-  //       details: 'Invalid common account credentials',
-  //       meta: { userAgent: ua },
-  //     });
-
-  //     throw new UnauthorizedException({
-  //       code: 'INVALID_CREDENTIALS',
-  //       message: 'Invalid user ID or password.',
-  //     });
-  //   }
-
-  //   if (common.lockedUntil && common.lockedUntil > new Date()) {
-  //     throw new UnauthorizedException({
-  //       code: 'ACCOUNT_LOCKED',
-  //       message: 'Too many failed attempts. Account is temporarily locked.',
-  //       lockedUntil: common.lockedUntil,
-  //     });
-  //   }
-
-  //   const ok = await bcrypt.compare(password, common.passwordHash);
-  //   if (!ok) {
-  //     const now = new Date();
-  //     const nextCount = (common.failedLoginCount ?? 0) + 1;
-  //     const shouldLock = nextCount >= LOCK_AFTER_FAILED;
-  //     const lockedUntil = shouldLock
-  //       ? new Date(now.getTime() + LOCK_DURATION_MS)
-  //       : null;
-
-  //     await this.prisma.commonAccount.update({
-  //       where: { id: common.id },
-  //       data: {
-  //         failedLoginCount: nextCount,
-  //         lastFailedLoginAt: now,
-  //         ...(shouldLock ? { lockedUntil } : {}),
-  //       },
-  //     });
-
-  //     await this.logAuthEvent({
-  //       action: 'LOGIN_FAILED',
-  //       userId: null,
-  //       role: null,
-  //       clientCode: null,
-  //       ip,
-  //       entityId: common.userId,
-  //       details: shouldLock
-  //         ? 'Bad password on common account; locked'
-  //         : 'Bad password on common account',
-  //       meta: { userAgent: ua, failedLoginCount: nextCount, lockedUntil },
-  //     });
-
-  //     throw new UnauthorizedException({
-  //       code: shouldLock ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
-  //       message: shouldLock
-  //         ? 'Too many failed attempts. Account locked for 15 minutes.'
-  //         : 'Invalid password.',
-  //       lockedUntil,
-  //       remaining: Math.max(0, LOCK_AFTER_FAILED - nextCount),
-  //     });
-  //   }
-
-  //   await this.prisma.commonAccount.update({
-  //     where: { id: common.id },
-  //     data: {
-  //       failedLoginCount: 0,
-  //       lockedUntil: null,
-  //       lastFailedLoginAt: null,
-  //     },
-  //   });
-
-  //   const challengeToken = randomBytes(24).toString('base64url');
-  //   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-  //   await this.prisma.commonAuthChallenge.create({
-  //     data: {
-  //       challengeToken,
-  //       commonAccountId: common.id,
-  //       stage: 'PASSWORD_VERIFIED',
-  //       expiresAt,
-  //       ipAddress: ip,
-  //       userAgent: ua,
-  //     },
-  //   });
-
-  //   const people = common.members
-  //     .filter((m) => m.user?.active)
-  //     .map((m) => ({
-  //       id: m.user.id,
-  //       name: m.user.name || m.user.email,
-  //       emailMasked: this.maskEmail(m.user.email),
-  //       roles: m.allowedRoles,
-  //     }));
-
-  //   return {
-  //     requiresCommonSelection: true,
-  //     challengeToken,
-  //     commonAccount: {
-  //       id: common.id,
-  //       label: common.label,
-  //     },
-  //     people,
-  //     expiresAt: expiresAt.toISOString(),
-  //   };
-  // }
 
   private async loginCommonAccount(
     userIdRaw: string,
@@ -892,24 +685,7 @@ export class AuthService {
       },
     });
 
-    // Missing or inactive
-    // if (!user || !user.active) {
-    //   await this.logAuthEvent({
-    //     action: 'LOGIN_FAILED',
-    //     userId: null,
-    //     role: null,
-    //     clientCode: null,
-    //     ip,
-    //     entityId: userId,
-    //     details: 'Invalid credentials (user missing or inactive)',
-    //     meta: { userAgent: ua },
-    //   });
 
-    //   throw new UnauthorizedException({
-    //     code: 'INVALID_CREDENTIALS',
-    //     message: 'Invalid user ID or password.',
-    //   });
-    // }
 
     if (!user) {
       await this.logAuthEvent({
@@ -1060,27 +836,7 @@ export class AuthService {
       } as any,
     });
 
-    // ✅ OTP FIRST (if enabled)
-    // if (user.twoFactorEnabled) {
-    //   const { method, expiresAt } = await this.start2FA(
-    //     {
-    //       id: user.id,
-    //       email: user.email,
-    //       role: user.role,
-    //       phoneNumber: user.phoneNumber,
-    //       name: user.name ?? null,
-    //     },
-    //     req,
-    //   );
 
-    //   return {
-    //     requiresTwoFactor: true,
-    //     method,
-    //     expiresAt: expiresAt.toISOString(),
-    //     userId: user.userId, // FE will store in sessionStorage and verify OTP
-    //     mustChangePassword: user.mustChangePassword, // optional hint for FE
-    //   };
-    // }
 
     if (this.shouldRequire2FA(user)) {
       const { method, expiresAt } = await this.start2FA(
