@@ -199,9 +199,14 @@ type DashboardStatus =
   | SterilityReportStatus
   | ChemistryReportStatus;
 
+// const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
+//   "ALL",
+//   ...ALL_STATUSES.filter((s) => s !== "ALL"),
+// ];
+
 const ADMIN_MICRO_STATUSES: DashboardStatus[] = [
   "ALL",
-  ...ALL_STATUSES.filter((s) => s !== "ALL"),
+  ...Array.from(new Set(ALL_STATUSES.filter((s) => s !== "ALL"))),
 ];
 
 const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
@@ -538,7 +543,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const FILTER_STORAGE_KEY = `adminDashboardFilters:user:${userKey || "admin"}`;
+  const FILTER_STORAGE_KEY = `adminOnlyDashboardFilters:user:${userKey || "admin"}`;
   const initialFilters = getInitialAdminFilters(
     searchParams,
     FILTER_STORAGE_KEY,
@@ -719,9 +724,9 @@ export default function AdminDashboard() {
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-  const PIN_STORAGE_KEY = userKey
-    ? `adminDashboardPinned:user:${userKey}`
-    : null;
+const PIN_STORAGE_KEY = userKey
+  ? `adminOnlyDashboardPinned:user:${userKey}`
+  : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
@@ -748,7 +753,7 @@ const prevPositions = React.useRef<Record<string, DOMRect>>({});
     (user as any)?.uid ||
     "qa";
 
-  const COL_STORAGE_KEY = `adminDashboardCols:user:${colUserKey}`;
+const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
 
   const [colOpen, setColOpen] = useState(false);
 

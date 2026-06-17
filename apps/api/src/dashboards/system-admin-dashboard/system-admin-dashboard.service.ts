@@ -45,7 +45,9 @@ function parseDateEnd(value?: string) {
 function extractSequence(value?: string | number | null): number | null {
   if (value == null) return null;
 
-  const match = String(value).trim().match(/(\d{5,})$/);
+  const match = String(value)
+    .trim()
+    .match(/(\d{5,})$/);
   if (!match) return null;
 
   const digits = match[1];
@@ -95,7 +97,7 @@ function safeDateField(value?: string) {
     'updatedAt',
   ];
 
-return allowed.includes(String(value)) ? String(value) : 'dateSent';
+  return allowed.includes(String(value)) ? String(value) : 'dateSent';
 }
 
 function mapDashboardRow(r: any) {
@@ -124,7 +126,9 @@ export class SystemAdminDashboardService {
 
     const form = query.form || 'ALL';
     const status = query.status || 'ALL';
-    const q = String(query.q || '').trim().toLowerCase();
+    const q = String(query.q || '')
+      .trim()
+      .toLowerCase();
     const client = String(query.client || '').trim();
     const reportSearch = String(query.report || '').trim();
 
@@ -146,10 +150,35 @@ export class SystemAdminDashboardService {
 
     if (q) {
       and.push({
-        searchableText: {
-          contains: q,
-          mode: 'insensitive',
-        },
+        OR: [
+          { searchableText: { contains: q, mode: 'insensitive' } },
+
+          // direct dashboard columns
+          { typeOfTest: { contains: q, mode: 'insensitive' } },
+          { sampleType: { contains: q, mode: 'insensitive' } },
+          { formulaNo: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { lotNo: { contains: q, mode: 'insensitive' } },
+          { client: { contains: q, mode: 'insensitive' } },
+          { clientCode: { contains: q, mode: 'insensitive' } },
+          { formNumber: { contains: q, mode: 'insensitive' } },
+          { reportNumber: { contains: q, mode: 'insensitive' } },
+
+          // chemistry fields
+          { sampleDescription: { contains: q, mode: 'insensitive' } },
+          { lotBatchNo: { contains: q, mode: 'insensitive' } },
+          { formulaId: { contains: q, mode: 'insensitive' } },
+          { sampleSize: { contains: q, mode: 'insensitive' } },
+          { numberOfActives: { contains: q, mode: 'insensitive' } },
+          { selectedActivesText: { contains: q, mode: 'insensitive' } },
+
+          // extra searchable fields
+          { comments: { contains: q, mode: 'insensitive' } },
+          { idNo: { contains: q, mode: 'insensitive' } },
+          { testedBy: { contains: q, mode: 'insensitive' } },
+          { reviewedBy: { contains: q, mode: 'insensitive' } },
+          { status: { contains: q, mode: 'insensitive' } },
+        ],
       });
     }
 
@@ -249,7 +278,9 @@ export class SystemAdminDashboardService {
     const safeSkip = (safePage - 1) * perPage;
 
     return {
-      rows: filteredRows.slice(safeSkip, safeSkip + perPage).map(mapDashboardRow),
+      rows: filteredRows
+        .slice(safeSkip, safeSkip + perPage)
+        .map(mapDashboardRow),
       total,
       page: safePage,
       perPage,
