@@ -991,43 +991,112 @@ model DashboardReport {
   sourceType String // MICRO_REPORT or CHEMISTRY_REPORT
   sourceId   String // Report.id or ChemistryReport.id
 
-  // Dashboard common fields
+  // Root report fields
   formType     FormType
   formNumber   String?
   reportNumber String?
-  client       String?
+  prefix       String?
   clientCode   String?
   status       String
   version      Int      @default(1)
 
-  // Important dates
-  dateSent     DateTime?
-  dateTested   DateTime?
-  dateReceived DateTime?
-  createdAt    DateTime
-  updatedAt    DateTime
+  sourceLockedAt  DateTime?
+  sourceCreatedBy String?
+  sourceUpdatedBy String?
 
-  // Extra dashboard/search fields
-  typeOfTest        String?
-  sampleType        String?
-  formulaNo         String?
-  description       String?
-  lotNo             String?
-  manufactureDate   DateTime?
+  reportNumberAssignedAt DateTime?
+  reportNumberAssignedBy String?
+
+  workflowReturnStatus    String?
+  workflowRequestKind     String?
+  workflowRequestedByRole UserRole?
+  workflowRequestedAt     DateTime?
+
+  // Root important dates
+  createdAt DateTime
+  updatedAt DateTime
+
+  // Detail common fields
+  client          String?
+  dateSent        DateTime?
+  dateTested      DateTime?
+  dateReceived    DateTime?
+  manufactureDate DateTime?
+
+  typeOfTest  String?
+  sampleType  String?
+  formulaNo   String?
+  description String?
+  lotNo       String?
+  comments    String?
+
+  testedBy     String?
+  testedDate   DateTime?
+  reviewedBy   String?
+  reviewedDate DateTime?
+
+  detailStatus    String?
+  detailLockedAt  DateTime?
+  detailCreatedBy String?
+  detailUpdatedBy String?
+  detailCreatedAt DateTime?
+  detailUpdatedAt DateTime?
+
+  corrections Json?
+
+  footerRevNo         String?
+  footerDateEffective DateTime?
+
+  // MicroMix + MicroMixWater fields
+  testSopNo              String?
+  preliminaryResults     String?
+  preliminaryResultsDate DateTime?
+  dateCompleted          DateTime?
+
+  tbc_dilution String?
+  tbc_gram     String?
+  tbc_result   String?
+  tbc_spec     String?
+
+  tmy_dilution String?
+  tmy_gram     String?
+  tmy_result   String?
+  tmy_spec     String?
+
+  pathogens Json?
+
+  // MicroMixWater-only fields
+  idNo         String?
+  samplingDate DateTime?
+
+  // Sterility fields
+  volumeTested     String?
+  ftm_turbidity    String?
+  scdb_turbidity   String?
+  ftm_observation  String?
+  scdb_observation String?
+  ftm_result       String?
+  scdb_result      String?
+
+  // ChemistryMix + COA common fields
   sampleDescription String?
   lotBatchNo        String?
   formulaId         String?
   sampleSize        String?
   numberOfActives   String?
-  comments          String?
-  idNo              String?
-  samplingDate      DateTime?
-  testedBy          String?
-  reviewedBy        String?
+  stabilityNote     String?
 
-  actives Json?
+  sampleCollected Json?
+  sampleTypes     Json?
+  testTypes       Json?
+  actives         Json?
   selectedActivesText String?
 
+  // COA-only fields
+  coaVerification Boolean?
+  coaRows         Json?
+
+  // Dashboard/search
   searchableText String?
 
   @@unique([sourceType, sourceId])
@@ -1043,6 +1112,11 @@ model DashboardReport {
   @@index([dateSent])
   @@index([dateTested])
   @@index([dateReceived])
+  @@index([dateCompleted])
+  @@index([testedDate])
+  @@index([reviewedDate])
+  @@index([manufactureDate])
+  @@index([samplingDate])
   @@index([createdAt])
   @@index([updatedAt])
 
