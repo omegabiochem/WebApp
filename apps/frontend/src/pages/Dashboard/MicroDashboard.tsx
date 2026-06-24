@@ -13,10 +13,7 @@ import { api } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
-import {
-  formatDate,
-  type DatePreset,
-} from "../../utils/dashboardsSharedTypes";
+import { formatDate, type DatePreset } from "../../utils/dashboardsSharedTypes";
 
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
@@ -263,7 +260,7 @@ const defaultViewPane = (): ViewPane => "REPORT";
 function BulkPrintArea({
   reports,
   onAfterPrint,
-  printPane ,
+  printPane,
 }: {
   reports: Report[];
   onAfterPrint: () => void;
@@ -377,8 +374,6 @@ const DEFAULT_MICRO_FILTERS = {
   toDate: "",
 };
 
-
-
 // -----------------------------
 // Component
 // -----------------------------
@@ -394,13 +389,11 @@ export default function MicroDashboard() {
     "micro";
   const [reports, setReports] = useState<Report[]>([]);
 
-  
   const [loading, setLoading] = useState<boolean>(true);
 
   const [serverTotal, setServerTotal] = useState(0);
-const [serverTotalPages, setServerTotalPages] = useState(1);
-const [refreshKey, setRefreshKey] = useState(0);
-
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -595,11 +588,11 @@ const [refreshKey, setRefreshKey] = useState(0);
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-const togglePin = (id: string) => {
-  setPinnedIds((prev) =>
-    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
-  );
-};
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+    );
+  };
 
   useEffect(() => {
     if (!colOpen) return;
@@ -716,6 +709,9 @@ const togglePin = (id: string) => {
   // );
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
@@ -754,187 +750,192 @@ const togglePin = (id: string) => {
     null,
   );
   const workspaceReports = useMemo(() => {
-    return workspaceIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
-  }, [workspaceIds, reports]);
+    const map = new Map<string, Report>();
+
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+    reports.forEach((r) => map.set(r.id, r));
+
+    return workspaceIds.map((id) => map.get(id)).filter(Boolean) as Report[];
+  }, [workspaceIds, reports, selectedReportsById]);
 
   const fetchMicroDashboardReports = async () => {
-  const params = new URLSearchParams();
+    const params = new URLSearchParams();
 
-  params.set("page", String(page));
-  params.set("perPage", String(perPage));
+    params.set("page", String(page));
+    params.set("perPage", String(perPage));
 
-  params.set("form", formFilter);
-  params.set("status", String(statusFilter));
+    params.set("form", formFilter);
+    params.set("status", String(statusFilter));
 
-  params.set("sortBy", sortBy);
-  params.set("sortDir", sortDir);
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
 
-  const dateField =
-    sortBy === "dateTested"
-      ? "dateTested"
-      : sortBy === "createdAt"
-        ? "createdAt"
-        : sortBy === "updatedAt"
-          ? "updatedAt"
-          : "dateSent";
+    const dateField =
+      sortBy === "dateTested"
+        ? "dateTested"
+        : sortBy === "createdAt"
+          ? "createdAt"
+          : sortBy === "updatedAt"
+            ? "updatedAt"
+            : "dateSent";
 
-  params.set("dateField", dateField);
-  params.set("rangeType", numberRangeType);
+    params.set("dateField", dateField);
+    params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
-  if (searchClient.trim()) params.set("client", searchClient.trim());
-  if (searchReport.trim()) params.set("report", searchReport.trim());
-  if (searchText.trim()) params.set("q", searchText.trim());
+    if (searchClient.trim()) params.set("client", searchClient.trim());
+    if (searchReport.trim()) params.set("report", searchReport.trim());
+    if (searchText.trim()) params.set("q", searchText.trim());
 
-  const dateRange = getPresetRange(datePreset, fromDate, toDate);
+    const dateRange = getPresetRange(datePreset, fromDate, toDate);
 
-  if (dateRange.from) params.set("from", dateRange.from);
-  if (dateRange.to) params.set("to", dateRange.to);
+    if (dateRange.from) params.set("from", dateRange.from);
+    if (dateRange.to) params.set("to", dateRange.to);
 
-  if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-  if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
+    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
 
-  if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-  if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
+    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
 
-  return api<{
-    rows: Report[];
-    total: number;
-    page: number;
-    perPage: number;
-    totalPages: number;
-  }>(`/micro-dashboard/reports?${params.toString()}`);
-};
+    return api<{
+      rows: Report[];
+      total: number;
+      page: number;
+      perPage: number;
+      totalPages: number;
+    }>(`/micro-dashboard/reports?${params.toString()}`);
+  };
 
+  useEffect(() => {
+    let abort = false;
 
-useEffect(() => {
-  let abort = false;
+    async function loadMicroDashboardReports() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  async function loadMicroDashboardReports() {
-    try {
-      setLoading(true);
-      setError(null);
+        const res = await fetchMicroDashboardReports();
 
-      const res = await fetchMicroDashboardReports();
+        if (abort) return;
 
-      if (abort) return;
-
-      setReports(res.rows);
-      setServerTotal(res.total);
-      setServerTotalPages(res.totalPages);
-    } catch (e: any) {
-      if (!abort) setError(e?.message ?? "Failed to fetch micro dashboard");
-    } finally {
-      if (!abort) {
-        setLoading(false);
-        setRefreshing(false);
+        setReports(res.rows);
+        setServerTotal(res.total);
+        setServerTotalPages(res.totalPages);
+      } catch (e: any) {
+        if (!abort) setError(e?.message ?? "Failed to fetch micro dashboard");
+      } finally {
+        if (!abort) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     }
+
+    loadMicroDashboardReports();
+
+    return () => {
+      abort = true;
+    };
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    datePreset,
+    fromDate,
+    toDate,
+    refreshKey,
+    pinnedIds,
+  ]);
+
+  function toDateOnlyLocal(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   }
 
-  loadMicroDashboardReports();
+  function getPresetRange(
+    preset: DatePreset,
+    customFrom: string,
+    customTo: string,
+  ) {
+    const now = new Date();
 
-  return () => {
-    abort = true;
-  };
-}, [
-  page,
-  perPage,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  sortBy,
-  sortDir,
-  datePreset,
-  fromDate,
-  toDate,
-  refreshKey,
-]);
+    const range = (from: Date, to: Date) => ({
+      from: toDateOnlyLocal(from),
+      to: toDateOnlyLocal(to),
+    });
 
-  
-function toDateOnlyLocal(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+    switch (preset) {
+      case "ALL":
+        return { from: "", to: "" };
 
-function getPresetRange(
-  preset: DatePreset,
-  customFrom: string,
-  customTo: string,
-) {
-  const now = new Date();
+      case "CUSTOM":
+        return { from: customFrom, to: customTo };
 
-  const range = (from: Date, to: Date) => ({
-    from: toDateOnlyLocal(from),
-    to: toDateOnlyLocal(to),
-  });
+      case "TODAY":
+        return range(now, now);
 
-  switch (preset) {
-    case "ALL":
-      return { from: "", to: "" };
+      case "YESTERDAY": {
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        return range(y, y);
+      }
 
-    case "CUSTOM":
-      return { from: customFrom, to: customTo };
+      case "LAST_7_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 6);
+        return range(from, now);
+      }
 
-    case "TODAY":
-      return range(now, now);
+      case "LAST_30_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 29);
+        return range(from, now);
+      }
 
-    case "YESTERDAY": {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      return range(y, y);
+      case "THIS_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        return range(from, to);
+      }
+
+      case "LAST_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const to = new Date(now.getFullYear(), now.getMonth(), 0);
+        return range(from, to);
+      }
+
+      case "THIS_YEAR": {
+        const from = new Date(now.getFullYear(), 0, 1);
+        const to = new Date(now.getFullYear(), 11, 31);
+        return range(from, to);
+      }
+
+      case "LAST_YEAR": {
+        const from = new Date(now.getFullYear() - 1, 0, 1);
+        const to = new Date(now.getFullYear() - 1, 11, 31);
+        return range(from, to);
+      }
+
+      default:
+        return { from: "", to: "" };
     }
-
-    case "LAST_7_DAYS": {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 6);
-      return range(from, now);
-    }
-
-    case "LAST_30_DAYS": {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 29);
-      return range(from, now);
-    }
-
-    case "THIS_MONTH": {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return range(from, to);
-    }
-
-    case "LAST_MONTH": {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      return range(from, to);
-    }
-
-    case "THIS_YEAR": {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      return range(from, to);
-    }
-
-    case "LAST_YEAR": {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      return range(from, to);
-    }
-
-    default:
-      return { from: "", to: "" };
   }
-}
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
   >([]);
@@ -976,101 +977,97 @@ function getPresetRange(
     return MICRO_ONLY_STATUSES;
   }, [formFilter]);
 
-
   useEffect(() => {
     if (!statusOptions.includes(statusFilter as any)) {
       setStatusFilter("ALL");
     }
   }, [statusOptions, statusFilter]);
 
-
-
   // pagination
-const displayRows = useMemo(() => {
-  return [...reports].sort((a, b) => {
-    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  const displayRows = useMemo(() => {
+    return [...reports].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-    if (aPinned !== bPinned) {
-      return bPinned - aPinned;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
+
+      return 0;
+    });
+  }, [reports, pinnedIds]);
+
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
+
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const el = rowRefs.current[r.id];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[r.id];
+
+      nextPositions[r.id] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
     }
 
-    return 0;
-  });
-}, [reports, pinnedIds]);
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
 
-const total = serverTotal;
-const totalPages = serverTotalPages;
-const pageClamped = Math.min(page, totalPages);
-const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
-const end = start + displayRows.length;
-const pageRows = displayRows;
-
-React.useLayoutEffect(() => {
-  if (loading) return;
-
-  const nextPositions: Record<string, DOMRect> = {};
-
-  for (const r of pageRows) {
-    const el = rowRefs.current[r.id];
-
-    if (!el) continue;
-
-    const next = el.getBoundingClientRect();
-    const prev = prevPositions.current[r.id];
-
-    nextPositions[r.id] = next;
-
-    if (!prev) continue;
-
-    const dy = prev.top - next.top;
-
-    if (Math.abs(dy) < 1) continue;
-
-    el.style.transition = "none";
-    el.style.transform = `translateY(${dy}px)`;
-
-    requestAnimationFrame(() => {
-      el.style.transition = "transform 280ms ease";
-      el.style.transform = "translateY(0)";
-    });
-
-    const cleanup = () => {
-      el.style.transition = "";
-      el.style.transform = "";
-      el.removeEventListener("transitionend", cleanup);
-    };
-
-    el.addEventListener("transitionend", cleanup);
-  }
-
-  prevPositions.current = nextPositions;
-}, [pageRows, loading, selectedCols]);
-
-
-useEffect(() => {
-  rowRefs.current = {};
-  prevPositions.current = {};
-}, [
-  page,
-  perPage,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  datePreset,
-  fromDate,
-  toDate,
-  sortBy,
-  sortDir,
-  refreshKey,
-]);
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    datePreset,
+    fromDate,
+    toDate,
+    sortBy,
+    sortDir,
+    refreshKey,
+  ]);
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1301,11 +1298,30 @@ useEffect(() => {
   // }
 
   // selection
+  // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
+
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
   };
 
   const allOnPageSelected =
@@ -1316,14 +1332,46 @@ useEffect(() => {
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(r.id));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+        return next;
+      });
     }
   };
+
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [reports, selectedIds]);
 
   const handlePrintSelected = () => {
     if (printingBulk) return; // 🚫 prevent double
@@ -1350,7 +1398,7 @@ useEffect(() => {
   };
 
   const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
+    .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
   const selected = selectedReportObjects;
@@ -1504,7 +1552,6 @@ useEffect(() => {
     selectedReport.formType !== "STERILITY" &&
     (selectedReport.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
       selectedReport.status === "PRELIMINARY_APPROVED");
- 
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -1523,7 +1570,8 @@ useEffect(() => {
       perPage !== 10 ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1542,6 +1590,7 @@ useEffect(() => {
     datePreset,
     fromDate,
     toDate,
+    selectedIds,
   ]);
 
   const clearAllFilters = () => {
@@ -1563,6 +1612,9 @@ useEffect(() => {
     setFromDate(DEFAULT_MICRO_FILTERS.fromDate);
     setToDate(DEFAULT_MICRO_FILTERS.toDate);
 
+    setSelectedIds([]);
+    setSelectedReportsById({});
+
     try {
       localStorage.setItem(
         FILTER_STORAGE_KEY,
@@ -1572,7 +1624,6 @@ useEffect(() => {
       // ignore
     }
   };
-
 
   async function applyBulkStatusChange(toStatus: string) {
     setBulkUpdating(true);
@@ -1620,6 +1671,7 @@ useEffect(() => {
       });
 
       setSelectedIds([]);
+      setSelectedReportsById({});
     } finally {
       setBulkUpdating(false);
     }
@@ -1677,6 +1729,7 @@ useEffect(() => {
 
   useEffect(() => {
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
     page,
     formFilter,
@@ -1696,9 +1749,7 @@ useEffect(() => {
   ]);
 
   function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return [clicked];
 
@@ -1749,36 +1800,33 @@ useEffect(() => {
     setWorkspaceOpen(true);
   }
 
-
   function handleWorkspaceReportChanged(updated: any) {
-  if (!updated?.id) return;
+    if (!updated?.id) return;
 
-  setReports((prev) =>
-    prev.map((r) =>
-      r.id === updated.id
-        ? {
-            ...r,
-            ...updated,
-            status: updated.status ?? r.status,
-            reportNumber: updated.reportNumber ?? r.reportNumber,
-            version:
-              typeof updated.version === "number"
-                ? updated.version
-                : (r.version ?? 0) + 1,
-          }
-        : r,
-    ),
-  );
-}
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
+  }
 
   if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -1937,9 +1985,7 @@ useEffect(() => {
                   ? selectedReportObjects
                   : [singlePrintJob?.report!]
               }
-               printPane={
-                isBulkPrinting ? undefined : singlePrintJob!.pane
-              }
+              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
               onAfterPrint={() => {
                 if (isBulkPrinting) setIsBulkPrinting(false);
                 if (singlePrintJob) setSinglePrintJob(null);
@@ -2076,11 +2122,11 @@ useEffect(() => {
 
           <button
             type="button"
-         onClick={() => {
-  if (refreshing) return;
-  setRefreshing(true);
-  setRefreshKey((x) => x + 1);
-}}
+            onClick={() => {
+              if (refreshing) return;
+              setRefreshing(true);
+              setRefreshKey((x) => x + 1);
+            }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60"
           >
@@ -2536,7 +2582,7 @@ useEffect(() => {
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
+                            onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
                         </td>
@@ -2971,7 +3017,7 @@ useEffect(() => {
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
-         onReportChanged={handleWorkspaceReportChanged}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );

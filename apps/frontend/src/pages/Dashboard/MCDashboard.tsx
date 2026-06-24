@@ -901,7 +901,10 @@ export default function MCDashboard() {
   const [page, setPage] = useState(initialFilters.page);
 
   // Selection + print
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+const [selectedIds, setSelectedIds] = useState<string[]>([]);
+const [selectedReportsById, setSelectedReportsById] = useState<
+  Record<string, UnifiedRow>
+>({});
 
   const PIN_STORAGE_KEY = userKey ? `mcDashboardPinned:user:${userKey}` : null;
 
@@ -1002,14 +1005,21 @@ export default function MCDashboard() {
 
   const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
 
-  const workspaceReports = useMemo(() => {
-    const map = new Map<string, UnifiedRow>();
-    unified.forEach((r) => map.set(rowKey(r), r));
+const workspaceReports = useMemo(() => {
+  const map = new Map<string, UnifiedRow>();
 
-    return workspaceIds
-      .map((id) => map.get(id))
-      .filter(Boolean) as UnifiedRow[];
-  }, [workspaceIds, unified]);
+  Object.entries(selectedReportsById).forEach(([key, r]) => {
+    map.set(key, r);
+  });
+
+  unified.forEach((r) => {
+    map.set(rowKey(r), r);
+  });
+
+  return workspaceIds
+    .map((id) => map.get(id))
+    .filter(Boolean) as UnifiedRow[];
+}, [workspaceIds, unified, selectedReportsById]);
 
   // -----------------------------
   // Fetch both queues
@@ -1123,6 +1133,9 @@ export default function MCDashboard() {
     params.set("dateField", dateField);
 
     params.set("rangeType", numberRangeType);
+if (pinnedIds.length) {
+  params.set("pinnedIds", pinnedIds.join(","));
+}
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1211,6 +1224,7 @@ export default function MCDashboard() {
     sortBy,
     sortDir,
     refreshKey,
+    pinnedIds
   ]);
 
   const statusOptions = useMemo(() => {
@@ -1461,31 +1475,32 @@ export default function MCDashboard() {
     sortDir,
   ]);
 
-  useEffect(() => {
-    setPage(1);
-    setSelectedIds([]);
-  }, [
-    category,
-    allTypeFilter,
-    microFormFilter,
-    chemFormFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    search,
-    perPage,
-    datePreset,
-    fromDate,
-    toDate,
-    activeFilter,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    sortBy,
-    sortDir,
-  ]);
+ useEffect(() => {
+  // setPage(1);
+  setSelectedIds([]);
+  setSelectedReportsById({});
+}, [
+  category,
+  allTypeFilter,
+  microFormFilter,
+  chemFormFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  search,
+  perPage,
+  datePreset,
+  fromDate,
+  toDate,
+  activeFilter,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  sortBy,
+  sortDir,
+]);
 
   useEffect(() => {
     const next = getInitialMCFilters(searchParams, FILTER_STORAGE_KEY);
@@ -1742,39 +1757,104 @@ export default function MCDashboard() {
   // Selection
   // -----------------------------
 
-  const isRowSelected = (r: UnifiedRow) => selectedIds.includes(rowKey(r));
+const isRowSelected = (r: UnifiedRow) => selectedIds.includes(rowKey(r));
 
-  const toggleRow = (r: UnifiedRow) => {
-    const key = rowKey(r);
-    setSelectedIds((prev) =>
-      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
-    );
-  };
+const toggleRow = (r: UnifiedRow) => {
+  const key = rowKey(r);
 
-  const allOnPageSelected =
-    pageRows.length > 0 &&
-    pageRows.every((r) => selectedIds.includes(rowKey(r)));
+  setSelectedIds((prev) => {
+    const alreadySelected = prev.includes(key);
 
-  const toggleSelectPage = () => {
-    if (allOnPageSelected) {
-      setSelectedIds((prev) =>
-        prev.filter((id) => !pageRows.some((r) => rowKey(r) === id)),
-      );
-    } else {
-      setSelectedIds((prev) => {
-        const set = new Set(prev);
-        pageRows.forEach((r) => set.add(rowKey(r)));
-        return Array.from(set);
+    if (alreadySelected) {
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        delete next[key];
+        return next;
       });
-    }
-  };
 
-  const selectedReportObjects: UnifiedRow[] = useMemo(() => {
-    const map = new Map<string, UnifiedRow>();
-    unified.forEach((r) => map.set(rowKey(r), r));
-    return selectedIds.map((id) => map.get(id)).filter(Boolean) as UnifiedRow[];
-  }, [selectedIds, unified]);
-  const selected = selectedReportObjects;
+      return prev.filter((x) => x !== key);
+    }
+
+    setSelectedReportsById((old) => ({
+      ...old,
+      [key]: r,
+    }));
+
+    return [...prev, key];
+  });
+};
+
+const allOnPageSelected =
+  pageRows.length > 0 &&
+  pageRows.every((r) => selectedIds.includes(rowKey(r)));
+
+const toggleSelectPage = () => {
+  if (allOnPageSelected) {
+    setSelectedIds((prev) =>
+      prev.filter((id) => !pageRows.some((r) => rowKey(r) === id)),
+    );
+
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+
+      pageRows.forEach((r) => {
+        delete next[rowKey(r)];
+      });
+
+      return next;
+    });
+  } else {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      pageRows.forEach((r) => set.add(rowKey(r)));
+      return Array.from(set);
+    });
+
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+
+      pageRows.forEach((r) => {
+        next[rowKey(r)] = r;
+      });
+
+      return next;
+    });
+  }
+};
+
+useEffect(() => {
+  if (!selectedIds.length) return;
+
+  setSelectedReportsById((prev) => {
+    const next = { ...prev };
+
+    unified.forEach((r) => {
+      const key = rowKey(r);
+
+      if (selectedIds.includes(key)) {
+        next[key] = r;
+      }
+    });
+
+    return next;
+  });
+}, [unified, selectedIds]);
+
+const selectedReportObjects: UnifiedRow[] = useMemo(() => {
+  const map = new Map<string, UnifiedRow>();
+
+  Object.entries(selectedReportsById).forEach(([key, r]) => {
+    map.set(key, r);
+  });
+
+  unified.forEach((r) => {
+    map.set(rowKey(r), r);
+  });
+
+  return selectedIds.map((id) => map.get(id)).filter(Boolean) as UnifiedRow[];
+}, [selectedIds, unified, selectedReportsById]);
+
+const selected = selectedReportObjects;
 
   const selectedSameGroupAndStatus = useMemo(() => {
     if (!selected.length) return false;
@@ -1981,7 +2061,8 @@ export default function MCDashboard() {
       formNoFrom !== "" ||
       formNoTo !== "" ||
       reportNoFrom !== "" ||
-      reportNoTo !== ""
+      reportNoTo !== "" ||
+      selectedIds.length > 0
     );
   }, [
     category,
@@ -2004,6 +2085,7 @@ export default function MCDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    selectedIds,
   ]);
 
   const clearAllFilters = () => {
@@ -2033,6 +2115,9 @@ export default function MCDashboard() {
 
     setActiveFilter("ALL");
     setPage(1);
+
+      setSelectedIds([]);
+  setSelectedReportsById({});
   };
 
   function canUpdateUnified(r: UnifiedRow, user?: any) {
@@ -2115,6 +2200,7 @@ export default function MCDashboard() {
       });
 
       setSelectedIds([]);
+      setSelectedReportsById({});
     } finally {
       setBulkUpdating(false);
     }
@@ -2339,10 +2425,8 @@ export default function MCDashboard() {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
-  function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => unified.find((r) => rowKey(r) === id))
-      .filter(Boolean) as UnifiedRow[];
+function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
+  const selected = selectedReportObjects;
 
     if (!selected.length) return;
 

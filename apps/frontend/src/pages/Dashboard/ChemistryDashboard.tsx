@@ -484,6 +484,9 @@ export default function ChemistryDashboard() {
   // );
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
 
   const PIN_STORAGE_KEY = userKey
     ? `chemistryDashboardPinned:user:${userKey}`
@@ -492,8 +495,8 @@ export default function ChemistryDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-const prevPositions = React.useRef<Record<string, DOMRect>>({});
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
   const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -617,11 +620,11 @@ const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-const togglePin = (id: string) => {
-  setPinnedIds((prev) =>
-    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
-  );
-};
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+    );
+  };
 
   useEffect(() => {
     if (!colOpen) return;
@@ -704,10 +707,13 @@ const togglePin = (id: string) => {
   );
 
   const workspaceReports = useMemo(() => {
-    return workspaceIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
-  }, [workspaceIds, reports]);
+    const map = new Map<string, Report>();
+
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+    reports.forEach((r) => map.set(r.id, r));
+
+    return workspaceIds.map((id) => map.get(id)).filter(Boolean) as Report[];
+  }, [workspaceIds, reports, selectedReportsById]);
 
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
@@ -778,6 +784,9 @@ const togglePin = (id: string) => {
     params.set("dateField", sortBy === "reportNumber" ? "dateSent" : sortBy);
     params.set("sort", sortDir);
     params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -862,97 +871,96 @@ const togglePin = (id: string) => {
     sortDir,
     activeFilter,
     refreshKey,
+    pinnedIds,
   ]);
 
   const statusOptions = useMemo(() => CHEMISTRY_STATUSES, []);
 
-const displayRows = useMemo(() => {
-  return [...reports].sort((a, b) => {
-    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  const displayRows = useMemo(() => {
+    return [...reports].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-    if (aPinned !== bPinned) {
-      return bPinned - aPinned;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
+
+      return 0;
+    });
+  }, [reports, pinnedIds]);
+
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
+
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const el = rowRefs.current[r.id];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[r.id];
+
+      nextPositions[r.id] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
     }
 
-    return 0;
-  });
-}, [reports, pinnedIds]);
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
 
-const total = serverTotal;
-const totalPages = serverTotalPages;
-const pageClamped = Math.min(page, totalPages);
-const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
-const end = start + displayRows.length;
-const pageRows = displayRows;
-
-
-React.useLayoutEffect(() => {
-  if (loading) return;
-
-  const nextPositions: Record<string, DOMRect> = {};
-
-  for (const r of pageRows) {
-    const el = rowRefs.current[r.id];
-
-    if (!el) continue;
-
-    const next = el.getBoundingClientRect();
-    const prev = prevPositions.current[r.id];
-
-    nextPositions[r.id] = next;
-
-    if (!prev) continue;
-
-    const dy = prev.top - next.top;
-
-    if (Math.abs(dy) < 1) continue;
-
-    el.style.transition = "none";
-    el.style.transform = `translateY(${dy}px)`;
-
-    requestAnimationFrame(() => {
-      el.style.transition = "transform 280ms ease";
-      el.style.transform = "translateY(0)";
-    });
-
-    const cleanup = () => {
-      el.style.transition = "";
-      el.style.transform = "";
-      el.removeEventListener("transitionend", cleanup);
-    };
-
-    el.addEventListener("transitionend", cleanup);
-  }
-
-  prevPositions.current = nextPositions;
-}, [pageRows, loading, selectedCols]);
-
-
-useEffect(() => {
-  rowRefs.current = {};
-  prevPositions.current = {};
-}, [
-  page,
-  perPage,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  datePreset,
-  fromDate,
-  toDate,
-  sortBy,
-  sortDir,
-  activeFilter,
-  refreshKey,
-]);
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    datePreset,
+    fromDate,
+    toDate,
+    sortBy,
+    sortDir,
+    activeFilter,
+    refreshKey,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -978,8 +986,8 @@ useEffect(() => {
 
   useEffect(() => {
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
-    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -1208,21 +1216,30 @@ useEffect(() => {
     );
   }
 
-  // function goToReportEditor(r: Report) {
-  //   const slug = formTypeToSlug[r.formType] || "chemistry-mix";
-  //   const returnTo = location.pathname + location.search;
-
-  //   navigate(
-  //     `/chemistry-reports/${slug}/${r.id}?returnTo=${encodeURIComponent(returnTo)}`,
-  //   );
-  // }
-
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
+
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
   };
 
   const allOnPageSelected =
@@ -1233,14 +1250,50 @@ useEffect(() => {
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(r.id));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+
+        return next;
+      });
     }
   };
+
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [reports, selectedIds]);
   const handlePrintSelected = () => {
     if (printingBulk) return; // 🚫 prevent double
     if (!selectedIds.length) return;
@@ -1266,7 +1319,7 @@ useEffect(() => {
   };
 
   const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
+    .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
   async function autoAdvanceAndOpen(r: Report, actor: string) {
@@ -1431,7 +1484,8 @@ useEffect(() => {
       activeFilter !== "ALL" ||
       datePreset !== "ALL" ||
       fromDate !== "" ||
-      toDate !== ""
+      toDate !== "" ||
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1451,6 +1505,7 @@ useEffect(() => {
     datePreset,
     fromDate,
     toDate,
+    selectedIds,
   ]);
 
   useEffect(() => {
@@ -1522,6 +1577,10 @@ useEffect(() => {
     setDatePreset(DEFAULT_CHEM_FILTERS.datePreset);
     setFromDate(DEFAULT_CHEM_FILTERS.fromDate);
     setToDate(DEFAULT_CHEM_FILTERS.toDate);
+
+    setSelectedIds([]);
+    setSelectedReportsById({});
+    setBulkMenuOpen(false);
 
     try {
       localStorage.setItem(
@@ -1736,9 +1795,7 @@ useEffect(() => {
   }, []);
 
   function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return [clicked];
 
@@ -1813,9 +1870,7 @@ useEffect(() => {
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -2068,6 +2123,7 @@ useEffect(() => {
                           });
 
                           setSelectedIds([]);
+                          setSelectedReportsById({});
                         } catch (e: any) {
                           alert(e?.message || "Bulk update failed");
                         } finally {
@@ -2606,7 +2662,7 @@ useEffect(() => {
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
+                            onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
                         </td>

@@ -683,7 +683,10 @@ export default function QaDashboard() {
   // -----------------------------
   // Selection + Printing (QA)
   // -----------------------------
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+const [selectedIds, setSelectedIds] = useState<string[]>([]);
+const [selectedReportsById, setSelectedReportsById] = useState<
+  Record<string, Report>
+>({});
 
   const PIN_STORAGE_KEY = userKey ? `qaDashboardPinned:user:${userKey}` : null;
 
@@ -708,13 +711,30 @@ export default function QaDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
-  const isRowSelected = (id: string) => selectedIds.includes(id);
+const isRowSelected = (id: string) => selectedIds.includes(id);
 
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+const toggleRow = (report: Report) => {
+  setSelectedIds((prev) => {
+    const alreadySelected = prev.includes(report.id);
+
+    if (alreadySelected) {
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        delete next[report.id];
+        return next;
+      });
+
+      return prev.filter((x) => x !== report.id);
+    }
+
+    setSelectedReportsById((old) => ({
+      ...old,
+      [report.id]: report,
+    }));
+
+    return [...prev, report.id];
+  });
+};
 
   type StatusActionModalState = {
     open: boolean;
@@ -747,20 +767,22 @@ export default function QaDashboard() {
     null,
   );
 
-  const workspaceReports = useMemo(() => {
-    const map = new Map<string, Report>();
-    reports.forEach((r) => map.set(r.id, r));
+const workspaceReports = useMemo(() => {
+  const map = new Map<string, Report>();
 
-    return workspaceIds
-      .map((id) => map.get(id))
-      .filter(Boolean)
-      .map((r) => ({
-        ...r!,
-        formNumber: r!.formNumber ?? "",
-        reportNumber:
-          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
-      }));
-  }, [workspaceIds, reports]);
+  Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+  reports.forEach((r) => map.set(r.id, r));
+
+  return workspaceIds
+    .map((id) => map.get(id))
+    .filter(Boolean)
+    .map((r) => ({
+      ...r!,
+      formNumber: r!.formNumber ?? "",
+      reportNumber:
+        r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+    }));
+}, [workspaceIds, reports, selectedReportsById]);
 
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
@@ -947,6 +969,9 @@ export default function QaDashboard() {
     params.set("sort", sortOrder);
 
     params.set("rangeType", numberRangeType);
+if (pinnedIds.length) {
+  params.set("pinnedIds", pinnedIds.join(","));
+}
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1021,6 +1046,7 @@ export default function QaDashboard() {
     dateField,
     sortOrder,
     refreshKey,
+    pinnedIds
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1252,26 +1278,58 @@ export default function QaDashboard() {
     return () => window.clearTimeout(tid);
   }, [statusFilter, statusOptions, searchParams]);
 
-  const allOnPageSelectedNow =
-    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+const allOnPageSelectedNow =
+  pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
 
-  const toggleSelectPage = () => {
-    if (allOnPageSelectedNow) {
-      setSelectedIds((prev) =>
-        prev.filter((id) => !pageRows.some((r) => r.id === id)),
-      );
-    } else {
-      setSelectedIds((prev) => {
-        const set = new Set(prev);
-        pageRows.forEach((r) => set.add(r.id));
-        return Array.from(set);
+const toggleSelectPage = () => {
+  if (allOnPageSelectedNow) {
+    setSelectedIds((prev) =>
+      prev.filter((id) => !pageRows.some((r) => r.id === id)),
+    );
+
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+      pageRows.forEach((r) => {
+        delete next[r.id];
       });
-    }
-  };
+      return next;
+    });
+  } else {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      pageRows.forEach((r) => set.add(r.id));
+      return Array.from(set);
+    });
 
-  const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
-    .filter(Boolean) as Report[];
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+      pageRows.forEach((r) => {
+        next[r.id] = r;
+      });
+      return next;
+    });
+  }
+};
+
+useEffect(() => {
+  if (!selectedIds.length) return;
+
+  setSelectedReportsById((prev) => {
+    const next = { ...prev };
+
+    reports.forEach((r) => {
+      if (selectedIds.includes(r.id)) {
+        next[r.id] = r;
+      }
+    });
+
+    return next;
+  });
+}, [reports, selectedIds]);
+
+const selectedReportObjects = selectedIds
+  .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
+  .filter(Boolean) as Report[];
 
   const handlePrintSelected = () => {
     if (printingBulk) return;
@@ -1294,24 +1352,25 @@ export default function QaDashboard() {
   };
 
   // clear selection when filters change (recommended)
-  useEffect(() => {
-    setSelectedIds([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    datePreset,
-    dateFrom,
-    dateTo,
-    perPage,
-    searchText,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-  ]);
+useEffect(() => {
+  setSelectedIds([]);
+  setSelectedReportsById({});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  datePreset,
+  dateFrom,
+  dateTo,
+  perPage,
+  searchText,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1445,7 +1504,8 @@ export default function QaDashboard() {
       perPage !== 10 ||
       numberRangeType !== "FORM" ||
       dateField !== DEFAULT_QA_FILTERS.dateField ||
-      sortOrder !== "desc"
+      sortOrder !== "desc",
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1464,6 +1524,7 @@ export default function QaDashboard() {
     numberRangeType,
     dateField,
     sortOrder,
+      selectedIds,
   ]);
 
   const clearFilters = () => {
@@ -1484,6 +1545,8 @@ export default function QaDashboard() {
     setNumberRangeType(DEFAULT_QA_FILTERS.numberRangeType);
     setDateField(DEFAULT_QA_FILTERS.dateField);
     setSortOrder("desc");
+    setSelectedIds([]);
+setSelectedReportsById({});
 
     try {
       localStorage.setItem(
@@ -1536,6 +1599,7 @@ export default function QaDashboard() {
 
     toast.success(`Voided ${voidableSelected.length} report(s)`);
     setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1616,7 +1680,8 @@ export default function QaDashboard() {
       setBulkReason("");
       setBulkESignPassword("");
       setBulkESignError("");
-      setSelectedIds([]);
+    setSelectedIds([]);
+setSelectedReportsById({});
     } catch (err: any) {
       const backendMsg =
         err?.message ||
@@ -1694,16 +1759,14 @@ export default function QaDashboard() {
     sortOrder,
   ]);
 
-  function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+function getTargetsForAction(clicked: Report): Report[] {
+  const selected = selectedReportObjects;
 
-    if (!selected.length) return [clicked];
+  if (!selected.length) return [clicked];
 
-    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-    return clickedInsideSelection ? selected : [clicked];
-  }
+  const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+  return clickedInsideSelection ? selected : [clicked];
+}
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
     if (r.formType === "STERILITY") {
@@ -1923,9 +1986,7 @@ export default function QaDashboard() {
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -2710,12 +2771,12 @@ export default function QaDashboard() {
 
                         {/* ✅ row checkbox */}
                         <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
-                            disabled={rowBusy}
-                          />
+                         <input
+  type="checkbox"
+  checked={isRowSelected(r.id)}
+  onChange={() => toggleRow(r)}
+  disabled={rowBusy}
+/>
                         </td>
 
                         {selectedCols.map((k) => (

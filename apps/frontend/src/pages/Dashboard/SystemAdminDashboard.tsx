@@ -589,7 +589,7 @@ export default function SystemAdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "systemadmin"}`;
+  const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "systemadmin"}`;
 
   function getInitialAdminFilters(
     searchParams: URLSearchParams,
@@ -753,6 +753,9 @@ const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "syste
   // Selection + Printing (Admin)
   // -----------------------------
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintJob, setSinglePrintJob] = useState<{
@@ -772,9 +775,9 @@ const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "syste
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-const PIN_STORAGE_KEY = userKey
-  ? `systemAdminDashboardPinned:user:${userKey}`
-  : null;
+  const PIN_STORAGE_KEY = userKey
+    ? `systemAdminDashboardPinned:user:${userKey}`
+    : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
@@ -801,7 +804,7 @@ const PIN_STORAGE_KEY = userKey
     (user as any)?.uid ||
     "qa";
 
-const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
+  const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
 
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [showVoidPassword, setShowVoidPassword] = useState(false);
@@ -956,6 +959,9 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     params.set("dateField", dateField);
     params.set("sort", sortOrder);
     params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1035,6 +1041,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     dateField,
     sortOrder,
     refreshKey,
+    pinnedIds,
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1341,10 +1348,27 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
   // -----------------------------
   const isRowSelected = (id: string) => selectedIds.includes(id);
 
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
+
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
   };
 
   const allOnPageSelected =
@@ -1355,17 +1379,49 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(r.id));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+        return next;
+      });
     }
   };
 
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [reports, selectedIds]);
+
   const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
+    .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
   const handlePrintSelected = () => {
@@ -1388,30 +1444,10 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     setIsBulkPrinting(true);
   };
 
-  // optional: clear selection when filters change (avoids printing hidden rows)
-  // useEffect(() => {
-  //   setSelectedIds([]);
-  // }, [
-  //   formFilter,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   searchText,
-  //   datePreset,
-  //   dateFrom,
-  //   dateTo,
-  //   numberRangeType,
-  //   formNoFrom,
-  //   formNoTo,
-  //   reportNoFrom,
-  //   reportNoTo,
-  //   perPage,
-  // ]);
-
   useEffect(() => {
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
-    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -1624,7 +1660,8 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       reportNoTo !== "" ||
       perPage !== 10 ||
       dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
-      sortOrder !== "desc"
+      sortOrder !== "desc" ||
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1643,6 +1680,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     perPage,
     dateField,
     sortOrder,
+    selectedIds,
   ]);
   const clearFilters = () => {
     setSearchClient("");
@@ -1662,6 +1700,8 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     setPage(1);
     setDateField(DEFAULT_ADMIN_FILTERS.dateField);
     setSortOrder("desc");
+    setSelectedIds([]);
+    setSelectedReportsById({});
   };
   function niceFormType(ft?: string) {
     switch (ft) {
@@ -1705,6 +1745,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
 
     toast.success(`Voided ${voidableSelected.length} report(s)`);
     setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1784,6 +1825,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       setBulkESignPassword("");
       setBulkESignError("");
       setSelectedIds([]);
+      setSelectedReportsById({});
 
       toast.success("Bulk status updated successfully");
     } catch (err: any) {
@@ -2989,7 +3031,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
+                            onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
                         </td>

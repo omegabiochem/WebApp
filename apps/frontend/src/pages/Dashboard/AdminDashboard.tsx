@@ -705,7 +705,11 @@ export default function AdminDashboard() {
   // -----------------------------
   // Selection + Printing (Admin)
   // -----------------------------
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintJob, setSinglePrintJob] = useState<{
@@ -724,15 +728,15 @@ export default function AdminDashboard() {
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-const PIN_STORAGE_KEY = userKey
-  ? `adminOnlyDashboardPinned:user:${userKey}`
-  : null;
+  const PIN_STORAGE_KEY = userKey
+    ? `adminOnlyDashboardPinned:user:${userKey}`
+    : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-const prevPositions = React.useRef<Record<string, DOMRect>>({});
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
 
@@ -753,7 +757,7 @@ const prevPositions = React.useRef<Record<string, DOMRect>>({});
     (user as any)?.uid ||
     "qa";
 
-const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
+  const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
 
   const [colOpen, setColOpen] = useState(false);
 
@@ -784,20 +788,22 @@ const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
     null,
   );
 
-  const workspaceReports = useMemo(() => {
-    const map = new Map<string, Report>();
-    reports.forEach((r) => map.set(r.id, r));
+const workspaceReports = useMemo(() => {
+  const map = new Map<string, Report>();
 
-    return workspaceIds
-      .map((id) => map.get(id))
-      .filter(Boolean)
-      .map((r) => ({
-        ...r!,
-        formNumber: r!.formNumber ?? "",
-        reportNumber:
-          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
-      }));
-  }, [workspaceIds, reports]);
+  Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+  reports.forEach((r) => map.set(r.id, r));
+
+  return workspaceIds
+    .map((id) => map.get(id))
+    .filter(Boolean)
+    .map((r) => ({
+      ...r!,
+      formNumber: r!.formNumber ?? "",
+      reportNumber:
+        r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+    }));
+}, [workspaceIds, reports, selectedReportsById]);
 
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
@@ -934,6 +940,9 @@ const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
     params.set("dateField", dateField);
     params.set("sort", sortOrder);
     params.set("rangeType", numberRangeType);
+if (pinnedIds.length) {
+  params.set("pinnedIds", pinnedIds.join(","));
+}
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1013,6 +1022,7 @@ const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
     dateField,
     sortOrder,
     refreshKey,
+    pinnedIds,
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1029,92 +1039,90 @@ const COL_STORAGE_KEY = `adminOnlyDashboardCols:user:${colUserKey}`;
     }
   }, [formFilter, statusFilter]);
 
+  const displayRows = useMemo(() => {
+    return [...reports].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
 
-const displayRows = useMemo(() => {
-  return [...reports].sort((a, b) => {
-    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+      return 0;
+    });
+  }, [reports, pinnedIds]);
 
-    if (aPinned !== bPinned) {
-      return bPinned - aPinned;
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
+
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const el = rowRefs.current[r.id];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[r.id];
+
+      nextPositions[r.id] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
     }
 
-    return 0;
-  });
-}, [reports, pinnedIds]);
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
 
-const total = serverTotal;
-const totalPages = serverTotalPages;
-const pageClamped = Math.min(page, totalPages);
-const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
-const end = start + displayRows.length;
-const pageRows = displayRows;
-
-React.useLayoutEffect(() => {
-  if (loading) return;
-
-  const nextPositions: Record<string, DOMRect> = {};
-
-  for (const r of pageRows) {
-    const el = rowRefs.current[r.id];
-
-    if (!el) continue;
-
-    const next = el.getBoundingClientRect();
-    const prev = prevPositions.current[r.id];
-
-    nextPositions[r.id] = next;
-
-    if (!prev) continue;
-
-    const dy = prev.top - next.top;
-
-    if (Math.abs(dy) < 1) continue;
-
-    el.style.transition = "none";
-    el.style.transform = `translateY(${dy}px)`;
-
-    requestAnimationFrame(() => {
-      el.style.transition = "transform 280ms ease";
-      el.style.transform = "translateY(0)";
-    });
-
-    const cleanup = () => {
-      el.style.transition = "";
-      el.style.transform = "";
-      el.removeEventListener("transitionend", cleanup);
-    };
-
-    el.addEventListener("transitionend", cleanup);
-  }
-
-  prevPositions.current = nextPositions;
-}, [pageRows, loading, selectedCols]);
-
-useEffect(() => {
-  rowRefs.current = {};
-  prevPositions.current = {};
-}, [
-  page,
-  perPage,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  datePreset,
-  dateFrom,
-  dateTo,
-  dateField,
-  sortOrder,
-  refreshKey,
-]);
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    datePreset,
+    dateFrom,
+    dateTo,
+    dateField,
+    sortOrder,
+    refreshKey,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -1305,37 +1313,92 @@ useEffect(() => {
     sortOrder,
   ]);
 
-  // -----------------------------
-  // Selection helpers
-  // -----------------------------
-  const isRowSelected = (id: string) => selectedIds.includes(id);
+  
 
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
+// -----------------------------
+// Selection helpers
+// -----------------------------
+const isRowSelected = (id: string) => selectedIds.includes(id);
 
-  const allOnPageSelected =
-    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+const toggleRow = (report: Report) => {
+  setSelectedIds((prev) => {
+    const alreadySelected = prev.includes(report.id);
 
-  const toggleSelectPage = () => {
-    if (allOnPageSelected) {
-      setSelectedIds((prev) =>
-        prev.filter((id) => !pageRows.some((r) => r.id === id)),
-      );
-    } else {
-      setSelectedIds((prev) => {
-        const set = new Set(prev);
-        pageRows.forEach((r) => set.add(r.id));
-        return Array.from(set);
+    if (alreadySelected) {
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        delete next[report.id];
+        return next;
       });
-    }
-  };
 
-  const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
-    .filter(Boolean) as Report[];
+      return prev.filter((x) => x !== report.id);
+    }
+
+    setSelectedReportsById((old) => ({
+      ...old,
+      [report.id]: report,
+    }));
+
+    return [...prev, report.id];
+  });
+};
+
+const allOnPageSelected =
+  pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+const toggleSelectPage = () => {
+  if (allOnPageSelected) {
+    setSelectedIds((prev) =>
+      prev.filter((id) => !pageRows.some((r) => r.id === id)),
+    );
+
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+
+      pageRows.forEach((r) => {
+        delete next[r.id];
+      });
+
+      return next;
+    });
+  } else {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      pageRows.forEach((r) => set.add(r.id));
+      return Array.from(set);
+    });
+
+    setSelectedReportsById((old) => {
+      const next = { ...old };
+
+      pageRows.forEach((r) => {
+        next[r.id] = r;
+      });
+
+      return next;
+    });
+  }
+};
+
+useEffect(() => {
+  if (!selectedIds.length) return;
+
+  setSelectedReportsById((prev) => {
+    const next = { ...prev };
+
+    reports.forEach((r) => {
+      if (selectedIds.includes(r.id)) {
+        next[r.id] = r;
+      }
+    });
+
+    return next;
+  });
+}, [reports, selectedIds]);
+
+const selectedReportObjects = selectedIds
+  .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
+  .filter(Boolean) as Report[];
 
   const handlePrintSelected = () => {
     if (printingBulk) return;
@@ -1360,25 +1423,25 @@ useEffect(() => {
   };
 
   // optional: clear selection when filters change (avoids printing hidden rows)
-  useEffect(() => {
-    setSelectedIds([]);
-  }, [
-    page,
-    formFilter,
-    statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
-    datePreset,
-    dateFrom,
-    dateTo,
-    numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
-    perPage,
-  ]);
+useEffect(() => {
+  setSelectedIds([]);
+  setSelectedReportsById({});
+}, [
+  formFilter,
+  statusFilter,
+  searchClient,
+  searchReport,
+  searchText,
+  datePreset,
+  dateFrom,
+  dateTo,
+  numberRangeType,
+  formNoFrom,
+  formNoTo,
+  reportNoFrom,
+  reportNoTo,
+  perPage,
+]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1576,7 +1639,8 @@ useEffect(() => {
       reportNoTo !== "" ||
       perPage !== 10 ||
       dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
-      sortOrder !== "desc"
+      sortOrder !== "desc" ||
+    selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1595,26 +1659,34 @@ useEffect(() => {
     perPage,
     dateField,
     sortOrder,
+    selectedIds,
   ]);
-  const clearFilters = () => {
-    setSearchClient("");
-    setSearchReport("");
-    setSearchText("");
-    setDatePreset("ALL");
-    setDateFrom("");
-    setDateTo("");
-    setStatusFilter("ALL");
-    setFormFilter("ALL");
-    setNumberRangeType("FORM");
-    setFormNoFrom("");
-    setFormNoTo("");
-    setReportNoFrom("");
-    setReportNoTo("");
-    setPerPage(10);
-    setPage(1);
-    setDateField(DEFAULT_ADMIN_FILTERS.dateField);
-    setSortOrder("desc");
-  };
+
+
+const clearFilters = () => {
+  setSearchClient("");
+  setSearchReport("");
+  setSearchText("");
+  setDatePreset("ALL");
+  setDateFrom("");
+  setDateTo("");
+  setStatusFilter("ALL");
+  setFormFilter("ALL");
+  setNumberRangeType("FORM");
+  setFormNoFrom("");
+  setFormNoTo("");
+  setReportNoFrom("");
+  setReportNoTo("");
+  setPerPage(10);
+  setPage(1);
+  setDateField(DEFAULT_ADMIN_FILTERS.dateField);
+  setSortOrder("desc");
+
+  setSelectedIds([]);
+  setSelectedReportsById({});
+};
+
+
   function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
@@ -1657,6 +1729,7 @@ useEffect(() => {
 
     toast.success(`Voided ${voidableSelected.length} report(s)`);
     setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1736,6 +1809,7 @@ useEffect(() => {
       setBulkESignPassword("");
       setBulkESignError("");
       setSelectedIds([]);
+      setSelectedReportsById({});
 
       toast.success("Bulk status updated successfully");
     } catch (err: any) {
@@ -1765,16 +1839,16 @@ useEffect(() => {
     return () => window.removeEventListener("click", close);
   }, []);
 
-  function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
 
-    if (!selected.length) return [clicked];
+function getTargetsForAction(clicked: Report): Report[] {
+  const selected = selectedReportObjects;
 
-    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-    return clickedInsideSelection ? selected : [clicked];
-  }
+  if (!selected.length) return [clicked];
+
+  const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+  return clickedInsideSelection ? selected : [clicked];
+}
+
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
     if (r.formType === "STERILITY") {
@@ -1915,11 +1989,11 @@ useEffect(() => {
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-const togglePin = (id: string) => {
-  setPinnedIds((prev) =>
-    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
-  );
-};
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+    );
+  };
 
   useEffect(() => {
     if (!colOpen) return;
@@ -2125,9 +2199,7 @@ const togglePin = (id: string) => {
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+   const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -2912,12 +2984,12 @@ const togglePin = (id: string) => {
                         </td>
 
                         <td className="pl-4 pr-3 py-3">
-                          <input
-                            type="checkbox"
-                            checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
-                            disabled={rowBusy}
-                          />
+                      <input
+  type="checkbox"
+  checked={isRowSelected(r.id)}
+  onChange={() => toggleRow(r)}
+  disabled={rowBusy}
+/>
                         </td>
 
                         {selectedCols.map((k) => (
