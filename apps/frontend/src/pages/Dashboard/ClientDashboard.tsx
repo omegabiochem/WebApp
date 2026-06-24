@@ -74,7 +74,7 @@ type Report = {
   createdAt?: string | null;
   updatedAt?: string | null;
 
-   actives?: unknown;
+  actives?: unknown;
   selectedActives?: string[];
   selectedActivesText?: string | null;
 
@@ -490,8 +490,6 @@ const DEFAULT_CLIENT_FILTERS = {
   toDate: "",
 };
 
-
-
 // -----------------------------
 // Component
 // -----------------------------
@@ -676,6 +674,10 @@ export default function ClientDashboard() {
 
   // ✅ multiple selection & bulk print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
+
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
 
   // ✅ NEW: single-report print from modal
@@ -734,8 +736,8 @@ export default function ClientDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
-const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
-const prevPositions = React.useRef<Record<string, DOMRect>>({});
+  const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
+  const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const hydratedFromUrlRef = React.useRef(false);
   const statusScrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -900,12 +902,11 @@ const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
   const isPinned = (id: string) => pinnedIds.includes(id);
 
-const togglePin = (id: string) => {
-  setPinnedIds((prev) =>
-    prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
-  );
-};
-
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
+    );
+  };
 
   const fetchClientDashboardReports = async () => {
     const params = new URLSearchParams();
@@ -928,15 +929,18 @@ const togglePin = (id: string) => {
     params.set("dateField", dateField);
 
     params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
     if (search.trim()) params.set("q", search.trim());
 
-const dateRange = getPresetRange(datePreset, fromDate, toDate);
+    const dateRange = getPresetRange(datePreset, fromDate, toDate);
 
-if (dateRange.from) params.set("from", dateRange.from);
-if (dateRange.to) params.set("to", dateRange.to);
+    if (dateRange.from) params.set("from", dateRange.from);
+    if (dateRange.to) params.set("to", dateRange.to);
 
     if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
     if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
@@ -1004,7 +1008,7 @@ if (dateRange.to) params.set("to", dateRange.to);
     search,
     sortBy,
     sortDir,
-       datePreset,
+    datePreset,
     fromDate,
     toDate,
     numberRangeType,
@@ -1013,93 +1017,93 @@ if (dateRange.to) params.set("to", dateRange.to);
     reportNoFrom,
     reportNoTo,
     refreshKey,
+    pinnedIds,
   ]);
 
+  const displayRows = useMemo(() => {
+    return [...reports].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-const displayRows = useMemo(() => {
-  return [...reports].sort((a, b) => {
-    const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-    const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
 
-    if (aPinned !== bPinned) {
-      return bPinned - aPinned;
+      return 0;
+    });
+  }, [reports, pinnedIds]);
+
+  const total = serverTotal;
+  const totalPages = serverTotalPages;
+  const pageClamped = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
+  const end = start + displayRows.length;
+  const pageRows = displayRows;
+
+  React.useLayoutEffect(() => {
+    if (loading) return;
+
+    const nextPositions: Record<string, DOMRect> = {};
+
+    for (const r of pageRows) {
+      const el = rowRefs.current[r.id];
+
+      if (!el) continue;
+
+      const next = el.getBoundingClientRect();
+      const prev = prevPositions.current[r.id];
+
+      nextPositions[r.id] = next;
+
+      if (!prev) continue;
+
+      const dy = prev.top - next.top;
+
+      if (Math.abs(dy) < 1) continue;
+
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 280ms ease";
+        el.style.transform = "translateY(0)";
+      });
+
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+
+      el.addEventListener("transitionend", cleanup);
     }
 
-    return 0;
-  });
-}, [reports, pinnedIds]);
+    prevPositions.current = nextPositions;
+  }, [pageRows, loading, selectedCols]);
 
-const total = serverTotal;
-const totalPages = serverTotalPages;
-const pageClamped = Math.min(page, totalPages);
-const start = total === 0 ? 0 : (pageClamped - 1) * perPage;
-const end = start + displayRows.length;
-const pageRows = displayRows;
-
-React.useLayoutEffect(() => {
-  if (loading) return;
-
-  const nextPositions: Record<string, DOMRect> = {};
-
-  for (const r of pageRows) {
-    const el = rowRefs.current[r.id];
-
-    if (!el) continue;
-
-    const next = el.getBoundingClientRect();
-    const prev = prevPositions.current[r.id];
-
-    nextPositions[r.id] = next;
-
-    if (!prev) continue;
-
-    const dy = prev.top - next.top;
-
-    if (Math.abs(dy) < 1) continue;
-
-    el.style.transition = "none";
-    el.style.transform = `translateY(${dy}px)`;
-
-    requestAnimationFrame(() => {
-      el.style.transition = "transform 280ms ease";
-      el.style.transform = "translateY(0)";
-    });
-
-    const cleanup = () => {
-      el.style.transition = "";
-      el.style.transform = "";
-      el.removeEventListener("transitionend", cleanup);
-    };
-
-    el.addEventListener("transitionend", cleanup);
-  }
-
-  prevPositions.current = nextPositions;
-}, [pageRows, loading, selectedCols]);
-
-useEffect(() => {
-  rowRefs.current = {};
-  prevPositions.current = {};
-}, [
-  page,
-  perPage,
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  search,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  datePreset,
-  fromDate,
-  toDate,
-  sortBy,
-  sortDir,
-  refreshKey,
-]);
+  useEffect(() => {
+    rowRefs.current = {};
+    prevPositions.current = {};
+  }, [
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    datePreset,
+    fromDate,
+    toDate,
+    sortBy,
+    sortDir,
+    refreshKey,
+  ]);
 
   function saveDashboardPage(nextPage: number) {
     const sp = new URLSearchParams(searchParams);
@@ -1155,8 +1159,8 @@ useEffect(() => {
 
   useEffect(() => {
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
-    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -1257,54 +1261,109 @@ useEffect(() => {
     newStatus: string,
     reason = "Client correction update",
     eSignPassword?: string,
-  ) {
+  ): Promise<Report> {
     const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    // statuses that require e-sign per backend
     const needsESign =
       newStatus === "VOID" ||
       newStatus === "LOCKED" ||
       newStatus === "UNDER_CLIENT_FINAL_REVIEW";
 
-    const body: any = { reason, status: newStatus, expectedVersion: r.version };
-    if (
-      newStatus === "VOID" ||
-      newStatus === "LOCKED" ||
-      newStatus === "UNDER_CLIENT_FINAL_REVIEW"
-    ) {
-      body.eSignPassword = eSignPassword;
+    if (needsESign && !eSignPassword) {
+      throw new Error("Electronic signature (password) is required");
     }
+
+    const body: any = {
+      reason,
+      status: newStatus,
+      expectedVersion: r.version,
+    };
 
     if (needsESign) {
-      if (!eSignPassword) {
-        throw new Error("Electronic signature (password) is required");
-      }
       body.eSignPassword = eSignPassword;
     }
 
-    await api(url, { method: "PATCH", body: JSON.stringify(body) });
+    const updated = await api<Partial<Report>>(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
 
-    // keep local state in sync (status + bump version)
+    const merged: Report = {
+      ...r,
+      ...updated,
+      id: updated.id ?? r.id,
+      status: updated.status ?? newStatus,
+      reportNumber: updated.reportNumber ?? r.reportNumber,
+      version:
+        typeof updated.version === "number"
+          ? updated.version
+          : (r.version ?? 0) + 1,
+    } as Report;
+
     setReports((prev) =>
       prev.map((x) =>
         x.id === r.id
-          ? { ...x, status: newStatus, version: (x.version ?? r.version) + 1 }
+          ? {
+              ...x,
+              ...merged,
+            }
           : x,
       ),
     );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...merged,
+        },
+      };
+    });
+
+    setSelectedReport((prev) =>
+      prev?.id === r.id
+        ? {
+            ...prev,
+            ...merged,
+          }
+        : prev,
+    );
+
+    return merged;
   }
 
-
+  // selection
   // selection
   const isRowSelected = (id: string) => selectedIds.includes(id);
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
+
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
   };
 
   const allOnPageSelected =
@@ -1315,14 +1374,50 @@ useEffect(() => {
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(r.id));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+
+        return next;
+      });
     }
   };
+
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [reports, selectedIds]);
 
   const handlePrintSelected = () => {
     if (printingBulk) return; // 🚫 prevent double
@@ -1347,10 +1442,10 @@ useEffect(() => {
     setPrintingBulk(true);
     setIsBulkPrinting(true);
   };
-  const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
-    .filter(Boolean) as Report[];
 
+  const selectedReportObjects = selectedIds
+    .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
   const selectedBulkReports = selectedReportObjects;
 
   const selectedSameGroupAndStatus = useMemo(() => {
@@ -1416,18 +1511,19 @@ useEffect(() => {
   const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   const workspaceReports = useMemo(() => {
-    return workspaceIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
-  }, [workspaceIds, reports]);
+    const map = new Map<string, Report>();
+
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+    reports.forEach((r) => map.set(r.id, r));
+
+    return workspaceIds.map((id) => map.get(id)).filter(Boolean) as Report[];
+  }, [workspaceIds, reports, selectedReportsById]);
 
   useEffect(() => {
     const close = () => setBulkMenuOpen(false);
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
-
-  
 
   const hasActiveFilters = useMemo(() => {
     let dateActive = false;
@@ -1452,7 +1548,8 @@ useEffect(() => {
       formNoTo !== "" ||
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
-      dateActive
+      dateActive ||
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1471,6 +1568,7 @@ useEffect(() => {
     datePreset,
     fromDate,
     toDate,
+    selectedIds,
   ]);
 
   const clearAllFilters = () => {
@@ -1491,7 +1589,9 @@ useEffect(() => {
     setFormNoTo(DEFAULT_CLIENT_FILTERS.formNoTo);
     setReportNoFrom(DEFAULT_CLIENT_FILTERS.reportNoFrom);
     setReportNoTo(DEFAULT_CLIENT_FILTERS.reportNoTo);
+
     setSelectedIds([]);
+    setSelectedReportsById({});
     setBulkMenuOpen(false);
   };
 
@@ -1527,141 +1627,141 @@ useEffect(() => {
   }
 
   function getSelectedActivesList(r: Report): string[] {
-  if (r.selectedActivesText?.trim()) {
-    return r.selectedActivesText
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    if (r.selectedActivesText?.trim()) {
+      return r.selectedActivesText
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(r.selectedActives) && r.selectedActives.length) {
+      return r.selectedActives.map((s) => String(s).trim()).filter(Boolean);
+    }
+
+    const getName = (x: any): string => {
+      if (!x || typeof x !== "object") return "";
+
+      return String(
+        x?.name ?? x?.active ?? x?.label ?? x?.title ?? x?.ingredient ?? "",
+      ).trim();
+    };
+
+    const isSelected = (x: any): boolean => {
+      if (!x || typeof x !== "object") return false;
+
+      return (
+        x.selected === true ||
+        x.checked === true ||
+        x.enabled === true ||
+        x.isSelected === true ||
+        x.isChecked === true ||
+        x.include === true ||
+        x.included === true ||
+        x.selected === "true" ||
+        x.checked === "true" ||
+        x.enabled === "true" ||
+        x.isSelected === "true" ||
+        x.isChecked === "true" ||
+        x.include === "true" ||
+        x.included === "true"
+      );
+    };
+
+    if (Array.isArray(r.actives)) {
+      return r.actives
+        .filter((x: any) => isSelected(x))
+        .map((x: any) => getName(x))
+        .filter(Boolean);
+    }
+
+    if (r.actives && typeof r.actives === "object") {
+      return Object.values(r.actives as any)
+        .filter((x: any) => isSelected(x))
+        .map((x: any) => getName(x))
+        .filter(Boolean);
+    }
+
+    return [];
   }
 
-  if (Array.isArray(r.selectedActives) && r.selectedActives.length) {
-    return r.selectedActives.map((s) => String(s).trim()).filter(Boolean);
-  }
+  function ActivesCell({ report }: { report: Report }) {
+    const list = React.useMemo(() => getSelectedActivesList(report), [report]);
 
-  const getName = (x: any): string => {
-    if (!x || typeof x !== "object") return "";
+    const first = list[0];
+    const rest = list.slice(1);
+    const moreCount = rest.length;
 
-    return String(
-      x?.name ?? x?.active ?? x?.label ?? x?.title ?? x?.ingredient ?? "",
-    ).trim();
-  };
+    const [open, setOpen] = React.useState(false);
+    const btnRef = React.useRef<HTMLButtonElement | null>(null);
+    const popRef = React.useRef<HTMLDivElement | null>(null);
 
-  const isSelected = (x: any): boolean => {
-    if (!x || typeof x !== "object") return false;
+    React.useEffect(() => {
+      if (!open) return;
+
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current?.contains(t)) return;
+        if (btnRef.current?.contains(t)) return;
+        setOpen(false);
+      };
+
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setOpen(false);
+      };
+
+      document.addEventListener("mousedown", onDown);
+      document.addEventListener("keydown", onKey);
+
+      return () => {
+        document.removeEventListener("mousedown", onDown);
+        document.removeEventListener("keydown", onKey);
+      };
+    }, [open]);
+
+    if (!list.length) return <span className="text-slate-500">-</span>;
 
     return (
-      x.selected === true ||
-      x.checked === true ||
-      x.enabled === true ||
-      x.isSelected === true ||
-      x.isChecked === true ||
-      x.include === true ||
-      x.included === true ||
-      x.selected === "true" ||
-      x.checked === "true" ||
-      x.enabled === "true" ||
-      x.isSelected === "true" ||
-      x.isChecked === "true" ||
-      x.include === "true" ||
-      x.included === "true"
-    );
-  };
+      <div className="relative inline-flex items-center gap-2">
+        <span className="truncate max-w-[220px]">{first}</span>
 
-  if (Array.isArray(r.actives)) {
-    return r.actives
-      .filter((x: any) => isSelected(x))
-      .map((x: any) => getName(x))
-      .filter(Boolean);
-  }
-
-  if (r.actives && typeof r.actives === "object") {
-    return Object.values(r.actives as any)
-      .filter((x: any) => isSelected(x))
-      .map((x: any) => getName(x))
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function ActivesCell({ report }: { report: Report }) {
-  const list = React.useMemo(() => getSelectedActivesList(report), [report]);
-
-  const first = list[0];
-  const rest = list.slice(1);
-  const moreCount = rest.length;
-
-  const [open, setOpen] = React.useState(false);
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-  const popRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (popRef.current?.contains(t)) return;
-      if (btnRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  if (!list.length) return <span className="text-slate-500">-</span>;
-
-  return (
-    <div className="relative inline-flex items-center gap-2">
-      <span className="truncate max-w-[220px]">{first}</span>
-
-      {moreCount > 0 && (
-        <>
-          <button
-            ref={btnRef}
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="rounded-full border bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-            title={rest.join(", ")}
-          >
-            +{moreCount}
-          </button>
-
-          {open && (
-            <div
-              ref={popRef}
-              className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border bg-white p-2 shadow-lg"
+        {moreCount > 0 && (
+          <>
+            <button
+              ref={btnRef}
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="rounded-full border bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              title={rest.join(", ")}
             >
-              <div className="px-2 pb-1 text-xs font-semibold text-slate-600">
-                Other actives
-              </div>
+              +{moreCount}
+            </button>
 
-              <div className="max-h-44 overflow-auto">
-                {rest.map((a, i) => (
-                  <div
-                    key={`${a}-${i}`}
-                    className="rounded-lg px-2 py-1 text-sm text-slate-800 hover:bg-slate-50"
-                  >
-                    {a}
-                  </div>
-                ))}
+            {open && (
+              <div
+                ref={popRef}
+                className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl border bg-white p-2 shadow-lg"
+              >
+                <div className="px-2 pb-1 text-xs font-semibold text-slate-600">
+                  Other actives
+                </div>
+
+                <div className="max-h-44 overflow-auto">
+                  {rest.map((a, i) => (
+                    <div
+                      key={`${a}-${i}`}
+                      className="rounded-lg px-2 py-1 text-sm text-slate-800 hover:bg-slate-50"
+                    >
+                      {a}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   function getCellValue(r: Report, key: ColKey) {
     switch (key) {
@@ -1682,7 +1782,7 @@ function ActivesCell({ report }: { report: Report }) {
 
       case "updatedAt":
         return formatDate(r.updatedAt ?? null);
-              case "actives": {
+      case "actives": {
         const list = getSelectedActivesList(r);
         return list.length ? list.join(", ") : "-";
       }
@@ -1736,6 +1836,7 @@ function ActivesCell({ report }: { report: Report }) {
 
     toast.success(`Voided ${voidableSelected.length} report(s)`);
     setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1750,20 +1851,22 @@ function ActivesCell({ report }: { report: Report }) {
     if (!selectedBulkReports.length) return;
 
     setBulkUpdating(true);
+
     try {
-      await Promise.all(
+      const updatedReports = await Promise.all(
         selectedBulkReports.map((r) =>
           setStatus(r, toStatus, "Bulk Status Change"),
         ),
       );
 
+      const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
+
       setReports((prev) =>
         prev.map((r) =>
-          selectedIds.includes(r.id)
+          updatedMap.has(r.id)
             ? {
                 ...r,
-                status: toStatus,
-                version: (r.version ?? 0) + 1,
+                ...updatedMap.get(r.id)!,
               }
             : r,
         ),
@@ -1784,13 +1887,14 @@ function ActivesCell({ report }: { report: Report }) {
             : "",
         },
         formNumber: selectedBulkReports[0]?.formNumber || null,
-        reportNumber: null,
+        reportNumber: selectedBulkReports[0]?.reportNumber || null,
         formType: selectedBulkReports[0]?.formType || null,
         clientCode: user?.clientCode || null,
       });
 
       toast.success(`Updated ${selectedBulkReports.length} report(s)`);
       setSelectedIds([]);
+      setSelectedReportsById({});
     } catch (e: any) {
       toast.error(e?.message || "Bulk update failed");
     } finally {
@@ -1807,14 +1911,26 @@ function ActivesCell({ report }: { report: Report }) {
   type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
 
   function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return [clicked];
 
     const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-    return clickedInsideSelection ? selected : [clicked];
+
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
   }
 
   function canUpdateAnyReport(r: Report, user?: any) {
@@ -1864,30 +1980,46 @@ function ActivesCell({ report }: { report: Report }) {
   }
 
   function handleWorkspaceReportChanged(updated: any) {
-  if (!updated?.id) return;
+    if (!updated?.id) return;
 
-  setReports((prev) =>
-    prev.map((r) =>
-      r.id === updated.id
-        ? {
-            ...r,
-            ...updated,
-            status: updated.status ?? r.status,
-            reportNumber: updated.reportNumber ?? r.reportNumber,
-            version:
-              typeof updated.version === "number"
-                ? updated.version
-                : (r.version ?? 0) + 1,
-          }
-        : r,
-    ),
-  );
-}
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              ...updated,
+              status: updated.status ?? r.status,
+              reportNumber: updated.reportNumber ?? r.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (r.version ?? 0) + 1,
+            }
+          : r,
+      ),
+    );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[updated.id]) return prev;
+
+      return {
+        ...prev,
+        [updated.id]: {
+          ...prev[updated.id],
+          ...updated,
+          status: updated.status ?? prev[updated.id].status,
+          reportNumber: updated.reportNumber ?? prev[updated.id].reportNumber,
+          version:
+            typeof updated.version === "number"
+              ? updated.version
+              : (prev[updated.id].version ?? 0) + 1,
+        },
+      };
+    });
+  }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     const hasBlockedStatus = selected.some((r) =>
       isCorrectionFlowStatus(String(r.status)),
@@ -1985,82 +2117,81 @@ function ActivesCell({ report }: { report: Report }) {
     isCorrectionFlowStatus(String(r.status)),
   );
 
-
   function toDateOnlyLocal(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function getPresetRange(
-  preset: DatePreset,
-  customFrom: string,
-  customTo: string,
-) {
-  const now = new Date();
-
-  const range = (from: Date, to: Date) => ({
-    from: toDateOnlyLocal(from),
-    to: toDateOnlyLocal(to),
-  });
-
-  switch (preset) {
-    case "ALL":
-      return { from: "", to: "" };
-
-    case "CUSTOM":
-      return { from: customFrom, to: customTo };
-
-    case "TODAY":
-      return range(now, now);
-
-    case "YESTERDAY": {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      return range(y, y);
-    }
-
-    case "LAST_7_DAYS": {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 6); // includes today + previous 6 days
-      return range(from, now);
-    }
-
-    case "LAST_30_DAYS": {
-      const from = new Date(now);
-      from.setDate(now.getDate() - 29); // includes today + previous 29 days
-      return range(from, now);
-    }
-
-    case "THIS_MONTH": {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return range(from, to);
-    }
-
-    case "LAST_MONTH": {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const to = new Date(now.getFullYear(), now.getMonth(), 0);
-      return range(from, to);
-    }
-
-    case "THIS_YEAR": {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31);
-      return range(from, to);
-    }
-
-    case "LAST_YEAR": {
-      const from = new Date(now.getFullYear() - 1, 0, 1);
-      const to = new Date(now.getFullYear() - 1, 11, 31);
-      return range(from, to);
-    }
-
-    default:
-      return { from: "", to: "" };
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   }
-}
+
+  function getPresetRange(
+    preset: DatePreset,
+    customFrom: string,
+    customTo: string,
+  ) {
+    const now = new Date();
+
+    const range = (from: Date, to: Date) => ({
+      from: toDateOnlyLocal(from),
+      to: toDateOnlyLocal(to),
+    });
+
+    switch (preset) {
+      case "ALL":
+        return { from: "", to: "" };
+
+      case "CUSTOM":
+        return { from: customFrom, to: customTo };
+
+      case "TODAY":
+        return range(now, now);
+
+      case "YESTERDAY": {
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        return range(y, y);
+      }
+
+      case "LAST_7_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 6); // includes today + previous 6 days
+        return range(from, now);
+      }
+
+      case "LAST_30_DAYS": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 29); // includes today + previous 29 days
+        return range(from, now);
+      }
+
+      case "THIS_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        return range(from, to);
+      }
+
+      case "LAST_MONTH": {
+        const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const to = new Date(now.getFullYear(), now.getMonth(), 0);
+        return range(from, to);
+      }
+
+      case "THIS_YEAR": {
+        const from = new Date(now.getFullYear(), 0, 1);
+        const to = new Date(now.getFullYear(), 11, 31);
+        return range(from, to);
+      }
+
+      case "LAST_YEAR": {
+        const from = new Date(now.getFullYear() - 1, 0, 1);
+        const to = new Date(now.getFullYear() - 1, 11, 31);
+        return range(from, to);
+      }
+
+      default:
+        return { from: "", to: "" };
+    }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2768,20 +2899,22 @@ function getPresetRange(
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
+                            onChange={() => toggleRow(r)}
                           />
                         </td>
-                      {selectedCols.map((k) => (
-  <td key={k} className="px-4 py-3 whitespace-nowrap">
-    {k === "formNumber" ? (
-      <span className="font-medium">{getCellValue(r, k)}</span>
-    ) : k === "actives" ? (
-      <ActivesCell report={r} />
-    ) : (
-      getCellValue(r, k)
-    )}
-  </td>
-))}
+                        {selectedCols.map((k) => (
+                          <td key={k} className="px-4 py-3 whitespace-nowrap">
+                            {k === "formNumber" ? (
+                              <span className="font-medium">
+                                {getCellValue(r, k)}
+                              </span>
+                            ) : k === "actives" ? (
+                              <ActivesCell report={r} />
+                            ) : (
+                              getCellValue(r, k)
+                            )}
+                          </td>
+                        ))}
                         <td className="px-4 py-3">
                           <span
                             className={classNames(
@@ -2836,31 +2969,27 @@ function getPresetRange(
                                 disabled={updatingId === r.id}
                                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 onClick={async () => {
-                                  if (updatingId === r.id) return; // 🚫 prevent double
+                                  if (updatingId === r.id) return;
+
                                   setUpdatingId(r.id);
+
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status ===
                                       "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                                     ) {
-                                      await setStatus(
+                                      target = await setStatus(
                                         r,
                                         "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                                         "Sent back to client for correction",
                                       );
+
                                       toast.success("Report status updated");
                                     }
-                                    // else if (
-                                    //   r.status ===
-                                    //   "PRELIMINARY_RESUBMISSION_BY_TESTING"
-                                    // ) {
-                                    //   await setStatus(
-                                    //     r,
-                                    //     "UNDER_CLIENT_PRELIMINARY_REVIEW",
-                                    //     "Resubmission under Review",
-                                    //   );
-                                    // }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -2881,13 +3010,17 @@ function getPresetRange(
                                   disabled={updatingId === r.id}
                                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                   onClick={async () => {
-                                    if (updatingId === r.id) return; // 🚫 prevent double
+                                    if (updatingId === r.id) return;
+
                                     setUpdatingId(r.id);
+
                                     try {
+                                      let target = r;
+
                                       if (
                                         r.status === "TESTING_NEEDS_CORRECTION"
                                       ) {
-                                        await setStatus(
+                                        target = await setStatus(
                                           r,
                                           "UNDER_CLIENT_CORRECTION",
                                           "Sent back to client for correction",
@@ -2895,13 +3028,14 @@ function getPresetRange(
                                       } else if (
                                         r.status === "RESUBMISSION_BY_TESTING"
                                       ) {
-                                        await setStatus(
+                                        target = await setStatus(
                                           r,
                                           "UNDER_CLIENT_REVIEW",
                                           "Resubmission under Review",
                                         );
                                       }
-                                      openUpdateTarget(r);
+
+                                      openUpdateTarget(target);
                                     } catch (e: any) {
                                       toast.error(
                                         e?.message || "Failed to update status",
@@ -3073,28 +3207,34 @@ function getPresetRange(
                       className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                       onClick={async () => {
                         if (modalUpdating) return;
+
                         setModalUpdating(true);
+
                         try {
-                          const r = selectedReport!;
+                          let target = selectedReport!;
+
                           if (
-                            r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                            target.status ===
+                            "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                           ) {
-                            await setStatus(
-                              r,
+                            target = await setStatus(
+                              target,
                               "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                               "Sent back to client for correction",
                             );
                           } else if (
-                            r.status === "PRELIMINARY_RESUBMISSION_BY_TESTING"
+                            target.status ===
+                            "PRELIMINARY_RESUBMISSION_BY_TESTING"
                           ) {
-                            await setStatus(
-                              r,
+                            target = await setStatus(
+                              target,
                               "UNDER_CLIENT_PRELIMINARY_REVIEW",
                               "Resubmission under Review",
                             );
                           }
+
                           setSelectedReport(null);
-                          openUpdateTarget(r);
+                          openUpdateTarget(target);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");
                         } finally {
@@ -3113,28 +3253,30 @@ function getPresetRange(
                       className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                       onClick={async () => {
                         if (modalUpdating) return;
+
                         setModalUpdating(true);
+
                         try {
-                          const r = selectedReport!;
-                          if (
-                            selectedReport.status === "TESTING_NEEDS_CORRECTION"
-                          ) {
-                            await setStatus(
-                              r,
+                          let target = selectedReport!;
+
+                          if (target.status === "TESTING_NEEDS_CORRECTION") {
+                            target = await setStatus(
+                              target,
                               "UNDER_CLIENT_CORRECTION",
                               "Sent back to client for correction",
                             );
                           } else if (
-                            selectedReport.status === "RESUBMISSION_BY_TESTING"
+                            target.status === "RESUBMISSION_BY_TESTING"
                           ) {
-                            await setStatus(
-                              r,
+                            target = await setStatus(
+                              target,
                               "UNDER_CLIENT_REVIEW",
                               "Resubmission under Review",
                             );
                           }
+
                           setSelectedReport(null);
-                          openUpdateTarget(r);
+                          openUpdateTarget(target);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");
                         } finally {
@@ -3563,8 +3705,7 @@ function getPresetRange(
         }}
         onLayoutChange={(layout) => setWorkspaceLayout(layout)}
         onFocus={(id) => setWorkspaceActiveId(id)}
-
-         onReportChanged={handleWorkspaceReportChanged}
+        onReportChanged={handleWorkspaceReportChanged}
       />
     </div>
   );
