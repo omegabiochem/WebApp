@@ -219,8 +219,8 @@ async function setStatus(
   r: Report,
   newStatus: string,
   reason = "Common Status Change",
-) {
-  await api(`/reports/${r.id}/status`, {
+): Promise<Report> {
+  const updated = await api<Partial<Report>>(`/reports/${r.id}/status`, {
     method: "PATCH",
     body: JSON.stringify({
       reason,
@@ -228,6 +228,18 @@ async function setStatus(
       expectedVersion: r.version,
     }),
   });
+
+  return {
+    ...r,
+    ...updated,
+    id: updated.id ?? r.id,
+    status: updated.status ?? newStatus,
+    reportNumber: updated.reportNumber ?? r.reportNumber,
+    version:
+      typeof updated.version === "number"
+        ? updated.version
+        : (r.version ?? 0) + 1,
+  } as Report;
 }
 
 // -----------------------------
@@ -1427,63 +1439,71 @@ export default function MicroDashboard() {
     return () => window.removeEventListener("click", close);
   }, []);
 
-  async function autoAdvanceAndOpen(r: Report, actor: string) {
-    let nextStatus: string | null = null;
+  async function autoAdvanceAndOpen(r: Report, actor: string): Promise<Report> {
+    let updatedReport: Report | null = null;
+
+    const move = async (nextStatus: string, reason: string) => {
+      updatedReport = await setStatus(r, nextStatus, reason);
+    };
 
     const isSterility = r.formType === "STERILITY";
 
     if (isSterility) {
-      // ✅ sterility uses chemistry-like status names
       if (r.status === "SUBMITTED_BY_CLIENT") {
-        nextStatus = "UNDER_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Move to sterility testing");
+        await move("UNDER_TESTING_REVIEW", "Move to sterility testing");
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
-        nextStatus = "UNDER_TESTING_REVIEW";
-        await setStatus(
-          r,
-          nextStatus,
+        await move(
+          "UNDER_TESTING_REVIEW",
           "Move to sterility resubmission testing",
         );
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
-        nextStatus = "UNDER_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Resubmitted by client");
+        await move("UNDER_TESTING_REVIEW", "Resubmitted by client");
       } else if (r.status === "QA_NEEDS_CORRECTION") {
-        nextStatus = "UNDER_TESTING_REVIEW";
-        await setStatus(r, nextStatus, `Set by ${actor}`);
+        await move("UNDER_TESTING_REVIEW", `Set by ${actor}`);
       }
     } else {
-      // ✅ micro mix / water uses prelim/final workflow
       if (r.status === "SUBMITTED_BY_CLIENT") {
-        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Move to prelim testing");
+        await move(
+          "UNDER_PRELIMINARY_TESTING_REVIEW",
+          "Move to prelim testing",
+        );
       } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
-        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Move to RESUBMISSION");
+        await move("UNDER_PRELIMINARY_TESTING_REVIEW", "Move to RESUBMISSION");
       } else if (r.status === "PRELIMINARY_APPROVED") {
-        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Move to final testing");
+        await move("UNDER_FINAL_TESTING_REVIEW", "Move to final testing");
       } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
-        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-        await setStatus(r, nextStatus, "Resubmitted by client");
+        await move("UNDER_PRELIMINARY_TESTING_REVIEW", "Resubmitted by client");
       } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
-        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-        await setStatus(r, nextStatus, `Set by ${actor}`);
+        await move("UNDER_FINAL_TESTING_REVIEW", `Set by ${actor}`);
       } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
-        nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-        await setStatus(r, nextStatus, `Set by ${actor}`);
+        await move("UNDER_PRELIMINARY_TESTING_REVIEW", `Set by ${actor}`);
       } else if (r.status === "QA_NEEDS_FINAL_CORRECTION") {
-        nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-        await setStatus(r, nextStatus, `Set by ${actor}`);
+        await move("UNDER_FINAL_TESTING_REVIEW", `Set by ${actor}`);
       }
     }
 
-    if (nextStatus) {
+    if (updatedReport) {
       setReports((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus! } : x)),
+        prev.map((x) =>
+          x.id === r.id
+            ? {
+                ...x,
+                ...updatedReport!,
+                status: updatedReport!.status,
+                reportNumber: updatedReport!.reportNumber ?? x.reportNumber,
+                version:
+                  typeof updatedReport!.version === "number"
+                    ? updatedReport!.version
+                    : (x.version ?? 0) + 1,
+              }
+            : x,
+        ),
       );
+
+      return updatedReport;
     }
 
-    return nextStatus;
+    return r;
   }
 
   async function startFinalAndOpen(r: Report) {
@@ -1755,7 +1775,20 @@ export default function MicroDashboard() {
 
     const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
 
-    return clickedInsideSelection ? selected : [clicked];
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
   }
 
   function canUpdateAnyReport(r: Report, user?: any) {
@@ -2677,8 +2710,11 @@ export default function MicroDashboard() {
                                     if (rowBusy) return;
                                     setUpdatingId(r.id);
                                     try {
-                                      await autoAdvanceAndOpen(r, "micro");
-                                      openUpdateTarget(r);
+                                      const updated = await autoAdvanceAndOpen(
+                                        r,
+                                        "micro",
+                                      );
+                                      openUpdateTarget(updated);
                                     } catch (e: any) {
                                       toast.error(
                                         e?.message || "Failed to update status",
@@ -2883,8 +2919,8 @@ export default function MicroDashboard() {
                         setModalUpdating(true);
                         try {
                           const r = selectedReport;
-                          setSelectedReport(null);
-                          await autoAdvanceAndOpen(r, "micro");
+                          const updated = await autoAdvanceAndOpen(r, "micro");
+                          openUpdateTarget(updated);
                           openUpdateTarget(r);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");

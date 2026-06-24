@@ -685,8 +685,8 @@ export default function FrontDeskDashboard() {
   const workspaceReports = useMemo(() => {
     const map = new Map<string, Report>();
 
-    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
     reports.forEach((r) => map.set(r.id, r));
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
 
     return workspaceIds.map((id) => map.get(id)).filter(Boolean) as Report[];
   }, [workspaceIds, reports, selectedReportsById]);
@@ -1234,24 +1234,68 @@ export default function FrontDeskDashboard() {
     newStatus: string,
     reason = "Status Change",
     opts?: { eSignPassword?: string },
-  ) {
+  ): Promise<Report> {
     const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    await api(url, {
+    const updated = await api<Partial<Report>>(url, {
       method: "PATCH",
       body: JSON.stringify({
         status: newStatus,
         reason,
-        // ✅ IMPORTANT: align field name with backend
-        // If your backend expects `password` or `eSignPassword`, keep it here.
         eSignPassword: opts?.eSignPassword,
         expectedVersion: r.version,
       }),
     });
+
+    const merged: Report = {
+      ...r,
+      ...updated,
+      id: updated.id ?? r.id,
+      status: updated.status ?? newStatus,
+      reportNumber: updated.reportNumber ?? r.reportNumber,
+      version:
+        typeof updated.version === "number"
+          ? updated.version
+          : (r.version ?? 0) + 1,
+    } as Report;
+
+    setReports((prev) =>
+      prev.map((x) =>
+        x.id === r.id
+          ? {
+              ...x,
+              ...merged,
+            }
+          : x,
+      ),
+    );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...merged,
+        },
+      };
+    });
+
+    setSelectedReport((prev) =>
+      prev?.id === r.id
+        ? {
+            ...prev,
+            ...merged,
+          }
+        : prev,
+    );
+
+    return merged;
   }
 
   async function applyBulkStatusChange(
@@ -1260,21 +1304,26 @@ export default function FrontDeskDashboard() {
     eSignPassword?: string,
   ) {
     setBulkUpdating(true);
+
     try {
-      for (const r of selected) {
-        await setStatus(r, toStatus, reason, { eSignPassword });
-      }
+      const updatedReports = await Promise.all(
+        selected.map((r) => setStatus(r, toStatus, reason, { eSignPassword })),
+      );
+
+      const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
 
       const keep = new Set(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
 
       setReports((prev) => {
         const next = prev.map((x) =>
-          selectedIds.includes(x.id)
-            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
+          updatedMap.has(x.id)
+            ? {
+                ...x,
+                ...updatedMap.get(x.id)!,
+              }
             : x,
         );
 
-        // ✅ IMPORTANT: keep dashboard list consistent with initial fetch behavior
         return next.filter((r) => keep.has(r.status as any));
       });
 
@@ -1556,7 +1605,7 @@ export default function FrontDeskDashboard() {
       formNoTo !== "" ||
       reportNoFrom !== "" ||
       reportNoTo !== "" ||
-      selectedIds.length >0
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1596,11 +1645,9 @@ export default function FrontDeskDashboard() {
     setReportNoTo(DEFAULT_FRONTDESK_FILTERS.reportNoTo);
     setPage(DEFAULT_FRONTDESK_FILTERS.page);
 
-
     setSelectedIds([]);
-setSelectedReportsById({});
+    setSelectedReportsById({});
   };
-
 
   useEffect(() => {
     const validStatuses = FRONTDESK_STATUSES.map(String);
@@ -1662,15 +1709,28 @@ setSelectedReportsById({});
     );
   }
 
-function getTargetsForAction(clicked: Report): Report[] {
-  const selected = selectedReportObjects;
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedReportObjects;
 
-  if (!selected.length) return [clicked];
+    if (!selected.length) return [clicked];
 
-  const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
 
-  return clickedInsideSelection ? selected : [clicked];
-}
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
+  }
 
   function canUpdateAnyReport(r: Report, user?: any) {
     if (!user) return false;
@@ -1739,6 +1799,24 @@ function getTargetsForAction(clicked: Report): Report[] {
           : r,
       ),
     );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[updated.id]) return prev;
+
+      return {
+        ...prev,
+        [updated.id]: {
+          ...prev[updated.id],
+          ...updated,
+          status: updated.status ?? prev[updated.id].status,
+          reportNumber: updated.reportNumber ?? prev[updated.id].reportNumber,
+          version:
+            typeof updated.version === "number"
+              ? updated.version
+              : (prev[updated.id].version ?? 0) + 1,
+        },
+      };
+    });
   }
 
   const DASHBOARD_COLS = useMemo(() => {
@@ -2668,27 +2746,20 @@ function getTargetsForAction(clicked: Report): Report[] {
                                 try {
                                   // Your existing transition:
                                   // PRELIMINARY_TESTING_NEEDS_CORRECTION -> UNDER_CLIENT_PRELIMINARY_CORRECTION
+                                  let target = r;
+
                                   if (
                                     r.status ===
                                     "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                                   ) {
-                                    const newStatus =
-                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                                    await setStatus(
+                                    target = await setStatus(
                                       r,
-                                      newStatus,
+                                      "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                                       "Sent back to client for correction",
-                                    );
-                                    setReports((prev) =>
-                                      prev.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, status: newStatus }
-                                          : x,
-                                      ),
                                     );
                                   }
 
-                                  openUpdateTarget(r);
+                                  openUpdateTarget(target);
                                 } catch (e: any) {
                                   alert(
                                     e?.message || "Failed to update status",
@@ -2943,29 +3014,22 @@ function getTargetsForAction(clicked: Report): Report[] {
                       setModalUpdating(true);
 
                       try {
-                        const r = selectedReport;
-                        if (!r) return;
+                        let target = selectedReport;
+                        if (!target) return;
 
                         if (
-                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          target.status ===
+                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
-                          const newStatus =
-                            "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(
-                            r,
-                            newStatus,
+                          target = await setStatus(
+                            target,
+                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to client for correction",
-                          );
-
-                          setReports((prev) =>
-                            prev.map((x) =>
-                              x.id === r.id ? { ...x, status: newStatus } : x,
-                            ),
                           );
                         }
 
                         setSelectedReport(null);
-                        openUpdateTarget(r);
+                        openUpdateTarget(target);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       } finally {

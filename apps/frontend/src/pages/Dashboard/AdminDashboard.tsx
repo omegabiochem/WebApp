@@ -788,22 +788,22 @@ export default function AdminDashboard() {
     null,
   );
 
-const workspaceReports = useMemo(() => {
-  const map = new Map<string, Report>();
+  const workspaceReports = useMemo(() => {
+    const map = new Map<string, Report>();
 
-  Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
-  reports.forEach((r) => map.set(r.id, r));
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+    reports.forEach((r) => map.set(r.id, r));
 
-  return workspaceIds
-    .map((id) => map.get(id))
-    .filter(Boolean)
-    .map((r) => ({
-      ...r!,
-      formNumber: r!.formNumber ?? "",
-      reportNumber:
-        r!.reportNumber != null ? String(r!.reportNumber) : undefined,
-    }));
-}, [workspaceIds, reports, selectedReportsById]);
+    return workspaceIds
+      .map((id) => map.get(id))
+      .filter(Boolean)
+      .map((r) => ({
+        ...r!,
+        formNumber: r!.formNumber ?? "",
+        reportNumber:
+          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+      }));
+  }, [workspaceIds, reports, selectedReportsById]);
 
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
@@ -863,72 +863,92 @@ const workspaceReports = useMemo(() => {
     newStatus: string,
     reason = "Client correction update",
     eSignPassword?: string,
-  ) {
+  ): Promise<Report> {
     const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    // statuses that require e-sign per backend
     const needsESign =
       newStatus === "VOID" ||
       newStatus === "LOCKED" ||
       newStatus === "UNDER_CLIENT_FINAL_REVIEW";
 
-    const body: any = { reason, status: newStatus, expectedVersion: r.version };
-    if (
-      newStatus === "VOID" ||
-      newStatus === "LOCKED" ||
-      newStatus === "UNDER_CLIENT_FINAL_REVIEW"
-    ) {
-      body.eSignPassword = eSignPassword;
+    if (needsESign && !eSignPassword) {
+      throw new Error("Electronic signature (password) is required");
     }
+
+    const body: any = {
+      reason,
+      status: newStatus,
+      expectedVersion: r.version,
+    };
 
     if (needsESign) {
-      if (!eSignPassword) {
-        throw new Error("Electronic signature (password) is required");
-      }
       body.eSignPassword = eSignPassword;
     }
 
-    await api(url, { method: "PATCH", body: JSON.stringify(body) });
+    const updated = await api<Partial<Report>>(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
 
-    // keep local state in sync (status + bump version)
+    const merged: Report = {
+      ...r,
+      ...updated,
+      id: updated.id ?? r.id,
+      status: updated.status ?? newStatus,
+      reportNumber: updated.reportNumber ?? r.reportNumber,
+      version:
+        typeof updated.version === "number"
+          ? updated.version
+          : (r.version ?? 0) + 1,
+    } as Report;
+
     setReports((prev) =>
       prev.map((x) =>
         x.id === r.id
-          ? { ...x, status: newStatus, version: (x.version ?? r.version) + 1 }
+          ? {
+              ...x,
+              ...merged,
+            }
           : x,
       ),
     );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...merged,
+        },
+      };
+    });
+
+    setSelectedReport((prev) =>
+      prev?.id === r.id
+        ? {
+            ...prev,
+            ...merged,
+          }
+        : prev,
+    );
+
+    setChangeStatusReport((prev) =>
+      prev?.id === r.id
+        ? {
+            ...prev,
+            ...merged,
+          }
+        : prev,
+    );
+
+    return merged;
   }
-
-  // const fetchAll = async () => {
-  //   const microReports = await api<Report[]>("/reports");
-  //   const chemistryReports = await api<Report[]>("/chemistry-reports");
-  //   return [...microReports, ...chemistryReports];
-  // };
-
-  // useEffect(() => {
-  //   let abort = false;
-  //   (async () => {
-  //     try {
-  //       setLoading(true);
-  //       setError(null);
-  //       const allReports = await fetchAll();
-  //       if (!abort) setReports(allReports);
-  //     } catch (e: any) {
-  //       if (!abort) setError(e?.message ?? "Failed to fetch reports");
-  //     } finally {
-  //       if (!abort) setLoading(false);
-  //     }
-  //   })();
-  //   return () => {
-  //     abort = true;
-  //   };
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, []);
 
   const fetchDashboardReports = async () => {
     const params = new URLSearchParams();
@@ -940,9 +960,9 @@ const workspaceReports = useMemo(() => {
     params.set("dateField", dateField);
     params.set("sort", sortOrder);
     params.set("rangeType", numberRangeType);
-if (pinnedIds.length) {
-  params.set("pinnedIds", pinnedIds.join(","));
-}
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1313,92 +1333,90 @@ if (pinnedIds.length) {
     sortOrder,
   ]);
 
-  
+  // -----------------------------
+  // Selection helpers
+  // -----------------------------
+  const isRowSelected = (id: string) => selectedIds.includes(id);
 
-// -----------------------------
-// Selection helpers
-// -----------------------------
-const isRowSelected = (id: string) => selectedIds.includes(id);
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
 
-const toggleRow = (report: Report) => {
-  setSelectedIds((prev) => {
-    const alreadySelected = prev.includes(report.id);
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
 
-    if (alreadySelected) {
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
+  };
+
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectPage = () => {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) =>
+        prev.filter((id) => !pageRows.some((r) => r.id === id)),
+      );
+
       setSelectedReportsById((old) => {
         const next = { ...old };
-        delete next[report.id];
+
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+
         return next;
       });
+    } else {
+      setSelectedIds((prev) => {
+        const set = new Set(prev);
+        pageRows.forEach((r) => set.add(r.id));
+        return Array.from(set);
+      });
 
-      return prev.filter((x) => x !== report.id);
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+
+        return next;
+      });
     }
+  };
 
-    setSelectedReportsById((old) => ({
-      ...old,
-      [report.id]: report,
-    }));
+  useEffect(() => {
+    if (!selectedIds.length) return;
 
-    return [...prev, report.id];
-  });
-};
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
 
-const allOnPageSelected =
-  pageRows.length > 0 && pageRows.every((r) => selectedIds.includes(r.id));
-
-const toggleSelectPage = () => {
-  if (allOnPageSelected) {
-    setSelectedIds((prev) =>
-      prev.filter((id) => !pageRows.some((r) => r.id === id)),
-    );
-
-    setSelectedReportsById((old) => {
-      const next = { ...old };
-
-      pageRows.forEach((r) => {
-        delete next[r.id];
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
       });
 
       return next;
     });
-  } else {
-    setSelectedIds((prev) => {
-      const set = new Set(prev);
-      pageRows.forEach((r) => set.add(r.id));
-      return Array.from(set);
-    });
+  }, [reports, selectedIds]);
 
-    setSelectedReportsById((old) => {
-      const next = { ...old };
-
-      pageRows.forEach((r) => {
-        next[r.id] = r;
-      });
-
-      return next;
-    });
-  }
-};
-
-useEffect(() => {
-  if (!selectedIds.length) return;
-
-  setSelectedReportsById((prev) => {
-    const next = { ...prev };
-
-    reports.forEach((r) => {
-      if (selectedIds.includes(r.id)) {
-        next[r.id] = r;
-      }
-    });
-
-    return next;
-  });
-}, [reports, selectedIds]);
-
-const selectedReportObjects = selectedIds
-  .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
-  .filter(Boolean) as Report[];
+  const selectedReportObjects = selectedIds
+    .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
+    .filter(Boolean) as Report[];
 
   const handlePrintSelected = () => {
     if (printingBulk) return;
@@ -1423,25 +1441,25 @@ const selectedReportObjects = selectedIds
   };
 
   // optional: clear selection when filters change (avoids printing hidden rows)
-useEffect(() => {
-  setSelectedIds([]);
-  setSelectedReportsById({});
-}, [
-  formFilter,
-  statusFilter,
-  searchClient,
-  searchReport,
-  searchText,
-  datePreset,
-  dateFrom,
-  dateTo,
-  numberRangeType,
-  formNoFrom,
-  formNoTo,
-  reportNoFrom,
-  reportNoTo,
-  perPage,
-]);
+  useEffect(() => {
+    setSelectedIds([]);
+    setSelectedReportsById({});
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    perPage,
+  ]);
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
@@ -1497,7 +1515,7 @@ useEffect(() => {
           ? `/chemistry-reports/${report.id}/change-status`
           : `/reports/${report.id}/change-status`;
 
-      await api(endpoint, {
+      const updated = await api<Partial<Report>>(endpoint, {
         method: "PATCH",
         body: JSON.stringify({
           status: nextStatus,
@@ -1506,11 +1524,40 @@ useEffect(() => {
         }),
       });
 
+      const merged: Report = {
+        ...report,
+        ...updated,
+        id: updated.id ?? report.id,
+        status: updated.status ?? nextStatus,
+        reportNumber: updated.reportNumber ?? report.reportNumber,
+        version:
+          typeof updated.version === "number"
+            ? updated.version
+            : (report.version ?? 0) + 1,
+      } as Report;
+
       setReports((prev) =>
         prev.map((r) =>
-          r.id === report.id ? { ...r, status: nextStatus } : r,
+          r.id === report.id
+            ? {
+                ...r,
+                ...merged,
+              }
+            : r,
         ),
       );
+
+      setSelectedReportsById((prev) => {
+        if (!prev[report.id]) return prev;
+
+        return {
+          ...prev,
+          [report.id]: {
+            ...prev[report.id],
+            ...merged,
+          },
+        };
+      });
 
       setChangeStatusReport(null);
       setReason("");
@@ -1640,7 +1687,7 @@ useEffect(() => {
       perPage !== 10 ||
       dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
       sortOrder !== "desc" ||
-    selectedIds.length > 0
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1662,30 +1709,28 @@ useEffect(() => {
     selectedIds,
   ]);
 
+  const clearFilters = () => {
+    setSearchClient("");
+    setSearchReport("");
+    setSearchText("");
+    setDatePreset("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setStatusFilter("ALL");
+    setFormFilter("ALL");
+    setNumberRangeType("FORM");
+    setFormNoFrom("");
+    setFormNoTo("");
+    setReportNoFrom("");
+    setReportNoTo("");
+    setPerPage(10);
+    setPage(1);
+    setDateField(DEFAULT_ADMIN_FILTERS.dateField);
+    setSortOrder("desc");
 
-const clearFilters = () => {
-  setSearchClient("");
-  setSearchReport("");
-  setSearchText("");
-  setDatePreset("ALL");
-  setDateFrom("");
-  setDateTo("");
-  setStatusFilter("ALL");
-  setFormFilter("ALL");
-  setNumberRangeType("FORM");
-  setFormNoFrom("");
-  setFormNoTo("");
-  setReportNoFrom("");
-  setReportNoTo("");
-  setPerPage(10);
-  setPage(1);
-  setDateField(DEFAULT_ADMIN_FILTERS.dateField);
-  setSortOrder("desc");
-
-  setSelectedIds([]);
-  setSelectedReportsById({});
-};
-
+    setSelectedIds([]);
+    setSelectedReportsById({});
+  };
 
   function niceFormType(ft?: string) {
     switch (ft) {
@@ -1777,14 +1822,14 @@ const clearFilters = () => {
         return;
       }
 
-      await Promise.all(
+      const updatedReports = await Promise.all(
         reportsToChange.map(async (report) => {
           const endpoint =
             report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
               ? `/chemistry-reports/${report.id}/change-status`
               : `/reports/${report.id}/change-status`;
 
-          await api(endpoint, {
+          const updated = await api<Partial<Report>>(endpoint, {
             method: "PATCH",
             body: JSON.stringify({
               status: nextStatus,
@@ -1792,13 +1837,30 @@ const clearFilters = () => {
               eSignPassword: bulkESignPassword,
             }),
           });
+
+          return {
+            ...report,
+            ...updated,
+            id: updated.id ?? report.id,
+            status: updated.status ?? nextStatus,
+            reportNumber: updated.reportNumber ?? report.reportNumber,
+            version:
+              typeof updated.version === "number"
+                ? updated.version
+                : (report.version ?? 0) + 1,
+          } as Report;
         }),
       );
 
+      const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
+
       setReports((prev) =>
         prev.map((r) =>
-          reportsToChange.some((x) => x.id === r.id)
-            ? { ...r, status: nextStatus }
+          updatedMap.has(r.id)
+            ? {
+                ...r,
+                ...updatedMap.get(r.id)!,
+              }
             : r,
         ),
       );
@@ -1839,16 +1901,28 @@ const clearFilters = () => {
     return () => window.removeEventListener("click", close);
   }, []);
 
+  function getTargetsForAction(clicked: Report): Report[] {
+    const selected = selectedReportObjects;
 
-function getTargetsForAction(clicked: Report): Report[] {
-  const selected = selectedReportObjects;
+    if (!selected.length) return [clicked];
 
-  if (!selected.length) return [clicked];
+    const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
 
-  const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-  return clickedInsideSelection ? selected : [clicked];
-}
+    if (!clickedInsideSelection) return [clicked];
 
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
+  }
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
     if (r.formType === "STERILITY") {
@@ -2199,7 +2273,7 @@ function getTargetsForAction(clicked: Report): Report[] {
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-   const selected = selectedReportObjects;
+    const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -2984,12 +3058,12 @@ function getTargetsForAction(clicked: Report): Report[] {
                         </td>
 
                         <td className="pl-4 pr-3 py-3">
-                      <input
-  type="checkbox"
-  checked={isRowSelected(r.id)}
-  onChange={() => toggleRow(r)}
-  disabled={rowBusy}
-/>
+                          <input
+                            type="checkbox"
+                            checked={isRowSelected(r.id)}
+                            onChange={() => toggleRow(r)}
+                            disabled={rowBusy}
+                          />
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3054,23 +3128,24 @@ function getTargetsForAction(clicked: Report): Report[] {
                                 onClick={async () => {
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
+
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status ===
                                       "CLIENT_NEEDS_FINAL_CORRECTION"
                                     ) {
                                       const next = "UNDER_FINAL_TESTING_REVIEW";
-                                      await setStatus(r, next, "set by admin");
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
+                                      target = await setStatus(
+                                        r,
+                                        next,
+                                        "set by admin",
                                       );
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3092,22 +3167,23 @@ function getTargetsForAction(clicked: Report): Report[] {
                                 onClick={async () => {
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
+
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
                                       const next = "UNDER_TESTING_REVIEW";
-                                      await setStatus(r, next, "set by admin");
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
+                                      target = await setStatus(
+                                        r,
+                                        next,
+                                        "set by admin",
                                       );
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3129,22 +3205,23 @@ function getTargetsForAction(clicked: Report): Report[] {
                                 onClick={async () => {
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
+
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
                                       const next = "UNDER_TESTING_REVIEW";
-                                      await setStatus(r, next, "set by admin");
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
+                                      target = await setStatus(
+                                        r,
+                                        next,
+                                        "set by admin",
                                       );
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3349,26 +3426,23 @@ function getTargetsForAction(clicked: Report): Report[] {
                       try {
                         const r = selectedReport;
 
-                        // keep your existing micro transition
+                        let target = r;
+
                         if (
                           r.formType !== "CHEMISTRY_MIX" &&
                           r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
                           const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(
+
+                          target = await setStatus(
                             r,
                             next,
                             "Sent back to client for correction",
                           );
-                          setReports((prev) =>
-                            prev.map((x) =>
-                              x.id === r.id ? { ...x, status: next } : x,
-                            ),
-                          );
                         }
 
                         setSelectedReport(null);
-                        openUpdateTarget(r);
+                        openUpdateTarget(target);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }

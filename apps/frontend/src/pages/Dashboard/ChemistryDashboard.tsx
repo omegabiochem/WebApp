@@ -127,36 +127,37 @@ function displayReportNo(r: Report) {
 // -----------------------------
 // API helper
 // -----------------------------
-// async function setStatus(
-//   r: Report,
-//   newStatus: string,
-//   reason = "Common Status Change",
-// ) {
-//   await api(`/chemistry-reports/${r.id}/status`, {
-//     method: "PATCH",
-//     body: JSON.stringify({
-//       reason,
-//       status: newStatus,
-//       expectedVersion: r.version,
-//     }),
-//   });
-// }
 
 async function setStatus(args: {
   report: Report;
   newStatus: string;
   reason?: string;
-}) {
+}): Promise<Report> {
   const { report, newStatus, reason } = args;
 
-  await api(`/chemistry-reports/${report.id}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: newStatus,
-      ...(reason?.trim() ? { reason: reason.trim() } : {}),
-      expectedVersion: report.version,
-    }),
-  });
+  const updated = await api<Partial<Report>>(
+    `/chemistry-reports/${report.id}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: newStatus,
+        ...(reason?.trim() ? { reason: reason.trim() } : {}),
+        expectedVersion: report.version,
+      }),
+    },
+  );
+
+  return {
+    ...report,
+    ...updated,
+    id: updated.id ?? report.id,
+    status: updated.status ?? newStatus,
+    reportNumber: updated.reportNumber ?? report.reportNumber,
+    version:
+      typeof updated.version === "number"
+        ? updated.version
+        : (report.version ?? 0) + 1,
+  } as Report;
 }
 
 // -----------------------------
@@ -1322,54 +1323,64 @@ export default function ChemistryDashboard() {
     .map((id) => selectedReportsById[id] || reports.find((r) => r.id === id))
     .filter(Boolean) as Report[];
 
-  async function autoAdvanceAndOpen(r: Report, actor: string) {
+  async function autoAdvanceAndOpen(r: Report, actor: string): Promise<Report> {
     let nextStatus: string | null = null;
+    let reason = "";
 
     if (r.status === "SUBMITTED_BY_CLIENT") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus({
-        report: r,
-        newStatus: nextStatus,
-        reason: "Move to testing",
-      });
+      reason = "Move to testing";
     } else if (r.status === "RESUBMISSION_BY_CLIENT") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus({
-        report: r,
-        newStatus: nextStatus,
-        reason: "Resubmitted by client",
-      });
+      reason = "Resubmitted by client";
     } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus({
-        report: r,
-        newStatus: nextStatus,
-        reason: `Set by ${actor}`,
-      });
+      reason = `Set by ${actor}`;
     } else if (r.status === "QA_NEEDS_CORRECTION") {
       nextStatus = "UNDER_TESTING_REVIEW";
-      await setStatus({
-        report: r,
-        newStatus: nextStatus,
-        reason: `Set by ${actor}`,
-      });
+      reason = `Set by ${actor}`;
     }
 
-    if (nextStatus) {
-      setReports((prev) =>
-        prev.map((x) =>
-          x.id === r.id
-            ? {
-                ...x,
-                status: nextStatus!,
-                version: (x.version ?? r.version) + 1,
-              }
-            : x,
-        ),
-      );
+    if (!nextStatus) {
+      return r;
     }
 
-    return nextStatus;
+    const updatedReport = await setStatus({
+      report: r,
+      newStatus: nextStatus,
+      reason,
+    });
+
+    setReports((prev) =>
+      prev.map((x) =>
+        x.id === r.id
+          ? {
+              ...x,
+              ...updatedReport,
+              status: updatedReport.status,
+              reportNumber: updatedReport.reportNumber ?? x.reportNumber,
+              version:
+                typeof updatedReport.version === "number"
+                  ? updatedReport.version
+                  : (x.version ?? 0) + 1,
+            }
+          : x,
+      ),
+    );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...updatedReport,
+        },
+      };
+    });
+
+    return updatedReport;
   }
 
   function saveDashboardPage(nextPage: number) {
@@ -1800,7 +1811,21 @@ export default function ChemistryDashboard() {
     if (!selected.length) return [clicked];
 
     const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-    return clickedInsideSelection ? selected : [clicked];
+
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
   }
 
   function canUpdateAnyReport(r: Report, user?: any) {
@@ -2092,7 +2117,7 @@ export default function ChemistryDashboard() {
                         setBulkUpdating(true);
 
                         try {
-                          await Promise.all(
+                          const updatedReports = await Promise.all(
                             selected.map((r) =>
                               setStatus({
                                 report: r,
@@ -2102,17 +2127,20 @@ export default function ChemistryDashboard() {
                             ),
                           );
 
+                          const updatedMap = new Map(
+                            updatedReports.map((r) => [r.id, r]),
+                          );
+
                           const keep = new Set(
                             CHEMISTRY_STATUSES.filter((x) => x !== "ALL"),
                           );
 
                           setReports((prev) => {
                             const updated = prev.map((x) =>
-                              selectedIds.includes(x.id)
+                              updatedMap.has(x.id)
                                 ? {
                                     ...x,
-                                    status: s,
-                                    version: (x.version ?? 0) + 1,
+                                    ...updatedMap.get(x.id)!,
                                   }
                                 : x,
                             );
@@ -2748,8 +2776,11 @@ export default function ChemistryDashboard() {
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
                                   try {
-                                    await autoAdvanceAndOpen(r, "chemistry");
-                                    openUpdateTarget(r);
+                                    const updated = await autoAdvanceAndOpen(
+                                      r,
+                                      "chemistry",
+                                    );
+                                    openUpdateTarget(updated);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -2930,8 +2961,11 @@ export default function ChemistryDashboard() {
                         // optional: close modal first
                         setSelectedReport(null);
 
-                        await autoAdvanceAndOpen(r, "chemistry");
-                        openUpdateTarget(r);
+                        const updated = await autoAdvanceAndOpen(
+                          r,
+                          "chemistry",
+                        );
+                        openUpdateTarget(updated);
                       } catch (e: any) {
                         toast.error(e?.message || "Failed to update status");
                       } finally {
