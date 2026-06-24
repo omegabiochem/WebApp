@@ -370,8 +370,20 @@ export default function MicroMixReportForm({
   );
 
   useEffect(() => {
-    if (typeof report?.version === "number") setReportVersion(report.version);
-  }, [report?.version]);
+    if (!report?.id) return;
+
+    setReportId(report.id);
+
+    if (report.status) {
+      setStatus(report.status);
+    }
+
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   // //To set clientCode automatically when creating a new report
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");

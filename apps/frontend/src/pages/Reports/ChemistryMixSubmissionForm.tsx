@@ -268,9 +268,21 @@ export default function ChemistryMixSubmissionForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
-  useEffect(() => {
-    if (typeof report?.version === "number") setReportVersion(report.version);
-  }, [report?.version]);
+useEffect(() => {
+  if (!report?.id) return;
+
+  setReportId(report.id);
+
+  if (report.status) {
+    setStatus(report.status);
+  }
+
+  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+
+  if (typeof report.version === "number") {
+    setReportVersion(report.version);
+  }
+}, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   // ---- header fields (same as micro) ----
   const [client, setClient] = useState(

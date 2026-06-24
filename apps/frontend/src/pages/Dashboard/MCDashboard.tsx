@@ -334,8 +334,8 @@ async function setMicroStatus(
   r: MicroReport,
   newStatus: string,
   reason = "Common Status Change",
-) {
-  await api(`/reports/${r.id}/status`, {
+): Promise<Extract<UnifiedRow, { kind: "MICRO" }>> {
+  const updated = await api<Partial<MicroReport>>(`/reports/${r.id}/status`, {
     method: "PATCH",
     body: JSON.stringify({
       reason,
@@ -343,21 +343,50 @@ async function setMicroStatus(
       expectedVersion: r.version,
     }),
   });
+
+  return {
+    ...r,
+    ...updated,
+    kind: "MICRO",
+    id: updated.id ?? r.id,
+    status: updated.status ?? newStatus,
+    reportNumber: updated.reportNumber ?? r.reportNumber,
+    version:
+      typeof updated.version === "number"
+        ? updated.version
+        : (r.version ?? 0) + 1,
+  } as Extract<UnifiedRow, { kind: "MICRO" }>;
 }
 
 async function setChemStatus(
   r: ChemReport,
   newStatus: string,
   reason = "Common Status Change",
-) {
-  await api(`/chemistry-reports/${r.id}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      reason,
-      status: newStatus,
-      expectedVersion: r.version,
-    }),
-  });
+): Promise<Extract<UnifiedRow, { kind: "CHEMISTRY" }>> {
+  const updated = await api<Partial<ChemReport>>(
+    `/chemistry-reports/${r.id}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        reason,
+        status: newStatus,
+        expectedVersion: r.version,
+      }),
+    },
+  );
+
+  return {
+    ...r,
+    ...updated,
+    kind: "CHEMISTRY",
+    id: updated.id ?? r.id,
+    status: updated.status ?? newStatus,
+    reportNumber: updated.reportNumber ?? r.reportNumber,
+    version:
+      typeof updated.version === "number"
+        ? updated.version
+        : (r.version ?? 0) + 1,
+  } as Extract<UnifiedRow, { kind: "CHEMISTRY" }>;
 }
 
 async function startMicroFinal(r: MicroReport) {
@@ -902,6 +931,9 @@ export default function MCDashboard() {
 
   // Selection + print
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, UnifiedRow>
+  >({});
 
   const PIN_STORAGE_KEY = userKey ? `mcDashboardPinned:user:${userKey}` : null;
 
@@ -1002,14 +1034,70 @@ export default function MCDashboard() {
 
   const rowKey = (r: UnifiedRow) => `${r.kind}:${r.id}`;
 
+  function mergeUpdatedRow(updated: UnifiedRow) {
+    const key = rowKey(updated);
+
+    if (updated.kind === "CHEMISTRY") {
+      setChemReports((prev) =>
+        prev.map((x) =>
+          x.id === updated.id
+            ? {
+                ...x,
+                ...updated,
+              }
+            : x,
+        ),
+      );
+    } else {
+      setMicroReports((prev) =>
+        prev.map((x) =>
+          x.id === updated.id
+            ? {
+                ...x,
+                ...updated,
+              }
+            : x,
+        ),
+      );
+    }
+
+    setSelectedReportsById((prev) => {
+      if (!prev[key]) return prev;
+
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          ...updated,
+        },
+      };
+    });
+
+    setSelectedReport((prev) =>
+      prev && rowKey(prev) === key
+        ? ({
+            ...prev,
+            ...updated,
+          } as UnifiedRow)
+        : prev,
+    );
+  }
+
   const workspaceReports = useMemo(() => {
     const map = new Map<string, UnifiedRow>();
-    unified.forEach((r) => map.set(rowKey(r), r));
+
+    unified.forEach((r) => {
+      map.set(rowKey(r), r);
+    });
+
+    Object.entries(selectedReportsById).forEach(([key, r]) => {
+      map.set(key, r);
+    });
 
     return workspaceIds
       .map((id) => map.get(id))
       .filter(Boolean) as UnifiedRow[];
-  }, [workspaceIds, unified]);
+  }, [workspaceIds, unified, selectedReportsById]);
 
   // -----------------------------
   // Fetch both queues
@@ -1123,6 +1211,9 @@ export default function MCDashboard() {
     params.set("dateField", dateField);
 
     params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1211,6 +1302,7 @@ export default function MCDashboard() {
     sortBy,
     sortDir,
     refreshKey,
+    pinnedIds,
   ]);
 
   const statusOptions = useMemo(() => {
@@ -1462,8 +1554,9 @@ export default function MCDashboard() {
   ]);
 
   useEffect(() => {
-    setPage(1);
+    // setPage(1);
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
     category,
     allTypeFilter,
@@ -1746,9 +1839,27 @@ export default function MCDashboard() {
 
   const toggleRow = (r: UnifiedRow) => {
     const key = rowKey(r);
-    setSelectedIds((prev) =>
-      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
-    );
+
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(key);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[key];
+          return next;
+        });
+
+        return prev.filter((x) => x !== key);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [key]: r,
+      }));
+
+      return [...prev, key];
+    });
   };
 
   const allOnPageSelected =
@@ -1760,20 +1871,67 @@ export default function MCDashboard() {
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => rowKey(r) === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          delete next[rowKey(r)];
+        });
+
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(rowKey(r)));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+
+        pageRows.forEach((r) => {
+          next[rowKey(r)] = r;
+        });
+
+        return next;
+      });
     }
   };
 
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      unified.forEach((r) => {
+        const key = rowKey(r);
+
+        if (selectedIds.includes(key)) {
+          next[key] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [unified, selectedIds]);
+
   const selectedReportObjects: UnifiedRow[] = useMemo(() => {
     const map = new Map<string, UnifiedRow>();
-    unified.forEach((r) => map.set(rowKey(r), r));
+
+    unified.forEach((r) => {
+      map.set(rowKey(r), r);
+    });
+
+    Object.entries(selectedReportsById).forEach(([key, r]) => {
+      map.set(key, r);
+    });
+
     return selectedIds.map((id) => map.get(id)).filter(Boolean) as UnifiedRow[];
-  }, [selectedIds, unified]);
+  }, [selectedIds, unified, selectedReportsById]);
+
   const selected = selectedReportObjects;
 
   const selectedSameGroupAndStatus = useMemo(() => {
@@ -1827,122 +1985,106 @@ export default function MCDashboard() {
   // -----------------------------
   // Update / Advance
   // -----------------------------
-  async function autoAdvanceAndOpen(r: UnifiedRow, actor: string) {
+  async function autoAdvanceAndOpen(
+    r: UnifiedRow,
+    actor: string,
+  ): Promise<UnifiedRow> {
     if (r.kind === "MICRO") {
       const isSterility = r.formType === "STERILITY";
+
       let nextStatus: string | null = null;
+      let reason = "";
 
       if (isSterility) {
         if (r.status === "SUBMITTED_BY_CLIENT") {
           nextStatus = "UNDER_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Move to sterility testing");
+          reason = "Move to sterility testing";
         } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
           nextStatus = "UNDER_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Move to sterility resubmission");
+          reason = "Move to sterility resubmission";
         } else if (r.status === "RESUBMISSION_BY_CLIENT") {
           nextStatus = "UNDER_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Resubmitted by client");
+          reason = "Resubmitted by client";
         } else if (r.status === "QA_NEEDS_CORRECTION") {
           nextStatus = "UNDER_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+          reason = `Set by ${actor}`;
         }
       } else {
         if (r.status === "SUBMITTED_BY_CLIENT") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Move to prelim testing");
+          reason = "Move to prelim testing";
         } else if (r.status === "CLIENT_NEEDS_PRELIMINARY_CORRECTION") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Move to RESUBMISSION");
+          reason = "Move to RESUBMISSION";
         } else if (r.status === "PRELIMINARY_APPROVED") {
           nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Move to final testing");
+          reason = "Move to final testing";
         } else if (r.status === "PRELIMINARY_RESUBMISSION_BY_CLIENT") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, "Resubmitted by client");
+          reason = "Resubmitted by client";
         } else if (r.status === "CLIENT_NEEDS_FINAL_CORRECTION") {
           nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+          reason = `Set by ${actor}`;
         } else if (r.status === "QA_NEEDS_PRELIMINARY_CORRECTION") {
           nextStatus = "UNDER_PRELIMINARY_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+          reason = `Set by ${actor}`;
         } else if (r.status === "QA_NEEDS_FINAL_CORRECTION") {
           nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-          await setMicroStatus(r, nextStatus, `Set by ${actor}`);
+          reason = `Set by ${actor}`;
         }
       }
 
-      if (nextStatus) {
-        setMicroReports((prev) =>
-          prev.map((x) =>
-            x.id === r.id
-              ? {
-                  ...x,
-                  status: nextStatus!,
-                  version: (x.version ?? r.version) + 1,
-                }
-              : x,
-          ),
-        );
-      }
+      if (!nextStatus) return r;
 
-      return nextStatus;
+      const updated = await setMicroStatus(
+        r as MicroReport,
+        nextStatus,
+        reason,
+      );
+      mergeUpdatedRow(updated);
+
+      return updated;
     }
 
     let nextStatus: string | null = null;
+    let reason = "";
 
     if (r.formType === "COA") {
       if (r.status === "SUBMITTED_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, "Move COA to testing");
+        reason = "Move COA to testing";
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(
-          r,
-          nextStatus,
-          `COA correction requested by ${actor}`,
-        );
+        reason = `COA correction requested by ${actor}`;
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, "COA resubmitted by client");
+        reason = "COA resubmitted by client";
       } else if (r.status === "QA_NEEDS_CORRECTION") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(
-          r,
-          nextStatus,
-          `COA correction requested by QA (${actor})`,
-        );
+        reason = `COA correction requested by QA (${actor})`;
       }
     } else {
       if (r.status === "SUBMITTED_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, "Move to testing");
+        reason = "Move to testing";
       } else if (r.status === "CLIENT_NEEDS_CORRECTION") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, `Set by ${actor}`);
+        reason = `Set by ${actor}`;
       } else if (r.status === "RESUBMISSION_BY_CLIENT") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, "Resubmitted by client");
+        reason = "Resubmitted by client";
       } else if (r.status === "QA_NEEDS_CORRECTION") {
         nextStatus = "UNDER_TESTING_REVIEW";
-        await setChemStatus(r, nextStatus, `Set by ${actor}`);
+        reason = `Set by ${actor}`;
       }
     }
 
-    if (nextStatus) {
-      setChemReports((prev) =>
-        prev.map((x) =>
-          x.id === r.id
-            ? {
-                ...x,
-                status: nextStatus!,
-                version: (x.version ?? r.version) + 1,
-              }
-            : x,
-        ),
-      );
-    }
+    if (!nextStatus) return r;
 
-    return nextStatus;
+    const updated = await setChemStatus(r as ChemReport, nextStatus, reason);
+    mergeUpdatedRow(updated);
+
+    return updated;
   }
 
   // Micro Start Final (only when micro & allowed statuses)
@@ -1981,7 +2123,8 @@ export default function MCDashboard() {
       formNoFrom !== "" ||
       formNoTo !== "" ||
       reportNoFrom !== "" ||
-      reportNoTo !== ""
+      reportNoTo !== "" ||
+      selectedIds.length > 0
     );
   }, [
     category,
@@ -2004,6 +2147,7 @@ export default function MCDashboard() {
     formNoTo,
     reportNoFrom,
     reportNoTo,
+    selectedIds,
   ]);
 
   const clearAllFilters = () => {
@@ -2033,6 +2177,9 @@ export default function MCDashboard() {
 
     setActiveFilter("ALL");
     setPage(1);
+
+    setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   function canUpdateUnified(r: UnifiedRow, user?: any) {
@@ -2052,7 +2199,7 @@ export default function MCDashboard() {
     setBulkUpdating(true);
 
     try {
-      await Promise.all(
+      const updatedRows = await Promise.all(
         selected.map((r) => {
           if (r.kind === "MICRO") {
             return setMicroStatus(
@@ -2066,6 +2213,8 @@ export default function MCDashboard() {
         }),
       );
 
+      const updatedMap = new Map(updatedRows.map((r) => [rowKey(r), r]));
+
       const keepMicro = new Set<string>([
         ...MICRO_STATUSES.filter((s) => s !== "ALL").map(String),
         ...STERILITY_STATUSES.filter((s) => s !== "ALL").map(String),
@@ -2077,21 +2226,29 @@ export default function MCDashboard() {
       ]);
 
       setMicroReports((prev) => {
-        const updated = prev.map((x) =>
-          selectedIds.includes(`MICRO:${x.id}`)
-            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
-            : x,
-        );
+        const updated = prev.map((x) => {
+          const key = `MICRO:${x.id}`;
+          return updatedMap.has(key)
+            ? {
+                ...x,
+                ...updatedMap.get(key)!,
+              }
+            : x;
+        });
 
         return updated.filter((r) => keepMicro.has(String(r.status)));
       });
 
       setChemReports((prev) => {
-        const updated = prev.map((x) =>
-          selectedIds.includes(`CHEMISTRY:${x.id}`)
-            ? { ...x, status: toStatus, version: (x.version ?? 0) + 1 }
-            : x,
-        );
+        const updated = prev.map((x) => {
+          const key = `CHEMISTRY:${x.id}`;
+          return updatedMap.has(key)
+            ? {
+                ...x,
+                ...updatedMap.get(key)!,
+              }
+            : x;
+        });
 
         return updated.filter((r) => keepChem.has(String(r.status)));
       });
@@ -2115,13 +2272,13 @@ export default function MCDashboard() {
       });
 
       setSelectedIds([]);
+      setSelectedReportsById({});
     } finally {
       setBulkUpdating(false);
     }
   }
 
   const ENABLE_BULK_STATUS = false;
-
   function getTargetsForAction(clicked: UnifiedRow): UnifiedRow[] {
     const selected = selectedReportObjects;
 
@@ -2130,7 +2287,21 @@ export default function MCDashboard() {
     const clickedInsideSelection = selected.some(
       (r) => rowKey(r) === rowKey(clicked),
     );
-    return clickedInsideSelection ? selected : [clicked];
+
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      rowKey(r) === rowKey(clicked)
+        ? ({
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          } as UnifiedRow)
+        : r,
+    );
   }
 
   function openViewTarget(clicked: UnifiedRow) {
@@ -2179,6 +2350,11 @@ export default function MCDashboard() {
       updated.formType === "CHEMISTRY_MIX" ||
       updated.formType === "COA";
 
+    const merged = {
+      ...updated,
+      kind: isChemistry ? "CHEMISTRY" : "MICRO",
+    } as UnifiedRow;
+
     if (isChemistry) {
       setChemReports((prev) =>
         prev.map((r) =>
@@ -2196,25 +2372,38 @@ export default function MCDashboard() {
             : r,
         ),
       );
-      return;
+    } else {
+      setMicroReports((prev) =>
+        prev.map((r) =>
+          r.id === updated.id
+            ? {
+                ...r,
+                ...updated,
+                status: updated.status ?? r.status,
+                reportNumber: updated.reportNumber ?? r.reportNumber,
+                version:
+                  typeof updated.version === "number"
+                    ? updated.version
+                    : (r.version ?? 0) + 1,
+              }
+            : r,
+        ),
+      );
     }
 
-    setMicroReports((prev) =>
-      prev.map((r) =>
-        r.id === updated.id
-          ? {
-              ...r,
-              ...updated,
-              status: updated.status ?? r.status,
-              reportNumber: updated.reportNumber ?? r.reportNumber,
-              version:
-                typeof updated.version === "number"
-                  ? updated.version
-                  : (r.version ?? 0) + 1,
-            }
-          : r,
-      ),
-    );
+    setSelectedReportsById((prev) => {
+      const key = rowKey(merged);
+
+      if (!prev[key]) return prev;
+
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          ...merged,
+        },
+      };
+    });
   }
 
   useEffect(() => {
@@ -2340,9 +2529,7 @@ export default function MCDashboard() {
   }
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
-    const selected = selectedIds
-      .map((id) => unified.find((r) => rowKey(r) === id))
-      .filter(Boolean) as UnifiedRow[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return;
 
@@ -3347,8 +3534,11 @@ export default function MCDashboard() {
                                     if (rowBusy) return;
                                     setUpdatingKey(key);
                                     try {
-                                      await autoAdvanceAndOpen(r, "lab");
-                                      openUpdateTarget(r);
+                                      const updated = await autoAdvanceAndOpen(
+                                        r,
+                                        "lab",
+                                      );
+                                      openUpdateTarget(updated);
                                     } catch (e: any) {
                                       toast.error(
                                         e?.message || "Failed to update status",
@@ -3571,8 +3761,8 @@ export default function MCDashboard() {
                         try {
                           const r = selectedReport;
                           setSelectedReport(null);
-                          await autoAdvanceAndOpen(r, "lab");
-                          openUpdateTarget(r);
+                          const updated = await autoAdvanceAndOpen(r, "lab");
+                          openUpdateTarget(updated);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to update status");
                         } finally {
