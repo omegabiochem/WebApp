@@ -610,7 +610,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
   // }
 
   // -------- signature blur rules (copy of your view behavior) ----------
-  const BLUR_SIGNATURE_STATUSES = new Set<COAReportStatus>([
+  const BLUR_SIGNATURE_STATUSES = new Set<string>([
     "DRAFT",
     "SUBMITTED_BY_CLIENT",
     "CLIENT_NEEDS_CORRECTION",
