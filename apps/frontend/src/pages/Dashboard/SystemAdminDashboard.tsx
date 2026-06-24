@@ -591,7 +591,7 @@ export default function SystemAdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "systemadmin"}`;
+  const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "systemadmin"}`;
 
   function getInitialAdminFilters(
     searchParams: URLSearchParams,
@@ -755,6 +755,9 @@ const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "syste
   // Selection + Printing (Admin)
   // -----------------------------
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedReportsById, setSelectedReportsById] = useState<
+    Record<string, Report>
+  >({});
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintJob, setSinglePrintJob] = useState<{
@@ -785,9 +788,9 @@ const FILTER_STORAGE_KEY = `systemAdminDashboardFilters:user:${userKey || "syste
   const [bulkESignError, setBulkESignError] = useState<string>("");
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
 
-const PIN_STORAGE_KEY = userKey
-  ? `systemAdminDashboardPinned:user:${userKey}`
-  : null;
+  const PIN_STORAGE_KEY = userKey
+    ? `systemAdminDashboardPinned:user:${userKey}`
+    : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
@@ -814,7 +817,7 @@ const PIN_STORAGE_KEY = userKey
     (user as any)?.uid ||
     "qa";
 
-const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
+  const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
 
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [showVoidPassword, setShowVoidPassword] = useState(false);
@@ -845,20 +848,26 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     null,
   );
 
-  const workspaceReports = useMemo(() => {
+  type WorkspaceReport = Omit<Report, "formNumber" | "reportNumber"> & {
+    formNumber: string;
+    reportNumber: string | null;
+  };
+
+  const workspaceReports = useMemo<WorkspaceReport[]>(() => {
     const map = new Map<string, Report>();
+
     reports.forEach((r) => map.set(r.id, r));
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
 
     return workspaceIds
       .map((id) => map.get(id))
-      .filter(Boolean)
+      .filter((r): r is Report => Boolean(r))
       .map((r) => ({
-        ...r!,
-        formNumber: r!.formNumber ?? "",
-        reportNumber:
-          r!.reportNumber != null ? String(r!.reportNumber) : undefined,
+        ...r,
+        formNumber: r.formNumber ?? "",
+        reportNumber: r.reportNumber != null ? String(r.reportNumber) : null,
       }));
-  }, [workspaceIds, reports]);
+  }, [workspaceIds, reports, selectedReportsById]);
 
   const [workspaceCorrectionKinds, setWorkspaceCorrectionKinds] = useState<
     CorrectionLaunchKind[]
@@ -918,45 +927,93 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     newStatus: string,
     reason = "Client correction update",
     eSignPassword?: string,
-  ) {
+  ): Promise<Report> {
     const isChemistry = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
 
     const url = isChemistry
       ? `/chemistry-reports/${r.id}/status`
       : `/reports/${r.id}/status`;
 
-    // statuses that require e-sign per backend
     const needsESign =
       newStatus === "VOID" ||
       newStatus === "LOCKED" ||
       newStatus === "UNDER_CLIENT_FINAL_REVIEW";
 
-    const body: any = { reason, status: newStatus, expectedVersion: r.version };
-    if (
-      newStatus === "VOID" ||
-      newStatus === "LOCKED" ||
-      newStatus === "UNDER_CLIENT_FINAL_REVIEW"
-    ) {
-      body.eSignPassword = eSignPassword;
+    if (needsESign && !eSignPassword) {
+      throw new Error("Electronic signature (password) is required");
     }
+
+    const body: any = {
+      reason,
+      status: newStatus,
+      expectedVersion: r.version,
+    };
 
     if (needsESign) {
-      if (!eSignPassword) {
-        throw new Error("Electronic signature (password) is required");
-      }
       body.eSignPassword = eSignPassword;
     }
 
-    await api(url, { method: "PATCH", body: JSON.stringify(body) });
+    const updated = await api<Partial<Report>>(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
 
-    // keep local state in sync (status + bump version)
+    const merged: Report = {
+      ...r,
+      ...updated,
+      id: updated.id ?? r.id,
+      status: updated.status ?? newStatus,
+      reportNumber: updated.reportNumber ?? r.reportNumber,
+      version:
+        typeof updated.version === "number"
+          ? updated.version
+          : (r.version ?? 0) + 1,
+    } as Report;
+
     setReports((prev) =>
       prev.map((x) =>
         x.id === r.id
-          ? { ...x, status: newStatus, version: (x.version ?? r.version) + 1 }
+          ? {
+              ...x,
+              ...merged,
+            }
           : x,
       ),
     );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...merged,
+        },
+      };
+    });
+
+    setSelectedReport((prev) => {
+      if (!prev) return prev;
+      if (prev.id !== r.id) return prev;
+
+      return {
+        ...prev,
+        ...merged,
+      };
+    });
+
+    setChangeStatusReport((prev) => {
+      if (!prev) return prev;
+      if (prev.id !== r.id) return prev;
+
+      return {
+        ...prev,
+        ...merged,
+      };
+    });
+
+    return merged;
   }
 
   const fetchDashboardReports = async () => {
@@ -969,6 +1026,9 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     params.set("dateField", dateField);
     params.set("sort", sortOrder);
     params.set("rangeType", numberRangeType);
+    if (pinnedIds.length) {
+      params.set("pinnedIds", pinnedIds.join(","));
+    }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
@@ -1048,6 +1108,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     dateField,
     sortOrder,
     refreshKey,
+    pinnedIds,
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1354,10 +1415,27 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
   // -----------------------------
   const isRowSelected = (id: string) => selectedIds.includes(id);
 
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+  const toggleRow = (report: Report) => {
+    setSelectedIds((prev) => {
+      const alreadySelected = prev.includes(report.id);
+
+      if (alreadySelected) {
+        setSelectedReportsById((old) => {
+          const next = { ...old };
+          delete next[report.id];
+          return next;
+        });
+
+        return prev.filter((x) => x !== report.id);
+      }
+
+      setSelectedReportsById((old) => ({
+        ...old,
+        [report.id]: report,
+      }));
+
+      return [...prev, report.id];
+    });
   };
 
   const allOnPageSelected =
@@ -1368,18 +1446,55 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       setSelectedIds((prev) =>
         prev.filter((id) => !pageRows.some((r) => r.id === id)),
       );
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          delete next[r.id];
+        });
+        return next;
+      });
     } else {
       setSelectedIds((prev) => {
         const set = new Set(prev);
         pageRows.forEach((r) => set.add(r.id));
         return Array.from(set);
       });
+
+      setSelectedReportsById((old) => {
+        const next = { ...old };
+        pageRows.forEach((r) => {
+          next[r.id] = r;
+        });
+        return next;
+      });
     }
   };
 
-  const selectedReportObjects = selectedIds
-    .map((id) => reports.find((r) => r.id === id))
-    .filter(Boolean) as Report[];
+  useEffect(() => {
+    if (!selectedIds.length) return;
+
+    setSelectedReportsById((prev) => {
+      const next = { ...prev };
+
+      reports.forEach((r) => {
+        if (selectedIds.includes(r.id)) {
+          next[r.id] = r;
+        }
+      });
+
+      return next;
+    });
+  }, [reports, selectedIds]);
+
+  const selectedReportObjects: Report[] = useMemo(() => {
+    const map = new Map<string, Report>();
+
+    reports.forEach((r) => map.set(r.id, r));
+    Object.values(selectedReportsById).forEach((r) => map.set(r.id, r));
+
+    return selectedIds.map((id) => map.get(id)).filter(Boolean) as Report[];
+  }, [selectedIds, reports, selectedReportsById]);
 
   const handlePrintSelected = () => {
     if (printingBulk) return;
@@ -1401,30 +1516,10 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     setIsBulkPrinting(true);
   };
 
-  // optional: clear selection when filters change (avoids printing hidden rows)
-  // useEffect(() => {
-  //   setSelectedIds([]);
-  // }, [
-  //   formFilter,
-  //   statusFilter,
-  //   searchClient,
-  //   searchReport,
-  //   searchText,
-  //   datePreset,
-  //   dateFrom,
-  //   dateTo,
-  //   numberRangeType,
-  //   formNoFrom,
-  //   formNoTo,
-  //   reportNoFrom,
-  //   reportNoTo,
-  //   perPage,
-  // ]);
-
   useEffect(() => {
     setSelectedIds([]);
+    setSelectedReportsById({});
   }, [
-    page,
     formFilter,
     statusFilter,
     searchClient,
@@ -1495,7 +1590,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
           ? `/chemistry-reports/${report.id}/change-status`
           : `/reports/${report.id}/change-status`;
 
-      await api(endpoint, {
+      const updated = await api<Partial<Report>>(endpoint, {
         method: "PATCH",
         body: JSON.stringify({
           status: nextStatus,
@@ -1504,11 +1599,39 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
         }),
       });
 
+      const merged: Report = {
+        ...report,
+        ...updated,
+        status: updated.status ?? nextStatus,
+        reportNumber: updated.reportNumber ?? report.reportNumber,
+        version:
+          typeof updated.version === "number"
+            ? updated.version
+            : (report.version ?? 0) + 1,
+      } as Report;
+
       setReports((prev) =>
         prev.map((r) =>
-          r.id === report.id ? { ...r, status: nextStatus } : r,
+          r.id === report.id
+            ? {
+                ...r,
+                ...merged,
+              }
+            : r,
         ),
       );
+
+      setSelectedReportsById((prev) => {
+        if (!prev[report.id]) return prev;
+
+        return {
+          ...prev,
+          [report.id]: {
+            ...prev[report.id],
+            ...merged,
+          },
+        };
+      });
 
       setChangeStatusReport(null);
       setReason("");
@@ -1637,7 +1760,8 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       reportNoTo !== "" ||
       perPage !== 10 ||
       dateField !== DEFAULT_ADMIN_FILTERS.dateField ||
-      sortOrder !== "desc"
+      sortOrder !== "desc" ||
+      selectedIds.length > 0
     );
   }, [
     formFilter,
@@ -1656,6 +1780,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     perPage,
     dateField,
     sortOrder,
+    selectedIds,
   ]);
   const clearFilters = () => {
     setSearchClient("");
@@ -1675,6 +1800,8 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
     setPage(1);
     setDateField(DEFAULT_ADMIN_FILTERS.dateField);
     setSortOrder("desc");
+    setSelectedIds([]);
+    setSelectedReportsById({});
   };
   function niceFormType(ft?: string) {
     switch (ft) {
@@ -1718,6 +1845,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
 
     toast.success(`Voided ${voidableSelected.length} report(s)`);
     setSelectedIds([]);
+    setSelectedReportsById({});
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1765,14 +1893,14 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
         return;
       }
 
-      await Promise.all(
+      const updatedReports = await Promise.all(
         reportsToChange.map(async (report) => {
           const endpoint =
             report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
               ? `/chemistry-reports/${report.id}/change-status`
               : `/reports/${report.id}/change-status`;
 
-          await api(endpoint, {
+          const updated = await api<Partial<Report>>(endpoint, {
             method: "PATCH",
             body: JSON.stringify({
               status: nextStatus,
@@ -1780,7 +1908,31 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
               eSignPassword: bulkESignPassword,
             }),
           });
+
+          return {
+            ...report,
+            ...updated,
+            status: updated.status ?? nextStatus,
+            reportNumber: updated.reportNumber ?? report.reportNumber,
+            version:
+              typeof updated.version === "number"
+                ? updated.version
+                : (report.version ?? 0) + 1,
+          } as Report;
         }),
+      );
+
+      const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
+
+      setReports((prev) =>
+        prev.map((r) =>
+          updatedMap.has(r.id)
+            ? {
+                ...r,
+                ...updatedMap.get(r.id)!,
+              }
+            : r,
+        ),
       );
 
       setReports((prev) =>
@@ -1797,6 +1949,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
       setBulkESignPassword("");
       setBulkESignError("");
       setSelectedIds([]);
+      setSelectedReportsById({});
 
       toast.success("Bulk status updated successfully");
     } catch (err: any) {
@@ -1827,14 +1980,26 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
   }, []);
 
   function getTargetsForAction(clicked: Report): Report[] {
-    const selected = selectedIds
-      .map((id) => reports.find((r) => r.id === id))
-      .filter(Boolean) as Report[];
+    const selected = selectedReportObjects;
 
     if (!selected.length) return [clicked];
 
     const clickedInsideSelection = selected.some((r) => r.id === clicked.id);
-    return clickedInsideSelection ? selected : [clicked];
+
+    if (!clickedInsideSelection) return [clicked];
+
+    return selected.map((r) =>
+      r.id === clicked.id
+        ? {
+            ...r,
+            ...clicked,
+            status: clicked.status,
+            reportNumber: clicked.reportNumber ?? r.reportNumber,
+            version:
+              typeof clicked.version === "number" ? clicked.version : r.version,
+          }
+        : r,
+    );
   }
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
@@ -1907,6 +2072,56 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
           : r,
       ),
     );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[updated.id]) return prev;
+
+      return {
+        ...prev,
+        [updated.id]: {
+          ...prev[updated.id],
+          ...updated,
+          status: updated.status ?? prev[updated.id].status,
+          reportNumber: updated.reportNumber ?? prev[updated.id].reportNumber,
+          version:
+            typeof updated.version === "number"
+              ? updated.version
+              : (prev[updated.id].version ?? 0) + 1,
+        },
+      };
+    });
+
+    setSelectedReport((prev) => {
+      if (!prev) return prev;
+      if (prev.id !== updated.id) return prev;
+
+      return {
+        ...prev,
+        ...updated,
+        status: updated.status ?? prev.status,
+        reportNumber: updated.reportNumber ?? prev.reportNumber,
+        version:
+          typeof updated.version === "number"
+            ? updated.version
+            : (prev.version ?? 0) + 1,
+      };
+    });
+
+    setChangeStatusReport((prev) => {
+      if (!prev) return prev;
+      if (prev.id !== updated.id) return prev;
+
+      return {
+        ...prev,
+        ...updated,
+        status: updated.status ?? prev.status,
+        reportNumber: updated.reportNumber ?? prev.reportNumber,
+        version:
+          typeof updated.version === "number"
+            ? updated.version
+            : (prev.version ?? 0) + 1,
+      };
+    });
   }
 
   const DASHBOARD_COLS = useMemo(() => {
@@ -3029,7 +3244,7 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
-                            onChange={() => toggleRow(r.id)}
+                            onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
                         </td>
@@ -3119,26 +3334,22 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status ===
                                       "CLIENT_NEEDS_FINAL_CORRECTION"
                                     ) {
-                                      const next = "UNDER_FINAL_TESTING_REVIEW";
-                                      await setStatus(
+                                      target = await setStatus(
                                         r,
-                                        next,
-                                        "set by sytemadmin",
+                                        "UNDER_FINAL_TESTING_REVIEW",
+                                        "set by systemadmin",
                                       );
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
-                                      );
+
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3161,25 +3372,21 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
-                                      const next = "UNDER_TESTING_REVIEW";
-                                      await setStatus(
+                                      target = await setStatus(
                                         r,
-                                        next,
+                                        "UNDER_TESTING_REVIEW",
                                         "set by systemadmin",
                                       );
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
-                                      );
+
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3202,25 +3409,21 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                                   if (rowBusy) return;
                                   setUpdatingId(r.id);
                                   try {
+                                    let target = r;
+
                                     if (
                                       r.status === "CLIENT_NEEDS_CORRECTION"
                                     ) {
-                                      const next = "UNDER_TESTING_REVIEW";
-                                      await setStatus(
+                                      target = await setStatus(
                                         r,
-                                        next,
+                                        "UNDER_TESTING_REVIEW",
                                         "set by systemadmin",
                                       );
-                                      setReports((prev) =>
-                                        prev.map((x) =>
-                                          x.id === r.id
-                                            ? { ...x, status: next }
-                                            : x,
-                                        ),
-                                      );
+
                                       toast.success("Report Status Updated");
                                     }
-                                    openUpdateTarget(r);
+
+                                    openUpdateTarget(target);
                                   } catch (e: any) {
                                     toast.error(
                                       e?.message || "Failed to update status",
@@ -3459,28 +3662,23 @@ const COL_STORAGE_KEY = `systemAdminDashboardCols:user:${colUserKey}`;
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                     onClick={async () => {
                       try {
-                        const r = selectedReport;
+                        let target = selectedReport;
 
-                        // keep your existing micro transition
                         if (
-                          r.formType !== "CHEMISTRY_MIX" &&
-                          r.status === "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          target.formType !== "CHEMISTRY_MIX" &&
+                          target.formType !== "COA" &&
+                          target.status ===
+                            "PRELIMINARY_TESTING_NEEDS_CORRECTION"
                         ) {
-                          const next = "UNDER_CLIENT_PRELIMINARY_CORRECTION";
-                          await setStatus(
-                            r,
-                            next,
+                          target = await setStatus(
+                            target,
+                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
                             "Sent back to client for correction",
-                          );
-                          setReports((prev) =>
-                            prev.map((x) =>
-                              x.id === r.id ? { ...x, status: next } : x,
-                            ),
                           );
                         }
 
                         setSelectedReport(null);
-                        openUpdateTarget(r);
+                        openUpdateTarget(target);
                       } catch (e: any) {
                         alert(e?.message || "Failed to update status");
                       }

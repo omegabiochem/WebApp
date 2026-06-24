@@ -23,6 +23,8 @@ type AdminDashboardQuery = {
   page?: string;
   perPage?: string;
   sort?: string;
+
+  pinnedIds?: string;
 };
 
 function toInt(value: any, fallback: number) {
@@ -69,6 +71,32 @@ function isInRange(value: number | null, fromRaw?: string, toRaw?: string) {
   if (to != null && Number.isFinite(to) && value > to) return false;
 
   return true;
+}
+
+function parsePinnedIds(value?: string): string[] {
+  if (!value) return [];
+
+  return String(value)
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function withPinnedFilter(
+  where: Prisma.DashboardReportWhereInput,
+  pinnedIds: string[],
+  mode: 'PINNED' | 'UNPINNED',
+): Prisma.DashboardReportWhereInput {
+  if (!pinnedIds.length) return where;
+
+  return {
+    AND: [
+      where,
+      {
+        sourceId: mode === 'PINNED' ? { in: pinnedIds } : { notIn: pinnedIds },
+      },
+    ],
+  };
 }
 
 function mapFormFilter(form?: string): FormType | undefined {
@@ -123,6 +151,9 @@ export class SystemAdminDashboardService {
     const page = toInt(query.page, 1);
     const perPage = Math.min(toInt(query.perPage, 10), 100);
     const skip = (page - 1) * perPage;
+
+    const pinnedIds = parsePinnedIds(query.pinnedIds);
+    const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
 
     const form = query.form || 'ALL';
     const status = query.status || 'ALL';
@@ -228,17 +259,79 @@ export class SystemAdminDashboardService {
       !(rangeType === 'FORM' && hasFormRange) &&
       !(rangeType === 'REPORT' && hasReportRange)
     ) {
-      const [rows, total] = await Promise.all([
+      if (!pinnedIds.length) {
+        const [rows, total] = await Promise.all([
+          this.prisma.dashboardReport.findMany({
+            where,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip,
+            take: perPage,
+          }),
+          this.prisma.dashboardReport.count({ where }),
+        ]);
+
+        return {
+          rows: rows.map(mapDashboardRow),
+          total,
+          page,
+          perPage,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+        };
+      }
+
+      const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
+      const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
+
+      const [pinnedRowsRaw, total] = await Promise.all([
         this.prisma.dashboardReport.findMany({
-          where,
+          where: pinnedWhere,
           orderBy: {
             [dateField]: sort,
           } as any,
-          skip,
-          take: perPage,
         }),
         this.prisma.dashboardReport.count({ where }),
       ]);
+
+      const pinnedRows = pinnedRowsRaw.sort((a, b) => {
+        const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        return ai - bi;
+      });
+
+      const pinnedCount = pinnedRows.length;
+
+      let rows: any[] = [];
+
+      if (skip < pinnedCount) {
+        const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
+        const remaining = perPage - pinnedSlice.length;
+
+        let unpinnedSlice: any[] = [];
+
+        if (remaining > 0) {
+          unpinnedSlice = await this.prisma.dashboardReport.findMany({
+            where: unpinnedWhere,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip: 0,
+            take: remaining,
+          });
+        }
+
+        rows = [...pinnedSlice, ...unpinnedSlice];
+      } else {
+        rows = await this.prisma.dashboardReport.findMany({
+          where: unpinnedWhere,
+          orderBy: {
+            [dateField]: sort,
+          } as any,
+          skip: skip - pinnedCount,
+          take: perPage,
+        });
+      }
 
       return {
         rows: rows.map(mapDashboardRow),
@@ -277,8 +370,25 @@ export class SystemAdminDashboardService {
     const safePage = Math.min(page, totalPages);
     const safeSkip = (safePage - 1) * perPage;
 
+    const orderedRows = pinnedIds.length
+      ? [
+          ...filteredRows
+            .filter((r) => pinnedIds.includes(String(r.sourceId)))
+            .sort((a, b) => {
+              const ai =
+                pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              const bi =
+                pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              return ai - bi;
+            }),
+          ...filteredRows.filter(
+            (r) => !pinnedIds.includes(String(r.sourceId)),
+          ),
+        ]
+      : filteredRows;
+
     return {
-      rows: filteredRows
+      rows: orderedRows
         .slice(safeSkip, safeSkip + perPage)
         .map(mapDashboardRow),
       total,
