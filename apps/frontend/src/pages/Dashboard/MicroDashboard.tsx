@@ -1631,6 +1631,167 @@ export default function MicroDashboard() {
     selectedIds,
   ]);
 
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceFormFilter(ft: string) {
+    switch (ft) {
+      case "MICRO":
+        return "Micro";
+      case "MICRO_WATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      default:
+        return "All";
+    }
+  }
+
+  function niceSortBy(value: string) {
+    switch (value) {
+      case "dateSent":
+        return "Date Sent";
+      case "reportNumber":
+        return "Report #";
+      case "dateTested":
+        return "Date Tested";
+      case "createdAt":
+        return "Created At";
+      case "updatedAt":
+        return "Updated At";
+      default:
+        return value;
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (formFilter !== DEFAULT_MICRO_FILTERS.formFilter) {
+      chips.push({
+        key: "form",
+        label: `Form: ${niceFormFilter(formFilter)}`,
+        onClear: () => setFormFilter(DEFAULT_MICRO_FILTERS.formFilter),
+      });
+    }
+
+    if (statusFilter !== DEFAULT_MICRO_FILTERS.statusFilter) {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => setStatusFilter(DEFAULT_MICRO_FILTERS.statusFilter),
+      });
+    }
+
+    if (searchClient.trim()) {
+      chips.push({
+        key: "client",
+        label: `Client: ${searchClient.trim()}`,
+        onClear: () => setSearchClient(DEFAULT_MICRO_FILTERS.searchClient),
+      });
+    }
+
+    if (searchReport.trim()) {
+      chips.push({
+        key: "report",
+        label: `Report: ${searchReport.trim()}`,
+        onClear: () => setSearchReport(DEFAULT_MICRO_FILTERS.searchReport),
+      });
+    }
+
+    if (searchText.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${searchText.trim()}`,
+        onClear: () => setSearchText(DEFAULT_MICRO_FILTERS.searchText),
+      });
+    }
+
+    if (datePreset !== DEFAULT_MICRO_FILTERS.datePreset || fromDate || toDate) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${fromDate || "Any"} → ${toDate || "Any"}`
+            : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset(DEFAULT_MICRO_FILTERS.datePreset);
+          setFromDate(DEFAULT_MICRO_FILTERS.fromDate);
+          setToDate(DEFAULT_MICRO_FILTERS.toDate);
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (
+      numberRangeType !== DEFAULT_MICRO_FILTERS.numberRangeType ||
+      rangeFrom.trim() ||
+      rangeTo.trim()
+    ) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType(DEFAULT_MICRO_FILTERS.numberRangeType);
+          setFormNoFrom(DEFAULT_MICRO_FILTERS.formNoFrom);
+          setFormNoTo(DEFAULT_MICRO_FILTERS.formNoTo);
+          setReportNoFrom(DEFAULT_MICRO_FILTERS.reportNoFrom);
+          setReportNoTo(DEFAULT_MICRO_FILTERS.reportNoTo);
+        },
+      });
+    }
+
+    if (
+      sortBy !== DEFAULT_MICRO_FILTERS.sortBy ||
+      sortDir !== DEFAULT_MICRO_FILTERS.sortDir
+    ) {
+      chips.push({
+        key: "sort",
+        label: `Sort: ${niceSortBy(sortBy)} ${sortDir === "asc" ? "Asc" : "Desc"}`,
+        onClear: () => {
+          setSortBy(DEFAULT_MICRO_FILTERS.sortBy);
+          setSortDir(DEFAULT_MICRO_FILTERS.sortDir);
+        },
+      });
+    }
+
+    if (perPage !== DEFAULT_MICRO_FILTERS.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(DEFAULT_MICRO_FILTERS.perPage),
+      });
+    }
+
+    return chips;
+  }, [
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    searchText,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+  ]);
+
   const clearAllFilters = () => {
     setFormFilter(DEFAULT_MICRO_FILTERS.formFilter);
     setStatusFilter(DEFAULT_MICRO_FILTERS.statusFilter);
@@ -2242,7 +2403,7 @@ export default function MicroDashboard() {
       </div>
 
       {/* Controls */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
         <div
           ref={statusScrollerRef}
@@ -2267,13 +2428,18 @@ export default function MicroDashboard() {
           ))}
         </div>
 
-        {/* Row 1: Search Client | Sort | Rows */}
+        {/* Row 1 */}
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  statusFilter !== DEFAULT_MICRO_FILTERS.statusFilter,
+                ),
+              )}
             >
               {statusOptions.map((s) => (
                 <option key={String(s)} value={String(s)}>
@@ -2282,18 +2448,24 @@ export default function MicroDashboard() {
               ))}
             </select>
           </div>
+
           <div className="relative lg:col-span-8">
             <input
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full pr-9 ${filterControlBase}`,
+                activeInputClass(searchText.trim() !== ""),
+              )}
             />
+
             {searchText && (
               <button
                 type="button"
                 onClick={() => setSearchText("")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                title="Clear search"
               >
                 ✕
               </button>
@@ -2301,13 +2473,20 @@ export default function MicroDashboard() {
           </div>
         </div>
 
-        {/* Row 2: Date preset | From | To | Forms/Reports | From | To */}
+        {/* Row 2 */}
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-2">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-40 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== DEFAULT_MICRO_FILTERS.datePreset ||
+                    !!fromDate ||
+                    !!toDate,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2332,7 +2511,8 @@ export default function MicroDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!fromDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2348,7 +2528,8 @@ export default function MicroDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!toDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2360,7 +2541,16 @@ export default function MicroDashboard() {
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !== DEFAULT_MICRO_FILTERS.numberRangeType ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -2376,7 +2566,14 @@ export default function MicroDashboard() {
                 if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
                 else setReportNoFrom(e.target.value);
               }}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
           </div>
 
@@ -2389,15 +2586,21 @@ export default function MicroDashboard() {
                 if (numberRangeType === "FORM") setFormNoTo(e.target.value);
                 else setReportNoTo(e.target.value);
               }}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoTo.trim() !== ""
+                    : reportNoTo.trim() !== "",
+                ),
+              )}
             />
           </div>
         </div>
 
-        {/* Row 3: Clear */}
-
+        {/* Row 3 */}
         <div className="mt-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 lg:col-span-6">
+          <div className="flex items-center gap-2">
             <select
               value={sortBy}
               onChange={(e) =>
@@ -2410,30 +2613,39 @@ export default function MicroDashboard() {
                     | "updatedAt",
                 )
               }
-              className="w-full rounded-lg border bg-white px-5 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `min-w-[190px] ${filterControlBase}`,
+                activeInputClass(sortBy !== DEFAULT_MICRO_FILTERS.sortBy),
+              )}
             >
-              <option value="dateSent"> Date Sent</option>
-              <option value="reportNumber"> Report #</option>
-              <option value="dateTested"> Date Tested</option>
-              <option value="createdAt"> Created At</option>
-              <option value="updatedAt"> Updated At</option>
+              <option value="dateSent">Date Sent</option>
+              <option value="reportNumber">Report #</option>
+              <option value="dateTested">Date Tested</option>
+              <option value="createdAt">Created At</option>
+              <option value="updatedAt">Updated At</option>
             </select>
 
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className={classNames(
+                "inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm transition hover:bg-slate-50",
+                sortDir !== DEFAULT_MICRO_FILTERS.sortDir
+                  ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                  : "bg-white ring-1 ring-inset ring-slate-200",
+              )}
               title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
+
           <button
             type="button"
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
             className={classNames(
-              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              "inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium shadow-sm transition",
               hasActiveFilters
                 ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                 : "border bg-slate-100 text-slate-400 cursor-not-allowed",
@@ -2443,6 +2655,32 @@ export default function MicroDashboard() {
             ✕ Clear
           </button>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content card */}

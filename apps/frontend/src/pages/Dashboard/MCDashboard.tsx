@@ -2165,6 +2165,227 @@ export default function MCDashboard() {
     selectedIds,
   ]);
 
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 px-3 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceCategory(value: string) {
+    switch (value) {
+      case "MICRO":
+        return "Micro";
+      case "CHEMISTRY":
+        return "Chemistry";
+      default:
+        return "All";
+    }
+  }
+
+  function niceAllType(value: string) {
+    switch (value) {
+      case "MICRO_MIX":
+        return "Micro Mix";
+      case "MICRO_MIX_WATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      case "CHEMISTRY_MIX":
+        return "Chemistry Mix";
+      case "COA":
+        return "COA";
+      default:
+        return "All Types";
+    }
+  }
+
+  function niceMicroType(value: string) {
+    switch (value) {
+      case "MICRO":
+        return "Micro Mix";
+      case "MICRO_WATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      default:
+        return "All Micro";
+    }
+  }
+
+  function niceChemType(value: string) {
+    switch (value) {
+      case "CHEMISTRY_MIX":
+        return "Chemistry Mix";
+      case "COA":
+        return "COA";
+      default:
+        return "All Chemistry";
+    }
+  }
+
+  function niceSortBy(value: string) {
+    switch (value) {
+      case "dateSent":
+        return "Date Sent";
+      case "reportNumber":
+        return "Report #";
+      case "dateTested":
+        return "Date Tested";
+      case "dateReceived":
+        return "Date Received";
+      case "createdAt":
+        return "Created At";
+      case "updatedAt":
+        return "Updated At";
+      default:
+        return value;
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (category !== DEFAULT_MC_FILTERS.category) {
+      chips.push({
+        key: "category",
+        label: `Category: ${niceCategory(category)}`,
+        onClear: () => setCategory(DEFAULT_MC_FILTERS.category),
+      });
+    }
+
+    if (allTypeFilter !== DEFAULT_MC_FILTERS.allTypeFilter) {
+      chips.push({
+        key: "allType",
+        label: `Type: ${niceAllType(allTypeFilter)}`,
+        onClear: () => setAllTypeFilter(DEFAULT_MC_FILTERS.allTypeFilter),
+      });
+    }
+
+    if (microFormFilter !== DEFAULT_MC_FILTERS.microFormFilter) {
+      chips.push({
+        key: "microType",
+        label: `Micro: ${niceMicroType(microFormFilter)}`,
+        onClear: () => setMicroFormFilter(DEFAULT_MC_FILTERS.microFormFilter),
+      });
+    }
+
+    if (chemFormFilter !== DEFAULT_MC_FILTERS.chemFormFilter) {
+      chips.push({
+        key: "chemType",
+        label: `Chemistry: ${niceChemType(chemFormFilter)}`,
+        onClear: () => setChemFormFilter(DEFAULT_MC_FILTERS.chemFormFilter),
+      });
+    }
+
+    if (statusFilter !== DEFAULT_MC_FILTERS.statusFilter) {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => handleStatusChange(DEFAULT_MC_FILTERS.statusFilter),
+      });
+    }
+
+    if (search.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${search.trim()}`,
+        onClear: () => setSearch(DEFAULT_MC_FILTERS.searchText),
+      });
+    }
+
+    if (datePreset !== DEFAULT_MC_FILTERS.datePreset || fromDate || toDate) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${fromDate || "Any"} → ${toDate || "Any"}`
+            : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset(DEFAULT_MC_FILTERS.datePreset);
+          setFromDate(DEFAULT_MC_FILTERS.fromDate);
+          setToDate(DEFAULT_MC_FILTERS.toDate);
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (
+      numberRangeType !== DEFAULT_MC_FILTERS.numberRangeType ||
+      rangeFrom.trim() ||
+      rangeTo.trim()
+    ) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType(DEFAULT_MC_FILTERS.numberRangeType);
+          setFormNoFrom(DEFAULT_MC_FILTERS.formNoFrom);
+          setFormNoTo(DEFAULT_MC_FILTERS.formNoTo);
+          setReportNoFrom(DEFAULT_MC_FILTERS.reportNoFrom);
+          setReportNoTo(DEFAULT_MC_FILTERS.reportNoTo);
+        },
+      });
+    }
+
+    if (activeFilter !== DEFAULT_MC_FILTERS.activeFilter) {
+      chips.push({
+        key: "active",
+        label: `Active: ${activeFilter}`,
+        onClear: () => setActiveFilter(DEFAULT_MC_FILTERS.activeFilter),
+      });
+    }
+
+    if (
+      sortBy !== DEFAULT_MC_FILTERS.sortBy ||
+      sortDir !== DEFAULT_MC_FILTERS.sortDir
+    ) {
+      chips.push({
+        key: "sort",
+        label: `Sort: ${niceSortBy(sortBy)} ${sortDir === "asc" ? "Asc" : "Desc"}`,
+        onClear: () => {
+          setSortBy(DEFAULT_MC_FILTERS.sortBy);
+          setSortDir(DEFAULT_MC_FILTERS.sortDir);
+        },
+      });
+    }
+
+    if (perPage !== DEFAULT_MC_FILTERS.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(DEFAULT_MC_FILTERS.perPage),
+      });
+    }
+
+    return chips;
+  }, [
+    category,
+    allTypeFilter,
+    microFormFilter,
+    chemFormFilter,
+    statusFilter,
+    search,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    activeFilter,
+    sortBy,
+    sortDir,
+    perPage,
+    handleStatusChange,
+  ]);
+
   const clearAllFilters = () => {
     setCategory("ALL");
     setAllTypeFilter("ALL");
@@ -3013,7 +3234,6 @@ export default function MCDashboard() {
       )}
 
       {/* Controls */}
-      {/* Controls */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
         <div
@@ -3044,7 +3264,12 @@ export default function MCDashboard() {
           <select
             value={statusFilter}
             onChange={(e) => handleStatusChange(e.target.value)}
-            className="w-100 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              `w-[25rem] shrink-0 ${filterControlBase}`,
+              activeInputClass(
+                statusFilter !== DEFAULT_MC_FILTERS.statusFilter,
+              ),
+            )}
           >
             {statusOptions.map((s) => (
               <option key={s} value={s}>
@@ -3052,20 +3277,43 @@ export default function MCDashboard() {
               </option>
             ))}
           </select>
-          {/* Global search */}
-          <input
-            placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          />
+
+          <div className="relative flex-1 min-w-[260px]">
+            <input
+              placeholder="Search client, code, form #, report #, lot/batch #, formula, status, type, actives..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={classNames(
+                `w-full pr-9 ${filterControlBase}`,
+                activeInputClass(search.trim() !== ""),
+              )}
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
           {/* Date preset + custom */}
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex flex-wrap gap-3">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-52 shrink-0 ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== DEFAULT_MC_FILTERS.datePreset ||
+                    !!fromDate ||
+                    !!toDate,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -3088,7 +3336,8 @@ export default function MCDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!fromDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -3102,20 +3351,30 @@ export default function MCDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!toDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
           {/* Number range */}
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center gap-3">
             <select
               value={numberRangeType}
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-32 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !== DEFAULT_MC_FILTERS.numberRangeType ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -3123,9 +3382,7 @@ export default function MCDashboard() {
 
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # from`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # from`}
               value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
               onChange={(e) => {
                 if (numberRangeType === "FORM") {
@@ -3134,14 +3391,19 @@ export default function MCDashboard() {
                   setReportNoFrom(e.target.value);
                 }
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
 
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # to`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # to`}
               value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
               onChange={(e) => {
                 if (numberRangeType === "FORM") {
@@ -3150,7 +3412,14 @@ export default function MCDashboard() {
                   setReportNoTo(e.target.value);
                 }
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoTo.trim() !== ""
+                    : reportNoTo.trim() !== "",
+                ),
+              )}
             />
           </div>
 
@@ -3158,7 +3427,14 @@ export default function MCDashboard() {
           <select
             value={activeFilter}
             onChange={(e) => setActiveFilter(e.target.value)}
-            className="w-52 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              `w-52 ${filterControlBase}`,
+              activeInputClass(
+                activeFilter !== DEFAULT_MC_FILTERS.activeFilter &&
+                  category !== "MICRO",
+              ),
+              category === "MICRO" && "opacity-60 cursor-not-allowed",
+            )}
             disabled={category === "MICRO"}
             title={
               category === "MICRO"
@@ -3188,7 +3464,10 @@ export default function MCDashboard() {
                     | "updatedAt",
                 )
               }
-              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-44 ${filterControlBase}`,
+                activeInputClass(sortBy !== DEFAULT_MC_FILTERS.sortBy),
+              )}
             >
               <option value="dateSent">Date Sent</option>
               <option value="reportNumber">Report #</option>
@@ -3201,7 +3480,12 @@ export default function MCDashboard() {
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className={classNames(
+                "inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm transition hover:bg-slate-50",
+                sortDir !== DEFAULT_MC_FILTERS.sortDir
+                  ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                  : "bg-white ring-1 ring-inset ring-slate-200",
+              )}
               title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
@@ -3214,7 +3498,7 @@ export default function MCDashboard() {
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
             className={classNames(
-              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              "ml-auto inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium shadow-sm transition",
               hasActiveFilters
                 ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                 : "border bg-slate-100 text-slate-400 cursor-not-allowed",
@@ -3224,6 +3508,32 @@ export default function MCDashboard() {
             ✕ Clear
           </button>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content card */}

@@ -1532,6 +1532,152 @@ export default function ChemistryDashboard() {
     selectedIds,
   ]);
 
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceFormFilter(ft: string) {
+    switch (ft) {
+      case "CHEMISTRY":
+        return "Chemistry";
+      case "COA":
+        return "COA";
+      default:
+        return "All";
+    }
+  }
+
+  function niceSortBy(value: string) {
+    switch (value) {
+      case "dateSent":
+        return "Date Sent";
+      case "reportNumber":
+        return "Report #";
+      case "createdAt":
+        return "Created At";
+      case "updatedAt":
+        return "Updated At";
+      case "dateReceived":
+        return "Date Received";
+      default:
+        return value;
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (formFilter !== "ALL") {
+      chips.push({
+        key: "form",
+        label: `Form: ${niceFormFilter(formFilter)}`,
+        onClear: () => setFormFilter("ALL"),
+      });
+    }
+
+    if (statusFilter !== "ALL") {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => setStatusFilter("ALL"),
+      });
+    }
+
+    if (searchText.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${searchText.trim()}`,
+        onClear: () => setSearchText(""),
+      });
+    }
+
+    if (datePreset !== "ALL" || fromDate || toDate) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${fromDate || "Any"} → ${toDate || "Any"}`
+            : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset("ALL");
+          setFromDate("");
+          setToDate("");
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (numberRangeType !== "FORM" || rangeFrom.trim() || rangeTo.trim()) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType("FORM");
+          setFormNoFrom("");
+          setFormNoTo("");
+          setReportNoFrom("");
+          setReportNoTo("");
+        },
+      });
+    }
+
+    if (activeFilter !== "ALL") {
+      chips.push({
+        key: "active",
+        label: `Active: ${activeFilter}`,
+        onClear: () => setActiveFilter("ALL"),
+      });
+    }
+
+    if (
+      sortBy !== DEFAULT_CHEM_FILTERS.sortBy ||
+      sortDir !== DEFAULT_CHEM_FILTERS.sortDir
+    ) {
+      chips.push({
+        key: "sort",
+        label: `Sort: ${niceSortBy(sortBy)} ${sortDir === "asc" ? "Asc" : "Desc"}`,
+        onClear: () => {
+          setSortBy(DEFAULT_CHEM_FILTERS.sortBy);
+          setSortDir(DEFAULT_CHEM_FILTERS.sortDir);
+        },
+      });
+    }
+
+    if (perPage !== DEFAULT_CHEM_FILTERS.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(DEFAULT_CHEM_FILTERS.perPage),
+      });
+    }
+
+    return chips;
+  }, [
+    formFilter,
+    statusFilter,
+    searchText,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    activeFilter,
+    sortBy,
+    sortDir,
+    perPage,
+  ]);
+
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -2306,7 +2452,7 @@ export default function ChemistryDashboard() {
       </div>
 
       {/* Controls */}
-      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         {/* Status chips */}
         <div
           ref={statusScrollerRef}
@@ -2331,7 +2477,7 @@ export default function ChemistryDashboard() {
           ))}
         </div>
 
-        {/* Row 1: Search Client | Sort | Rows */}
+        {/* Row 1 */}
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <select
@@ -2341,7 +2487,10 @@ export default function ChemistryDashboard() {
                   e.target.value as (typeof CHEMISTRY_STATUSES)[number],
                 )
               }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(statusFilter !== "ALL"),
+              )}
             >
               {statusOptions.map((s) => (
                 <option key={s} value={s}>
@@ -2356,8 +2505,12 @@ export default function ChemistryDashboard() {
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search client, form #, report #, lot/batch #, formula, actives, status..."
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full pr-9 ${filterControlBase}`,
+                activeInputClass(searchText.trim() !== ""),
+              )}
             />
+
             {searchText && (
               <button
                 type="button"
@@ -2370,13 +2523,18 @@ export default function ChemistryDashboard() {
           </div>
         </div>
 
-        {/* Row 2: Date preset | From | To | Forms/Reports | From | To */}
+        {/* Row 2 */}
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-2">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-40 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== "ALL" || !!fromDate || !!toDate,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2401,7 +2559,8 @@ export default function ChemistryDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!fromDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2417,7 +2576,8 @@ export default function ChemistryDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!toDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2429,7 +2589,16 @@ export default function ChemistryDashboard() {
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !== "FORM" ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -2445,7 +2614,14 @@ export default function ChemistryDashboard() {
                 if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
                 else setReportNoFrom(e.target.value);
               }}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
           </div>
 
@@ -2458,19 +2634,28 @@ export default function ChemistryDashboard() {
                 if (numberRangeType === "FORM") setFormNoTo(e.target.value);
                 else setReportNoTo(e.target.value);
               }}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoTo.trim() !== ""
+                    : reportNoTo.trim() !== "",
+                ),
+              )}
             />
           </div>
         </div>
 
-        {/* Row 3: Active */}
-        {/* Row 3: Active + Clear */}
+        {/* Row 3 */}
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <select
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value)}
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(activeFilter !== "ALL"),
+              )}
             >
               {allActives.map((a) => (
                 <option key={a} value={a}>
@@ -2478,7 +2663,8 @@ export default function ChemistryDashboard() {
                 </option>
               ))}
             </select>
-          </div>{" "}
+          </div>
+
           <div className="flex items-center gap-2 lg:col-span-4">
             <select
               value={sortBy}
@@ -2492,25 +2678,34 @@ export default function ChemistryDashboard() {
                     | "dateSent",
                 )
               }
-              className="w-full rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(sortBy !== DEFAULT_CHEM_FILTERS.sortBy),
+              )}
             >
-              <option value="dateSent"> Date Sent</option>
-              <option value="reportNumber"> Report #</option>
-              <option value="createdAt"> Created At</option>
-              <option value="updatedAt"> Updated At</option>
-              <option value="dateReceived"> Date Received</option>
+              <option value="dateSent">Date Sent</option>
+              <option value="reportNumber">Report #</option>
+              <option value="createdAt">Created At</option>
+              <option value="updatedAt">Updated At</option>
+              <option value="dateReceived">Date Received</option>
             </select>
 
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className={classNames(
+                "inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm transition hover:bg-slate-50",
+                sortDir !== DEFAULT_CHEM_FILTERS.sortDir
+                  ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                  : "bg-white ring-1 ring-inset ring-slate-200",
+              )}
               title={sortDir === "asc" ? "Ascending" : "Descending"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
-          <div className="lg:col-span-4 flex justify-end">
+
+          <div className="flex justify-end lg:col-span-4">
             <button
               type="button"
               onClick={clearAllFilters}
@@ -2527,6 +2722,32 @@ export default function ChemistryDashboard() {
             </button>
           </div>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content card */}
