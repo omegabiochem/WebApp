@@ -1769,6 +1769,7 @@ export default function SystemAdminDashboard() {
     sortOrder,
     selectedIds,
   ]);
+
   const clearFilters = () => {
     setSearchClient("");
     setSearchReport("");
@@ -1790,6 +1791,135 @@ export default function SystemAdminDashboard() {
     setSelectedIds([]);
     setSelectedReportsById({});
   };
+
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceFormFilter(ft: string) {
+    switch (ft) {
+      case "MICRO":
+        return "Micro";
+      case "MICROWATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      case "CHEMISTRY":
+        return "Chemistry";
+      case "COA":
+        return "COA";
+      default:
+        return "All forms";
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (formFilter !== "ALL") {
+      chips.push({
+        key: "form",
+        label: `Form: ${niceFormFilter(formFilter)}`,
+        onClear: () => setFormFilter("ALL"),
+      });
+    }
+
+    if (String(statusFilter) !== "ALL") {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => setStatusFilter("ALL"),
+      });
+    }
+
+    if (searchText.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${searchText.trim()}`,
+        onClear: () => setSearchText(""),
+      });
+    }
+
+    if (datePreset !== "ALL" || dateFrom || dateTo) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${dateFrom || "Any"} → ${dateTo || "Any"}`
+            : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset("ALL");
+          setDateFrom("");
+          setDateTo("");
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (numberRangeType !== "FORM" || rangeFrom.trim() || rangeTo.trim()) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType("FORM");
+          setFormNoFrom("");
+          setFormNoTo("");
+          setReportNoFrom("");
+          setReportNoTo("");
+        },
+      });
+    }
+
+    if (dateField !== DEFAULT_ADMIN_FILTERS.dateField) {
+      chips.push({
+        key: "dateField",
+        label: `Date field: ${niceStatus(dateField)}`,
+        onClear: () => setDateField(DEFAULT_ADMIN_FILTERS.dateField),
+      });
+    }
+
+    if (sortOrder !== "desc") {
+      chips.push({
+        key: "sort",
+        label: "Sort: Ascending",
+        onClear: () => setSortOrder("desc"),
+      });
+    }
+
+    if (perPage !== 10) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(10),
+      });
+    }
+
+    return chips;
+  }, [
+    formFilter,
+    statusFilter,
+    searchText,
+    datePreset,
+    dateFrom,
+    dateTo,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    dateField,
+    sortOrder,
+    perPage,
+  ]);
+
   function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
@@ -2838,8 +2968,10 @@ export default function SystemAdminDashboard() {
           <select
             value={String(statusFilter)}
             onChange={(e) => setStatusFilter(e.target.value as DashboardStatus)}
-            className="w-92 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
-      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              `w-[23rem] shrink-0 ${filterControlBase}`,
+              activeInputClass(String(statusFilter) !== "ALL"),
+            )}
           >
             {statusOptions.map((s) => (
               <option key={String(s)} value={String(s)}>
@@ -2848,36 +2980,26 @@ export default function SystemAdminDashboard() {
             ))}
           </select>
 
-          {/* <input
-            placeholder="Search by client / client code"
-            value={searchClient}
-            onChange={(e) => setSearchClient(e.target.value)}
-            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
-      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          />
-
-          <input
-            placeholder="Search by report # / form #"
-            value={searchReport}
-            onChange={(e) => setSearchReport(e.target.value)}
-            className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm
-      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          /> */}
-
           <input
             placeholder="Search client, code, form #, report #, lot #, formula, description, status..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className="flex-1 min-w-[260px] rounded-lg border px-3 py-2 text-sm
-      ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              `flex-1 min-w-[260px] ${filterControlBase}`,
+              activeInputClass(searchText.trim() !== ""),
+            )}
           />
 
           <div className="flex gap-5">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-52 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm
-        ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-52 shrink-0 ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== "ALL" || !!dateFrom || !!dateTo,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2900,7 +3022,8 @@ export default function SystemAdminDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!dateFrom),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2913,7 +3036,8 @@ export default function SystemAdminDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!dateFrom),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2926,7 +3050,16 @@ export default function SystemAdminDashboard() {
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-32 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !== "FORM" ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -2943,7 +3076,14 @@ export default function SystemAdminDashboard() {
                   setReportNoFrom(e.target.value);
                 }
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
 
             <input
@@ -2957,14 +3097,24 @@ export default function SystemAdminDashboard() {
                   setReportNoTo(e.target.value);
                 }
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
           </div>
 
           <select
             value={dateField}
             onChange={(e) => setDateField(e.target.value as any)}
-            className="w-44 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              "w-44 rounded-lg border px-3 py-2 text-sm transition focus:ring-2 focus:ring-blue-500",
+              activeInputClass(dateField !== DEFAULT_ADMIN_FILTERS.dateField),
+            )}
           >
             <option value="dateSent">Date Sent</option>
             <option value="dateReceived">Date Received</option>
@@ -2976,7 +3126,12 @@ export default function SystemAdminDashboard() {
           <button
             type="button"
             onClick={() => setSortOrder((d) => (d === "asc" ? "desc" : "asc"))}
-            className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+            className={classNames(
+              "inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm transition hover:bg-slate-50",
+              sortOrder !== "desc"
+                ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                : "bg-white ring-1 ring-inset ring-slate-200",
+            )}
             title={sortOrder === "asc" ? "Ascending" : "Descending"}
           >
             {sortOrder === "asc" ? "↑" : "↓"}
@@ -2997,6 +3152,31 @@ export default function SystemAdminDashboard() {
             ✕ Clear
           </button>
         </div>
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Table */}
