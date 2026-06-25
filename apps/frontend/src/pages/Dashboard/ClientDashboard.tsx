@@ -1571,6 +1571,157 @@ export default function ClientDashboard() {
     selectedIds,
   ]);
 
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 px-3 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceFormFilter(ft: string) {
+    switch (ft) {
+      case "MICRO":
+        return "Micro";
+      case "MICROWATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      case "CHEMISTRY":
+        return "Chemistry";
+      case "COA":
+        return "COA";
+      default:
+        return "All forms";
+    }
+  }
+
+  function niceSortBy(value: string) {
+    switch (value) {
+      case "dateSent":
+        return "Date Sent";
+      case "formNumber":
+        return "Form #";
+      case "createdAt":
+        return "Created At";
+      case "updatedAt":
+        return "Updated At";
+      default:
+        return value;
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (formFilter !== DEFAULT_CLIENT_FILTERS.formFilter) {
+      chips.push({
+        key: "form",
+        label: `Form: ${niceFormFilter(formFilter)}`,
+        onClear: () => setFormFilter(DEFAULT_CLIENT_FILTERS.formFilter),
+      });
+    }
+
+    if (statusFilter !== DEFAULT_CLIENT_FILTERS.statusFilter) {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => setStatusFilter(DEFAULT_CLIENT_FILTERS.statusFilter),
+      });
+    }
+
+    if (search.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${search.trim()}`,
+        onClear: () => setSearch(DEFAULT_CLIENT_FILTERS.searchText),
+      });
+    }
+
+    if (
+      datePreset !== DEFAULT_CLIENT_FILTERS.datePreset ||
+      fromDate ||
+      toDate
+    ) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${fromDate || "Any"} → ${toDate || "Any"}`
+            : datePreset === "ALL"
+              ? "Date: All dates"
+              : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset(DEFAULT_CLIENT_FILTERS.datePreset);
+          setFromDate(DEFAULT_CLIENT_FILTERS.fromDate);
+          setToDate(DEFAULT_CLIENT_FILTERS.toDate);
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (
+      numberRangeType !== DEFAULT_CLIENT_FILTERS.numberRangeType ||
+      rangeFrom.trim() ||
+      rangeTo.trim()
+    ) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType(DEFAULT_CLIENT_FILTERS.numberRangeType);
+          setFormNoFrom(DEFAULT_CLIENT_FILTERS.formNoFrom);
+          setFormNoTo(DEFAULT_CLIENT_FILTERS.formNoTo);
+          setReportNoFrom(DEFAULT_CLIENT_FILTERS.reportNoFrom);
+          setReportNoTo(DEFAULT_CLIENT_FILTERS.reportNoTo);
+        },
+      });
+    }
+
+    if (
+      sortBy !== DEFAULT_CLIENT_FILTERS.sortBy ||
+      sortDir !== DEFAULT_CLIENT_FILTERS.sortDir
+    ) {
+      chips.push({
+        key: "sort",
+        label: `Sort: ${niceSortBy(sortBy)} ${sortDir === "asc" ? "Asc" : "Desc"}`,
+        onClear: () => {
+          setSortBy(DEFAULT_CLIENT_FILTERS.sortBy);
+          setSortDir(DEFAULT_CLIENT_FILTERS.sortDir);
+        },
+      });
+    }
+
+    if (perPage !== DEFAULT_CLIENT_FILTERS.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(DEFAULT_CLIENT_FILTERS.perPage),
+      });
+    }
+
+    return chips;
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+  ]);
+
   const clearAllFilters = () => {
     setFormFilter(DEFAULT_CLIENT_FILTERS.formFilter);
     setStatusFilter(DEFAULT_CLIENT_FILTERS.statusFilter);
@@ -2523,7 +2674,10 @@ export default function ClientDashboard() {
               onChange={(e) =>
                 setStatusFilter(e.target.value as DashboardStatus)
               }
-              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(statusFilter !== "ALL"),
+              )}
             >
               {statusOptions.map((s) => (
                 <option key={s} value={s}>
@@ -2533,13 +2687,27 @@ export default function ClientDashboard() {
             </select>
           </div>
 
-          <div className="lg:col-span-8">
+          <div className="relative lg:col-span-8">
             <input
               placeholder="Search form #, report #, lot #, formula, description, client, status..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full pr-9 ${filterControlBase}`,
+                activeInputClass(search.trim() !== ""),
+              )}
             />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
 
@@ -2549,7 +2717,14 @@ export default function ClientDashboard() {
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== DEFAULT_CLIENT_FILTERS.datePreset ||
+                    !!fromDate ||
+                    !!toDate,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2574,7 +2749,8 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!fromDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2590,7 +2766,8 @@ export default function ClientDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-full ${filterControlBase}`,
+                activeInputClass(!!toDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2602,7 +2779,16 @@ export default function ClientDashboard() {
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="h-10 w-full rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !== DEFAULT_CLIENT_FILTERS.numberRangeType ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -2618,7 +2804,14 @@ export default function ClientDashboard() {
                 if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
                 else setReportNoFrom(e.target.value);
               }}
-              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
           </div>
 
@@ -2631,7 +2824,14 @@ export default function ClientDashboard() {
                 if (numberRangeType === "FORM") setFormNoTo(e.target.value);
                 else setReportNoTo(e.target.value);
               }}
-              className="h-10 w-full rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-full ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoTo.trim() !== ""
+                    : reportNoTo.trim() !== "",
+                ),
+              )}
             />
           </div>
         </div>
@@ -2643,7 +2843,10 @@ export default function ClientDashboard() {
               id="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="h-10 min-w-[180px] rounded-lg border bg-white px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `min-w-[180px] ${filterControlBase}`,
+                activeInputClass(sortBy !== DEFAULT_CLIENT_FILTERS.sortBy),
+              )}
             >
               <option value="dateSent">Date Sent</option>
               <option value="formNumber">Form #</option>
@@ -2654,11 +2857,16 @@ export default function ClientDashboard() {
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className={classNames(
+                "inline-flex h-10 w-10 items-center justify-center rounded-lg border text-sm transition hover:bg-slate-50",
+                sortDir !== DEFAULT_CLIENT_FILTERS.sortDir
+                  ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                  : "bg-white ring-1 ring-inset ring-slate-200",
+              )}
               aria-label="Toggle sort direction"
               title="Toggle sort direction"
             >
-              {sortDir === "asc" ? "↓" : "↑"}
+              {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
 
@@ -2669,7 +2877,7 @@ export default function ClientDashboard() {
             className={classNames(
               "inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold shadow-sm transition",
               hasActiveFilters
-                ? "bg-rose-600 text-white hover:bg-rose-700"
+                ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                 : "bg-slate-100 text-slate-400 cursor-not-allowed border",
             )}
             title={hasActiveFilters ? "Clear filters" : "No filters applied"}
@@ -2677,6 +2885,32 @@ export default function ClientDashboard() {
             ✕ Clear
           </button>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content card */}
