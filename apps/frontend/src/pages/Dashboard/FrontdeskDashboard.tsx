@@ -1626,6 +1626,155 @@ export default function FrontDeskDashboard() {
     reportNoTo,
   ]);
 
+  const filterControlBase =
+    "h-10 rounded-lg border border-slate-300 px-3 text-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+
+  const activeInputClass = (active: boolean) =>
+    active
+      ? "bg-blue-50/60 border-blue-300 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+      : "bg-white";
+
+  function niceFormFilter(ft: string) {
+    switch (ft) {
+      case "MICRO":
+        return "Micro";
+      case "MICROWATER":
+        return "Micro Water";
+      case "STERILITY":
+        return "Sterility";
+      case "CHEMISTRY":
+        return "Chemistry";
+      case "COA":
+        return "COA";
+      default:
+        return "All forms";
+    }
+  }
+
+  function niceSortBy(value: string) {
+    switch (value) {
+      case "dateSent":
+        return "Date Sent";
+      case "reportNumber":
+        return "Report #";
+      case "createdAt":
+        return "Created At";
+      case "updatedAt":
+        return "Updated At";
+      default:
+        return value;
+    }
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onClear: () => void }[] = [];
+
+    if (formFilter !== DEFAULT_FRONTDESK_FILTERS.formFilter) {
+      chips.push({
+        key: "form",
+        label: `Form: ${niceFormFilter(formFilter)}`,
+        onClear: () => setFormFilter(DEFAULT_FRONTDESK_FILTERS.formFilter),
+      });
+    }
+
+    if (statusFilter !== DEFAULT_FRONTDESK_FILTERS.statusFilter) {
+      chips.push({
+        key: "status",
+        label: `Status: ${niceStatus(String(statusFilter))}`,
+        onClear: () => setStatusFilter(DEFAULT_FRONTDESK_FILTERS.statusFilter),
+      });
+    }
+
+    if (search.trim()) {
+      chips.push({
+        key: "search",
+        label: `Search: ${search.trim()}`,
+        onClear: () => setSearch(DEFAULT_FRONTDESK_FILTERS.searchText),
+      });
+    }
+
+    if (
+      datePreset !== DEFAULT_FRONTDESK_FILTERS.datePreset ||
+      fromDate ||
+      toDate
+    ) {
+      chips.push({
+        key: "date",
+        label:
+          datePreset === "CUSTOM"
+            ? `Date: ${fromDate || "Any"} → ${toDate || "Any"}`
+            : `Date: ${niceStatus(datePreset)}`,
+        onClear: () => {
+          setDatePreset(DEFAULT_FRONTDESK_FILTERS.datePreset);
+          setFromDate(DEFAULT_FRONTDESK_FILTERS.fromDate);
+          setToDate(DEFAULT_FRONTDESK_FILTERS.toDate);
+        },
+      });
+    }
+
+    const rangeFrom = numberRangeType === "FORM" ? formNoFrom : reportNoFrom;
+    const rangeTo = numberRangeType === "FORM" ? formNoTo : reportNoTo;
+
+    if (
+      numberRangeType !== DEFAULT_FRONTDESK_FILTERS.numberRangeType ||
+      rangeFrom.trim() ||
+      rangeTo.trim()
+    ) {
+      chips.push({
+        key: "range",
+        label: `${numberRangeType === "FORM" ? "Form" : "Report"} #: ${
+          rangeFrom || "Any"
+        } → ${rangeTo || "Any"}`,
+        onClear: () => {
+          setNumberRangeType(DEFAULT_FRONTDESK_FILTERS.numberRangeType);
+          setFormNoFrom(DEFAULT_FRONTDESK_FILTERS.formNoFrom);
+          setFormNoTo(DEFAULT_FRONTDESK_FILTERS.formNoTo);
+          setReportNoFrom(DEFAULT_FRONTDESK_FILTERS.reportNoFrom);
+          setReportNoTo(DEFAULT_FRONTDESK_FILTERS.reportNoTo);
+        },
+      });
+    }
+
+    if (
+      sortBy !== DEFAULT_FRONTDESK_FILTERS.sortBy ||
+      sortDir !== DEFAULT_FRONTDESK_FILTERS.sortDir
+    ) {
+      chips.push({
+        key: "sort",
+        label: `Sort: ${niceSortBy(sortBy)} ${sortDir === "asc" ? "Asc" : "Desc"}`,
+        onClear: () => {
+          setSortBy(DEFAULT_FRONTDESK_FILTERS.sortBy);
+          setSortDir(DEFAULT_FRONTDESK_FILTERS.sortDir);
+        },
+      });
+    }
+
+    if (perPage !== DEFAULT_FRONTDESK_FILTERS.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => setPerPage(DEFAULT_FRONTDESK_FILTERS.perPage),
+      });
+    }
+
+    return chips;
+  }, [
+    formFilter,
+    statusFilter,
+    search,
+    datePreset,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
+    perPage,
+  ]);
+
   const clearAllFilters = () => {
     setFormFilter(DEFAULT_FRONTDESK_FILTERS.formFilter);
     setStatusFilter(DEFAULT_FRONTDESK_FILTERS.statusFilter);
@@ -2293,6 +2442,7 @@ export default function FrontDeskDashboard() {
       </div>
 
       {/* Controls Card */}
+      {/* Controls Card */}
       <div className="mb-4 rounded-2xl border bg-white p-4 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {FRONTDESK_STATUSES.map((s) => (
@@ -2318,7 +2468,10 @@ export default function FrontDeskDashboard() {
             onChange={(e) =>
               setStatusFilter(e.target.value as "ALL" | ReportStatus)
             }
-            className="w-100 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            className={classNames(
+              `w-[25rem] shrink-0 ${filterControlBase}`,
+              activeInputClass(statusFilter !== "ALL"),
+            )}
           >
             {FRONTDESK_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -2326,18 +2479,42 @@ export default function FrontDeskDashboard() {
               </option>
             ))}
           </select>
-          <input
-            placeholder="Search form #, report #, lot/batch #, formula, description, status..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-          />
 
-          <div className="flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[240px]">
+            <input
+              placeholder="Search form #, report #, lot/batch #, formula, description, status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={classNames(
+                `w-full pr-9 ${filterControlBase}`,
+                activeInputClass(search.trim() !== ""),
+              )}
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-3">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="w-56 shrink-0 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-56 shrink-0 ${filterControlBase}`,
+                activeInputClass(
+                  datePreset !== DEFAULT_FRONTDESK_FILTERS.datePreset ||
+                    !!fromDate ||
+                    !!toDate,
+                ),
+              )}
             >
               <option value="ALL">All dates</option>
               <option value="TODAY">Today</option>
@@ -2360,7 +2537,8 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!fromDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
@@ -2374,19 +2552,30 @@ export default function FrontDeskDashboard() {
               }}
               disabled={datePreset !== "CUSTOM"}
               className={classNames(
-                "w-40 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500",
+                `w-40 ${filterControlBase}`,
+                activeInputClass(!!toDate),
                 datePreset !== "CUSTOM" && "opacity-60 cursor-not-allowed",
               )}
             />
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center gap-3">
             <select
               value={numberRangeType}
               onChange={(e) =>
                 setNumberRangeType(e.target.value as "FORM" | "REPORT")
               }
-              className="w-32 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-32 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType !==
+                    DEFAULT_FRONTDESK_FILTERS.numberRangeType ||
+                    !!formNoFrom ||
+                    !!formNoTo ||
+                    !!reportNoFrom ||
+                    !!reportNoTo,
+                ),
+              )}
             >
               <option value="FORM">Forms</option>
               <option value="REPORT">Reports</option>
@@ -2394,28 +2583,38 @@ export default function FrontDeskDashboard() {
 
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # from`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # from`}
               value={numberRangeType === "FORM" ? formNoFrom : reportNoFrom}
               onChange={(e) => {
                 if (numberRangeType === "FORM") setFormNoFrom(e.target.value);
                 else setReportNoFrom(e.target.value);
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoFrom.trim() !== ""
+                    : reportNoFrom.trim() !== "",
+                ),
+              )}
             />
 
             <input
               type="number"
-              placeholder={`${
-                numberRangeType === "FORM" ? "Form" : "Report"
-              } # to`}
+              placeholder={`${numberRangeType === "FORM" ? "Form" : "Report"} # to`}
               value={numberRangeType === "FORM" ? formNoTo : reportNoTo}
               onChange={(e) => {
                 if (numberRangeType === "FORM") setFormNoTo(e.target.value);
                 else setReportNoTo(e.target.value);
               }}
-              className="w-36 rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-36 ${filterControlBase}`,
+                activeInputClass(
+                  numberRangeType === "FORM"
+                    ? formNoTo.trim() !== ""
+                    : reportNoTo.trim() !== "",
+                ),
+              )}
             />
           </div>
 
@@ -2423,18 +2622,34 @@ export default function FrontDeskDashboard() {
             <select
               value={sortBy}
               onChange={(e) =>
-                setSortBy(e.target.value as "dateSent" | "reportNumber")
+                setSortBy(
+                  e.target.value as
+                    | "dateSent"
+                    | "reportNumber"
+                    | "createdAt"
+                    | "updatedAt",
+                )
               }
-              className="w-44 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className={classNames(
+                `w-44 ${filterControlBase}`,
+                activeInputClass(sortBy !== DEFAULT_FRONTDESK_FILTERS.sortBy),
+              )}
             >
               <option value="dateSent">Date Sent</option>
               <option value="reportNumber">Report #</option>
+              <option value="createdAt">Created At</option>
+              <option value="updatedAt">Updated At</option>
             </select>
 
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+              className={classNames(
+                "inline-flex h-10 min-w-[42px] items-center justify-center rounded-lg border px-3 text-sm transition hover:bg-slate-50",
+                sortDir !== DEFAULT_FRONTDESK_FILTERS.sortDir
+                  ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-sm"
+                  : "bg-white ring-1 ring-inset ring-slate-200",
+              )}
               aria-label="Toggle sort direction"
             >
               {sortDir === "asc" ? "↑" : "↓"}
@@ -2446,7 +2661,7 @@ export default function FrontDeskDashboard() {
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
             className={classNames(
-              "ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
+              "ml-auto inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium shadow-sm transition",
               hasActiveFilters
                 ? "bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300"
                 : "border bg-slate-100 text-slate-400 cursor-not-allowed",
@@ -2456,6 +2671,32 @@ export default function FrontDeskDashboard() {
             ✕ Clear
           </button>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[320px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content card */}
