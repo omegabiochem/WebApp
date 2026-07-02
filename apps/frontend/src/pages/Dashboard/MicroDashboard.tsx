@@ -34,6 +34,7 @@ import {
   type ColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
+import ApeReportFormView from "../Reports/ApeReportFormView";
 
 // -----------------------------
 // Types
@@ -165,18 +166,19 @@ const STERILITY_ONLY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "CHANGE_REQUESTED",
 ];
 
-type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY";
+type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY" | "APE";
 
 function getReportKind(r: Report): ReportKind {
   if (r.formType === "MICRO_MIX") return "MICRO";
   if (r.formType === "MICRO_MIX_WATER") return "MICRO_WATER";
+  if (r.formType === "APE") return "APE";
   return "STERILITY";
 }
 
 function getNextStatusesForReport(r: Report): string[] {
   const s = String(r.status);
 
-  if (r.formType === "STERILITY") {
+  if (r.formType === "STERILITY" || r.formType === "APE") {
     return (
       STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ?? []
     );
@@ -206,8 +208,8 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
 };
-
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -356,6 +358,21 @@ function BulkPrintArea({
             </div>
           );
         }
+
+        if (r.formType === "APE") {
+          return (
+            <div key={r.id} className="report-page">
+              <ApeReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={paneToPrint}
+              />
+            </div>
+          );
+        }
         return (
           <div key={r.id} className="report-page">
             <h1>{r.formNumber}</h1>
@@ -368,7 +385,7 @@ function BulkPrintArea({
 }
 
 const DEFAULT_MICRO_FILTERS = {
-  formFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY",
+  formFilter: "ALL" as "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY" | "APE",
   statusFilter: "ALL",
   searchClient: "",
   searchReport: "",
@@ -633,6 +650,8 @@ export default function MicroDashboard() {
         return "MICRO_WATER";
       case "STERILITY":
         return "STERILITY";
+      case "APE":
+        return "APE";
       default:
         return ft || "-";
     }
@@ -679,7 +698,7 @@ export default function MicroDashboard() {
     });
   };
 
-  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
+  type FormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY" | "APE";
 
   const [formFilter, setFormFilter] = useState<FormFilter>(
     initialFilters.formFilter,
@@ -1002,8 +1021,10 @@ export default function MicroDashboard() {
   const correctionCloseTimerRef = React.useRef<number | null>(null);
 
   const statusOptions = useMemo(() => {
-    if (formFilter === "STERILITY") return STERILITY_ONLY_STATUSES;
-    // MICRO + MICRO_WATER + ALL => show micro statuses
+    if (formFilter === "STERILITY" || formFilter === "APE") {
+      return STERILITY_ONLY_STATUSES;
+    }
+
     return MICRO_ONLY_STATUSES;
   }, [formFilter]);
 
@@ -1169,18 +1190,28 @@ export default function MicroDashboard() {
 
     const role = user?.role as Role | undefined;
 
-    if (r.formType === "STERILITY") {
-      const sterilityFieldsUsedOnForm = [
-        "testSopNo",
-        "dateTested",
-        "ftm_turbidity",
-        "ftm_observation",
-        "ftm_result",
-        "scdb_turbidity",
-        "scdb_observation",
-        "scdb_result",
-        "comments",
-      ];
+    if (r.formType === "STERILITY" || r.formType === "APE") {
+      const sterilityFieldsUsedOnForm =
+        r.formType === "APE"
+          ? [
+              "testSopNo",
+              "dateTested",
+              "dateCompleted",
+              "comments",
+              "testedBy",
+              "testedDate",
+            ]
+          : [
+              "testSopNo",
+              "dateTested",
+              "ftm_turbidity",
+              "ftm_observation",
+              "ftm_result",
+              "scdb_turbidity",
+              "scdb_observation",
+              "scdb_result",
+              "comments",
+            ];
 
       return canShowSterilityUpdateButton(
         role,
@@ -1464,7 +1495,7 @@ export default function MicroDashboard() {
       updatedReport = await setStatus(r, nextStatus, reason);
     };
 
-    const isSterility = r.formType === "STERILITY";
+    const isSterility = r.formType === "STERILITY" || r.formType === "APE";
 
     if (isSterility) {
       if (r.status === "SUBMITTED_BY_CLIENT") {
@@ -2375,30 +2406,34 @@ export default function MicroDashboard() {
       {/* Form Type filter */}
       <div className="mb-3 border-b border-slate-200">
         <nav className="-mb-px flex gap-6 text-sm">
-          {(["ALL", "MICRO", "MICRO_WATER", "STERILITY"] as const).map((ft) => {
-            const isActive = formFilter === ft;
-            return (
-              <button
-                key={ft}
-                type="button"
-                onClick={() => setFormFilter(ft)}
-                className={classNames(
-                  "pb-2 border-b-2 text-sm font-medium",
-                  isActive
-                    ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
-                )}
-              >
-                {ft === "ALL"
-                  ? "All"
-                  : ft === "MICRO"
-                    ? "Micro"
-                    : ft === "STERILITY"
-                      ? "Sterility"
-                      : "Micro Water"}
-              </button>
-            );
-          })}
+          {(["ALL", "MICRO", "MICRO_WATER", "STERILITY", "APE"] as const).map(
+            (ft) => {
+              const isActive = formFilter === ft;
+              return (
+                <button
+                  key={ft}
+                  type="button"
+                  onClick={() => setFormFilter(ft)}
+                  className={classNames(
+                    "pb-2 border-b-2 text-sm font-medium",
+                    isActive
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300",
+                  )}
+                >
+                  {ft === "ALL"
+                    ? "All"
+                    : ft === "MICRO"
+                      ? "Micro"
+                      : ft === "STERILITY"
+                        ? "Sterility"
+                        : ft === "APE"
+                          ? "APE"
+                          : "Micro Water"}
+                </button>
+              );
+            },
+          )}
         </nav>
       </div>
 
@@ -3295,6 +3330,14 @@ export default function MicroDashboard() {
               ) : selectedReport.formType === "STERILITY" ? (
                 <SterilityReportFormView
                   key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
+                />
+              ) : selectedReport.formType === "APE" ? (
+                <ApeReportFormView
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

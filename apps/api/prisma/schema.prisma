@@ -36,6 +36,7 @@ model Report {
   microMix      MicroMixDetails?
   microMixWater MicroMixWaterDetails?
   sterility     sterilityDetails?
+  ape           ApeDetails?
   statusHistory StatusHistory[]
 
 
@@ -169,6 +170,46 @@ model sterilityDetails {
 
   footerRevNo          String?
   footerDateEffective  DateTime?
+  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+
+model ApeDetails {
+  reportId               String       @id
+
+  client                 String?
+  dateSent               DateTime?
+  typeOfTest             String?
+  sampleType             String?
+  formulaNo              String?
+  description            String?
+  lotNo                  String?
+  manufactureDate        DateTime?
+
+  testSopNo              String?
+  dateTested             DateTime?
+  dateCompleted          DateTime?
+
+ 
+  organisms              Json?
+
+  comments               String?
+  testedBy               String?
+  testedDate             DateTime?
+  reviewedBy             String?
+  reviewedDate           DateTime?
+
+  status                 ReportStatus @default(DRAFT)
+  lockedAt               DateTime?
+  createdBy              String?
+  updatedBy              String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  corrections            Json?
+
+  footerRevNo            String?
+  footerDateEffective    DateTime?
+
   report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
@@ -650,6 +691,7 @@ enum FormType {
   MICRO_MIX
   MICRO_MIX_WATER
   STERILITY
+  APE
   CHEMISTRY_MIX
   COA
 }
@@ -1064,6 +1106,8 @@ model DashboardReport {
   tmy_spec     String?
 
   pathogens Json?
+
+  organisms Json?
 
   // MicroMixWater-only fields
   idNo         String?

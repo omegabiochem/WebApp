@@ -1,43 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-// import { rememberedPath } from "../../utils/globalUtils";
-
-// Header-attached FORMS dropdown (borderless, text-only trigger: "Forms ▾")
-// - No borders on trigger or menu; soft shadow + blur for uniqueness
-// - Click item => navigate to /reports/:slug/new
-// - Usage in header: <FormsDropdown align="right" />
-
-// ---------------------------------
-// Types & Data
-// ---------------------------------
-
-// put at the top of FormsDropdown.tsx (or import from a routes file)
-// const PATH_BY_ID: Record<FormId, string> = {
-//   MICRO_MIX: rememberedPath("/reports/micro-mix/new"),
-//   MICRO_MIX_WATER: rememberedPath("/reports/micro-mix-water/new"),
-//   CHEMISTRY_MIX: rememberedPath("/reports/chemistry-mix/new"),
-//   STERILITY: rememberedPath("/reports/sterility/new"),
-//   COA: rememberedPath("/reports/coa/new"),
-// };
-
-const PATH_BY_ID: Record<FormId, string> = {
-  MICRO_MIX: "/reports/micro-mix/new",
-  MICRO_MIX_WATER: "/reports/micro-mix-water/new",
-  CHEMISTRY_MIX: "/reports/chemistry-mix/new",
-  STERILITY: "/reports/sterility/new",
-  COA: "/reports/coa/new",
-};
 
 type Category = "MICRO" | "CHEMISTRY";
 
 type FormId =
-  // MICRO (matches your Prisma.FormType values)
-  "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "CHEMISTRY_MIX" | "COA";
-// CHEMISTRY (placeholder slugs for future chemistry forms)
-// | "HPLC_ASSAY"
-// | "GC_RESIDUALS"
-// | "PH_CONDUCTIVITY"
-// | "TOC";
+  | "MICRO_MIX"
+  | "MICRO_MIX_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY_MIX"
+  | "COA";
+
+const PATH_BY_ID: Record<FormId, string> = {
+  MICRO_MIX: "/reports/micro-mix/new",
+  MICRO_MIX_WATER: "/reports/micro-mix-water/new",
+  STERILITY: "/reports/sterility/new",
+  APE: "/reports/ape/new",
+  CHEMISTRY_MIX: "/reports/chemistry-mix/new",
+  COA: "/reports/coa/new",
+};
 
 type FormDef = {
   id: FormId;
@@ -48,7 +29,12 @@ type FormDef = {
 
 const FORMS: FormDef[] = [
   // ---- Micro ----
-  { id: "MICRO_MIX", name: "Micro", category: "MICRO", emoji: "🧫" },
+  {
+    id: "MICRO_MIX",
+    name: "Micro",
+    category: "MICRO",
+    emoji: "🧫",
+  },
   {
     id: "MICRO_MIX_WATER",
     name: "Micro Water",
@@ -61,6 +47,14 @@ const FORMS: FormDef[] = [
     category: "MICRO",
     emoji: "🧪",
   },
+  {
+    id: "APE",
+    name: "APE",
+    category: "MICRO",
+    emoji: "🦠",
+  },
+
+  // ---- Chemistry ----
   {
     id: "CHEMISTRY_MIX",
     name: "Chemistry Mix",
@@ -89,7 +83,6 @@ export default function FormsDropdown({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
-  // Close on outside click
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       const t = e.target as Node;
@@ -97,15 +90,16 @@ export default function FormsDropdown({
       if (menuRef.current.contains(t) || btnRef.current.contains(t)) return;
       setOpen(false);
     }
+
     if (open) document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
 
-  // Close on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+
     if (open) document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
@@ -115,12 +109,11 @@ export default function FormsDropdown({
 
   function go(f: FormDef) {
     setOpen(false);
-    navigate(PATH_BY_ID[f.id]); // ⬅️ goes straight to your existing page
+    navigate(PATH_BY_ID[f.id]);
   }
 
   return (
     <div className="relative">
-      {/* borderless, text-only trigger */}
       <button
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
@@ -147,7 +140,6 @@ export default function FormsDropdown({
           ref={menuRef}
           role="menu"
           className={[
-            // attached at header edge (no gap), *no border*, soft glass effect
             "absolute top-full z-50 p-2",
             "w-72 rounded-2xl shadow-xl backdrop-blur bg-white/90",
             align === "right" ? "right-0" : "left-0",
@@ -156,6 +148,7 @@ export default function FormsDropdown({
           <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Microbiology
           </div>
+
           {micro.map((f) => (
             <button
               key={f.id}
@@ -173,6 +166,7 @@ export default function FormsDropdown({
           <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Chemistry
           </div>
+
           {chem.map((f) => (
             <button
               key={f.id}

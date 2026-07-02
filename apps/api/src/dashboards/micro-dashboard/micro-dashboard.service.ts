@@ -1,6 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
+import {
+  MICRO_ALLOWED_STATUSES,
+  STERILITY_APE_ALLOWED_STATUSES,
+} from '../utils/dashboardStatuses';
 
 type MicroDashboardQuery = {
   form?: string;
@@ -24,8 +28,30 @@ type MicroDashboardQuery = {
   sortBy?: string;
   sortDir?: string;
 
-    pinnedIds?: string;
+  pinnedIds?: string;
 };
+
+function getAllowedStatusesFromQuery(form?: string): string[] {
+  switch (form) {
+    case 'MICRO':
+    case 'MICRO_WATER':
+    case 'MICROWATER':
+      return MICRO_ALLOWED_STATUSES;
+
+    case 'STERILITY':
+    case 'APE':
+      return STERILITY_APE_ALLOWED_STATUSES;
+
+    case 'ALL':
+    default:
+      return [
+        ...new Set([
+          ...MICRO_ALLOWED_STATUSES,
+          ...STERILITY_APE_ALLOWED_STATUSES,
+        ]),
+      ];
+  }
+}
 
 function toInt(value: any, fallback: number) {
   const n = Number(value);
@@ -47,7 +73,9 @@ function parseDateEnd(value?: string) {
 function extractSequence(value?: string | number | null): number | null {
   if (value == null) return null;
 
-  const match = String(value).trim().match(/(\d{5,})$/);
+  const match = String(value)
+    .trim()
+    .match(/(\d{5,})$/);
   if (!match) return null;
 
   const digits = match[1];
@@ -91,22 +119,14 @@ function withPinnedFilter(
     AND: [
       where,
       {
-        sourceId:
-          mode === 'PINNED'
-            ? { in: pinnedIds }
-            : { notIn: pinnedIds },
+        sourceId: mode === 'PINNED' ? { in: pinnedIds } : { notIn: pinnedIds },
       },
     ],
   };
 }
 
 function safeDateField(value?: string) {
-  const allowed = [
-    'dateSent',
-    'dateTested',
-    'createdAt',
-    'updatedAt',
-  ];
+  const allowed = ['dateSent', 'dateTested', 'createdAt', 'updatedAt'];
 
   return allowed.includes(String(value)) ? String(value) : 'dateSent';
 }
@@ -122,6 +142,9 @@ function getFormTypesFromQuery(form?: string): FormType[] {
 
     case 'STERILITY':
       return ['STERILITY'];
+
+    case 'APE':
+      return ['APE'];
 
     case 'ALL':
     default:
@@ -155,10 +178,12 @@ export class MicroDashboardService {
     const skip = (page - 1) * perPage;
 
     const pinnedIds = parsePinnedIds(query.pinnedIds);
-const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
+    const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
 
     const status = query.status || 'ALL';
-    const q = String(query.q || '').trim().toLowerCase();
+    const q = String(query.q || '')
+      .trim()
+      .toLowerCase();
     const client = String(query.client || '').trim();
     const reportSearch = String(query.report || '').trim();
 
@@ -173,45 +198,51 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
       },
     };
 
+    const allowedStatuses = getAllowedStatusesFromQuery(query.form);
+
     if (status !== 'ALL') {
       where.status = status;
+    } else {
+      where.status = {
+        in: allowedStatuses,
+      };
     }
 
     const and: Prisma.DashboardReportWhereInput[] = [];
 
-  if (q) {
-  and.push({
-    OR: [
-      { searchableText: { contains: q, mode: 'insensitive' } },
+    if (q) {
+      and.push({
+        OR: [
+          { searchableText: { contains: q, mode: 'insensitive' } },
 
-      // direct dashboard columns
-      { typeOfTest: { contains: q, mode: 'insensitive' } },
-      { sampleType: { contains: q, mode: 'insensitive' } },
-      { formulaNo: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
-      { lotNo: { contains: q, mode: 'insensitive' } },
-      { client: { contains: q, mode: 'insensitive' } },
-      { clientCode: { contains: q, mode: 'insensitive' } },
-      { formNumber: { contains: q, mode: 'insensitive' } },
-      { reportNumber: { contains: q, mode: 'insensitive' } },
+          // direct dashboard columns
+          { typeOfTest: { contains: q, mode: 'insensitive' } },
+          { sampleType: { contains: q, mode: 'insensitive' } },
+          { formulaNo: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { lotNo: { contains: q, mode: 'insensitive' } },
+          { client: { contains: q, mode: 'insensitive' } },
+          { clientCode: { contains: q, mode: 'insensitive' } },
+          { formNumber: { contains: q, mode: 'insensitive' } },
+          { reportNumber: { contains: q, mode: 'insensitive' } },
 
-      // chemistry fields
-      { sampleDescription: { contains: q, mode: 'insensitive' } },
-      { lotBatchNo: { contains: q, mode: 'insensitive' } },
-      { formulaId: { contains: q, mode: 'insensitive' } },
-      { sampleSize: { contains: q, mode: 'insensitive' } },
-      { numberOfActives: { contains: q, mode: 'insensitive' } },
-      { selectedActivesText: { contains: q, mode: 'insensitive' } },
+          // chemistry fields
+          { sampleDescription: { contains: q, mode: 'insensitive' } },
+          { lotBatchNo: { contains: q, mode: 'insensitive' } },
+          { formulaId: { contains: q, mode: 'insensitive' } },
+          { sampleSize: { contains: q, mode: 'insensitive' } },
+          { numberOfActives: { contains: q, mode: 'insensitive' } },
+          { selectedActivesText: { contains: q, mode: 'insensitive' } },
 
-      // extra searchable fields
-      { comments: { contains: q, mode: 'insensitive' } },
-      { idNo: { contains: q, mode: 'insensitive' } },
-      { testedBy: { contains: q, mode: 'insensitive' } },
-      { reviewedBy: { contains: q, mode: 'insensitive' } },
-      { status: { contains: q, mode: 'insensitive' } },
-    ],
-  });
-}
+          // extra searchable fields
+          { comments: { contains: q, mode: 'insensitive' } },
+          { idNo: { contains: q, mode: 'insensitive' } },
+          { testedBy: { contains: q, mode: 'insensitive' } },
+          { reviewedBy: { contains: q, mode: 'insensitive' } },
+          { status: { contains: q, mode: 'insensitive' } },
+        ],
+      });
+    }
 
     if (client) {
       and.push({
@@ -255,92 +286,92 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
- if (
-  !(rangeType === 'FORM' && hasFormRange) &&
-  !(rangeType === 'REPORT' && hasReportRange)
-) {
-  if (!pinnedIds.length) {
-    const [rows, total] = await Promise.all([
-      this.prisma.dashboardReport.findMany({
-        where,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip,
-        take: perPage,
-      }),
-      this.prisma.dashboardReport.count({ where }),
-    ]);
+    if (
+      !(rangeType === 'FORM' && hasFormRange) &&
+      !(rangeType === 'REPORT' && hasReportRange)
+    ) {
+      if (!pinnedIds.length) {
+        const [rows, total] = await Promise.all([
+          this.prisma.dashboardReport.findMany({
+            where,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip,
+            take: perPage,
+          }),
+          this.prisma.dashboardReport.count({ where }),
+        ]);
 
-    return {
-      rows: rows.map(mapDashboardRow),
-      total,
-      page,
-      perPage,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
-    };
-  }
+        return {
+          rows: rows.map(mapDashboardRow),
+          total,
+          page,
+          perPage,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+        };
+      }
 
-  const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
-  const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
+      const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
+      const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
 
-  const [pinnedRowsRaw, total] = await Promise.all([
-    this.prisma.dashboardReport.findMany({
-      where: pinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-    }),
-    this.prisma.dashboardReport.count({ where }),
-  ]);
+      const [pinnedRowsRaw, total] = await Promise.all([
+        this.prisma.dashboardReport.findMany({
+          where: pinnedWhere,
+          orderBy: {
+            [dateField]: sort,
+          } as any,
+        }),
+        this.prisma.dashboardReport.count({ where }),
+      ]);
 
-  const pinnedRows = pinnedRowsRaw.sort((a, b) => {
-    const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    return ai - bi;
-  });
-
-  const pinnedCount = pinnedRows.length;
-
-  let rows: any[] = [];
-
-  if (skip < pinnedCount) {
-    const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
-    const remaining = perPage - pinnedSlice.length;
-
-    let unpinnedSlice: any[] = [];
-
-    if (remaining > 0) {
-      unpinnedSlice = await this.prisma.dashboardReport.findMany({
-        where: unpinnedWhere,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip: 0,
-        take: remaining,
+      const pinnedRows = pinnedRowsRaw.sort((a, b) => {
+        const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        return ai - bi;
       });
+
+      const pinnedCount = pinnedRows.length;
+
+      let rows: any[] = [];
+
+      if (skip < pinnedCount) {
+        const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
+        const remaining = perPage - pinnedSlice.length;
+
+        let unpinnedSlice: any[] = [];
+
+        if (remaining > 0) {
+          unpinnedSlice = await this.prisma.dashboardReport.findMany({
+            where: unpinnedWhere,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip: 0,
+            take: remaining,
+          });
+        }
+
+        rows = [...pinnedSlice, ...unpinnedSlice];
+      } else {
+        rows = await this.prisma.dashboardReport.findMany({
+          where: unpinnedWhere,
+          orderBy: {
+            [dateField]: sort,
+          } as any,
+          skip: skip - pinnedCount,
+          take: perPage,
+        });
+      }
+
+      return {
+        rows: rows.map(mapDashboardRow),
+        total,
+        page,
+        perPage,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+      };
     }
-
-    rows = [...pinnedSlice, ...unpinnedSlice];
-  } else {
-    rows = await this.prisma.dashboardReport.findMany({
-      where: unpinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-      skip: skip - pinnedCount,
-      take: perPage,
-    });
-  }
-
-  return {
-    rows: rows.map(mapDashboardRow),
-    total,
-    page,
-    perPage,
-    totalPages: Math.max(1, Math.ceil(total / perPage)),
-  };
-}
 
     const allRows = await this.prisma.dashboardReport.findMany({
       where,
@@ -370,29 +401,31 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const safePage = Math.min(page, totalPages);
     const safeSkip = (safePage - 1) * perPage;
 
-   const orderedRows = pinnedIds.length
-  ? [
-      ...filteredRows
-        .filter((r) => pinnedIds.includes(String(r.sourceId)))
-        .sort((a, b) => {
-          const ai =
-            pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          const bi =
-            pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          return ai - bi;
-        }),
-      ...filteredRows.filter((r) => !pinnedIds.includes(String(r.sourceId))),
-    ]
-  : filteredRows;
+    const orderedRows = pinnedIds.length
+      ? [
+          ...filteredRows
+            .filter((r) => pinnedIds.includes(String(r.sourceId)))
+            .sort((a, b) => {
+              const ai =
+                pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              const bi =
+                pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              return ai - bi;
+            }),
+          ...filteredRows.filter(
+            (r) => !pinnedIds.includes(String(r.sourceId)),
+          ),
+        ]
+      : filteredRows;
 
-return {
-  rows: orderedRows
-    .slice(safeSkip, safeSkip + perPage)
-    .map(mapDashboardRow),
-  total,
-  page: safePage,
-  perPage,
-  totalPages,
-};
+    return {
+      rows: orderedRows
+        .slice(safeSkip, safeSkip + perPage)
+        .map(mapDashboardRow),
+      total,
+      page: safePage,
+      perPage,
+      totalPages,
+    };
   }
 }

@@ -134,6 +134,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tbc_spec',
     'tmy_spec',
     'pathogens',
+    'organisms'
   ],
 };
 
@@ -1226,16 +1227,17 @@ function _getCorrectionsArray(r: any): CorrectionItem[] {
 // Which details relation to use for a given formType
 type MicroFormType = Extract<
   FormType,
-  'MICRO_MIX' | 'MICRO_MIX_WATER' | 'STERILITY'
+  'MICRO_MIX' | 'MICRO_MIX_WATER' | 'STERILITY' | 'APE'
 >;
 
 const DETAILS_RELATION: Record<
   MicroFormType,
-  'microMix' | 'microMixWater' | 'sterility'
+  'microMix' | 'microMixWater' | 'sterility' | 'ape'
 > = {
   MICRO_MIX: 'microMix',
   MICRO_MIX_WATER: 'microMixWater',
   STERILITY: 'sterility',
+  APE: 'ape',
 };
 
 // Prisma delegate per details model
@@ -1247,6 +1249,8 @@ function detailsDelegate(prisma: PrismaService, t: FormType) {
       return prisma.microMixWaterDetails;
     case 'STERILITY':
       return prisma.sterilityDetails;
+    case 'APE':
+      return prisma.apeDetails;
 
     default:
       throw new BadRequestException(`Unsupported formType: ${t}`);
@@ -1279,12 +1283,12 @@ function splitPatch(patch: Record<string, any>) {
 
 // Pick the one details object off an included Report
 function pickDetails(r: any) {
-  return r.microMix ?? r.microMixWater ?? r.sterility ?? null;
+  return r.microMix ?? r.microMixWater ?? r.sterility ?? r.ape ?? null;
 }
 
 // Flatten for backwards-compat responses (base + active details on top)
 function flattenReport(r: any) {
-  const { microMix, microMixWater, sterility, ...base } = r;
+  const { microMix, microMixWater, sterility, ape, ...base } = r;
   const dRaw = pickDetails(r) || {};
 
   // Strip any keys that belong to the base report so they can't override it.
@@ -1297,19 +1301,23 @@ function flattenReport(r: any) {
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
-  return formType.startsWith('MICRO') || formType.startsWith('STERILITY')
-    ? 'OM'
-    : 'BC';
+  if (formType === 'APE') return 'APE';
+
+  if (formType.startsWith('MICRO') || formType === 'STERILITY') {
+    return 'OM';
+  }
+
+  return 'BC';
 }
 
 function shouldAssignReportNumber(
   formType: FormType,
   nextStatus: ReportStatus,
 ) {
-  if (formType === 'STERILITY') {
+  if (formType === 'STERILITY' || formType === 'APE') {
     return nextStatus === 'UNDER_TESTING_REVIEW';
   }
-  // micro mix + micro water
+
   return nextStatus === 'UNDER_PRELIMINARY_TESTING_REVIEW';
 }
 
@@ -1322,19 +1330,21 @@ function updateDetailsByType(
   if (!data || Object.keys(data).length === 0) return null;
 
   switch (formType) {
-    case 'MICRO_MIX':
+    case "MICRO_MIX":
       return tx.microMixDetails.update({ where: { reportId }, data });
-    case 'MICRO_MIX_WATER':
+    case "MICRO_MIX_WATER":
       return tx.microMixWaterDetails.update({ where: { reportId }, data });
-    case 'STERILITY':
+    case "STERILITY":
       return tx.sterilityDetails.update({ where: { reportId }, data });
+    case "APE":
+      return tx.apeDetails.update({ where: { reportId }, data });
     default:
       throw new Error(`Unsupported formType: ${formType}`);
   }
 }
 
 function transitionsFor(formType: FormType) {
-  return formType === 'STERILITY'
+  return formType === "STERILITY" || formType === "APE"
     ? STERILITY_STATUS_TRANSITIONS
     : STATUS_TRANSITIONS;
 }
@@ -1427,6 +1437,10 @@ export class ReportsService {
         footerRevNo: 'Rev-01',
         footerDateEffective: new Date('2026-03-10T12:00:00.000Z'),
       },
+      APE: {
+        footerRevNo: 'Rev-00',
+        footerDateEffective: new Date('2026-07-10T12:00:00.000Z'),
+      },
     } as const;
 
     const footerDefaults = FOOTER_BY_FORM_TYPE[formType];
@@ -1452,6 +1466,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
 
@@ -1488,6 +1503,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
         attachments: true,
         statusHistory: true,
       },
@@ -1508,6 +1524,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
     if (!current) throw new NotFoundException('Report not found');
@@ -1906,7 +1923,7 @@ export class ReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true },
+      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
@@ -1993,7 +2010,9 @@ export class ReportsService {
             ? 'micro-mix-water'
             : current.formType === 'STERILITY'
               ? 'sterility'
-              : 'micro-mix';
+              : current.formType === 'APE'
+                ? 'ape'
+                : 'micro-mix';
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
@@ -2193,7 +2212,7 @@ export class ReportsService {
     // IMPORTANT: use prisma findUnique so we have base + details
     const current = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true },
+      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
     });
     if (!current) throw new NotFoundException('Report not found');
 
@@ -2324,30 +2343,10 @@ export class ReportsService {
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
-      include: { microMix: true, microMixWater: true, sterility: true },
+      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
     });
 
-    // if (!current.reportNumber && updated.reportNumber) {
-    //   await this.prisma.auditTrail.create({
-    //     data: {
-    //       action: 'REPORT_NUMBER_ASSIGNED',
-    //       entity: current.formType,
-    //       entityId: current.id,
-    //       userId: user.userId,
-    //       role: user.role,
-    //       ipAddress: getRequestContext()?.ip ?? null,
-    //       clientCode: current.clientCode ?? null,
-    //       formNumber: current.formNumber,
-    //       reportNumber: updated.reportNumber,
-    //       formType: current.formType,
-    //       details: `Assigned report number ${updated.reportNumber}`,
-    //       changes: {
-    //         formNumber: current.formNumber,
-    //         reportNumber: updated.reportNumber,
-    //       },
-    //     },
-    //   });
-    // }
+ 
 
     // ✅ NOW log status change (StatusHistory + AuditTrail)
     if (prevStatus !== target) {
@@ -2405,6 +2404,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
     return rows.map(flattenReport);
@@ -2468,6 +2468,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -2556,6 +2557,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');
@@ -2575,6 +2577,7 @@ export class ReportsService {
         microMix: true,
         microMixWater: true,
         sterility: true,
+        ape: true,
       },
     });
     if (!report) throw new NotFoundException('Report not found');

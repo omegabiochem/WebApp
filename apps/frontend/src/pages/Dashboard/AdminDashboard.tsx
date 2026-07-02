@@ -50,6 +50,7 @@ import {
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 // import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import { Eye, EyeOff, Pin } from "lucide-react";
+import ApeReportFormView from "../Reports/ApeReportFormView";
 
 // ---------------------------------
 // Types
@@ -121,6 +122,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
   CHEMISTRY_MIX: "chemistry-mix",
   COA: "coa",
 };
@@ -405,6 +407,21 @@ function BulkPrintArea({
           );
         }
 
+        if (r.formType === "APE") {
+          return (
+            <div key={r.id} className="report-page">
+              <ApeReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={paneToPrint}
+              />
+            </div>
+          );
+        }
+
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -445,7 +462,13 @@ function BulkPrintArea({
     </div>
   );
 }
-type ReportFamily = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
+type ReportFamily =
+  | "MICRO"
+  | "MICRO_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY"
+  | "COA";
 
 function getReportFamily(r: Report): ReportFamily {
   switch (r.formType) {
@@ -455,6 +478,8 @@ function getReportFamily(r: Report): ReportFamily {
       return "MICRO_WATER";
     case "STERILITY":
       return "STERILITY";
+    case "APE":
+      return "APE";
     case "CHEMISTRY_MIX":
       return "CHEMISTRY";
     case "COA":
@@ -469,7 +494,7 @@ function getStatusesForReportFamily(family: ReportFamily): string[] {
     return ADMIN_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
-  if (family === "STERILITY") {
+  if (family === "STERILITY" || family === "APE") {
     return ADMIN_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
@@ -483,6 +508,8 @@ function getReportFamilyLabel(family: ReportFamily | null) {
       return "Micro Water";
     case "STERILITY":
       return "Sterility";
+    case "APE":
+      return "APE";
     case "CHEMISTRY":
       return "Chemistry";
     case "COA":
@@ -498,6 +525,7 @@ const DEFAULT_ADMIN_FILTERS = {
     | "MICRO"
     | "MICROWATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY"
     | "COA",
   statusFilter: "ALL" as DashboardStatus,
@@ -639,7 +667,7 @@ export default function AdminDashboard() {
   }
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "APE" | "CHEMISTRY" | "COA"
   >(initialFilters.formFilter);
 
   const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
@@ -696,7 +724,7 @@ export default function AdminDashboard() {
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
       ? ADMIN_CHEM_STATUSES
-      : formFilter === "STERILITY"
+      : formFilter === "STERILITY" || formFilter === "APE"
         ? ADMIN_STERILITY_STATUSES
         : ADMIN_MICRO_STATUSES;
 
@@ -1064,7 +1092,7 @@ export default function AdminDashboard() {
     const opts =
       formFilter === "CHEMISTRY" || formFilter === "COA"
         ? ADMIN_CHEM_STATUSES.map(String)
-        : formFilter === "STERILITY"
+        : formFilter === "STERILITY" || formFilter === "APE"
           ? ADMIN_STERILITY_STATUSES.map(String)
           : ADMIN_MICRO_STATUSES.map(String);
 
@@ -1611,7 +1639,7 @@ export default function AdminDashboard() {
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-    const isSterility = r.formType === "STERILITY";
+    const isSterility = r.formType === "STERILITY" || r.formType === "APE";
 
     const cls = isChem
       ? CHEMISTRY_STATUS_COLORS[r.status as ChemistryReportStatus]
@@ -1762,6 +1790,8 @@ export default function AdminDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       case "CHEMISTRY":
         return "Chemistry";
       case "COA":
@@ -2067,7 +2097,7 @@ export default function AdminDashboard() {
   }
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
-    if (r.formType === "STERILITY") {
+    if (r.formType === "STERILITY" || r.formType === "APE") {
       return canUpdateThisSterility(r, userObj);
     }
 
@@ -2794,6 +2824,7 @@ export default function AdminDashboard() {
               "MICRO",
               "MICROWATER",
               "STERILITY",
+              "APE",
               "CHEMISTRY",
               "COA",
             ] as const
@@ -2819,9 +2850,11 @@ export default function AdminDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : ft === "COA"
-                          ? "COA"
-                          : "Chemistry"}
+                        : ft === "APE"
+                          ? "APE"
+                          : ft === "COA"
+                            ? "COA"
+                            : "Chemistry"}
               </button>
             );
           })}
@@ -3234,7 +3267,8 @@ export default function AdminDashboard() {
 
                 {!loading &&
                   pageRows.map((r) => {
-                    const isSterility = r.formType === "STERILITY";
+                    const isSterility =
+                      r.formType === "STERILITY" || r.formType === "APE";
                     const isMicro =
                       r.formType === "MICRO_MIX" ||
                       r.formType === "MICRO_MIX_WATER";
@@ -3486,7 +3520,8 @@ export default function AdminDashboard() {
                                   r.formType === "CHEMISTRY_MIX" ||
                                   r.formType === "COA"
                                     ? ADMIN_CHEM_STATUSES
-                                    : r.formType === "STERILITY"
+                                    : r.formType === "STERILITY" ||
+                                        r.formType === "APE"
                                       ? ADMIN_STERILITY_STATUSES
                                       : ADMIN_MICRO_STATUSES;
 
@@ -3763,6 +3798,14 @@ export default function AdminDashboard() {
                   pane={selectedViewPane}
                   onPaneChange={setSelectedViewPane}
                 />
+              ) : selectedReport?.formType === "APE" ? (
+                <ApeReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
+                />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
@@ -3902,7 +3945,8 @@ export default function AdminDashboard() {
                   {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
                   changeStatusReport.formType === "COA"
                     ? ADMIN_CHEM_STATUSES
-                    : changeStatusReport.formType === "STERILITY"
+                    : changeStatusReport.formType === "STERILITY" ||
+                        changeStatusReport.formType === "APE"
                       ? ADMIN_STERILITY_STATUSES
                       : ADMIN_MICRO_STATUSES
                   )
