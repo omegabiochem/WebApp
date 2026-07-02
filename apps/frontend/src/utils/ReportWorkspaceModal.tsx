@@ -11,6 +11,8 @@ import MicroMixReportForm from "../pages/Reports/MicroMixReportForm";
 import MicroMixWaterReportForm from "../pages/Reports/MicroMixWaterReportForm";
 import SterilityReportForm from "../pages/Reports/SterilityReportForm";
 import { useAuth } from "../context/AuthContext";
+import ApeReportFormView from "../pages/Reports/ApeReportFormView";
+import ApeReportForm from "../pages/Reports/ApeReportForm";
 
 type WorkspaceMode = "VIEW" | "UPDATE";
 type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
@@ -381,6 +383,15 @@ export default function ReportWorkspaceModal({
                       />
                     )}
 
+                    {r.formType === "APE" && (
+                      <ApeReportFormView
+                        report={r}
+                        onClose={() => {}}
+                        showSwitcher={false}
+                        pane={paneFor(String(r.status))}
+                      />
+                    )}
+
                     {r.formType === "CHEMISTRY_MIX" && (
                       <ChemistryMixReportFormView
                         report={r}
@@ -439,6 +450,25 @@ export default function ReportWorkspaceModal({
                     )}
                     {r.formType === "STERILITY" && (
                       <SterilityReportForm
+                        report={r}
+                        embedded={true}
+                        pageMode="UPDATE"
+                        forcePageReadOnly={false}
+                        hideTopActions={false}
+                        hideBottomActions={false}
+                        correctionLaunch={shouldLaunchCorrectionInUpdate}
+                        correctionKinds={correctionKinds}
+                        isWorkspaceActive={activeId === r.id}
+                        onClose={() => {}}
+                        onSaved={(updated) => handleReportChanged(r, updated)}
+                        onStatusChanged={(updated) =>
+                          handleReportChanged(r, updated)
+                        }
+                      />
+                    )}
+
+                    {r.formType === "APE" && (
+                      <ApeReportForm
                         report={r}
                         embedded={true}
                         pageMode="UPDATE"

@@ -39,6 +39,7 @@ import {
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Eye, EyeOff, Pin } from "lucide-react";
+import ApeReportFormView from "../Reports/ApeReportFormView";
 
 // ---------------------------------
 // Types
@@ -108,13 +109,14 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
   CHEMISTRY_MIX: "chemistry-mix",
   COA: "coa",
 };
 
 const ALL_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
-  "DRAFT",
+
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
   "CLIENT_NEEDS_FINAL_CORRECTION",
@@ -170,7 +172,7 @@ const QA_MICRO_STATUSES: DashboardStatus[] = [
 
 const QA_CHEM_STATUSES: DashboardStatus[] = [
   "ALL",
-  "DRAFT",
+
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -202,7 +204,7 @@ const QA_CHEM_STATUSES: DashboardStatus[] = [
 
 const QA_STERILITY_STATUSES: DashboardStatus[] = [
   "ALL",
-  "DRAFT",
+
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -355,6 +357,21 @@ function BulkPrintAreaQA({
           );
         }
 
+        if (r.formType === "APE") {
+          return (
+            <div key={r.id} className="report-page">
+              <ApeReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={printPane}
+              />
+            </div>
+          );
+        }
+
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -396,7 +413,13 @@ function BulkPrintAreaQA({
   );
 }
 
-type ReportFamily = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
+type ReportFamily =
+  | "MICRO"
+  | "MICRO_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY"
+  | "COA";
 
 function getReportFamily(r: Report): ReportFamily {
   switch (r.formType) {
@@ -406,6 +429,8 @@ function getReportFamily(r: Report): ReportFamily {
       return "MICRO_WATER";
     case "STERILITY":
       return "STERILITY";
+    case "APE":
+      return "APE";
     case "CHEMISTRY_MIX":
       return "CHEMISTRY";
     case "COA":
@@ -420,7 +445,7 @@ function getStatusesForReportFamily(family: ReportFamily): string[] {
     return QA_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
-  if (family === "STERILITY") {
+  if (family === "STERILITY" || family === "APE") {
     return QA_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
@@ -435,6 +460,8 @@ function getReportFamilyLabel(family: ReportFamily | null) {
       return "Micro Water";
     case "STERILITY":
       return "Sterility";
+    case "APE":
+      return "APE";
     case "CHEMISTRY":
       return "Chemistry";
     case "COA":
@@ -450,6 +477,7 @@ const DEFAULT_QA_FILTERS = {
     | "MICRO"
     | "MICROWATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY"
     | "COA",
   statusFilter: "ALL" as DashboardStatus,
@@ -621,7 +649,7 @@ export default function QaDashboard() {
   const [dateTo, setDateTo] = useState(initialFilters.dateTo);
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "APE" | "CHEMISTRY" | "COA"
   >(initialFilters.formFilter);
 
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
@@ -664,7 +692,7 @@ export default function QaDashboard() {
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
       ? QA_CHEM_STATUSES
-      : formFilter === "STERILITY"
+      : formFilter === "STERILITY" || formFilter === "APE"
         ? QA_STERILITY_STATUSES
         : QA_MICRO_STATUSES;
 
@@ -1546,7 +1574,7 @@ export default function QaDashboard() {
 
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-    const isSterility = r.formType === "STERILITY";
+    const isSterility = r.formType === "STERILITY" || r.formType === "APE";
     return (
       (isChem
         ? CHEMISTRY_STATUS_COLORS?.[r.status as ChemistryReportStatus]
@@ -1613,6 +1641,8 @@ export default function QaDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       case "CHEMISTRY":
         return "Chemistry";
       case "COA":
@@ -1813,8 +1843,14 @@ export default function QaDashboard() {
         return "MICRO";
       case "MICRO_MIX_WATER":
         return "MICRO_WATER";
+      case "STERILITY":
+        return "STERILITY";
+      case "APE":
+        return "APE";
       case "CHEMISTRY_MIX":
         return "CHEMISTRY";
+      case "COA":
+        return "COA";
       default:
         return ft || "-";
     }
@@ -2044,7 +2080,7 @@ export default function QaDashboard() {
   }
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
-    if (r.formType === "STERILITY") {
+    if (r.formType === "STERILITY" || r.formType === "APE") {
       return canUpdateThisSterility(r, userObj);
     }
 
@@ -2648,6 +2684,7 @@ export default function QaDashboard() {
               "MICRO",
               "MICROWATER",
               "STERILITY",
+              "APE",
               "CHEMISTRY",
               "COA",
             ] as const
@@ -2673,9 +2710,11 @@ export default function QaDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : ft === "COA"
-                          ? "COA"
-                          : "Chemistry"}
+                        : ft === "APE"
+                          ? "APE"
+                          : ft === "COA"
+                            ? "COA"
+                            : "Chemistry"}
               </button>
             );
           })}
@@ -3292,7 +3331,8 @@ export default function QaDashboard() {
                               </button>
                             )}
 
-                            {r.formType === "STERILITY" &&
+                            {(r.formType === "STERILITY" ||
+                              r.formType === "APE") &&
                               canUpdateThisSterility(r, user) && (
                                 <button
                                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
@@ -3339,7 +3379,8 @@ export default function QaDashboard() {
                                   r.formType === "CHEMISTRY_MIX" ||
                                   r.formType === "COA"
                                     ? QA_CHEM_STATUSES
-                                    : r.formType === "STERILITY"
+                                    : r.formType === "STERILITY" ||
+                                        r.formType === "APE"
                                       ? QA_STERILITY_STATUSES
                                       : QA_MICRO_STATUSES;
 
@@ -3584,6 +3625,14 @@ export default function QaDashboard() {
                   pane={selectedViewPane}
                   onPaneChange={setSelectedViewPane}
                 />
+              ) : selectedReport?.formType === "APE" ? (
+                <ApeReportFormView
+                  report={selectedReport as any}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={selectedViewPane}
+                  onPaneChange={setSelectedViewPane}
+                />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport as any}
@@ -3724,7 +3773,8 @@ export default function QaDashboard() {
                   {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
                   changeStatusReport.formType === "COA"
                     ? QA_CHEM_STATUSES
-                    : changeStatusReport.formType === "STERILITY"
+                    : changeStatusReport.formType === "STERILITY" ||
+                        changeStatusReport.formType === "APE"
                       ? QA_STERILITY_STATUSES
                       : QA_MICRO_STATUSES
                   )

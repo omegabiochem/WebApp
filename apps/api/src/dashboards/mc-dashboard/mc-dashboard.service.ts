@@ -1,6 +1,11 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
+import {
+  CHEMISTRY_ALLOWED_STATUSES,
+  MICRO_ALLOWED_STATUSES,
+  STERILITY_APE_ALLOWED_STATUSES,
+} from '../utils/dashboardStatuses';
 
 type McDashboardQuery = {
   cat?: string;
@@ -142,7 +147,8 @@ function mapKind(formType: FormType) {
   if (
     formType === 'MICRO_MIX' ||
     formType === 'MICRO_MIX_WATER' ||
-    formType === 'STERILITY'
+    formType === 'STERILITY' ||
+    formType === 'APE'
   ) {
     return 'MICRO';
   }
@@ -193,6 +199,7 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
     'MICRO_MIX',
     'MICRO_MIX_WATER',
     'STERILITY',
+    'APE',
     'CHEMISTRY_MIX',
     'COA',
   ];
@@ -212,6 +219,8 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
         return ['MICRO_MIX_WATER'];
       case 'STERILITY':
         return ['STERILITY'];
+      case 'APE':
+        return ['APE'];
       case 'CHEMISTRY':
       case 'CHEMISTRY_MIX':
         return ['CHEMISTRY_MIX'];
@@ -227,7 +236,9 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
     }
     if (microType === 'STERILITY') return ['STERILITY'];
 
-    return ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'];
+    if (microType === 'APE') return ['APE'];
+
+    return ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY', 'APE'];
   }
 
   if (category === 'CHEMISTRY') {
@@ -245,6 +256,8 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
         return ['MICRO_MIX_WATER'];
       case 'STERILITY':
         return ['STERILITY'];
+      case 'APE':
+        return ['APE'];
       case 'CHEMISTRY_MIX':
         return ['CHEMISTRY_MIX'];
       case 'COA':
@@ -253,6 +266,22 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
   }
 
   return all;
+}
+
+function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
+  const set = new Set<string>();
+
+  for (const ft of formTypes) {
+    if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
+      MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    } else if (ft === 'STERILITY' || ft === 'APE') {
+      STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    } else if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
+      CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+  }
+
+  return Array.from(set);
 }
 
 @Injectable()
@@ -298,8 +327,14 @@ export class McDashboardService {
       },
     };
 
-    if (status !== 'ALL') {
+    const allowedStatuses = getAllowedStatusesForFormTypes(formTypes);
+
+    if (status !== 'ALL' && allowedStatuses.includes(status)) {
       where.status = status;
+    } else {
+      where.status = {
+        in: allowedStatuses,
+      };
     }
 
     const and: Prisma.DashboardReportWhereInput[] = [];

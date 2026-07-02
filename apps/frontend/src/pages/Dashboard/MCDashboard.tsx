@@ -48,6 +48,7 @@ import {
   type DashboardColKey,
 } from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
+import ApeReportFormView from "../Reports/ApeReportFormView";
 
 // ----------------------------------
 // Types
@@ -137,11 +138,12 @@ type UnifiedRow =
   | ({ kind: "MICRO"; _searchBlob?: string } & MicroReport)
   | ({ kind: "CHEMISTRY"; _searchBlob?: string } & ChemReport);
 
-type BulkWorkflowGroup = "MICRO" | "STERILITY" | "CHEMISTRY" | "COA";
+type BulkWorkflowGroup = "MICRO" | "STERILITY" | "APE" | "CHEMISTRY" | "COA";
 
 function getBulkWorkflowGroup(r: UnifiedRow): BulkWorkflowGroup {
   if (r.kind === "MICRO") {
     if (r.formType === "STERILITY") return "STERILITY";
+    if (r.formType === "APE") return "APE";
     return "MICRO";
   }
 
@@ -153,7 +155,7 @@ function getNextStatusesForRow(r: UnifiedRow): string[] {
   const s = String(r.status);
 
   if (r.kind === "MICRO") {
-    if (r.formType === "STERILITY") {
+    if (r.formType === "STERILITY" || r.formType === "APE") {
       return (STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]
         ?.next ?? []) as string[];
     }
@@ -195,7 +197,6 @@ function intersectAll(lists: string[][]): string[] {
 // ----------------------------------
 const MICRO_STATUSES = [
   "ALL",
-  "DRAFT",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
   "CLIENT_NEEDS_FINAL_CORRECTION",
@@ -239,7 +240,6 @@ const MICRO_STATUSES = [
 
 const STERILITY_STATUSES = [
   "ALL",
-  "DRAFT",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -271,7 +271,6 @@ const STERILITY_STATUSES = [
 
 const CHEMISTRY_STATUSES = [
   "ALL",
-  "DRAFT",
   "SUBMITTED_BY_CLIENT",
   "CLIENT_NEEDS_CORRECTION",
   "UNDER_CLIENT_CORRECTION",
@@ -308,6 +307,7 @@ const microFormTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
 };
 
 const chemFormTypeToSlug: Record<string, string> = {
@@ -506,6 +506,21 @@ function BulkPrintArea({
               </div>
             );
           }
+
+          if (r.formType === "APE") {
+            return (
+              <div key={`${r.kind}-${r.id}`} className="report-page">
+                <ApeReportFormView
+                  report={r}
+                  onClose={() => {}}
+                  showSwitcher={false}
+                  isBulkPrint={true}
+                  isSingleBulk={isSingle}
+                  pane={paneToPrint}
+                />
+              </div>
+            );
+          }
           if (r.formType === "MICRO_MIX_WATER") {
             return (
               <div key={`${r.kind}-${r.id}`} className="report-page">
@@ -681,6 +696,7 @@ function typeLabel(r: UnifiedRow) {
     if (r.formType === "MICRO_MIX") return "MICRO";
     if (r.formType === "MICRO_MIX_WATER") return "MICRO WATER";
     if (r.formType === "STERILITY") return "STERILITY";
+    if (r.formType === "APE") return "APE";
     return "MICRO";
   }
 
@@ -862,10 +878,11 @@ export default function MCDashboard() {
     | "MICRO_MIX"
     | "MICRO_MIX_WATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY_MIX"
     | "COA";
 
-  type MicroFormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY";
+  type MicroFormFilter = "ALL" | "MICRO" | "MICRO_WATER" | "STERILITY" | "APE";
 
   type ChemFormFilter = "ALL" | "CHEMISTRY_MIX" | "COA";
 
@@ -1308,7 +1325,7 @@ export default function MCDashboard() {
   const statusOptions = useMemo(() => {
     // MICRO tab
     if (category === "MICRO") {
-      if (microFormFilter === "STERILITY") {
+      if (microFormFilter === "STERILITY" || microFormFilter === "APE") {
         return STERILITY_STATUSES as unknown as string[];
       }
 
@@ -1331,7 +1348,7 @@ export default function MCDashboard() {
         return MICRO_STATUSES as unknown as string[];
       }
 
-      if (allTypeFilter === "STERILITY") {
+      if (allTypeFilter === "STERILITY" || allTypeFilter === "APE") {
         return STERILITY_STATUSES as unknown as string[];
       }
 
@@ -1990,7 +2007,7 @@ export default function MCDashboard() {
     actor: string,
   ): Promise<UnifiedRow> {
     if (r.kind === "MICRO") {
-      const isSterility = r.formType === "STERILITY";
+      const isSterility = r.formType === "STERILITY" || r.formType === "APE";
 
       let nextStatus: string | null = null;
       let reason = "";
@@ -2177,6 +2194,8 @@ export default function MCDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       case "CHEMISTRY_MIX":
         return "Chemistry Mix";
       case "COA":
@@ -2194,6 +2213,8 @@ export default function MCDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       default:
         return "All Micro";
     }
@@ -2405,7 +2426,7 @@ export default function MCDashboard() {
 
   function canUpdateUnified(r: UnifiedRow, user?: any) {
     if (r.kind === "MICRO") {
-      return r.formType === "STERILITY"
+      return r.formType === "STERILITY" || r.formType === "APE"
         ? canUpdateSterilityLocal(r as MicroReport, user)
         : canUpdateMicroLocal(r as MicroReport, user);
     }
@@ -3100,7 +3121,7 @@ export default function MCDashboard() {
       {category === "MICRO" && (
         <div className="mb-3 border-b border-slate-100">
           <nav className="-mb-px flex gap-6 text-sm">
-            {(["ALL", "MICRO", "MICRO_WATER", "STERILITY"] as const).map(
+            {(["ALL", "MICRO", "MICRO_WATER", "STERILITY", "APE"] as const).map(
               (ft) => {
                 const isActive = microFormFilter === ft;
                 return (
@@ -3121,7 +3142,9 @@ export default function MCDashboard() {
                         ? "Micro Mix"
                         : ft === "STERILITY"
                           ? "Sterility"
-                          : "Micro Water"}
+                          : ft === "APE"
+                            ? "APE"
+                            : "Micro Water"}
                   </button>
                 );
               },
@@ -3169,6 +3192,7 @@ export default function MCDashboard() {
                 ["MICRO_MIX", "Micro Mix"],
                 ["MICRO_MIX_WATER", "Micro Water"],
                 ["STERILITY", "Sterility"],
+                ["APE", "APE"],
                 ["CHEMISTRY_MIX", "Chemistry Mix"],
                 ["COA", "COA"],
               ] as const
@@ -4115,6 +4139,14 @@ export default function MCDashboard() {
                   />
                 ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                   <MicroMixWaterReportFormView
+                    report={selectedReport as any}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    pane={selectedViewPane}
+                    onPaneChange={setSelectedViewPane}
+                  />
+                ) : selectedReport.formType === "APE" ? (
+                  <ApeReportFormView
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}

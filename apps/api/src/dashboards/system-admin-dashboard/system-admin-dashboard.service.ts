@@ -2,6 +2,11 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { DashboardReportSyncService } from '../dashboard-report-sync.service.js';
+import {
+  CHEMISTRY_ALLOWED_STATUSES,
+  MICRO_ALLOWED_STATUSES,
+  STERILITY_APE_ALLOWED_STATUSES,
+} from '../utils/dashboardStatuses.js';
 
 type AdminDashboardQuery = {
   form?: string;
@@ -99,20 +104,38 @@ function withPinnedFilter(
   };
 }
 
-function mapFormFilter(form?: string): FormType | undefined {
+function getFormTypesFromQuery(form?: string): FormType[] {
   switch (form) {
     case 'MICRO':
-      return 'MICRO_MIX';
+      return ['MICRO_MIX'];
+
     case 'MICROWATER':
-      return 'MICRO_MIX_WATER';
+    case 'MICRO_WATER':
+      return ['MICRO_MIX_WATER'];
+
     case 'STERILITY':
-      return 'STERILITY';
+      return ['STERILITY'];
+
+    case 'APE':
+      return ['APE'];
+
     case 'CHEMISTRY':
-      return 'CHEMISTRY_MIX';
+    case 'CHEMISTRY_MIX':
+      return ['CHEMISTRY_MIX'];
+
     case 'COA':
-      return 'COA';
+      return ['COA'];
+
+    case 'ALL':
     default:
-      return undefined;
+      return [
+        'MICRO_MIX',
+        'MICRO_MIX_WATER',
+        'STERILITY',
+        'APE',
+        'CHEMISTRY_MIX',
+        'COA',
+      ];
   }
 }
 
@@ -134,6 +157,26 @@ function mapDashboardRow(r: any) {
     id: r.sourceId,
     dashboardId: r.id,
   };
+}
+
+function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
+  const set = new Set<string>();
+
+  for (const ft of formTypes) {
+    if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
+      MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+
+    if (ft === 'STERILITY' || ft === 'APE') {
+      STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+
+    if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
+      CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+  }
+
+  return Array.from(set);
 }
 
 @Injectable()
@@ -166,15 +209,24 @@ export class SystemAdminDashboardService {
     const dateField = safeDateField(query.dateField);
     const sort: Prisma.SortOrder = query.sort === 'asc' ? 'asc' : 'desc';
 
-    const where: Prisma.DashboardReportWhereInput = {};
+    const formTypes = getFormTypesFromQuery(form);
 
-    const mappedForm = mapFormFilter(form);
-    if (form !== 'ALL' && mappedForm) {
-      where.formType = mappedForm;
-    }
+    const where: Prisma.DashboardReportWhereInput = {
+      formType: {
+        in: formTypes,
+      },
+    };
 
-    if (status !== 'ALL') {
+    const allowedStatuses = getAllowedStatusesForFormTypes(
+      getFormTypesFromQuery(form),
+    );
+
+    if (status !== 'ALL' && allowedStatuses.includes(status)) {
       where.status = status;
+    } else {
+      where.status = {
+        in: allowedStatuses,
+      } as any;
     }
 
     const and: Prisma.DashboardReportWhereInput[] = [];

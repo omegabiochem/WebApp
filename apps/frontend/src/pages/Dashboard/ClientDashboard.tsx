@@ -49,6 +49,7 @@ import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 import { Eye, EyeOff, Pin } from "lucide-react";
 import { isTerminalStatus } from "../../utils/globalUtils";
+import ApeReportFormView from "../Reports/ApeReportFormView";
 
 // -----------------------------
 // Types
@@ -125,19 +126,19 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "LOCKED",
   "VOID",
 ];
-type BulkWorkflowGroup = "MICRO" | "STERILITY" | "CHEMISTRY" | "COA";
+type BulkWorkflowGroup = "MICRO" | "STERILITY" | "APE" | "CHEMISTRY" | "COA";
 
 function getBulkWorkflowGroup(r: Report): BulkWorkflowGroup {
   if (r.formType === "STERILITY") return "STERILITY";
+  if (r.formType === "APE") return "APE";
   if (r.formType === "COA") return "COA";
   if (r.formType === "CHEMISTRY_MIX") return "CHEMISTRY";
   return "MICRO";
 }
-
 function getNextStatusesForReport(r: Report): string[] {
   const s = String(r.status);
 
-  if (r.formType === "STERILITY") {
+  if (r.formType === "STERILITY" || r.formType === "APE") {
     return (STERILITY_STATUS_TRANSITIONS?.[s as SterilityReportStatus]?.next ??
       []) as string[];
   }
@@ -173,6 +174,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
   CHEMISTRY_MIX: "chemistry-mix",
   COA: "coa",
   // CHEMISTRY_* can be added when you wire those forms
@@ -234,6 +236,27 @@ function canUpdateThisReport(r: Report, user?: any) {
       user?.role,
       r.status as SterilityReportStatus,
       sterilityFieldsUsedOnForm,
+    );
+  }
+
+  if (r.formType === "APE") {
+    const apeFieldsUsedOnForm = [
+      "client",
+      "dateSent",
+      "typeOfTest",
+      "sampleType",
+      "formulaNo",
+      "description",
+      "lotNo",
+      "manufactureDate",
+      "organisms",
+      "comments",
+    ];
+
+    return canShowSterilityUpdateButton(
+      user?.role,
+      r.status as SterilityReportStatus,
+      apeFieldsUsedOnForm,
     );
   }
 
@@ -381,10 +404,10 @@ function BulkPrintArea({
               />
             </div>
           );
-        } else if (r.formType === "MICRO_MIX_WATER") {
+        } else if (r.formType === "STERILITY") {
           return (
             <div key={r.id} className="report-page">
-              <MicroMixWaterReportFormView
+              <SterilityReportFormView
                 report={r}
                 onClose={() => {}}
                 showSwitcher={false}
@@ -394,10 +417,10 @@ function BulkPrintArea({
               />
             </div>
           );
-        } else if (r.formType === "STERILITY") {
+        } else if (r.formType === "APE") {
           return (
             <div key={r.id} className="report-page">
-              <SterilityReportFormView
+              <ApeReportFormView
                 report={r}
                 onClose={() => {}}
                 showSwitcher={false}
@@ -470,6 +493,7 @@ const DEFAULT_CLIENT_FILTERS = {
     | "MICRO"
     | "MICROWATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY"
     | "COA",
   statusFilter: "ALL" as DashboardStatus,
@@ -644,7 +668,7 @@ export default function ClientDashboard() {
   const [perPage, setPerPage] = useState(initialFilters.perPage);
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "APE" | "CHEMISTRY" | "COA"
   >(initialFilters.formFilter);
 
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
@@ -689,7 +713,8 @@ export default function ClientDashboard() {
   const statusOptions =
     formFilter === "CHEMISTRY" ||
     formFilter === "COA" ||
-    formFilter === "STERILITY"
+    formFilter === "STERILITY" ||
+    formFilter === "APE"
       ? CLIENT_CHEM_STATUSES
       : CLIENT_MICRO_STATUSES;
 
@@ -1587,6 +1612,8 @@ export default function ClientDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       case "CHEMISTRY":
         return "Chemistry";
       case "COA":
@@ -1748,7 +1775,10 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     const allowed =
-      formFilter === "CHEMISTRY" || formFilter === "COA"
+      formFilter === "CHEMISTRY" ||
+      formFilter === "COA" ||
+      formFilter === "STERILITY" ||
+      formFilter === "APE"
         ? CLIENT_CHEM_STATUSES.map(String)
         : CLIENT_MICRO_STATUSES.map(String);
 
@@ -1770,6 +1800,8 @@ export default function ClientDashboard() {
         return "MICRO";
       case "MICRO_MIX_WATER":
         return "MICRO_WATER";
+      case "APE":
+        return "APE";
       case "CHEMISTRY_MIX":
         return "CHEMISTRY";
       default:
@@ -2603,6 +2635,7 @@ export default function ClientDashboard() {
               "MICRO",
               "MICROWATER",
               "STERILITY",
+              "APE",
               "CHEMISTRY",
               "COA",
             ] as const
@@ -2630,7 +2663,9 @@ export default function ClientDashboard() {
                         ? "Sterility"
                         : ft === "COA"
                           ? "Coa"
-                          : "Chemistry"}
+                          : ft === "APE"
+                            ? "APE"
+                            : "Chemistry"}
               </button>
             );
           })}
@@ -3090,7 +3125,8 @@ export default function ClientDashboard() {
                     const isMicro =
                       r.formType === "MICRO_MIX" ||
                       r.formType === "MICRO_MIX_WATER" ||
-                      r.formType === "STERILITY";
+                      r.formType === "STERILITY" ||
+                      r.formType === "APE";
 
                     const isChemistry =
                       r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
@@ -3153,7 +3189,8 @@ export default function ClientDashboard() {
                           <span
                             className={classNames(
                               "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                              (r.formType === "STERILITY"
+                              (r.formType === "STERILITY" ||
+                              r.formType === "APE"
                                 ? STERILITY_STATUS_COLORS[
                                     r.status as SterilityReportStatus
                                   ]
@@ -3555,6 +3592,13 @@ export default function ClientDashboard() {
                   showSwitcher={false}
                   pane={selectedViewPane}
                 />
+              ) : selectedReport?.formType === "APE" ? (
+                <ApeReportFormView
+                  report={selectedReport}
+                  onClose={() => setSelectedReport(null)}
+                  showSwitcher={false}
+                  pane={selectedViewPane}
+                />
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport}
@@ -3678,7 +3722,8 @@ export default function ClientDashboard() {
                               <span
                                 className={classNames(
                                   "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1",
-                                  (r.formType === "STERILITY"
+                                  (r.formType === "STERILITY" ||
+                                  r.formType === "APE"
                                     ? STERILITY_STATUS_COLORS[
                                         r.status as SterilityReportStatus
                                       ]
@@ -3905,22 +3950,6 @@ export default function ClientDashboard() {
             >
               Raise Correction
             </button>
-
-            {/* <div className="my-1 border-t" /> */}
-
-            {/* <button
-              type="button"
-              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
-              onClick={() => {
-                closeCorrectionMenu();
-                openSelectedForCorrection([
-                  "REQUEST_CHANGE",
-                  "RAISE_CORRECTION",
-                ]);
-              }}
-            >
-              Open Both
-            </button> */}
           </div>,
           document.body,
         )}
