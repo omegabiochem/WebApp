@@ -13,9 +13,14 @@ import SterilityReportForm from "../pages/Reports/SterilityReportForm";
 import { useAuth } from "../context/AuthContext";
 import ApeReportFormView from "../pages/Reports/ApeReportFormView";
 import ApeReportForm from "../pages/Reports/ApeReportForm";
+import ApeValidationReport from "../pages/LabReports/ApeValidationReport";
+import ApeReport from "../pages/LabReports/ApeReport";
+import { api } from "../lib/api";
 
 type WorkspaceMode = "VIEW" | "UPDATE";
 type WorkspaceLayout = "VERTICAL" | "HORIZONTAL";
+
+type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
 
 type ReportItem = {
   id: string;
@@ -23,9 +28,28 @@ type ReportItem = {
   formNumber: string;
   reportNumber?: string | null;
   status: string;
+  version?: number;
+
+  client?: string | null;
+  clientCode?: string | null;
+  dateSent?: string | null;
+  typeOfTest?: string | null;
+  sampleType?: string | null;
+  formulaNo?: string | null;
+  description?: string | null;
+  lotNo?: string | null;
+  manufactureDate?: string | null;
+
+  testSopNo?: string | null;
+  testReference?: string | null;
+  dateTested?: string | null;
+  dateCompleted?: string | null;
+
+  kind?: string;
 };
 
 type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+type ApeWorkspaceReportTab = "APE_VALIDATION_REPORT" | "APE_REPORT";
 type Props = {
   open: boolean;
   reports: ReportItem[];
@@ -39,7 +63,7 @@ type Props = {
   onReportChanged?: (updated: any) => void;
 };
 
-function paneFor(status: string): "FORM" | "ATTACHMENTS" {
+function paneFor(status: string): ViewPane {
   return status === "UNDER_CLIENT_FINAL_REVIEW" ||
     status === "FINAL_APPROVED" ||
     status === "UNDER_CLIENT_REVIEW"
@@ -179,6 +203,88 @@ export default function ReportWorkspaceModal({
     });
   }, [activeId]);
 
+  const [paneByReportId, setPaneByReportId] = React.useState<
+    Record<string, ViewPane>
+  >({});
+
+  const [apeReportTabs, setApeReportTabs] = React.useState<
+    Record<string, ApeWorkspaceReportTab>
+  >({});
+
+  const [apeChildReports, setApeChildReports] = React.useState<
+    Record<string, any>
+  >({});
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const apeParents = reports.filter((r) => r.formType === "APE");
+    if (!apeParents.length) return;
+
+    let cancelled = false;
+
+    async function loadSavedApeChildren() {
+      const next: Record<string, any> = {};
+
+      await Promise.all(
+        apeParents.flatMap((parent) =>
+          (
+            ["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeWorkspaceReportTab[]
+          ).map(async (reportType) => {
+            try {
+              const child = await api<any>(
+                `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+                  parent.id,
+                )}&reportType=${reportType}`,
+              );
+
+              if (!child?.id) return;
+
+              next[apeChildKey(parent.id, reportType)] = {
+                ...parent,
+                ...child,
+                reportType,
+                parentReportId: parent.id,
+
+                parentStatus: parent.status,
+                workflowStatus: parent.status,
+                parentVersion: parent.version ?? 0,
+
+                childStatus: child.status,
+                childVersion: child.version,
+
+                // ✅ child screen follows parent workflow status
+                status: parent.status,
+
+                clientCode:
+                  child.clientCode ||
+                  parent.clientCode ||
+                  String(parent.formNumber || "").split("-")[0] ||
+                  "",
+              };
+            } catch (e) {
+              console.error("Failed to load APE child report", e);
+            }
+          }),
+        ),
+      );
+
+      if (cancelled) return;
+      if (!Object.keys(next).length) return;
+
+      setApeChildReports((prev) => ({
+        ...prev,
+        ...next,
+      }));
+    }
+
+    loadSavedApeChildren();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reports]);
+
   if (!open || !reports.length) return null;
 
   const shouldLaunchCorrectionInUpdate =
@@ -198,6 +304,346 @@ export default function ReportWorkspaceModal({
           ? updated.version
           : (original as any).version,
     });
+  }
+
+  function getApeReportTab(parentId: string): ApeWorkspaceReportTab {
+    return apeReportTabs[parentId] ?? "APE_VALIDATION_REPORT";
+  }
+
+  function setApeReportTab(parentId: string, tab: ApeWorkspaceReportTab) {
+    setApeReportTabs((prev) => ({
+      ...prev,
+      [parentId]: tab,
+    }));
+  }
+
+  function apeChildKey(parentId: string, reportType: ApeWorkspaceReportTab) {
+    return `${parentId}:${reportType}`;
+  }
+
+  function makeApeChildReport(
+    parent: ReportItem,
+    reportType: ApeWorkspaceReportTab,
+  ) {
+    const key = apeChildKey(parent.id, reportType);
+    const saved = apeChildReports[key];
+
+    if (saved) {
+      return {
+        ...parent,
+        ...saved,
+
+        // child identity
+        id: saved.id,
+        reportType,
+        parentReportId: parent.id,
+
+        // ✅ parent workflow source
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+
+        // keep child info separately
+        childStatus: saved.status,
+        childVersion: saved.version,
+
+        // ✅ child screen should use parent status
+        status: parent.status,
+      };
+    }
+
+    return {
+      ...parent,
+      id: null,
+      parentReportId: parent.id,
+      reportType,
+
+      // ✅ parent workflow source
+      parentStatus: parent.status,
+      workflowStatus: parent.status,
+      parentVersion: parent.version ?? 0,
+
+      childStatus: "DRAFT",
+      childVersion: 0,
+
+      // ✅ start child screen from parent status
+      status: parent.status || "UNDER_TESTING_REVIEW",
+
+      reportNumber: "",
+      formType: undefined,
+
+      clientCode:
+        parent.clientCode ||
+        String(parent.formNumber || "").split("-")[0] ||
+        "",
+      dateSent: parent.dateSent ?? "",
+      typeOfTest: parent.typeOfTest ?? "APE",
+      sampleType: parent.sampleType ?? "",
+      formulaNo: parent.formulaNo ?? "",
+      description: parent.description ?? "",
+      lotNo: parent.lotNo ?? "",
+      manufactureDate: parent.manufactureDate ?? "",
+      testSopNo: (parent as any).testSopNo ?? "",
+      testReference: (parent as any).testReference ?? "USP <51> CURRENT",
+      dateTested: parent.dateTested ?? "",
+      dateCompleted: (parent as any).dateCompleted ?? "",
+    };
+  }
+
+  function handleApeChildChanged(
+    parent: ReportItem,
+    reportType: ApeWorkspaceReportTab,
+    updated: any,
+  ) {
+    const key = apeChildKey(parent.id, reportType);
+    const base = makeApeChildReport(parent, reportType);
+
+    setApeChildReports((prev) => ({
+      ...prev,
+      [key]: {
+        ...base,
+        ...updated,
+
+        id: updated?.id ?? base.id,
+        reportType,
+        parentReportId: parent.id,
+
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+
+        // ✅ parent status remains source of truth
+        status: parent.status,
+
+        childStatus: updated?.status,
+        childVersion: updated?.version,
+      },
+    }));
+  }
+
+  function handleApeParentStatusChanged(parent: ReportItem, updated: any) {
+    const nextStatus = updated?.status ?? parent.status;
+
+    const nextVersion =
+      typeof updated?.version === "number"
+        ? updated.version
+        : (parent.version ?? 0) + 1;
+
+    const mergedParent = {
+      ...parent,
+      ...updated,
+
+      // ✅ keep parent identity
+      id: parent.id,
+      formType: parent.formType,
+
+      status: nextStatus,
+      version: nextVersion,
+      reportNumber: updated?.reportNumber ?? parent.reportNumber,
+    };
+
+    // ✅ notify dashboard with parent row, not child row
+    onReportChanged?.(mergedParent);
+
+    // ✅ update both APE child tabs locally
+    setApeChildReports((prev) => {
+      const next = { ...prev };
+
+      (
+        ["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeWorkspaceReportTab[]
+      ).forEach((reportType) => {
+        const key = apeChildKey(parent.id, reportType);
+
+        if (next[key]) {
+          next[key] = {
+            ...next[key],
+            parentStatus: nextStatus,
+            workflowStatus: nextStatus,
+            parentVersion: nextVersion,
+            status: nextStatus,
+          };
+        }
+      });
+
+      return next;
+    });
+  }
+
+  function renderApeReportSubTabs(parent: ReportItem, readOnly: boolean) {
+    const activeTab = getApeReportTab(parent.id);
+
+    const tabButtonClass = (tab: ApeWorkspaceReportTab) =>
+      [
+        "rounded-lg px-3 py-1.5 text-sm font-semibold border transition",
+        activeTab === tab
+          ? "bg-slate-900 text-white border-slate-900"
+          : "bg-white text-slate-700 hover:bg-slate-50",
+      ].join(" ");
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border bg-white px-3 py-2">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            APE Reports
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={tabButtonClass("APE_VALIDATION_REPORT")}
+              onClick={() =>
+                setApeReportTab(parent.id, "APE_VALIDATION_REPORT")
+              }
+            >
+              APE Validation Report
+            </button>
+
+            <button
+              type="button"
+              className={tabButtonClass("APE_REPORT")}
+              onClick={() => setApeReportTab(parent.id, "APE_REPORT")}
+            >
+              APE Report
+            </button>
+          </div>
+        </div>
+
+        {activeTab === "APE_VALIDATION_REPORT" && (
+          <ApeValidationReport
+            report={makeApeChildReport(parent, "APE_VALIDATION_REPORT")}
+            embedded={true}
+            pageMode={readOnly ? "VIEW" : "UPDATE"}
+            forcePageReadOnly={readOnly}
+            hideTopActions={false}
+            hideBottomActions={false}
+            onClose={() => {}}
+            onSaved={(updated) =>
+              handleApeChildChanged(parent, "APE_VALIDATION_REPORT", updated)
+            }
+            onStatusChanged={(updated) =>
+              handleApeParentStatusChanged(parent, updated)
+            }
+          />
+        )}
+
+        {activeTab === "APE_REPORT" && (
+          <ApeReport
+            report={makeApeChildReport(parent, "APE_REPORT")}
+            embedded={true}
+            pageMode={readOnly ? "VIEW" : "UPDATE"}
+            forcePageReadOnly={readOnly}
+            hideTopActions={false}
+            hideBottomActions={false}
+            onClose={() => {}}
+            onSaved={(updated) =>
+              handleApeChildChanged(parent, "APE_REPORT", updated)
+            }
+            onStatusChanged={(updated) =>
+              handleApeParentStatusChanged(parent, updated)
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  function getPane(r: ReportItem): ViewPane {
+    if (
+      r.formType === "APE" &&
+      mode === "UPDATE" &&
+      String(user?.role || "") !== "CLIENT"
+    ) {
+      return paneByReportId[r.id] ?? "REPORT";
+    }
+
+    return paneByReportId[r.id] ?? paneFor(String(r.status));
+  }
+
+  function setPane(r: ReportItem, pane: ViewPane) {
+    setPaneByReportId((prev) => ({
+      ...prev,
+      [r.id]: pane,
+    }));
+  }
+
+  function renderMainTabs(r: ReportItem) {
+    const activePane = getPane(r);
+
+    const btnClass = (pane: ViewPane) =>
+      [
+        "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+        activePane === pane
+          ? "bg-blue-600 text-white shadow-sm"
+          : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+      ].join(" ");
+
+    return (
+      <div className="no-print mb-3 flex justify-center">
+        <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+          {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map((pane) => (
+            <button
+              key={pane}
+              type="button"
+              onClick={() => setPane(r, pane)}
+              className={btnClass(pane)}
+            >
+              {pane === "ATTACHMENTS"
+                ? "Attachments"
+                : pane[0] + pane.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderApeWorkspaceBody(r: ReportItem) {
+    const pane = getPane(r);
+    const readOnly = mode === "VIEW";
+
+    if (pane === "REPORT") {
+      return renderApeReportSubTabs(r, readOnly);
+    }
+
+    if (pane === "ATTACHMENTS") {
+      return (
+        <ApeReportFormView
+          report={r}
+          onClose={() => {}}
+          showSwitcher={false}
+          pane="ATTACHMENTS"
+        />
+      );
+    }
+
+    // FORM tab
+    if (mode === "VIEW") {
+      return (
+        <ApeReportFormView
+          report={r}
+          onClose={() => {}}
+          showSwitcher={false}
+          pane="FORM"
+        />
+      );
+    }
+
+    return (
+      <ApeReportForm
+        report={r}
+        embedded={true}
+        pageMode="UPDATE"
+        forcePageReadOnly={false}
+        hideTopActions={false}
+        hideBottomActions={false}
+        correctionLaunch={shouldLaunchCorrectionInUpdate}
+        correctionKinds={correctionKinds}
+        isWorkspaceActive={activeId === r.id}
+        onClose={() => {}}
+        onSaved={(updated) => handleReportChanged(r, updated)}
+        onStatusChanged={(updated) => handleReportChanged(r, updated)}
+      />
+    );
   }
 
   return createPortal(
@@ -331,6 +777,7 @@ export default function ReportWorkspaceModal({
                       : "w-[920px] shrink-0 rounded-2xl border bg-slate-50 p-4"
                 }
               >
+                {/* KEEP OLD MAIN DESIGN EXACTLY */}
                 <div
                   className={
                     isSingleReport
@@ -353,6 +800,9 @@ export default function ReportWorkspaceModal({
                     </span>
                   )}
                 </div>
+
+                {/* ONLY APE gets Form / Report / Attachments tabs here */}
+                {r.formType === "APE" && renderMainTabs(r)}
 
                 {mode === "VIEW" ? (
                   <>
@@ -383,14 +833,7 @@ export default function ReportWorkspaceModal({
                       />
                     )}
 
-                    {r.formType === "APE" && (
-                      <ApeReportFormView
-                        report={r}
-                        onClose={() => {}}
-                        showSwitcher={false}
-                        pane={paneFor(String(r.status))}
-                      />
-                    )}
+                    {r.formType === "APE" && renderApeWorkspaceBody(r)}
 
                     {r.formType === "CHEMISTRY_MIX" && (
                       <ChemistryMixReportFormView
@@ -430,6 +873,7 @@ export default function ReportWorkspaceModal({
                         }
                       />
                     )}
+
                     {r.formType === "MICRO_MIX_WATER" && (
                       <MicroMixWaterReportForm
                         report={r}
@@ -448,6 +892,7 @@ export default function ReportWorkspaceModal({
                         }
                       />
                     )}
+
                     {r.formType === "STERILITY" && (
                       <SterilityReportForm
                         report={r}
@@ -467,24 +912,8 @@ export default function ReportWorkspaceModal({
                       />
                     )}
 
-                    {r.formType === "APE" && (
-                      <ApeReportForm
-                        report={r}
-                        embedded={true}
-                        pageMode="UPDATE"
-                        forcePageReadOnly={false}
-                        hideTopActions={false}
-                        hideBottomActions={false}
-                        correctionLaunch={shouldLaunchCorrectionInUpdate}
-                        correctionKinds={correctionKinds}
-                        isWorkspaceActive={activeId === r.id}
-                        onClose={() => {}}
-                        onSaved={(updated) => handleReportChanged(r, updated)}
-                        onStatusChanged={(updated) =>
-                          handleReportChanged(r, updated)
-                        }
-                      />
-                    )}
+                    {r.formType === "APE" && renderApeWorkspaceBody(r)}
+
                     {r.formType === "COA" && (
                       <COAReportForm
                         report={r}
@@ -522,12 +951,6 @@ export default function ReportWorkspaceModal({
                         }
                       />
                     )}
-
-                    {/* {r.formType !== "COA" && (
-                      <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">
-                        Update mode not wired yet for {r.formType}.
-                      </div>
-                    )} */}
                   </>
                 )}
               </div>

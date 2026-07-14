@@ -17,14 +17,14 @@ type PutInput = { filePath: string; filename: string; subdir?: string };
 
 @Injectable()
 export class StorageService {
-  constructor() {
-    console.log('=== S3 CONFIG (StorageService) ===');
-    console.log('STORAGE_DRIVER:', process.env.STORAGE_DRIVER);
-    console.log('AWS_REGION:', process.env.AWS_REGION);
-    console.log('S3_BUCKET:', process.env.S3_BUCKET);
-    console.log('S3_PREFIX:', process.env.S3_PREFIX);
-    console.log('===============================');
-  }
+  // constructor() {
+  //   console.log('=== S3 CONFIG (StorageService) ===');
+  //   console.log('STORAGE_DRIVER:', process.env.STORAGE_DRIVER);
+  //   console.log('AWS_REGION:', process.env.AWS_REGION);
+  //   console.log('S3_BUCKET:', process.env.S3_BUCKET);
+  //   console.log('S3_PREFIX:', process.env.S3_PREFIX);
+  //   console.log('===============================');
+  // }
   private readonly driver = (
     process.env.STORAGE_DRIVER ?? 'local'
   ).toLowerCase();

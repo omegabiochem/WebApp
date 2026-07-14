@@ -4,6 +4,7 @@ import FormsDropdown from "../forms/FormsDropdown";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import TemplatesDropdown from "../../pages/Templates/TemplatesDropdown";
+import ReportDropdown from "../reports/ReportsDropdown";
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -33,7 +34,7 @@ export default function Header() {
       { label: "Results", path: "/results" },
       { label: "User Management", path: "/manage-users" },
       { label: "Report Management", path: "/manage-reports" },
-         { label: "More", path: "/more" },
+      { label: "More", path: "/more" },
     ],
     CLIENT: [
       { label: "Home", path: "/clientDashboard" },
@@ -54,8 +55,10 @@ export default function Header() {
     ],
     MICRO: [
       { label: "Home", path: "/microDashboard" },
+      { label: "Reports", path: "/reports-dropdown" },
       { label: "Results", path: "/results" },
       { label: "Login Book", path: "/microLoginBook" },
+      { label: "Ape Login", path: "/apeLoginBook" },
       { label: "Support", path: "/support" },
     ],
     CHEMISTRY: [
@@ -66,8 +69,10 @@ export default function Header() {
     ],
     MC: [
       { label: "Home", path: "/mcDashboard" },
+      { label: "Reports", path: "/reports-dropdown" },
       { label: "Results", path: "/results" },
       { label: "Micro Login Book", path: "/microLoginBook" },
+      { label: "Ape Login", path: "/apeLoginBook" },
       { label: "Chemistry Login Book", path: "/chemistryLoginBook" },
       { label: "Support", path: "/support" },
     ],
@@ -76,6 +81,7 @@ export default function Header() {
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
       { label: "Micro Login Book", path: "/microLoginBook" },
+      { label: "Ape Login", path: "/apeLoginBook" },
       { label: "Chemistry Login Book", path: "/chemistryLoginBook" },
       { label: "Support", path: "/support" },
     ],
@@ -187,22 +193,6 @@ export default function Header() {
     if (!user) return;
 
     try {
-      // const [list, unread] = await Promise.all([
-      //   api<any[]>("/notifications"),
-      //   api<any>("/notifications/unread-count"),
-      // ]);
-
-      // console.log("notifications list:", list);
-      // console.log("notifications unread:", unread);
-
-      // setNotifications(Array.isArray(list) ? list : []);
-      // setUnreadNotifications(
-      //   typeof unread === "number"
-      //     ? unread
-      //     : typeof unread?.count === "number"
-      //       ? unread.count
-      //       : 0,
-      // );
       const list = await api<any[]>("/notifications");
 
       console.log("notifications list:", list);
@@ -273,10 +263,6 @@ export default function Header() {
     } catch {}
 
     setNotificationsOpen(false);
-
-    // if (n.reportUrl) {
-    //   navigate(n.reportUrl);
-    // }
   };
 
   const handleReadAllNotifications = async () => {
@@ -422,6 +408,8 @@ export default function Header() {
               {menu.map((item) =>
                 item.label === "Forms" ? (
                   <FormsDropdown key="forms" align="right" />
+                ) : item.label === "Reports" ? (
+                  <ReportDropdown key="reports" align="right" />
                 ) : item.label === "Templates" ? (
                   <TemplatesDropdown key="templates" align="right" />
                 ) : item.label === "Login Books" ? (
@@ -447,6 +435,16 @@ export default function Header() {
                           className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                         >
                           Micro Login Book
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setLoginBooksOpen(false);
+                            navigate("/apeLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Ape Login Book
                         </button>
 
                         <button
@@ -484,6 +482,12 @@ export default function Header() {
                           <FormsDropdown align="right" />
                         </div>
 
+                        {(role === "ADMIN" || role === "SYSTEMADMIN") && (
+                          <div className="px-4 py-2">
+                            <ReportDropdown align="right" />
+                          </div>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => {
@@ -504,6 +508,17 @@ export default function Header() {
                           className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                         >
                           Chemistry Login Book
+                        </button>
+
+                         <button
+                          type="button"
+                          onClick={() => {
+                            setMoreOpen(false);
+                            navigate("/apeLoginBook");
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                        >
+                          Ape Login Book
                         </button>
 
                         <button
@@ -589,7 +604,6 @@ export default function Header() {
                   </Link>
                 ),
               )}
-      
 
               <div className="relative" ref={notificationsRef}>
                 <button

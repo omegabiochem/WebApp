@@ -11,6 +11,7 @@ import {
   UserRole,
   Prisma,
   FormType,
+  ReportType,
   $Enums,
 } from '@prisma/client';
 
@@ -130,7 +131,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tbc_spec',
     'tmy_spec',
     'pathogens',
-    'organisms'
+    'organisms',
   ],
 };
 
@@ -795,6 +796,19 @@ type MicroFormType = Extract<
   'MICRO_MIX' | 'MICRO_MIX_WATER' | 'STERILITY' | 'APE'
 >;
 
+type LabReportType = Extract<
+  ReportType,
+  'APE_VALIDATION_REPORT' | 'APE_REPORT'
+>;
+
+const REPORT_DETAILS_RELATION: Record<
+  LabReportType,
+  'apeValidationReport' | 'apeReport'
+> = {
+  APE_VALIDATION_REPORT: 'apeValidationReport',
+  APE_REPORT: 'apeReport',
+};
+
 const DETAILS_RELATION: Record<
   MicroFormType,
   'microMix' | 'microMixWater' | 'sterility' | 'ape'
@@ -834,6 +848,8 @@ const BASE_FIELDS = new Set([
   'createdAt',
   'updatedAt',
   'formType',
+  'reportType',
+  'parentReportId',
 ]);
 
 // Split a flat patch into base-vs-details
@@ -848,20 +864,36 @@ function splitPatch(patch: Record<string, any>) {
 
 // Pick the one details object off an included Report
 function pickDetails(r: any) {
-  return r.microMix ?? r.microMixWater ?? r.sterility ?? r.ape ?? null;
+  return (
+    r.microMix ??
+    r.microMixWater ??
+    r.sterility ??
+    r.ape ??
+    r.apeValidationReport ??
+    r.apeReport ??
+    null
+  );
 }
 
 // Flatten for backwards-compat responses (base + active details on top)
 function flattenReport(r: any) {
-  const { microMix, microMixWater, sterility, ape, ...base } = r;
+  const {
+    microMix,
+    microMixWater,
+    sterility,
+    ape,
+    apeValidationReport,
+    apeReport,
+    ...base
+  } = r;
+
   const dRaw = pickDetails(r) || {};
 
-  // Strip any keys that belong to the base report so they can't override it.
   const d = Object.fromEntries(
-    Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)), // BASE_FIELDS includes "status"
+    Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)),
   );
 
-  return { ...base, ...d }; // base wins for base fields (incl. status)
+  return { ...base, ...d };
 }
 
 // Micro & Chem department code for reportNumber
@@ -895,21 +927,47 @@ function updateDetailsByType(
   if (!data || Object.keys(data).length === 0) return null;
 
   switch (formType) {
-    case "MICRO_MIX":
+    case 'MICRO_MIX':
       return tx.microMixDetails.update({ where: { reportId }, data });
-    case "MICRO_MIX_WATER":
+    case 'MICRO_MIX_WATER':
       return tx.microMixWaterDetails.update({ where: { reportId }, data });
-    case "STERILITY":
+    case 'STERILITY':
       return tx.sterilityDetails.update({ where: { reportId }, data });
-    case "APE":
+    case 'APE':
       return tx.apeDetails.update({ where: { reportId }, data });
     default:
       throw new Error(`Unsupported formType: ${formType}`);
   }
 }
 
+function updateLabReportDetailsByType(
+  tx: PrismaService,
+  reportType: ReportType | null,
+  reportId: string,
+  data: Record<string, any>,
+): Prisma.PrismaPromise<any> | null {
+  if (!data || Object.keys(data).length === 0) return null;
+
+  switch (reportType) {
+    case 'APE_VALIDATION_REPORT':
+      return tx.apeValidationReportDetails.update({
+        where: { reportId },
+        data,
+      });
+
+    case 'APE_REPORT':
+      return tx.apeReportDetails.update({
+        where: { reportId },
+        data,
+      });
+
+    default:
+      return null;
+  }
+}
+
 function transitionsFor(formType: FormType) {
-  return formType === "STERILITY" || formType === "APE"
+  return formType === 'STERILITY' || formType === 'APE'
     ? STERILITY_STATUS_TRANSITIONS
     : STATUS_TRANSITIONS;
 }
@@ -936,11 +994,181 @@ export class ReportsService {
     return raw as CorrectionItem[];
   }
 
+  async findApeChildByParent(parentReportId: string, reportType: ReportType) {
+    if (!parentReportId) {
+      throw new BadRequestException('parentReportId is required');
+    }
+
+    if (reportType !== 'APE_VALIDATION_REPORT' && reportType !== 'APE_REPORT') {
+      throw new BadRequestException(`Unsupported reportType: ${reportType}`);
+    }
+
+    const row = await this.prisma.report.findFirst({
+      where: {
+        parentReportId,
+        reportType,
+      },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+        attachments: true,
+        statusHistory: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return row ? flattenReport(row) : null;
+  }
+
+  async createLabReportDraft(
+    user: { userId: string; role: UserRole; clientCode?: string },
+    body: any,
+  ) {
+    if (!['MICRO', 'MC', 'ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Not allowed to create lab report');
+    }
+
+    const reportType: LabReportType = body?.reportType;
+
+    if (!reportType) {
+      throw new BadRequestException('reportType is required');
+    }
+
+    const relationKey = REPORT_DETAILS_RELATION[reportType];
+
+    if (!relationKey) {
+      throw new BadRequestException(`Unsupported reportType: ${reportType}`);
+    }
+
+    let parent: any = null;
+
+    if (body.parentReportId) {
+      parent = await this.prisma.report.findUnique({
+        where: { id: body.parentReportId },
+      });
+
+      if (!parent) {
+        throw new BadRequestException('Parent APE report not found');
+      }
+    }
+    const clientCode =
+      String(body.clientCode ?? '').trim() ||
+      String(parent?.clientCode ?? '').trim() ||
+      String(parent?.formNumber ?? '').split('-')[0] ||
+      String(user.clientCode ?? '').trim();
+
+    if (!clientCode) {
+      throw new BadRequestException(
+        'Client code is required to create lab report',
+      );
+    }
+
+    function yyyy(d: Date = new Date()): string {
+      return String(d.getFullYear());
+    }
+
+    function seqPad(num: number): string {
+      const width = Math.max(4, String(num).length);
+      return String(num).padStart(width, '0');
+    }
+
+    const seqKey = `${clientCode}:${reportType}`;
+
+    const seq = await this.prisma.clientSequence.upsert({
+      where: { clientCode: seqKey },
+      update: { lastNumber: { increment: 1 } },
+      create: { clientCode: seqKey, lastNumber: 1 },
+    });
+
+    const n = seqPad(seq.lastNumber);
+
+    const formNumber =
+      reportType === 'APE_VALIDATION_REPORT'
+        ? `${clientCode}-APEVAL-${yyyy()}${n}`
+        : `${clientCode}-APEREP-${yyyy()}${n}`;
+
+    const prefix = 'APE';
+
+    const {
+      reportType: _rt,
+      formType: _ft,
+      clientCode: _cc,
+      parentReportId: _parentReportId,
+      status: _status,
+      ...rest
+    } = body;
+
+    const created = await this.prisma.report.create({
+      data: {
+        clientCode,
+        formType: FormType.APE,
+        reportType,
+        parentReportId: body.parentReportId ?? null,
+        formNumber,
+        prefix,
+        status: 'DRAFT',
+        createdBy: user.userId,
+        updatedBy: user.userId,
+        [relationKey]: {
+          create: this._coerce({
+            ...rest,
+            footerRevNo: 'Rev-00',
+            footerDateEffective: new Date('2026-07-10T12:00:00.000Z'),
+          }),
+        },
+      },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+      },
+    });
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: 'LAB_REPORT_CREATED',
+        entity: reportType,
+        entityId: created.id,
+        userId: user.userId,
+        role: user.role,
+        ipAddress: getRequestContext()?.ip ?? null,
+        clientCode: created.clientCode ?? null,
+        formNumber: created.formNumber,
+        reportNumber: created.reportNumber ?? null,
+        details: `Created ${reportType}`,
+        changes: {
+          reportType,
+          parentReportId: body.parentReportId ?? null,
+        },
+      },
+    });
+
+    const flat = flattenReport(created);
+    this.reportsGateway.notifyReportCreated(flat);
+    return flat;
+  }
+
   async createDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
   ) {
     // guard
+    const reportType: ReportType | undefined = body?.reportType;
+
+    if (reportType) {
+      return this.createLabReportDraft(user, body);
+    }
+
+    // guard for normal submission forms
     if (!['ADMIN', 'SYSTEMADMIN', 'CLIENT'].includes(user.role)) {
       throw new ForbiddenException('Not allowed to create report');
     }
@@ -1069,12 +1297,91 @@ export class ReportsService {
         microMixWater: true,
         sterility: true,
         ape: true,
+        apeValidationReport: true,
+        apeReport: true,
         attachments: true,
         statusHistory: true,
       },
     });
     if (!r) throw new NotFoundException('Report not found');
     return flattenReport(r);
+  }
+
+  async updateLabReportDraft(
+    user: { userId: string; role: UserRole },
+    id: string,
+    current: any,
+    patchIn: any,
+  ) {
+    if (!['MICRO', 'MC', 'ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Not allowed to update lab report');
+    }
+
+    const {
+      reason: _reasonFromBody,
+      eSignPassword: _pwdFromBody,
+      expectedVersion,
+      ...patch
+    } = { ...patchIn };
+
+    if (
+      !['ADMIN', 'SYSTEMADMIN'].includes(user.role) &&
+      typeof expectedVersion !== 'number'
+    ) {
+      throw new BadRequestException('expectedVersion is required');
+    }
+
+    const { base, details } = splitPatch(this._coerce(patch));
+
+    const baseRes = await this.prisma.report.updateMany({
+      where: {
+        id,
+        ...(typeof expectedVersion === 'number'
+          ? { version: expectedVersion }
+          : {}),
+      },
+      data: {
+        ...base,
+        updatedBy: user.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    if (typeof expectedVersion === 'number' && baseRes.count === 0) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message:
+          'This report was updated by someone else. Please reload and try again.',
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    await updateLabReportDetailsByType(
+      this.prisma,
+      current.reportType,
+      id,
+      details,
+    );
+
+    const updated = await this.prisma.report.findUnique({
+      where: { id },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+      },
+    });
+
+    if (!updated) throw new NotFoundException('Report not found after update');
+
+    const flat = flattenReport(updated);
+    this.reportsGateway.notifyReportUpdate(flat);
+
+    return flat;
   }
 
   async update(
@@ -1092,6 +1399,10 @@ export class ReportsService {
       },
     });
     if (!current) throw new NotFoundException('Report not found');
+
+    if (current.reportType) {
+      return this.updateLabReportDraft(user, id, current, patchIn);
+    }
 
     // LOCK guard
     if (
@@ -1381,7 +1692,12 @@ export class ReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
@@ -1590,7 +1906,12 @@ export class ReportsService {
     // IMPORTANT: use prisma findUnique so we have base + details
     const current = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
     if (!current) throw new NotFoundException('Report not found');
 
@@ -1707,10 +2028,13 @@ export class ReportsService {
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
-
- 
 
     // ✅ NOW log status change (StatusHistory + AuditTrail)
     if (prevStatus !== target) {
