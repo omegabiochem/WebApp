@@ -17,6 +17,8 @@ import {
   JJL_TYPE_OF_TEST_OPTIONS,
   todayISO,
 } from "../../utils/microMixReportFormWorkflow";
+import { canRoleEditApeChildField, pickApeChildEditablePayload } from "../../utils/apeReportFormWorkflow";
+
 
 type Role =
   | "SYSTEMADMIN"
@@ -58,6 +60,24 @@ type ApeReportDaySection = {
   key: string;
   dayLabel: string;
   rows: ApeReportRow[];
+  calculationSettings?: ApeCalculationSettings;
+};
+
+type ApeCalculationSettings = {
+  percentDecreaseFormula: string;
+  controlGrowthMultiplier: number;
+  day0SampleGrowthMultiplier: number;
+  laterDaySampleGrowthMultiplier: number;
+  day0DecimalPlaces: number;
+  laterDayDecimalPlaces: number;
+  laterDayPercentCap: number;
+  standardInoculumMin: number;
+  standardInoculumMax: number;
+  nigerInoculumMin: number;
+  nigerInoculumMax: number;
+  oneLogThreshold: number;
+  twoLogThreshold: number;
+  threeLogThreshold: number;
 };
 
 type ApeReportProps = {
@@ -88,6 +108,9 @@ const HIDE_SAVE_FOR = new Set<ReportStatus>([
 const ALWAYS_SHOW_SIGNATURES = true;
 
 const EDIT_ROLES = new Set<Role>(["MICRO", "MC", "ADMIN", "SYSTEMADMIN"]);
+
+const CALCULATION_EDIT_ROLES = new Set<Role>(["ADMIN", "SYSTEMADMIN"]);
+
 
 const statusButtons: Record<string, { label: string; color: string }> = {
   UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
@@ -155,16 +178,76 @@ function formatStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
-const APE_ORGANISMS = [
-  "Escherichia Coli",
-  "Staphylococcus Aureus",
-  "Pseudomonas Aeruginosa",
-  "Candida Albicans",
-  "Aspergillus Niger",
-];
+type ParentApeOrganism = {
+  key?: string;
+  label?: string;
+  checked?: boolean;
+};
 
-function makeApeRows(): ApeReportRow[] {
-  return APE_ORGANISMS.map((organism) => ({
+const APE_ORGANISM_OPTIONS = [
+  { key: "E_COLI", reportLabel: "Escherichia Coli" },
+  { key: "S_AUREUS", reportLabel: "Staphylococcus Aureus" },
+  { key: "P_AERUGINOSA", reportLabel: "Pseudomonas Aeruginosa" },
+  { key: "C_ALBICANS", reportLabel: "Candida Albicans" },
+  { key: "A_NIGER", reportLabel: "Aspergillus Niger" },
+  { key: "B_CEPACIA", reportLabel: "B. Cepacia" },
+] as const;
+
+const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
+  (item) => item.key !== "B_CEPACIA",
+).map((item) => item.reportLabel);
+
+function normalizeOrganismToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function getSelectedApeOrganismNames(value: unknown): string[] {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  if (!Array.isArray(source) || source.length === 0) {
+    return [...DEFAULT_APE_ORGANISMS];
+  }
+
+  const selectedTokens = new Set(
+    source
+      .filter((item: ParentApeOrganism | string) =>
+        typeof item === "string" ? true : item?.checked === true,
+      )
+      .flatMap((item: ParentApeOrganism | string) => {
+        if (typeof item === "string") {
+          return [normalizeOrganismToken(item)];
+        }
+
+        return [
+          normalizeOrganismToken(item?.key),
+          normalizeOrganismToken(item?.label),
+        ];
+      })
+      .filter(Boolean),
+  );
+
+  const selected = APE_ORGANISM_OPTIONS.filter(
+    (option) =>
+      selectedTokens.has(normalizeOrganismToken(option.key)) ||
+      selectedTokens.has(normalizeOrganismToken(option.reportLabel)),
+  ).map((option) => option.reportLabel);
+
+  return selected.length ? selected : [...DEFAULT_APE_ORGANISMS];
+}
+
+function makeApeRows(organismNames: string[]): ApeReportRow[] {
+  return organismNames.map((organism) => ({
     organism,
     controlGrowth: "",
     sampleGrowth: "",
@@ -173,41 +256,367 @@ function makeApeRows(): ApeReportRow[] {
   }));
 }
 
-const DEFAULT_APE_REPORT_SECTIONS: ApeReportDaySection[] = [
-  {
-    key: "DAY_0",
-    dayLabel: "DAY 0",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_7",
-    dayLabel: "DAY 7",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_14",
-    dayLabel: "DAY 14",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_21",
-    dayLabel: "DAY 21",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_28",
-    dayLabel: "DAY 28",
-    rows: makeApeRows(),
-  },
-];
+function makeDefaultApeReportSections(
+  organismNames: string[],
+): ApeReportDaySection[] {
+  return [
+    {
+      key: "DAY_0",
+      dayLabel: "DAY 0",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_7",
+      dayLabel: "DAY 7",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_14",
+      dayLabel: "DAY 14",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_21",
+      dayLabel: "DAY 21",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_28",
+      dayLabel: "DAY 28",
+      rows: makeApeRows(organismNames),
+    },
+  ];
+}
 
-function normalizeApeReportSections(value: any): ApeReportDaySection[] {
-  if (!Array.isArray(value)) return DEFAULT_APE_REPORT_SECTIONS;
+const DEFAULT_APE_CALCULATION_SETTINGS: ApeCalculationSettings = {
+  percentDecreaseFormula: "((CG - SG) / CG) * 100",
+  controlGrowthMultiplier: 10_000,
+  day0SampleGrowthMultiplier: 10_000,
+  laterDaySampleGrowthMultiplier: 100,
+  day0DecimalPlaces: 2,
+  laterDayDecimalPlaces: 1,
+  laterDayPercentCap: 99.9,
+  standardInoculumMin: 1.5,
+  standardInoculumMax: 2.5,
+  nigerInoculumMin: 2,
+  nigerInoculumMax: 3,
+  oneLogThreshold: 90,
+  twoLogThreshold: 99,
+  threeLogThreshold: 99.9,
+};
 
-  return DEFAULT_APE_REPORT_SECTIONS.map((defaultSection) => {
-    const existingSection = value.find(
-      (section: any) => section?.key === defaultSection.key,
-    );
+function normalizeSettingNumber(
+  value: unknown,
+  fallback: number,
+  minimum?: number,
+  maximum?: number,
+) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (minimum !== undefined && parsed < minimum) return minimum;
+  if (maximum !== undefined && parsed > maximum) return maximum;
+  return parsed;
+}
+
+function normalizeApeCalculationSettings(
+  value: any,
+): ApeCalculationSettings {
+  return {
+    percentDecreaseFormula:
+      typeof value?.percentDecreaseFormula === "string" &&
+      value.percentDecreaseFormula.trim()
+        ? value.percentDecreaseFormula.trim()
+        : DEFAULT_APE_CALCULATION_SETTINGS.percentDecreaseFormula,
+    controlGrowthMultiplier: normalizeSettingNumber(
+      value?.controlGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.controlGrowthMultiplier,
+      0.000001,
+    ),
+    day0SampleGrowthMultiplier: normalizeSettingNumber(
+      value?.day0SampleGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.day0SampleGrowthMultiplier,
+      0.000001,
+    ),
+    laterDaySampleGrowthMultiplier: normalizeSettingNumber(
+      value?.laterDaySampleGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.laterDaySampleGrowthMultiplier,
+      0.000001,
+    ),
+    day0DecimalPlaces: Math.round(
+      normalizeSettingNumber(
+        value?.day0DecimalPlaces,
+        DEFAULT_APE_CALCULATION_SETTINGS.day0DecimalPlaces,
+        0,
+        6,
+      ),
+    ),
+    laterDayDecimalPlaces: Math.round(
+      normalizeSettingNumber(
+        value?.laterDayDecimalPlaces,
+        DEFAULT_APE_CALCULATION_SETTINGS.laterDayDecimalPlaces,
+        0,
+        6,
+      ),
+    ),
+    laterDayPercentCap: normalizeSettingNumber(
+      value?.laterDayPercentCap,
+      DEFAULT_APE_CALCULATION_SETTINGS.laterDayPercentCap,
+      0,
+      100,
+    ),
+    standardInoculumMin: normalizeSettingNumber(
+      value?.standardInoculumMin,
+      DEFAULT_APE_CALCULATION_SETTINGS.standardInoculumMin,
+    ),
+    standardInoculumMax: normalizeSettingNumber(
+      value?.standardInoculumMax,
+      DEFAULT_APE_CALCULATION_SETTINGS.standardInoculumMax,
+    ),
+    nigerInoculumMin: normalizeSettingNumber(
+      value?.nigerInoculumMin,
+      DEFAULT_APE_CALCULATION_SETTINGS.nigerInoculumMin,
+    ),
+    nigerInoculumMax: normalizeSettingNumber(
+      value?.nigerInoculumMax,
+      DEFAULT_APE_CALCULATION_SETTINGS.nigerInoculumMax,
+    ),
+    oneLogThreshold: normalizeSettingNumber(
+      value?.oneLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.oneLogThreshold,
+    ),
+    twoLogThreshold: normalizeSettingNumber(
+      value?.twoLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.twoLogThreshold,
+    ),
+    threeLogThreshold: normalizeSettingNumber(
+      value?.threeLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.threeLogThreshold,
+    ),
+  };
+}
+
+function evaluatePercentDecreaseFormula(
+  formula: string,
+  controlGrowth: number,
+  sampleGrowth: number,
+): number | null {
+  const substituted = formula
+    .replace(/\bCG\b/gi, `(${controlGrowth})`)
+    .replace(/\bSG\b/gi, `(${sampleGrowth})`);
+
+  if (!/^[0-9+\-*/().\s]+$/.test(substituted)) return null;
+
+  try {
+    const result = Function(`"use strict"; return (${substituted});`)();
+    return typeof result === "number" && Number.isFinite(result)
+      ? result
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeNumericInput(value: string) {
+  const cleaned = value.replace(/[^0-9.]/g, "");
+  const [whole = "", ...decimalParts] = cleaned.split(".");
+
+  return decimalParts.length > 0
+    ? `${whole}.${decimalParts.join("")}`
+    : whole;
+}
+
+function parseGrowthInput(value: unknown): number | null {
+  const normalized = String(value ?? "")
+    .replaceAll(",", "")
+    .trim();
+
+  if (!normalized) return null;
+
+  const directNumber = Number(normalized);
+  if (Number.isFinite(directNumber) && directNumber >= 0) {
+    return directNumber;
+  }
+
+  // Supports previously displayed values such as "171 × 10⁴" or "2% - OK".
+  const firstNumber = normalized.match(/\d+(?:\.\d+)?/);
+  if (!firstNumber) return null;
+
+  const parsed = Number(firstNumber[0]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeStoredNumeric(value: unknown) {
+  const parsed = parseGrowthInput(value);
+  return parsed === null ? "" : String(parsed);
+}
+
+function calculateActualGrowth(
+  rawValue: unknown,
+  multiplier: number,
+): number | null {
+  const parsed = parseGrowthInput(rawValue);
+  return parsed === null ? null : parsed * multiplier;
+}
+
+function calculatePercentDecrease(
+  controlGrowthRaw: unknown,
+  sampleGrowthRaw: unknown,
+  sampleGrowthMultiplier: number,
+  settings: ApeCalculationSettings,
+): number | null {
+  const controlGrowth = calculateActualGrowth(
+    controlGrowthRaw,
+    settings.controlGrowthMultiplier,
+  );
+  const sampleGrowth = calculateActualGrowth(
+    sampleGrowthRaw,
+    sampleGrowthMultiplier,
+  );
+
+  if (
+    controlGrowth === null ||
+    sampleGrowth === null ||
+    controlGrowth <= 0
+  ) {
+    return null;
+  }
+
+  return evaluatePercentDecreaseFormula(
+    settings.percentDecreaseFormula,
+    controlGrowth,
+    sampleGrowth,
+  );
+}
+
+function formatPercentDecrease(
+  value: number | null,
+  decimalPlaces: number,
+) {
+  if (value === null || !Number.isFinite(value)) return "";
+
+  return `${value.toFixed(decimalPlaces)}%`;
+}
+
+function getLogReductionFromDecrease(
+  percentDecrease: number | null,
+  settings: ApeCalculationSettings,
+) {
+  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+
+  const value = percentDecrease + Number.EPSILON;
+
+  if (value >= settings.threeLogThreshold) return "3 Log Reduction";
+  if (value >= settings.twoLogThreshold) return "2 Log Reduction";
+  if (value >= settings.oneLogThreshold) return "1 Log Reduction";
+
+  return "0 Log Reduction";
+}
+
+function getInoculumResultFromDecrease(
+  organism: string,
+  percentDecrease: number | null,
+  settings: ApeCalculationSettings,
+) {
+  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+
+  const isNiger = organism.trim().toLowerCase().includes("niger");
+  const minimum = isNiger
+    ? settings.nigerInoculumMin
+    : settings.standardInoculumMin;
+  const maximum = isNiger
+    ? settings.nigerInoculumMax
+    : settings.standardInoculumMax;
+
+  return percentDecrease >= minimum && percentDecrease <= maximum
+    ? "OK"
+    : "NOT OK";
+}
+
+function formatGrowthNotation(
+  rawValue: unknown,
+  multiplier: number,
+) {
+  const value = parseGrowthInput(rawValue);
+  if (value === null) return "";
+
+  if (multiplier === 10_000) return `${value} × 10⁴`;
+  if (multiplier === 1_000) return `${value} × 10³`;
+  if (multiplier === 100) return `${value} × 10²`;
+  if (multiplier === 10) return `${value} × 10¹`;
+  if (multiplier === 1) return String(value);
+
+  return `${value} × ${multiplier}`;
+}
+
+function recalculateApeReportSections(
+  sections: ApeReportDaySection[],
+  settings: ApeCalculationSettings,
+): ApeReportDaySection[] {
+  const day0Section = sections.find((section) => section.key === "DAY_0");
+  const day0ControlByOrganism = new Map(
+    (day0Section?.rows ?? []).map((row) => [
+      row.organism,
+      row.controlGrowth,
+    ]),
+  );
+
+  return sections.map((section) => ({
+    ...section,
+    calculationSettings:
+      section.key === "DAY_0" ? settings : undefined,
+    rows: section.rows.map((row) => {
+      const controlGrowth =
+        section.key === "DAY_0"
+          ? row.controlGrowth
+          : day0ControlByOrganism.get(row.organism) ?? "";
+
+      const sampleGrowthMultiplier =
+        section.key === "DAY_0"
+          ? settings.day0SampleGrowthMultiplier
+          : settings.laterDaySampleGrowthMultiplier;
+
+      const percentDecrease = calculatePercentDecrease(
+        controlGrowth,
+        row.sampleGrowth,
+        sampleGrowthMultiplier,
+        settings,
+      );
+
+      return {
+        ...row,
+        controlGrowth,
+        decrease: formatPercentDecrease(
+          section.key === "DAY_0"
+            ? percentDecrease
+            : percentDecrease === null
+              ? null
+              : Math.min(percentDecrease, settings.laterDayPercentCap),
+          section.key === "DAY_0"
+            ? settings.day0DecimalPlaces
+            : settings.laterDayDecimalPlaces,
+        ),
+        innoculumLevel:
+          section.key === "DAY_0"
+            ? getInoculumResultFromDecrease(
+                row.organism,
+                percentDecrease,
+                settings,
+              )
+            : getLogReductionFromDecrease(percentDecrease, settings),
+      };
+    }),
+  }));
+}
+
+function normalizeApeReportSections(
+  value: any,
+  settings: ApeCalculationSettings,
+  organismNames: string[] = DEFAULT_APE_ORGANISMS,
+): ApeReportDaySection[] {
+  const normalized = makeDefaultApeReportSections(organismNames).map((defaultSection) => {
+    const existingSection = Array.isArray(value)
+      ? value.find((section: any) => section?.key === defaultSection.key)
+      : undefined;
 
     return {
       key: defaultSection.key,
@@ -219,14 +628,17 @@ function normalizeApeReportSections(value: any): ApeReportDaySection[] {
 
         return {
           organism: defaultRow.organism,
-          controlGrowth: existingRow?.controlGrowth ?? "",
-          sampleGrowth: existingRow?.sampleGrowth ?? "",
-          decrease: existingRow?.decrease ?? "",
-          innoculumLevel: existingRow?.innoculumLevel ?? "",
+          controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
+          sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
+          decrease: String(existingRow?.decrease ?? ""),
+          // Calculated again below from % decrease for every section.
+          innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
         };
       }),
     };
   });
+
+  return recalculateApeReportSections(normalized, settings);
 }
 
 function formatDateForInput(value?: string | null) {
@@ -356,7 +768,22 @@ export default function ApeReport({
   const role = user?.role as Role | undefined;
   const navigate = useNavigate();
 
+  const canEditCalculationSettings =
+    !!role &&
+    CALCULATION_EDIT_ROLES.has(role) &&
+    pageMode === "UPDATE" &&
+    !forcePageReadOnly;
+
   const detail = report?.apeReport ?? report ?? {};
+
+  const selectedApeOrganisms = useMemo(
+    () =>
+      getSelectedApeOrganismNames(
+        (report as any)?.organisms ?? detail?.organisms,
+      ),
+    [(report as any)?.organisms, detail?.organisms],
+  );
+  const selectedApeOrganismsKey = selectedApeOrganisms.join("|");
 
   const [isDirty, setIsDirty] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -439,9 +866,29 @@ export default function ApeReport({
     formatDateForInput(detail?.dateCompleted),
   );
 
+  const initialCalculationSettings = normalizeApeCalculationSettings(
+    detail?.apeCalculationSettings ??
+      detail?.apeReportSections?.find(
+        (section: any) => section?.key === "DAY_0",
+      )?.calculationSettings,
+  );
+
+  const [calculationSettings, setCalculationSettings] =
+    useState<ApeCalculationSettings>(initialCalculationSettings);
+  const [calculationSettingsDraft, setCalculationSettingsDraft] =
+    useState<ApeCalculationSettings>(initialCalculationSettings);
+  const [showCalculationSettings, setShowCalculationSettings] = useState(false);
+
   const [apeReportSections, setApeReportSections] = useState<
     ApeReportDaySection[]
-  >(normalizeApeReportSections(detail?.apeReportSections));
+  >(
+    normalizeApeReportSections(
+      detail?.apeReportSections,
+      initialCalculationSettings,
+      selectedApeOrganisms,
+    ),
+  );
+  const [editingApeCell, setEditingApeCell] = useState<string | null>(null);
 
   const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
   const [testedDate, setTestedDate] = useState(
@@ -494,16 +941,28 @@ export default function ApeReport({
     apeReportSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
         const prefix = `${section.dayLabel} - ${row.organism}`;
-        options.push(
-          {
+
+        if (section.key === "DAY_0") {
+          options.push({
             key: `apeReportSections.${section.key}.${rowIndex}.controlGrowth`,
             label: `${prefix} Control Growth`,
-            value: row.controlGrowth,
-          },
+            value: formatGrowthNotation(
+              row.controlGrowth,
+              calculationSettings.controlGrowthMultiplier,
+            ),
+          });
+        }
+
+        options.push(
           {
             key: `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`,
             label: `${prefix} Sample Growth`,
-            value: row.sampleGrowth,
+            value: formatGrowthNotation(
+              row.sampleGrowth,
+              section.key === "DAY_0"
+                ? calculationSettings.day0SampleGrowthMultiplier
+                : calculationSettings.laterDaySampleGrowthMultiplier,
+            ),
           },
           {
             key: `apeReportSections.${section.key}.${rowIndex}.decrease`,
@@ -541,6 +1000,7 @@ export default function ApeReport({
       dateTested,
       dateCompleted,
       apeReportSections,
+      calculationSettings,
       testedBy,
       testedDate,
       reviewedBy,
@@ -570,32 +1030,43 @@ export default function ApeReport({
 
     apeReportSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
+        const controlGrowthKey =
+          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`;
+        const sampleGrowthKey =
+          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`;
+
+        if (section.key === "DAY_0") {
+          addRequiredError(
+            nextErrors,
+            controlGrowthKey,
+            `${section.dayLabel} ${row.organism} Control Growth`,
+            row.controlGrowth,
+          );
+
+          const controlGrowthNumber = parseGrowthInput(row.controlGrowth);
+          if (
+            !isBlank(row.controlGrowth) &&
+            (controlGrowthNumber === null || controlGrowthNumber <= 0)
+          ) {
+            nextErrors[controlGrowthKey] =
+              `${section.dayLabel} ${row.organism} Control Growth must be greater than 0`;
+          }
+        }
+
         addRequiredError(
           nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`,
-          `${section.dayLabel} ${row.organism} Control Growth`,
-          row.controlGrowth,
-        );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`,
+          sampleGrowthKey,
           `${section.dayLabel} ${row.organism} Sample Growth`,
           row.sampleGrowth,
         );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.decrease`,
-          `${section.dayLabel} ${row.organism} Decrease`,
-          row.decrease,
-        );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.innoculumLevel`,
-          section.key === "DAY_0"
-            ? `${section.dayLabel} ${row.organism} Innoculum Level`
-            : `${section.dayLabel} ${row.organism} Log Reduction`,
-          row.innoculumLevel,
-        );
+
+        if (
+          !isBlank(row.sampleGrowth) &&
+          parseGrowthInput(row.sampleGrowth) === null
+        ) {
+          nextErrors[sampleGrowthKey] =
+            `${section.dayLabel} ${row.organism} Sample Growth must be 0 or greater`;
+        }
       });
     });
 
@@ -809,8 +1280,21 @@ export default function ApeReport({
     setDateTested(formatDateForInput(nextDetail?.dateTested));
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
+    const nextCalculationSettings = normalizeApeCalculationSettings(
+      nextDetail?.apeCalculationSettings ??
+        nextDetail?.apeReportSections?.find(
+          (section: any) => section?.key === "DAY_0",
+        )?.calculationSettings,
+    );
+
+    setCalculationSettings(nextCalculationSettings);
+    setCalculationSettingsDraft(nextCalculationSettings);
     setApeReportSections(
-      normalizeApeReportSections(nextDetail?.apeReportSections),
+      normalizeApeReportSections(
+        nextDetail?.apeReportSections,
+        nextCalculationSettings,
+        selectedApeOrganisms,
+      ),
     );
 
     setTestedBy(nextDetail?.testedBy || "");
@@ -819,7 +1303,14 @@ export default function ApeReport({
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
 
     setIsDirty(false);
-  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+  }, [
+    report?.id,
+    report?.status,
+    report?.reportNumber,
+    report?.version,
+    (report as any)?.parentVersion,
+    selectedApeOrganismsKey,
+  ]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -839,6 +1330,8 @@ export default function ApeReport({
     return true;
   }, [forcePageReadOnly, pageMode, role, status]);
 
+  const canSaveForm = canEditForm || canEditCalculationSettings;
+
   const showSignatures = ALWAYS_SHOW_SIGNATURES;
 
   const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
@@ -847,8 +1340,70 @@ export default function ApeReport({
     if (!isDirty) setIsDirty(true);
   }
 
-  function lock(_field: string) {
-    return !canEditForm;
+  function openCalculationSettingsPanel() {
+    setCalculationSettingsDraft(calculationSettings);
+    setShowCalculationSettings(true);
+  }
+
+  function applyCalculationSettings() {
+    const nextSettings = normalizeApeCalculationSettings(
+      calculationSettingsDraft,
+    );
+
+    if (
+      nextSettings.standardInoculumMin >
+      nextSettings.standardInoculumMax
+    ) {
+      alert("⚠️ Standard inoculum minimum cannot be greater than maximum.");
+      return;
+    }
+
+    if (nextSettings.nigerInoculumMin > nextSettings.nigerInoculumMax) {
+      alert("⚠️ Aspergillus Niger minimum cannot be greater than maximum.");
+      return;
+    }
+
+    if (
+      !(
+        nextSettings.oneLogThreshold <= nextSettings.twoLogThreshold &&
+        nextSettings.twoLogThreshold <= nextSettings.threeLogThreshold
+      )
+    ) {
+      alert("⚠️ Log thresholds must be ordered from 1 Log to 3 Log.");
+      return;
+    }
+
+    const formulaTest = evaluatePercentDecreaseFormula(
+      nextSettings.percentDecreaseFormula,
+      174 * nextSettings.controlGrowthMultiplier,
+      171 * nextSettings.day0SampleGrowthMultiplier,
+    );
+
+    if (formulaTest === null) {
+      alert(
+        "⚠️ Invalid formula. Use only CG, SG, numbers, parentheses, +, -, *, and /.",
+      );
+      return;
+    }
+
+    setCalculationSettings(nextSettings);
+    setCalculationSettingsDraft(nextSettings);
+    setApeReportSections((prev) =>
+      recalculateApeReportSections(prev, nextSettings),
+    );
+    setShowCalculationSettings(false);
+    markDirty();
+  }
+
+  function canEditField(field: string) {
+    return (
+      canEditForm &&
+      canRoleEditApeChildField(role as any, field)
+    );
+  }
+
+  function lock(field: string) {
+    return !canEditField(field);
   }
 
   function apeReportFieldKey(
@@ -862,7 +1417,7 @@ export default function ApeReport({
   function updateApeReportCell(
     sectionIndex: number,
     rowIndex: number,
-    field: "controlGrowth" | "sampleGrowth" | "decrease" | "innoculumLevel",
+    field: "controlGrowth" | "sampleGrowth",
     value: string,
   ) {
     setApeReportSections((prev) => {
@@ -872,13 +1427,13 @@ export default function ApeReport({
 
       rows[rowIndex] = {
         ...rows[rowIndex],
-        [field]: value,
+        [field]: sanitizeNumericInput(value),
       };
 
       section.rows = rows;
       copy[sectionIndex] = section;
 
-      return copy;
+      return recalculateApeReportSections(copy, calculationSettings);
     });
 
     const sectionKey = apeReportSections[sectionIndex]?.key;
@@ -888,6 +1443,12 @@ export default function ApeReport({
   }
 
   function makePayload() {
+    const calculatedApeReportSections =
+      recalculateApeReportSections(
+        apeReportSections,
+        calculationSettings,
+      );
+
     return {
       client,
       dateSent,
@@ -901,7 +1462,7 @@ export default function ApeReport({
       testReference,
       dateTested,
       dateCompleted,
-      apeReportSections,
+      apeReportSections: calculatedApeReportSections,
       testedBy,
       testedDate,
       reviewedBy,
@@ -927,7 +1488,7 @@ export default function ApeReport({
   }
 
   async function handleSave(): Promise<boolean> {
-    if (!canEditForm) return false;
+    if (!canSaveForm) return false;
 
     // ✅ Show missing required fields in red even during normal Save/Update.
     // Do NOT block save here; only status change blocks.
@@ -936,6 +1497,11 @@ export default function ApeReport({
     const result = await runBusy("SAVE", async () => {
       try {
         const payload = makePayload();
+        setApeReportSections(payload.apeReportSections);
+
+        const requestPayload = reportId
+          ? pickApeChildEditablePayload(role as any, payload)
+          : payload;
 
         let saved: any;
 
@@ -943,7 +1509,7 @@ export default function ApeReport({
           saved = await api(`/reports/${reportId}`, {
             method: "PATCH",
             body: JSON.stringify({
-              ...payload,
+              ...requestPayload,
               reason: "Saving APE Report",
               expectedVersion: reportVersionRef.current,
             }),
@@ -1224,11 +1790,22 @@ export default function ApeReport({
               Print
             </button> */}
 
-            {!HIDE_SAVE_FOR.has(status) && (
+            {canEditCalculationSettings && (
+              <button
+                type="button"
+                className="px-3 py-1 rounded-md border bg-amber-600 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={openCalculationSettingsPanel}
+                disabled={busy !== null}
+              >
+                Calculation Settings
+              </button>
+            )}
+
+            {(!HIDE_SAVE_FOR.has(status) || canEditCalculationSettings) && (
               <button
                 className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 onClick={handleSave}
-                disabled={!canEditForm || busy !== null}
+                disabled={!canSaveForm || busy !== null}
               >
                 {busy === "SAVE" && <Spinner />}
                 {reportId ? "Update Report" : "Save Report"}
@@ -1265,13 +1842,33 @@ export default function ApeReport({
             </div>
           </div>
 
-          <div className="mt-1 grid grid-cols-3 items-center">
-            <div />
-            <div className="text-[18px] font-bold text-center underline">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="min-w-0 text-left text-[11px] font-bold">
+              {(report as any)?.parentFormNumber ||
+              (report as any)?.formNumber ? (
+                <span className="whitespace-nowrap">
+                  FORM NO:{" "}
+                  {String(
+                    (report as any)?.parentFormNumber ||
+                      (report as any)?.formNumber,
+                  )}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="text-center text-[18px] font-bold underline">
               APE REPORT
             </div>
-            <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+
+            <div className="min-w-0 text-right text-[11px] font-bold">
+              {(report as any)?.parentReportNumber || reportNumber ? (
+                <span className="whitespace-nowrap">
+                  REPORT NO:{" "}
+                  {String(
+                    (report as any)?.parentReportNumber || reportNumber,
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1596,6 +2193,16 @@ export default function ApeReport({
                 const isLastRow =
                   sectionIndex === apeReportSections.length - 1 &&
                   rowIndex === section.rows.length - 1;
+                const controlGrowthKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "controlGrowth",
+                );
+                const sampleGrowthKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "sampleGrowth",
+                );
 
                 return (
                   <div
@@ -1611,7 +2218,18 @@ export default function ApeReport({
                     <div className="border-r border-black px-1 py-[1px]">
                       <input
                         className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "controlGrowth"))}
-                        value={row.controlGrowth}
+                        value={
+                          section.key !== "DAY_0"
+                            ? ""
+                            : editingApeCell === controlGrowthKey
+                              ? row.controlGrowth
+                              : formatGrowthNotation(
+                                  row.controlGrowth,
+                                  calculationSettings.controlGrowthMultiplier,
+                                )
+                        }
+                        onFocus={() => setEditingApeCell(controlGrowthKey)}
+                        onBlur={() => setEditingApeCell(null)}
                         onChange={(e) =>
                           updateApeReportCell(
                             sectionIndex,
@@ -1620,14 +2238,25 @@ export default function ApeReport({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("apeReportSections") || section.key !== "DAY_0"}
                       />
                     </div>
 
                     <div className="border-r border-black px-1 py-[1px]">
                       <input
                         className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "sampleGrowth"))}
-                        value={row.sampleGrowth}
+                        value={
+                          editingApeCell === sampleGrowthKey
+                            ? row.sampleGrowth
+                            : formatGrowthNotation(
+                                row.sampleGrowth,
+                                section.key === "DAY_0"
+                                  ? calculationSettings.day0SampleGrowthMultiplier
+                                  : calculationSettings.laterDaySampleGrowthMultiplier,
+                              )
+                        }
+                        onFocus={() => setEditingApeCell(sampleGrowthKey)}
+                        onBlur={() => setEditingApeCell(null)}
                         onChange={(e) =>
                           updateApeReportCell(
                             sectionIndex,
@@ -1636,7 +2265,7 @@ export default function ApeReport({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("apeReportSections")}
                       />
                     </div>
 
@@ -1644,15 +2273,8 @@ export default function ApeReport({
                       <input
                         className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "decrease"))}
                         value={row.decrease}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "decrease",
-                            e.target.value,
-                          )
-                        }
-                        disabled={!canEditForm}
+                        readOnly
+                        disabled={!canEditField("apeReportSections")}
                       />
                     </div>
 
@@ -1660,15 +2282,8 @@ export default function ApeReport({
                       <input
                         className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "innoculumLevel"))}
                         value={row.innoculumLevel}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "innoculumLevel",
-                            e.target.value,
-                          )
-                        }
-                        disabled={!canEditForm}
+                        readOnly
+                        disabled={!canEditField("apeReportSections")}
                       />
                     </div>
                   </div>
@@ -1803,6 +2418,251 @@ export default function ApeReport({
           </div>
 
           {/* Right side intentionally empty: top modal buttons handle close/save/print */}
+        </div>
+      )}
+
+
+      {showCalculationSettings && canEditCalculationSettings && (
+        <div className="no-print fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-[760px] overflow-auto rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-white px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  APE Calculation Settings
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Available only to ADMIN and SYSTEMADMIN. Use CG for actual
+                  Control Growth and SG for actual Sample Growth.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+                onClick={() => setShowCalculationSettings(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div>
+                <label className="text-sm font-semibold text-slate-800">
+                  Percent Decrease Formula
+                </label>
+                <input
+                  className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm"
+                  value={calculationSettingsDraft.percentDecreaseFormula}
+                  onChange={(e) =>
+                    setCalculationSettingsDraft((prev) => ({
+                      ...prev,
+                      percentDecreaseFormula: e.target.value,
+                    }))
+                  }
+                  placeholder="((CG - SG) / CG) * 100"
+                />
+                <div className="mt-1 text-xs text-slate-500">
+                  Allowed: CG, SG, numbers, parentheses, +, -, *, and /.
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-slate-900">
+                  Growth Multipliers
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {[
+                    ["controlGrowthMultiplier", "Control Growth multiplier"],
+                    ["day0SampleGrowthMultiplier", "Day 0 Sample multiplier"],
+                    ["laterDaySampleGrowthMultiplier", "Later-day Sample multiplier"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-xs font-semibold text-slate-700">
+                      {label}
+                      <input
+                        type="number"
+                        min="0.000001"
+                        step="any"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        value={
+                          calculationSettingsDraft[
+                            key as keyof ApeCalculationSettings
+                          ] as number
+                        }
+                        onChange={(e) =>
+                          setCalculationSettingsDraft((prev) => ({
+                            ...prev,
+                            [key]: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-slate-900">
+                  Display Rules
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Day 0 decimal places
+                    <input
+                      type="number"
+                      min="0"
+                      max="6"
+                      step="1"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                      value={calculationSettingsDraft.day0DecimalPlaces}
+                      onChange={(e) =>
+                        setCalculationSettingsDraft((prev) => ({
+                          ...prev,
+                          day0DecimalPlaces: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold text-slate-700">
+                    Later-day decimal places
+                    <input
+                      type="number"
+                      min="0"
+                      max="6"
+                      step="1"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                      value={calculationSettingsDraft.laterDayDecimalPlaces}
+                      onChange={(e) =>
+                        setCalculationSettingsDraft((prev) => ({
+                          ...prev,
+                          laterDayDecimalPlaces: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="text-xs font-semibold text-slate-700">
+                    Later-day %D display cap
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                      value={calculationSettingsDraft.laterDayPercentCap}
+                      onChange={(e) =>
+                        setCalculationSettingsDraft((prev) => ({
+                          ...prev,
+                          laterDayPercentCap: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-slate-900">
+                  Day 0 Inoculum OK Ranges
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  {[
+                    ["standardInoculumMin", "Standard minimum"],
+                    ["standardInoculumMax", "Standard maximum"],
+                    ["nigerInoculumMin", "Niger minimum"],
+                    ["nigerInoculumMax", "Niger maximum"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-xs font-semibold text-slate-700">
+                      {label}
+                      <input
+                        type="number"
+                        step="any"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        value={
+                          calculationSettingsDraft[
+                            key as keyof ApeCalculationSettings
+                          ] as number
+                        }
+                        onChange={(e) =>
+                          setCalculationSettingsDraft((prev) => ({
+                            ...prev,
+                            [key]: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-slate-900">
+                  Log Reduction Thresholds
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {[
+                    ["oneLogThreshold", "1 Log threshold"],
+                    ["twoLogThreshold", "2 Log threshold"],
+                    ["threeLogThreshold", "3 Log threshold"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-xs font-semibold text-slate-700">
+                      {label}
+                      <input
+                        type="number"
+                        step="any"
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        value={
+                          calculationSettingsDraft[
+                            key as keyof ApeCalculationSettings
+                          ] as number
+                        }
+                        onChange={(e) =>
+                          setCalculationSettingsDraft((prev) => ({
+                            ...prev,
+                            [key]: Number(e.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  3 Log Reduction remains the maximum, but its threshold can be
+                  changed.
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t bg-white px-5 py-4">
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm"
+                onClick={() =>
+                  setCalculationSettingsDraft({
+                    ...DEFAULT_APE_CALCULATION_SETTINGS,
+                  })
+                }
+              >
+                Reset Defaults
+              </button>
+
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm"
+                onClick={() => setShowCalculationSettings(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
+                onClick={applyCalculationSettings}
+              >
+                Apply Calculation Settings
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

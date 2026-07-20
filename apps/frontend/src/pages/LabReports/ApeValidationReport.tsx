@@ -17,6 +17,10 @@ import {
   type CorrectionItem,
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
+import {
+  canRoleEditApeChildField,
+  pickApeChildEditablePayload,
+} from "../../utils/apeReportFormWorkflow";
 
 type Role =
   | "SYSTEMADMIN"
@@ -153,45 +157,113 @@ function formatStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
-const ORGANISMS = [
-  "Escherichia Coli",
-  "Staphylococcus Aureus",
-  "Pseudomonas Aeruginosa",
-  "B. Cepacia",
-  "Candida Albicans",
-  "Aspergillus Niger",
-];
+type ParentApeOrganism = {
+  key?: string;
+  label?: string;
+  checked?: boolean;
+};
 
-function makeRows(): ValidationRow[] {
-  return ORGANISMS.map((organism) => ({
+const APE_ORGANISM_OPTIONS = [
+  { key: "E_COLI", reportLabel: "Escherichia Coli" },
+  { key: "S_AUREUS", reportLabel: "Staphylococcus Aureus" },
+  { key: "P_AERUGINOSA", reportLabel: "Pseudomonas Aeruginosa" },
+  { key: "C_ALBICANS", reportLabel: "Candida Albicans" },
+  { key: "A_NIGER", reportLabel: "Aspergillus Niger" },
+  { key: "B_CEPACIA", reportLabel: "B. Cepacia" },
+] as const;
+
+const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
+  (item) => item.key !== "B_CEPACIA",
+).map((item) => item.reportLabel);
+
+function normalizeOrganismToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function getSelectedApeOrganismNames(value: unknown): string[] {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  if (!Array.isArray(source) || source.length === 0) {
+    return [...DEFAULT_APE_ORGANISMS];
+  }
+
+  const selectedTokens = new Set(
+    source
+      .filter((item: ParentApeOrganism | string) =>
+        typeof item === "string" ? true : item?.checked === true,
+      )
+      .flatMap((item: ParentApeOrganism | string) => {
+        if (typeof item === "string") {
+          return [normalizeOrganismToken(item)];
+        }
+
+        return [
+          normalizeOrganismToken(item?.key),
+          normalizeOrganismToken(item?.label),
+        ];
+      })
+      .filter(Boolean),
+  );
+
+  const selected = APE_ORGANISM_OPTIONS.filter(
+    (option) =>
+      selectedTokens.has(normalizeOrganismToken(option.key)) ||
+      selectedTokens.has(normalizeOrganismToken(option.reportLabel)),
+  ).map((option) => option.reportLabel);
+
+  return selected.length ? selected : [...DEFAULT_APE_ORGANISMS];
+}
+
+function makeRows(organismNames: string[]): ValidationRow[] {
+  return organismNames.map((organism) => ({
     organism,
     control: "",
     avgCfuForTestSample: "",
   }));
 }
 
-const DEFAULT_SECTIONS: ValidationSection[] = [
-  {
-    key: "NEUTRALIZER_WITH_PRODUCT",
-    title: "VALIDATION DATA FOR NEUTRALIZER WITH PRODUCT",
-    rows: makeRows(),
-  },
-  {
-    key: "DILUENT_WITH_PRODUCT",
-    title: "VALIDATION DATA FOR DILUENT WITH PRODUCT",
-    rows: makeRows(),
-  },
-  {
-    key: "MEDIA_WITHOUT_PRODUCT",
-    title: "VALIDATION DATA FOR MEDIA WITHOUT PRODUCT",
-    rows: makeRows(),
-  },
-];
+function makeDefaultSections(
+  organismNames: string[],
+): ValidationSection[] {
+  return [
+    {
+      key: "NEUTRALIZER_WITH_PRODUCT",
+      title: "VALIDATION DATA FOR NEUTRALIZER WITH PRODUCT",
+      rows: makeRows(organismNames),
+    },
+    {
+      key: "DILUENT_WITH_PRODUCT",
+      title: "VALIDATION DATA FOR DILUENT WITH PRODUCT",
+      rows: makeRows(organismNames),
+    },
+    {
+      key: "MEDIA_WITHOUT_PRODUCT",
+      title: "VALIDATION DATA FOR MEDIA WITHOUT PRODUCT",
+      rows: makeRows(organismNames),
+    },
+  ];
+}
 
-function normalizeSections(value: any): ValidationSection[] {
-  if (!Array.isArray(value)) return DEFAULT_SECTIONS;
+function normalizeSections(
+  value: any,
+  organismNames: string[] = DEFAULT_APE_ORGANISMS,
+): ValidationSection[] {
+  const defaultSections = makeDefaultSections(organismNames);
 
-  return DEFAULT_SECTIONS.map((defaultSection) => {
+  if (!Array.isArray(value)) return defaultSections;
+
+  return defaultSections.map((defaultSection) => {
     const existingSection = value.find(
       (section: any) => section?.key === defaultSection.key,
     );
@@ -248,7 +320,6 @@ function Spinner({ className = "" }: { className?: string }) {
     />
   );
 }
-
 
 function SpinnerDark({ className = "" }: { className?: string }) {
   return (
@@ -343,6 +414,15 @@ export default function ApeValidationReport({
 
   const detail = report?.apeValidationReport ?? report ?? {};
 
+  const selectedApeOrganisms = useMemo(
+    () =>
+      getSelectedApeOrganismNames(
+        (report as any)?.organisms ?? detail?.organisms,
+      ),
+    [(report as any)?.organisms, detail?.organisms],
+  );
+  const selectedApeOrganismsKey = selectedApeOrganisms.join("|");
+
   const [isDirty, setIsDirty] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const busyRef = useRef(false);
@@ -427,7 +507,12 @@ export default function ApeValidationReport({
 
   const [validationSections, setValidationSections] = useState<
     ValidationSection[]
-  >(normalizeSections(detail?.validationSections));
+  >(
+    normalizeSections(
+      detail?.validationSections,
+      selectedApeOrganisms,
+    ),
+  );
 
   const [, setComments] = useState(detail?.comments || "");
   const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
@@ -438,8 +523,6 @@ export default function ApeValidationReport({
   const [reviewedDate, setReviewedDate] = useState(
     formatDateForInput(detail?.reviewedDate),
   );
-
-
 
   useEffect(() => {
     if (!reportId) return;
@@ -461,21 +544,45 @@ export default function ApeValidationReport({
   function makeCorrectionFieldOptions(): CorrectionFieldOption[] {
     const options: CorrectionFieldOption[] = [
       { key: "client", label: "Client", value: client },
-      { key: "dateSent", label: "Date Sent", value: formatDateForInput(dateSent) },
+      {
+        key: "dateSent",
+        label: "Date Sent",
+        value: formatDateForInput(dateSent),
+      },
       { key: "typeOfTest", label: "Type of Test", value: typeOfTest },
       { key: "sampleType", label: "Sample Type", value: sampleType },
       { key: "formulaNo", label: "Formula #", value: formulaNo },
       { key: "description", label: "Description", value: description },
       { key: "lotNo", label: "Lot #", value: lotNo },
-      { key: "manufactureDate", label: "Manufacture Date", value: formatDateForInput(manufactureDate) },
+      {
+        key: "manufactureDate",
+        label: "Manufacture Date",
+        value: formatDateForInput(manufactureDate),
+      },
       { key: "testSopNo", label: "Test SOP #", value: testSopNo },
       { key: "testReference", label: "Test Reference", value: testReference },
-      { key: "dateTested", label: "Date Tested", value: formatDateForInput(dateTested) },
-      { key: "dateCompleted", label: "Date Completed", value: formatDateForInput(dateCompleted) },
+      {
+        key: "dateTested",
+        label: "Date Tested",
+        value: formatDateForInput(dateTested),
+      },
+      {
+        key: "dateCompleted",
+        label: "Date Completed",
+        value: formatDateForInput(dateCompleted),
+      },
       { key: "testedBy", label: "Tested By", value: testedBy },
-      { key: "testedDate", label: "Tested Date", value: formatDateForInput(testedDate) },
+      {
+        key: "testedDate",
+        label: "Tested Date",
+        value: formatDateForInput(testedDate),
+      },
       { key: "reviewedBy", label: "Reviewed By", value: reviewedBy },
-      { key: "reviewedDate", label: "Reviewed Date", value: formatDateForInput(reviewedDate) },
+      {
+        key: "reviewedDate",
+        label: "Reviewed Date",
+        value: formatDateForInput(reviewedDate),
+      },
     ];
 
     validationSections.forEach((section) => {
@@ -538,9 +645,19 @@ export default function ApeValidationReport({
     addRequiredError(nextErrors, "description", "Description", description);
     addRequiredError(nextErrors, "lotNo", "Lot #", lotNo);
     addRequiredError(nextErrors, "testSopNo", "Test SOP #", testSopNo);
-    addRequiredError(nextErrors, "testReference", "Test Reference", testReference);
+    addRequiredError(
+      nextErrors,
+      "testReference",
+      "Test Reference",
+      testReference,
+    );
     addRequiredError(nextErrors, "dateTested", "Date Tested", dateTested);
-    addRequiredError(nextErrors, "dateCompleted", "Date Completed", dateCompleted);
+    addRequiredError(
+      nextErrors,
+      "dateCompleted",
+      "Date Completed",
+      dateCompleted,
+    );
 
     validationSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
@@ -581,9 +698,7 @@ export default function ApeValidationReport({
   }
 
   function fieldErrorClass(field: string) {
-    return errors[field]
-      ? "border-red-500 ring-1 ring-red-500 bg-red-50"
-      : "";
+    return errors[field] ? "border-red-500 ring-1 ring-red-500 bg-red-50" : "";
   }
 
   function signatureFieldErrorClass(field: string) {
@@ -591,7 +706,6 @@ export default function ApeValidationReport({
       ? "border-b-red-500 ring-1 ring-red-500 bg-red-50"
       : "";
   }
-
 
   function fieldHasChanged(c: CorrectionItem) {
     return (
@@ -658,9 +772,8 @@ export default function ApeValidationReport({
       return;
     }
 
-    const canChangeParentStatus = await canChangeParentStatusWithDashboardGuard(
-      pendingStatus,
-    );
+    const canChangeParentStatus =
+      await canChangeParentStatusWithDashboardGuard(pendingStatus);
 
     if (!canChangeParentStatus) return;
 
@@ -715,7 +828,9 @@ export default function ApeValidationReport({
           version: nextVersion,
         });
 
-        alert(`✅ Corrections sent and parent APE status changed to ${pendingStatus}`);
+        alert(
+          `✅ Corrections sent and parent APE status changed to ${pendingStatus}`,
+        );
       } catch (err: any) {
         console.error(err);
         alert(
@@ -769,7 +884,12 @@ export default function ApeValidationReport({
     setDateTested(formatDateForInput(nextDetail?.dateTested));
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
-    setValidationSections(normalizeSections(nextDetail?.validationSections));
+    setValidationSections(
+      normalizeSections(
+        nextDetail?.validationSections,
+        selectedApeOrganisms,
+      ),
+    );
 
     setComments(nextDetail?.comments || "");
     setTestedBy(nextDetail?.testedBy || "");
@@ -778,7 +898,14 @@ export default function ApeValidationReport({
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
 
     setIsDirty(false);
-  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+  }, [
+    report?.id,
+    report?.status,
+    report?.reportNumber,
+    report?.version,
+    (report as any)?.parentVersion,
+    selectedApeOrganismsKey,
+  ]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -808,8 +935,12 @@ export default function ApeValidationReport({
     if (!isDirty) setIsDirty(true);
   }
 
-  function lock(_field: string) {
-    return !canEditForm;
+  function canEditField(field: string) {
+    return canEditForm && canRoleEditApeChildField(role as any, field);
+  }
+
+  function lock(field: string) {
+    return !canEditField(field);
   }
 
   function validationFieldKey(
@@ -843,7 +974,8 @@ export default function ApeValidationReport({
     });
 
     const sectionKey = validationSections[sectionIndex]?.key;
-    if (sectionKey) clearFieldError(validationFieldKey(sectionKey, rowIndex, field));
+    if (sectionKey)
+      clearFieldError(validationFieldKey(sectionKey, rowIndex, field));
 
     markDirty();
   }
@@ -898,13 +1030,17 @@ export default function ApeValidationReport({
       try {
         const payload = makePayload();
 
+        const requestPayload = reportId
+          ? pickApeChildEditablePayload(role as any, payload)
+          : payload;
+
         let saved: any;
 
         if (reportId) {
           saved = await api(`/reports/${reportId}`, {
             method: "PATCH",
             body: JSON.stringify({
-              ...payload,
+              ...requestPayload,
               reason: "Saving APE Validation Report",
               expectedVersion: reportVersion,
             }),
@@ -1059,7 +1195,9 @@ export default function ApeValidationReport({
 
     const okFields = validateForStatusChange(newStatus);
     if (!okFields) {
-      alert("⚠️ Please fill the highlighted/missing fields before changing status.");
+      alert(
+        "⚠️ Please fill the highlighted/missing fields before changing status.",
+      );
       return;
     }
 
@@ -1072,9 +1210,8 @@ export default function ApeValidationReport({
       if (!saved) return;
     }
 
-    const canChangeParentStatus = await canChangeParentStatusWithDashboardGuard(
-      newStatus,
-    );
+    const canChangeParentStatus =
+      await canChangeParentStatusWithDashboardGuard(newStatus);
 
     if (!canChangeParentStatus) return;
 
@@ -1217,13 +1354,33 @@ export default function ApeValidationReport({
             </div>
           </div>
 
-          <div className="mt-1 grid grid-cols-3 items-center">
-            <div />
-            <div className="text-[18px] font-bold text-center underline">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="min-w-0 text-left text-[11px] font-bold">
+              {(report as any)?.parentFormNumber ||
+              (report as any)?.formNumber ? (
+                <span className="whitespace-nowrap">
+                  FORM NO:{" "}
+                  {String(
+                    (report as any)?.parentFormNumber ||
+                      (report as any)?.formNumber,
+                  )}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="text-center text-[18px] font-bold underline">
               APE VALIDATION REPORT
             </div>
-            <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+
+            <div className="min-w-0 text-right text-[11px] font-bold">
+              {(report as any)?.parentReportNumber || reportNumber ? (
+                <span className="whitespace-nowrap">
+                  REPORT NO:{" "}
+                  {String(
+                    (report as any)?.parentReportNumber || reportNumber,
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1288,7 +1445,7 @@ export default function ApeValidationReport({
                     value={typeOfTest}
                     onChange={(e) => {
                       setTypeOfTest(e.target.value);
-                    clearFieldError("typeOfTest");
+                      clearFieldError("typeOfTest");
                       markDirty();
                     }}
                     placeholder={isJJL ? "Select or type..." : ""}
@@ -1316,7 +1473,7 @@ export default function ApeValidationReport({
                     value={sampleType}
                     onChange={(e) => {
                       setSampleType(e.target.value);
-                    clearFieldError("sampleType");
+                      clearFieldError("sampleType");
                       markDirty();
                     }}
                     placeholder={isJJL ? "Select or type..." : ""}
@@ -1362,7 +1519,7 @@ export default function ApeValidationReport({
                 value={description}
                 onChange={(e) => {
                   setDescription(e.target.value);
-                    clearFieldError("description");
+                  clearFieldError("description");
                   markDirty();
                 }}
               />
@@ -1547,7 +1704,9 @@ export default function ApeValidationReport({
 
                     <div className="border-r border-black px-1 py-[2px]">
                       <input
-                        className={tableInputClass(validationFieldKey(section.key, rowIndex, "control"))}
+                        className={tableInputClass(
+                          validationFieldKey(section.key, rowIndex, "control"),
+                        )}
                         value={row.control}
                         onChange={(e) =>
                           updateValidationCell(
@@ -1557,13 +1716,19 @@ export default function ApeValidationReport({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("validationSections")}
                       />
                     </div>
 
                     <div className="px-1 py-[2px]">
                       <input
-                        className={tableInputClass(validationFieldKey(section.key, rowIndex, "avgCfuForTestSample"))}
+                        className={tableInputClass(
+                          validationFieldKey(
+                            section.key,
+                            rowIndex,
+                            "avgCfuForTestSample",
+                          ),
+                        )}
                         value={row.avgCfuForTestSample}
                         onChange={(e) =>
                           updateValidationCell(
@@ -1573,7 +1738,7 @@ export default function ApeValidationReport({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("validationSections")}
                       />
                     </div>
                   </div>
@@ -1595,7 +1760,7 @@ export default function ApeValidationReport({
                     value={testedBy.toUpperCase()}
                     onChange={(e) => {
                       setTestedBy(e.target.value);
-                    clearFieldError("testedBy");
+                      clearFieldError("testedBy");
                       markDirty();
                     }}
                     readOnly={lock("testedBy")}
@@ -1612,7 +1777,7 @@ export default function ApeValidationReport({
                     value={formatDateForInput(testedDate)}
                     onChange={(e) => {
                       setTestedDate(e.target.value);
-                    clearFieldError("testedDate");
+                      clearFieldError("testedDate");
                       markDirty();
                     }}
                     readOnly={lock("testedDate")}
@@ -1628,7 +1793,7 @@ export default function ApeValidationReport({
                     value={reviewedBy.toUpperCase()}
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
-                    clearFieldError("reviewedBy");
+                      clearFieldError("reviewedBy");
                       markDirty();
                     }}
                     readOnly={lock("reviewedBy")}
@@ -1645,7 +1810,7 @@ export default function ApeValidationReport({
                     value={formatDateForInput(reviewedDate)}
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
-                    clearFieldError("reviewedDate");
+                      clearFieldError("reviewedDate");
                       markDirty();
                     }}
                     readOnly={lock("reviewedDate")}
@@ -1734,8 +1899,12 @@ export default function ApeValidationReport({
             <button
               type="button"
               className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-              disabled={!selectedCorrectionField || !addMessage.trim() || busy !== null}
-              onClick={() => runBusy("ADD_CORRECTION", async () => addPendingCorrection())}
+              disabled={
+                !selectedCorrectionField || !addMessage.trim() || busy !== null
+              }
+              onClick={() =>
+                runBusy("ADD_CORRECTION", async () => addPendingCorrection())
+              }
             >
               Add
             </button>
@@ -1743,9 +1912,14 @@ export default function ApeValidationReport({
 
           <ul className="mt-3 max-h-32 overflow-auto text-xs">
             {pendingCorrections.map((c, i) => {
-              const option = correctionFieldOptions.find((f) => f.key === c.fieldKey);
+              const option = correctionFieldOptions.find(
+                (f) => f.key === c.fieldKey,
+              );
               return (
-                <li key={`${c.fieldKey}-${i}`} className="flex items-center justify-between gap-2 border-b py-1">
+                <li
+                  key={`${c.fieldKey}-${i}`}
+                  className="flex items-center justify-between gap-2 border-b py-1"
+                >
                   <span className="truncate">
                     <b>{option?.label ?? c.fieldKey}</b>: {c.message}
                   </span>
@@ -1753,7 +1927,9 @@ export default function ApeValidationReport({
                     type="button"
                     className="text-rose-600 hover:underline"
                     onClick={() =>
-                      setPendingCorrections((prev) => prev.filter((_, idx) => idx !== i))
+                      setPendingCorrections((prev) =>
+                        prev.filter((_, idx) => idx !== i),
+                      )
                     }
                   >
                     remove
@@ -1783,7 +1959,9 @@ export default function ApeValidationReport({
             <button
               type="button"
               className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={!pendingCorrections.length || !pendingStatus || busy !== null}
+              disabled={
+                !pendingCorrections.length || !pendingStatus || busy !== null
+              }
               onClick={sendPendingCorrections}
             >
               {busy === "SEND_CORRECTIONS" && <Spinner />}
@@ -1813,7 +1991,9 @@ export default function ApeValidationReport({
           <div className="border-b bg-slate-50 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Correction Review</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Correction Review
+                </h3>
                 <p className="mt-1 text-xs text-slate-500">
                   Resolve only after the field value has been updated and saved.
                 </p>
@@ -1836,25 +2016,36 @@ export default function ApeValidationReport({
             ) : (
               <div className="space-y-3">
                 {openCorrections.map((c, index) => {
-                  const option = correctionFieldOptions.find((f) => f.key === c.fieldKey);
+                  const option = correctionFieldOptions.find(
+                    (f) => f.key === c.fieldKey,
+                  );
                   const canResolve = canResolveCorrection(c);
 
                   return (
-                    <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div
+                      key={c.id}
+                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-slate-900">
                             {index + 1}. {option?.label ?? c.fieldKey}
                           </div>
                           <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                            <span className="font-semibold">Reason:</span> {c.message}
+                            <span className="font-semibold">Reason:</span>{" "}
+                            {c.message}
                           </div>
-                          {c.oldValue != null && String(c.oldValue).trim() !== "" && (
-                            <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                              <span className="font-semibold">Old Value:</span>{" "}
-                              {typeof c.oldValue === "string" ? c.oldValue : JSON.stringify(c.oldValue)}
-                            </div>
-                          )}
+                          {c.oldValue != null &&
+                            String(c.oldValue).trim() !== "" && (
+                              <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                <span className="font-semibold">
+                                  Old Value:
+                                </span>{" "}
+                                {typeof c.oldValue === "string"
+                                  ? c.oldValue
+                                  : JSON.stringify(c.oldValue)}
+                              </div>
+                            )}
                         </div>
                         <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
                           OPEN
@@ -1889,7 +2080,6 @@ export default function ApeValidationReport({
           </div>
         </div>
       )}
-
     </>
   );
 }

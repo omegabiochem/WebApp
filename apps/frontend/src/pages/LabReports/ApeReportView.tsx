@@ -159,16 +159,76 @@ function formatStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
-const APE_ORGANISMS = [
-  "Escherichia Coli",
-  "Staphylococcus Aureus",
-  "Pseudomonas Aeruginosa",
-  "Candida Albicans",
-  "Aspergillus Niger",
-];
+type ParentApeOrganism = {
+  key?: string;
+  label?: string;
+  checked?: boolean;
+};
 
-function makeApeRows(): ApeReportRow[] {
-  return APE_ORGANISMS.map((organism) => ({
+const APE_ORGANISM_OPTIONS = [
+  { key: "E_COLI", reportLabel: "Escherichia Coli" },
+  { key: "S_AUREUS", reportLabel: "Staphylococcus Aureus" },
+  { key: "P_AERUGINOSA", reportLabel: "Pseudomonas Aeruginosa" },
+  { key: "C_ALBICANS", reportLabel: "Candida Albicans" },
+  { key: "A_NIGER", reportLabel: "Aspergillus Niger" },
+  { key: "B_CEPACIA", reportLabel: "B. Cepacia" },
+] as const;
+
+const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
+  (item) => item.key !== "B_CEPACIA",
+).map((item) => item.reportLabel);
+
+function normalizeOrganismToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function getSelectedApeOrganismNames(value: unknown): string[] {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  if (!Array.isArray(source) || source.length === 0) {
+    return [...DEFAULT_APE_ORGANISMS];
+  }
+
+  const selectedTokens = new Set(
+    source
+      .filter((item: ParentApeOrganism | string) =>
+        typeof item === "string" ? true : item?.checked === true,
+      )
+      .flatMap((item: ParentApeOrganism | string) => {
+        if (typeof item === "string") {
+          return [normalizeOrganismToken(item)];
+        }
+
+        return [
+          normalizeOrganismToken(item?.key),
+          normalizeOrganismToken(item?.label),
+        ];
+      })
+      .filter(Boolean),
+  );
+
+  const selected = APE_ORGANISM_OPTIONS.filter(
+    (option) =>
+      selectedTokens.has(normalizeOrganismToken(option.key)) ||
+      selectedTokens.has(normalizeOrganismToken(option.reportLabel)),
+  ).map((option) => option.reportLabel);
+
+  return selected.length ? selected : [...DEFAULT_APE_ORGANISMS];
+}
+
+function makeApeRows(organismNames: string[]): ApeReportRow[] {
+  return organismNames.map((organism) => ({
     organism,
     controlGrowth: "",
     sampleGrowth: "",
@@ -177,41 +237,214 @@ function makeApeRows(): ApeReportRow[] {
   }));
 }
 
-const DEFAULT_APE_REPORT_SECTIONS: ApeReportDaySection[] = [
-  {
-    key: "DAY_0",
-    dayLabel: "DAY 0",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_7",
-    dayLabel: "DAY 7",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_14",
-    dayLabel: "DAY 14",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_21",
-    dayLabel: "DAY 21",
-    rows: makeApeRows(),
-  },
-  {
-    key: "DAY_28",
-    dayLabel: "DAY 28",
-    rows: makeApeRows(),
-  },
-];
+function makeDefaultApeReportSections(
+  organismNames: string[],
+): ApeReportDaySection[] {
+  return [
+    {
+      key: "DAY_0",
+      dayLabel: "DAY 0",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_7",
+      dayLabel: "DAY 7",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_14",
+      dayLabel: "DAY 14",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_21",
+      dayLabel: "DAY 21",
+      rows: makeApeRows(organismNames),
+    },
+    {
+      key: "DAY_28",
+      dayLabel: "DAY 28",
+      rows: makeApeRows(organismNames),
+    },
+  ];
+}
 
-function normalizeApeReportSections(value: any): ApeReportDaySection[] {
-  if (!Array.isArray(value)) return DEFAULT_APE_REPORT_SECTIONS;
+const CONTROL_GROWTH_MULTIPLIER = 10_000;
+const DAY_0_SAMPLE_GROWTH_MULTIPLIER = 10_000;
+const LATER_DAY_SAMPLE_GROWTH_MULTIPLIER = 100;
 
-  return DEFAULT_APE_REPORT_SECTIONS.map((defaultSection) => {
-    const existingSection = value.find(
-      (section: any) => section?.key === defaultSection.key,
-    );
+function sanitizeNumericInput(value: string) {
+  const cleaned = value.replace(/[^0-9.]/g, "");
+  const [whole = "", ...decimalParts] = cleaned.split(".");
+
+  return decimalParts.length > 0
+    ? `${whole}.${decimalParts.join("")}`
+    : whole;
+}
+
+function parseGrowthInput(value: unknown): number | null {
+  const normalized = String(value ?? "")
+    .replaceAll(",", "")
+    .trim();
+
+  if (!normalized) return null;
+
+  const directNumber = Number(normalized);
+  if (Number.isFinite(directNumber) && directNumber >= 0) {
+    return directNumber;
+  }
+
+  // Supports previously displayed values such as "171 × 10⁴" or "2% - OK".
+  const firstNumber = normalized.match(/\d+(?:\.\d+)?/);
+  if (!firstNumber) return null;
+
+  const parsed = Number(firstNumber[0]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeStoredNumeric(value: unknown) {
+  const parsed = parseGrowthInput(value);
+  return parsed === null ? "" : String(parsed);
+}
+
+function calculateActualGrowth(
+  rawValue: unknown,
+  multiplier: number,
+): number | null {
+  const parsed = parseGrowthInput(rawValue);
+  return parsed === null ? null : parsed * multiplier;
+}
+
+function calculatePercentDecrease(
+  controlGrowthRaw: unknown,
+  sampleGrowthRaw: unknown,
+  sampleGrowthMultiplier: number,
+): number | null {
+  const controlGrowth = calculateActualGrowth(
+    controlGrowthRaw,
+    CONTROL_GROWTH_MULTIPLIER,
+  );
+  const sampleGrowth = calculateActualGrowth(
+    sampleGrowthRaw,
+    sampleGrowthMultiplier,
+  );
+
+  if (
+    controlGrowth === null ||
+    sampleGrowth === null ||
+    controlGrowth <= 0
+  ) {
+    return null;
+  }
+
+  // %D = ((Control Growth - Sample Growth) / Control Growth) × 100
+  return ((controlGrowth - sampleGrowth) / controlGrowth) * 100;
+}
+
+function formatPercentDecrease(
+  value: number | null,
+  decimalPlaces: 1 | 2,
+) {
+  if (value === null || !Number.isFinite(value)) return "";
+
+  return `${value.toFixed(decimalPlaces)}%`;
+}
+
+function getLogReductionFromDecrease(percentDecrease: number | null) {
+  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+
+  const value = percentDecrease + Number.EPSILON;
+
+  // Maximum supported result is 3 Log Reduction.
+  if (value >= 99.9) return "3 Log Reduction";
+  if (value >= 99) return "2 Log Reduction";
+  if (value >= 90) return "1 Log Reduction";
+
+  return "0 Log Reduction";
+}
+
+function getInoculumResultFromDecrease(
+  organism: string,
+  percentDecrease: number | null,
+) {
+  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+
+  // DAY 0 inoculum result is determined directly from % decrease.
+  // Example: CG 174 and SG 171 gives 1.72%, therefore OK.
+  const isNiger = organism.trim().toLowerCase().includes("niger");
+  const isWithinRange = isNiger
+    ? percentDecrease >= 2 && percentDecrease <= 3
+    : percentDecrease >= 1.5 && percentDecrease <= 2.5;
+
+  return isWithinRange ? "OK" : "NOT OK";
+}
+
+function formatGrowthNotation(rawValue: unknown, exponent: 2 | 4) {
+  const value = parseGrowthInput(rawValue);
+  if (value === null) return "";
+
+  return `${value} × 10${exponent === 4 ? "⁴" : "²"}`;
+}
+
+function recalculateApeReportSections(
+  sections: ApeReportDaySection[],
+): ApeReportDaySection[] {
+  const day0Section = sections.find((section) => section.key === "DAY_0");
+  const day0ControlByOrganism = new Map(
+    (day0Section?.rows ?? []).map((row) => [
+      row.organism,
+      row.controlGrowth,
+    ]),
+  );
+
+  return sections.map((section) => ({
+    ...section,
+    rows: section.rows.map((row) => {
+      const controlGrowth =
+        section.key === "DAY_0"
+          ? row.controlGrowth
+          : day0ControlByOrganism.get(row.organism) ?? "";
+
+      const sampleGrowthMultiplier =
+        section.key === "DAY_0"
+          ? DAY_0_SAMPLE_GROWTH_MULTIPLIER
+          : LATER_DAY_SAMPLE_GROWTH_MULTIPLIER;
+
+      const percentDecrease = calculatePercentDecrease(
+        controlGrowth,
+        row.sampleGrowth,
+        sampleGrowthMultiplier,
+      );
+
+      return {
+        ...row,
+        controlGrowth,
+        decrease: formatPercentDecrease(
+          section.key === "DAY_0"
+            ? percentDecrease
+            : percentDecrease === null
+              ? null
+              : Math.min(percentDecrease, 99.9),
+          section.key === "DAY_0" ? 2 : 1,
+        ),
+        innoculumLevel:
+          section.key === "DAY_0"
+            ? getInoculumResultFromDecrease(row.organism, percentDecrease)
+            : getLogReductionFromDecrease(percentDecrease),
+      };
+    }),
+  }));
+}
+
+function normalizeApeReportSections(
+  value: any,
+  organismNames: string[] = DEFAULT_APE_ORGANISMS,
+): ApeReportDaySection[] {
+  const normalized = makeDefaultApeReportSections(organismNames).map(
+    (defaultSection) => {
+    const existingSection = Array.isArray(value)
+      ? value.find((section: any) => section?.key === defaultSection.key)
+      : undefined;
 
     return {
       key: defaultSection.key,
@@ -223,14 +456,17 @@ function normalizeApeReportSections(value: any): ApeReportDaySection[] {
 
         return {
           organism: defaultRow.organism,
-          controlGrowth: existingRow?.controlGrowth ?? "",
-          sampleGrowth: existingRow?.sampleGrowth ?? "",
-          decrease: existingRow?.decrease ?? "",
-          innoculumLevel: existingRow?.innoculumLevel ?? "",
+          controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
+          sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
+          decrease: String(existingRow?.decrease ?? ""),
+          // Calculated again below from % decrease for every section.
+          innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
         };
       }),
     };
   });
+
+  return recalculateApeReportSections(normalized);
 }
 
 function formatDateForInput(value?: string | null) {
@@ -247,7 +483,7 @@ const PrintStyles = () => (
   <style>{`
     @media print {
       /* Use almost the full sheet; leave a little bottom room for the QR */
-      @page { size: A4 portrait; margin: 6mm 10mm 12mm 10mm; } /* top right bottom left */
+      @page { size: A4 portrait; margin: 4mm 10mm 4mm 8mm; } /* top right bottom left */
 
       /* Remove UA margins/padding that add mystery whitespace */
       html, body { margin: 0 !important; padding: 0 !important; }
@@ -387,6 +623,15 @@ export default function ApeReportView({
 
   const detail = report?.apeReport ?? report ?? {};
 
+  const selectedApeOrganisms = useMemo(
+    () =>
+      getSelectedApeOrganismNames(
+        (report as any)?.organisms ?? detail?.organisms,
+      ),
+    [(report as any)?.organisms, detail?.organisms],
+  );
+  const selectedApeOrganismsKey = selectedApeOrganisms.join("|");
+
   const [isDirty, setIsDirty] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const busyRef = useRef(false);
@@ -470,7 +715,13 @@ export default function ApeReportView({
 
   const [apeReportSections, setApeReportSections] = useState<
     ApeReportDaySection[]
-  >(normalizeApeReportSections(detail?.apeReportSections));
+  >(
+    normalizeApeReportSections(
+      detail?.apeReportSections,
+      selectedApeOrganisms,
+    ),
+  );
+  const [editingApeCell, setEditingApeCell] = useState<string | null>(null);
 
   const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
   const [testedDate, setTestedDate] = useState(
@@ -550,60 +801,43 @@ export default function ApeReportView({
   function makeCorrectionFieldOptions(): CorrectionFieldOption[] {
     const options: CorrectionFieldOption[] = [
       { key: "client", label: "Client", value: client },
-      {
-        key: "dateSent",
-        label: "Date Sent",
-        value: formatDateForInput(dateSent),
-      },
+      { key: "dateSent", label: "Date Sent", value: formatDateForInput(dateSent) },
       { key: "typeOfTest", label: "Type of Test", value: typeOfTest },
       { key: "sampleType", label: "Sample Type", value: sampleType },
       { key: "formulaNo", label: "Formula #", value: formulaNo },
       { key: "description", label: "Description", value: description },
       { key: "lotNo", label: "Lot #", value: lotNo },
-      {
-        key: "manufactureDate",
-        label: "Manufacture Date",
-        value: formatDateForInput(manufactureDate),
-      },
+      { key: "manufactureDate", label: "Manufacture Date", value: formatDateForInput(manufactureDate) },
       { key: "testSopNo", label: "Test SOP #", value: testSopNo },
       { key: "testReference", label: "Test Reference", value: testReference },
-      {
-        key: "dateTested",
-        label: "Date Tested",
-        value: formatDateForInput(dateTested),
-      },
-      {
-        key: "dateCompleted",
-        label: "Date Completed",
-        value: formatDateForInput(dateCompleted),
-      },
+      { key: "dateTested", label: "Date Tested", value: formatDateForInput(dateTested) },
+      { key: "dateCompleted", label: "Date Completed", value: formatDateForInput(dateCompleted) },
       { key: "testedBy", label: "Tested By", value: testedBy },
-      {
-        key: "testedDate",
-        label: "Tested Date",
-        value: formatDateForInput(testedDate),
-      },
+      { key: "testedDate", label: "Tested Date", value: formatDateForInput(testedDate) },
       { key: "reviewedBy", label: "Reviewed By", value: reviewedBy },
-      {
-        key: "reviewedDate",
-        label: "Reviewed Date",
-        value: formatDateForInput(reviewedDate),
-      },
+      { key: "reviewedDate", label: "Reviewed Date", value: formatDateForInput(reviewedDate) },
     ];
 
     apeReportSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
         const prefix = `${section.dayLabel} - ${row.organism}`;
-        options.push(
-          {
+
+        if (section.key === "DAY_0") {
+          options.push({
             key: `apeReportSections.${section.key}.${rowIndex}.controlGrowth`,
             label: `${prefix} Control Growth`,
-            value: row.controlGrowth,
-          },
+            value: formatGrowthNotation(row.controlGrowth, 4),
+          });
+        }
+
+        options.push(
           {
             key: `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`,
             label: `${prefix} Sample Growth`,
-            value: row.sampleGrowth,
+            value: formatGrowthNotation(
+              row.sampleGrowth,
+              section.key === "DAY_0" ? 4 : 2,
+            ),
           },
           {
             key: `apeReportSections.${section.key}.${rowIndex}.decrease`,
@@ -664,48 +898,49 @@ export default function ApeReportView({
     addRequiredError(nextErrors, "description", "Description", description);
     addRequiredError(nextErrors, "lotNo", "Lot #", lotNo);
     addRequiredError(nextErrors, "testSopNo", "Test SOP #", testSopNo);
-    addRequiredError(
-      nextErrors,
-      "testReference",
-      "Test Reference",
-      testReference,
-    );
+    addRequiredError(nextErrors, "testReference", "Test Reference", testReference);
     addRequiredError(nextErrors, "dateTested", "Date Tested", dateTested);
-    addRequiredError(
-      nextErrors,
-      "dateCompleted",
-      "Date Completed",
-      dateCompleted,
-    );
+    addRequiredError(nextErrors, "dateCompleted", "Date Completed", dateCompleted);
 
     apeReportSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
+        const controlGrowthKey =
+          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`;
+        const sampleGrowthKey =
+          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`;
+
+        if (section.key === "DAY_0") {
+          addRequiredError(
+            nextErrors,
+            controlGrowthKey,
+            `${section.dayLabel} ${row.organism} Control Growth`,
+            row.controlGrowth,
+          );
+
+          const controlGrowthNumber = parseGrowthInput(row.controlGrowth);
+          if (
+            !isBlank(row.controlGrowth) &&
+            (controlGrowthNumber === null || controlGrowthNumber <= 0)
+          ) {
+            nextErrors[controlGrowthKey] =
+              `${section.dayLabel} ${row.organism} Control Growth must be greater than 0`;
+          }
+        }
+
         addRequiredError(
           nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`,
-          `${section.dayLabel} ${row.organism} Control Growth`,
-          row.controlGrowth,
-        );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`,
+          sampleGrowthKey,
           `${section.dayLabel} ${row.organism} Sample Growth`,
           row.sampleGrowth,
         );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.decrease`,
-          `${section.dayLabel} ${row.organism} Decrease`,
-          row.decrease,
-        );
-        addRequiredError(
-          nextErrors,
-          `apeReportSections.${section.key}.${rowIndex}.innoculumLevel`,
-          section.key === "DAY_0"
-            ? `${section.dayLabel} ${row.organism} Innoculum Level`
-            : `${section.dayLabel} ${row.organism} Log Reduction`,
-          row.innoculumLevel,
-        );
+
+        if (
+          !isBlank(row.sampleGrowth) &&
+          parseGrowthInput(row.sampleGrowth) === null
+        ) {
+          nextErrors[sampleGrowthKey] =
+            `${section.dayLabel} ${row.organism} Sample Growth must be 0 or greater`;
+        }
       });
     });
 
@@ -918,7 +1153,10 @@ export default function ApeReportView({
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
     setApeReportSections(
-      normalizeApeReportSections(nextDetail?.apeReportSections),
+      normalizeApeReportSections(
+        nextDetail?.apeReportSections,
+        selectedApeOrganisms,
+      ),
     );
 
     setTestedBy(nextDetail?.testedBy || "");
@@ -927,7 +1165,14 @@ export default function ApeReportView({
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
 
     setIsDirty(false);
-  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+  }, [
+    report?.id,
+    report?.status,
+    report?.reportNumber,
+    report?.version,
+    (report as any)?.parentVersion,
+    selectedApeOrganismsKey,
+  ]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -970,7 +1215,7 @@ export default function ApeReportView({
   function updateApeReportCell(
     sectionIndex: number,
     rowIndex: number,
-    field: "controlGrowth" | "sampleGrowth" | "decrease" | "innoculumLevel",
+    field: "controlGrowth" | "sampleGrowth",
     value: string,
   ) {
     setApeReportSections((prev) => {
@@ -980,23 +1225,25 @@ export default function ApeReportView({
 
       rows[rowIndex] = {
         ...rows[rowIndex],
-        [field]: value,
+        [field]: sanitizeNumericInput(value),
       };
 
       section.rows = rows;
       copy[sectionIndex] = section;
 
-      return copy;
+      return recalculateApeReportSections(copy);
     });
 
     const sectionKey = apeReportSections[sectionIndex]?.key;
-    if (sectionKey)
-      clearFieldError(apeReportFieldKey(sectionKey, rowIndex, field));
+    if (sectionKey) clearFieldError(apeReportFieldKey(sectionKey, rowIndex, field));
 
     markDirty();
   }
 
   function makePayload() {
+    const calculatedApeReportSections =
+      recalculateApeReportSections(apeReportSections);
+
     return {
       client,
       dateSent,
@@ -1010,7 +1257,7 @@ export default function ApeReportView({
       testReference,
       dateTested,
       dateCompleted,
-      apeReportSections,
+      apeReportSections: calculatedApeReportSections,
       testedBy,
       testedDate,
       reviewedBy,
@@ -1045,6 +1292,7 @@ export default function ApeReportView({
     const result = await runBusy("SAVE", async () => {
       try {
         const payload = makePayload();
+        setApeReportSections(payload.apeReportSections);
 
         let saved: any;
 
@@ -1300,7 +1548,7 @@ export default function ApeReportView({
   const inputClass = (field: string) =>
     `w-full input-editable py-0 text-[11px] leading-[13px] border border-black/70 bg-transparent px-1 outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
   const tableInputClass = (field: string) =>
-    `w-full input-editable border border-black/70 bg-transparent px-1 py-[1px] text-[10px] leading-tight outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
+    `w-full input-editable border border-black/70 bg-transparent px-1 py-[1px] text-center text-[10px] leading-tight outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
 
   const signatureInputClass = (field: string) =>
     `flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 bg-transparent disabled:cursor-not-allowed disabled:bg-transparent ${signatureFieldErrorClass(field)}`;
@@ -1345,7 +1593,7 @@ export default function ApeReportView({
         )}
 
         {/* Letterhead - same as ApeReportForm */}
-        <div className="mb-2 text-center">
+        <div className="mb-0 text-center">
           <div
             className="font-bold tracking-wide text-[22px]"
             style={{ color: "blue" }}
@@ -1365,13 +1613,33 @@ export default function ApeReportView({
             </div>
           </div>
 
-          <div className="mt-1 grid grid-cols-3 items-center">
-            <div />
-            <div className="text-[18px] font-bold text-center underline">
+          <div className="mt-0 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="min-w-0 text-left text-[11px] font-bold">
+              {(report as any)?.parentFormNumber ||
+              (report as any)?.formNumber ? (
+                <span className="whitespace-nowrap">
+                  FORM NO:{" "}
+                  {String(
+                    (report as any)?.parentFormNumber ||
+                      (report as any)?.formNumber,
+                  )}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="text-center text-[18px] font-bold underline">
               APE REPORT
             </div>
-            <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+
+            <div className="min-w-0 text-right text-[11px] font-bold">
+              {(report as any)?.parentReportNumber || reportNumber ? (
+                <span className="whitespace-nowrap">
+                  REPORT NO:{" "}
+                  {String(
+                    (report as any)?.parentReportNumber || reportNumber,
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1707,6 +1975,16 @@ export default function ApeReportView({
                 const isLastRow =
                   sectionIndex === apeReportSections.length - 1 &&
                   rowIndex === section.rows.length - 1;
+                const controlGrowthKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "controlGrowth",
+                );
+                const sampleGrowthKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "sampleGrowth",
+                );
 
                 return (
                   <div
@@ -1723,14 +2001,20 @@ export default function ApeReportView({
 
                     <div className="flex items-center border-r border-black px-1.5 py-[1px]">
                       <input
-                        className={tableInputClass(
-                          apeReportFieldKey(
-                            section.key,
-                            rowIndex,
-                            "controlGrowth",
-                          ),
-                        )}
-                        value={row.controlGrowth}
+                        className={tableInputClass(controlGrowthKey)}
+                        value={
+                          section.key !== "DAY_0"
+                            ? ""
+                            : editingApeCell === controlGrowthKey
+                              ? row.controlGrowth
+                              : formatGrowthNotation(row.controlGrowth, 4)
+                        }
+                        onFocus={() => {
+                          if (section.key === "DAY_0") {
+                            setEditingApeCell(controlGrowthKey);
+                          }
+                        }}
+                        onBlur={() => setEditingApeCell(null)}
                         onChange={(e) =>
                           updateApeReportCell(
                             sectionIndex,
@@ -1739,20 +2023,23 @@ export default function ApeReportView({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditForm || section.key !== "DAY_0"}
                       />
                     </div>
 
                     <div className="flex items-center border-r border-black px-1.5 py-[1px]">
                       <input
-                        className={tableInputClass(
-                          apeReportFieldKey(
-                            section.key,
-                            rowIndex,
-                            "sampleGrowth",
-                          ),
-                        )}
-                        value={row.sampleGrowth}
+                        className={tableInputClass(sampleGrowthKey)}
+                        value={
+                          editingApeCell === sampleGrowthKey
+                            ? row.sampleGrowth
+                            : formatGrowthNotation(
+                                row.sampleGrowth,
+                                section.key === "DAY_0" ? 4 : 2,
+                              )
+                        }
+                        onFocus={() => setEditingApeCell(sampleGrowthKey)}
+                        onBlur={() => setEditingApeCell(null)}
                         onChange={(e) =>
                           updateApeReportCell(
                             sectionIndex,
@@ -1771,14 +2058,7 @@ export default function ApeReportView({
                           apeReportFieldKey(section.key, rowIndex, "decrease"),
                         )}
                         value={row.decrease}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "decrease",
-                            e.target.value,
-                          )
-                        }
+                        readOnly
                         disabled={!canEditForm}
                       />
                     </div>
@@ -1793,14 +2073,7 @@ export default function ApeReportView({
                           ),
                         )}
                         value={row.innoculumLevel}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "innoculumLevel",
-                            e.target.value,
-                          )
-                        }
+                        readOnly
                         disabled={!canEditForm}
                       />
                     </div>
@@ -1812,7 +2085,7 @@ export default function ApeReportView({
         </div>
 
         {/* Denotes */}
-        <div className="mt-1 text-[10px] leading-snug whitespace-nowrap">
+        <div className="mt-0 text-[10px] leading-snug whitespace-nowrap">
           <span className="font-bold">DENOTES:</span>
 
           <span className="font-semibold mx-2">
@@ -1828,8 +2101,8 @@ export default function ApeReportView({
         <div className=" grid grid-cols-2 gap-2 text-[11px]">
           {showSignatures && (
             <>
-              <div className="p-2 relative">
-                <div className="font-medium mb-2 flex items-center gap-2">
+              <div className="p-1 relative">
+                <div className="font-medium mb-1 flex items-center gap-2">
                   TESTED BY:
                   <input
                     className={signatureInputClass("testedBy")}
@@ -1844,7 +2117,7 @@ export default function ApeReportView({
                   />
                 </div>
 
-                <div className="font-medium mt-2 flex items-center gap-2 relative">
+                <div className="font-medium mt-1 flex items-center gap-2 relative">
                   DATE:
                   <input
                     className={signatureInputClass("testedDate")}
@@ -1861,8 +2134,8 @@ export default function ApeReportView({
                 </div>
               </div>
 
-              <div className="p-2 relative">
-                <div className="font-medium mb-2 flex items-center gap-2">
+              <div className="p-1 relative">
+                <div className="font-medium mb-1 flex items-center gap-2">
                   REVIEWED BY:
                   <input
                     className={signatureInputClass("reviewedBy")}
@@ -1877,7 +2150,7 @@ export default function ApeReportView({
                   />
                 </div>
 
-                <div className="font-medium mt-2 flex items-center gap-2 relative">
+                <div className="font-medium mt-1 flex items-center gap-2 relative">
                   DATE:
                   <input
                     className={signatureInputClass("reviewedDate")}
@@ -1899,7 +2172,7 @@ export default function ApeReportView({
 
         {/* Footer */}
         <div
-          className="mt-2 flex items-end justify-between print-footer"
+          className="mt-0 flex items-end justify-between print-footer"
           style={{ pageBreakInside: "avoid", breakInside: "avoid" }}
         >
           <div className="flex flex-col gap-2">

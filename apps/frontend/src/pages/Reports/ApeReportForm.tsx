@@ -989,6 +989,7 @@ export default function ApeReportForm({
           setIsDirty(false);
           onSaved?.({
             ...report,
+            ...fullPayload,
             ...saved,
             id: saved.id ?? reportId,
           });
@@ -1084,6 +1085,7 @@ export default function ApeReportForm({
         setIsDirty(false);
         onStatusChanged?.({
           ...report,
+          ...makeValues(),
           ...updated,
           id: reportId,
           status: updated.status ?? newStatus,

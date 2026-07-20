@@ -157,45 +157,113 @@ function formatStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
-const ORGANISMS = [
-  "Escherichia Coli",
-  "Staphylococcus Aureus",
-  "Pseudomonas Aeruginosa",
-  "B. Cepacia",
-  "Candida Albicans",
-  "Aspergillus Niger",
-];
+type ParentApeOrganism = {
+  key?: string;
+  label?: string;
+  checked?: boolean;
+};
 
-function makeRows(): ValidationRow[] {
-  return ORGANISMS.map((organism) => ({
+const APE_ORGANISM_OPTIONS = [
+  { key: "E_COLI", reportLabel: "Escherichia Coli" },
+  { key: "S_AUREUS", reportLabel: "Staphylococcus Aureus" },
+  { key: "P_AERUGINOSA", reportLabel: "Pseudomonas Aeruginosa" },
+  { key: "C_ALBICANS", reportLabel: "Candida Albicans" },
+  { key: "A_NIGER", reportLabel: "Aspergillus Niger" },
+  { key: "B_CEPACIA", reportLabel: "B. Cepacia" },
+] as const;
+
+const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
+  (item) => item.key !== "B_CEPACIA",
+).map((item) => item.reportLabel);
+
+function normalizeOrganismToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function getSelectedApeOrganismNames(value: unknown): string[] {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  if (!Array.isArray(source) || source.length === 0) {
+    return [...DEFAULT_APE_ORGANISMS];
+  }
+
+  const selectedTokens = new Set(
+    source
+      .filter((item: ParentApeOrganism | string) =>
+        typeof item === "string" ? true : item?.checked === true,
+      )
+      .flatMap((item: ParentApeOrganism | string) => {
+        if (typeof item === "string") {
+          return [normalizeOrganismToken(item)];
+        }
+
+        return [
+          normalizeOrganismToken(item?.key),
+          normalizeOrganismToken(item?.label),
+        ];
+      })
+      .filter(Boolean),
+  );
+
+  const selected = APE_ORGANISM_OPTIONS.filter(
+    (option) =>
+      selectedTokens.has(normalizeOrganismToken(option.key)) ||
+      selectedTokens.has(normalizeOrganismToken(option.reportLabel)),
+  ).map((option) => option.reportLabel);
+
+  return selected.length ? selected : [...DEFAULT_APE_ORGANISMS];
+}
+
+function makeRows(organismNames: string[]): ValidationRow[] {
+  return organismNames.map((organism) => ({
     organism,
     control: "",
     avgCfuForTestSample: "",
   }));
 }
 
-const DEFAULT_SECTIONS: ValidationSection[] = [
-  {
-    key: "NEUTRALIZER_WITH_PRODUCT",
-    title: "VALIDATION DATA FOR NEUTRALIZER WITH PRODUCT",
-    rows: makeRows(),
-  },
-  {
-    key: "DILUENT_WITH_PRODUCT",
-    title: "VALIDATION DATA FOR DILUENT WITH PRODUCT",
-    rows: makeRows(),
-  },
-  {
-    key: "MEDIA_WITHOUT_PRODUCT",
-    title: "VALIDATION DATA FOR MEDIA WITHOUT PRODUCT",
-    rows: makeRows(),
-  },
-];
+function makeDefaultSections(
+  organismNames: string[],
+): ValidationSection[] {
+  return [
+    {
+      key: "NEUTRALIZER_WITH_PRODUCT",
+      title: "VALIDATION DATA FOR NEUTRALIZER WITH PRODUCT",
+      rows: makeRows(organismNames),
+    },
+    {
+      key: "DILUENT_WITH_PRODUCT",
+      title: "VALIDATION DATA FOR DILUENT WITH PRODUCT",
+      rows: makeRows(organismNames),
+    },
+    {
+      key: "MEDIA_WITHOUT_PRODUCT",
+      title: "VALIDATION DATA FOR MEDIA WITHOUT PRODUCT",
+      rows: makeRows(organismNames),
+    },
+  ];
+}
 
-function normalizeSections(value: any): ValidationSection[] {
-  if (!Array.isArray(value)) return DEFAULT_SECTIONS;
+function normalizeSections(
+  value: any,
+  organismNames: string[] = DEFAULT_APE_ORGANISMS,
+): ValidationSection[] {
+  const defaultSections = makeDefaultSections(organismNames);
 
-  return DEFAULT_SECTIONS.map((defaultSection) => {
+  if (!Array.isArray(value)) return defaultSections;
+
+  return defaultSections.map((defaultSection) => {
     const existingSection = value.find(
       (section: any) => section?.key === defaultSection.key,
     );
@@ -372,6 +440,15 @@ export default function ApeValidationReportView({
 
   const detail = report?.apeValidationReport ?? report ?? {};
 
+  const selectedApeOrganisms = useMemo(
+    () =>
+      getSelectedApeOrganismNames(
+        (report as any)?.organisms ?? detail?.organisms,
+      ),
+    [(report as any)?.organisms, detail?.organisms],
+  );
+  const selectedApeOrganismsKey = selectedApeOrganisms.join("|");
+
   const [isDirty, setIsDirty] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const busyRef = useRef(false);
@@ -456,7 +533,12 @@ export default function ApeValidationReportView({
 
   const [validationSections, setValidationSections] = useState<
     ValidationSection[]
-  >(normalizeSections(detail?.validationSections));
+  >(
+    normalizeSections(
+      detail?.validationSections,
+      selectedApeOrganisms,
+    ),
+  );
 
   const [, setComments] = useState(detail?.comments || "");
   const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
@@ -877,7 +959,12 @@ export default function ApeValidationReportView({
     setDateTested(formatDateForInput(nextDetail?.dateTested));
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
-    setValidationSections(normalizeSections(nextDetail?.validationSections));
+    setValidationSections(
+      normalizeSections(
+        nextDetail?.validationSections,
+        selectedApeOrganisms,
+      ),
+    );
 
     setComments(nextDetail?.comments || "");
     setTestedBy(nextDetail?.testedBy || "");
@@ -886,7 +973,14 @@ export default function ApeValidationReportView({
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
 
     setIsDirty(false);
-  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+  }, [
+    report?.id,
+    report?.status,
+    report?.reportNumber,
+    report?.version,
+    (report as any)?.parentVersion,
+    selectedApeOrganismsKey,
+  ]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -1327,13 +1421,33 @@ export default function ApeValidationReportView({
             </div>
           </div>
 
-          <div className="mt-1 grid grid-cols-3 items-center">
-            <div />
-            <div className="text-[18px] font-bold text-center underline">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="min-w-0 text-left text-[11px] font-bold">
+              {(report as any)?.parentFormNumber ||
+              (report as any)?.formNumber ? (
+                <span className="whitespace-nowrap">
+                  FORM NO:{" "}
+                  {String(
+                    (report as any)?.parentFormNumber ||
+                      (report as any)?.formNumber,
+                  )}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="text-center text-[18px] font-bold underline">
               APE VALIDATION REPORT
             </div>
-            <div className="text-right text-[12px] font-bold font-medium">
-              {reportNumber ? <> {reportNumber}</> : null}
+
+            <div className="min-w-0 text-right text-[11px] font-bold">
+              {(report as any)?.parentReportNumber || reportNumber ? (
+                <span className="whitespace-nowrap">
+                  REPORT NO:{" "}
+                  {String(
+                    (report as any)?.parentReportNumber || reportNumber,
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1713,7 +1827,7 @@ export default function ApeValidationReportView({
         </div>
 
         {/* Signatures */}
-        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+        <div className="mt- grid grid-cols-2 gap-2 text-[11px]">
           {showSignatures && (
             <>
               <div className="p-2 relative">

@@ -51,6 +51,8 @@ import { Eye, EyeOff, Pin } from "lucide-react";
 import ApeReportFormView from "../Reports/ApeReportFormView";
 import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReport from "../LabReports/ApeReport";
+import ApeValidationReportView from "../LabReports/ApeValidationReportView";
+import ApeReportView from "../LabReports/ApeReportView";
 
 // ---------------------------------
 // Types
@@ -490,27 +492,13 @@ function ApeChildPrintArea({
   <div id="bulk-print-root" className="hidden print:block ape-child-print-root">
       <div className="report-page">
         {reportType === "APE_VALIDATION_REPORT" ? (
-          <ApeValidationReport
+          <ApeValidationReportView
             report={report}
             embedded={true}
-            pageMode="VIEW"
-            forcePageReadOnly={true}
-            hideTopActions={true}
-            hideBottomActions={true}
             onClose={() => {}}
-            onSaved={() => {}}
           />
         ) : (
-          <ApeReport
-            report={report}
-            embedded={true}
-            pageMode="VIEW"
-            forcePageReadOnly={true}
-            hideTopActions={true}
-            hideBottomActions={true}
-            onClose={() => {}}
-            onSaved={() => {}}
-          />
+          <ApeReportView report={report} embedded={true} onClose={() => {}} />
         )}
       </div>
     </div>
@@ -2581,6 +2569,10 @@ function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
       reportType,
       parentReportId: parent.id,
 
+      // Preserve the real parent APE identifiers after spreading child data.
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
+
       // ✅ parent workflow source
       parentStatus: parent.status,
       workflowStatus: parent.status,
@@ -2600,6 +2592,10 @@ function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
     id: null,
     parentReportId: parent.id,
     reportType,
+
+    // Preserve the real parent APE identifiers.
+    parentFormNumber: parent.formNumber,
+    parentReportNumber: parent.reportNumber,
 
     // ✅ parent workflow source
     parentStatus: parent.status,
@@ -2651,6 +2647,10 @@ function handleApeChildSaved(
       id: updated?.id ?? base.id,
       reportType,
       parentReportId: parent.id,
+
+      // Preserve the real parent APE identifiers after spreading updated child data.
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
 
       // ✅ parent workflow status remains source of truth
       parentStatus: parent.status,
@@ -2829,9 +2829,6 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
       });
     });
 
-    addApeMissing(missing, "APE Validation Report - Tested By", child?.testedBy);
-    addApeMissing(missing, "APE Validation Report - Tested Date", child?.testedDate);
-
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(missing, "APE Validation Report - Reviewed By", child?.reviewedBy);
       addApeMissing(missing, "APE Validation Report - Reviewed Date", child?.reviewedDate);
@@ -2906,9 +2903,6 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
       });
     });
 
-    addApeMissing(missing, "APE Report - Tested By", child?.testedBy);
-    addApeMissing(missing, "APE Report - Tested Date", child?.testedDate);
-
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
       addApeMissing(missing, "APE Report - Reviewed Date", child?.reviewedDate);
@@ -2964,6 +2958,8 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
             ...latestValidation,
             reportType: "APE_VALIDATION_REPORT",
             parentReportId: parent.id,
+            parentFormNumber: parent.formNumber,
+            parentReportNumber: parent.reportNumber,
             parentStatus: parent.status,
             workflowStatus: parent.status,
             parentVersion: parent.version ?? 0,
@@ -2984,6 +2980,8 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
             ...latestApeReport,
             reportType: "APE_REPORT",
             parentReportId: parent.id,
+            parentFormNumber: parent.formNumber,
+            parentReportNumber: parent.reportNumber,
             parentStatus: parent.status,
             workflowStatus: parent.status,
             parentVersion: parent.version ?? 0,
@@ -3090,45 +3088,74 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
           </div>
         </div>
 
-        {activeTab === "APE_VALIDATION_REPORT" && (
-          <ApeValidationReport
-            key={validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:new`}
-            report={validationChild}
-            embedded={true}
-            pageMode={readOnly ? "VIEW" : "UPDATE"}
-            forcePageReadOnly={readOnly}
-            hideTopActions={false}
-            hideBottomActions={false}
-            onClose={() => {}}
-            onSaved={(updated) =>
-              handleApeChildSaved(parent, "APE_VALIDATION_REPORT", updated)
-            }
-            onStatusChanged={(updated) =>
-              handleApeParentStatusChanged(parent, updated)
-            }
-            beforeParentStatusChange={beforeParentStatusChange}
-          />
-        )}
+        {activeTab === "APE_VALIDATION_REPORT" &&
+          (readOnly ? (
+            <ApeValidationReportView
+              key={
+                validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:view`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeValidationReport
+              key={
+                validationChild.id ??
+                `${parent.id}:APE_VALIDATION_REPORT:update`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(parent, "APE_VALIDATION_REPORT", updated)
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={beforeParentStatusChange}
+            />
+          ))}
 
-        {activeTab === "APE_REPORT" && (
-          <ApeReport
-            key={apeChild.id ?? `${parent.id}:APE_REPORT:new`}
-            report={apeChild}
-            embedded={true}
-            pageMode={readOnly ? "VIEW" : "UPDATE"}
-            forcePageReadOnly={readOnly}
-            hideTopActions={false}
-            hideBottomActions={false}
-            onClose={() => {}}
-            onSaved={(updated) =>
-              handleApeChildSaved(parent, "APE_REPORT", updated)
-            }
-            onStatusChanged={(updated) =>
-              handleApeParentStatusChanged(parent, updated)
-            }
-            beforeParentStatusChange={beforeParentStatusChange}
-          />
-        )}
+        {activeTab === "APE_REPORT" &&
+          (readOnly ? (
+            <ApeReportView
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:view`}
+              report={apeChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeReport
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:update`}
+              report={apeChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(parent, "APE_REPORT", updated)
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={beforeParentStatusChange}
+            />
+          ))}
       </div>
     );
   }
@@ -3202,6 +3229,8 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
               ...validationReport,
               reportType: "APE_VALIDATION_REPORT",
               parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
               clientCode:
                 validationReport.clientCode ||
                 parent.clientCode ||
@@ -3216,6 +3245,8 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
               ...apeReport,
               reportType: "APE_REPORT",
               parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
               clientCode:
                 apeReport.clientCode ||
                 parent.clientCode ||

@@ -17,14 +17,6 @@ type PutInput = { filePath: string; filename: string; subdir?: string };
 
 @Injectable()
 export class StorageService {
-  // constructor() {
-  //   console.log('=== S3 CONFIG (StorageService) ===');
-  //   console.log('STORAGE_DRIVER:', process.env.STORAGE_DRIVER);
-  //   console.log('AWS_REGION:', process.env.AWS_REGION);
-  //   console.log('S3_BUCKET:', process.env.S3_BUCKET);
-  //   console.log('S3_PREFIX:', process.env.S3_PREFIX);
-  //   console.log('===============================');
-  // }
   private readonly driver = (
     process.env.STORAGE_DRIVER ?? 'local'
   ).toLowerCase();
@@ -176,37 +168,37 @@ export class StorageService {
   }
 
   async delete(storageKey: string): Promise<void> {
-  if (!storageKey) return;
+    if (!storageKey) return;
 
-  if (this.driver !== 's3') {
-    const fullPath = path.isAbsolute(storageKey)
-      ? storageKey
-      : path.join(this.ROOT, storageKey);
+    if (this.driver !== 's3') {
+      const fullPath = path.isAbsolute(storageKey)
+        ? storageKey
+        : path.join(this.ROOT, storageKey);
 
-    await fs.unlink(fullPath).catch(() => {});
-    return;
-  }
+      await fs.unlink(fullPath).catch(() => {});
+      return;
+    }
 
-  let deleted = false;
-  let lastErr: any;
+    let deleted = false;
+    let lastErr: any;
 
-  for (const key of this.candidates(storageKey)) {
-    try {
-      await this.s3.send(
-        new DeleteObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-        }),
-      );
-      deleted = true;
-      break;
-    } catch (e: any) {
-      lastErr = e;
+    for (const key of this.candidates(storageKey)) {
+      try {
+        await this.s3.send(
+          new DeleteObjectCommand({
+            Bucket: this.bucket,
+            Key: key,
+          }),
+        );
+        deleted = true;
+        break;
+      } catch (e: any) {
+        lastErr = e;
+      }
+    }
+
+    if (!deleted && lastErr) {
+      throw lastErr;
     }
   }
-
-  if (!deleted && lastErr) {
-    throw lastErr;
-  }
-}
 }

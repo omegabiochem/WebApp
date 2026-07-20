@@ -2173,6 +2173,8 @@ export default function MicroDashboard() {
               ...validationReport,
               reportType: "APE_VALIDATION_REPORT",
               parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
               clientCode:
                 validationReport.clientCode ||
                 parent.clientCode ||
@@ -2187,6 +2189,8 @@ export default function MicroDashboard() {
               ...apeReport,
               reportType: "APE_REPORT",
               parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
               clientCode:
                 apeReport.clientCode ||
                 parent.clientCode ||
@@ -2340,6 +2344,10 @@ export default function MicroDashboard() {
         reportType,
         parentReportId: parent.id,
 
+        // Preserve the real parent APE identifiers.
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
+
         // ✅ parent workflow source
         parentStatus: parent.status,
         workflowStatus: parent.status,
@@ -2359,6 +2367,10 @@ export default function MicroDashboard() {
       id: null,
       parentReportId: parent.id,
       reportType,
+
+      // Preserve the real parent APE identifiers.
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
 
       // ✅ parent workflow source
       parentStatus: parent.status,
@@ -2409,6 +2421,10 @@ export default function MicroDashboard() {
         id: updated?.id ?? base.id,
         reportType,
         parentReportId: parent.id,
+
+        // Preserve the real parent APE identifiers after spreading updated child data.
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
 
         // ✅ parent workflow status remains source of truth
         parentStatus: parent.status,
@@ -2620,17 +2636,6 @@ export default function MicroDashboard() {
       });
     });
 
-    addApeMissing(
-      missing,
-      "APE Validation Report - Tested By",
-      child?.testedBy,
-    );
-    addApeMissing(
-      missing,
-      "APE Validation Report - Tested Date",
-      child?.testedDate,
-    );
-
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(
         missing,
@@ -2712,9 +2717,6 @@ export default function MicroDashboard() {
         );
       });
     });
-
-    addApeMissing(missing, "APE Report - Tested By", child?.testedBy);
-    addApeMissing(missing, "APE Report - Tested Date", child?.testedDate);
 
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
