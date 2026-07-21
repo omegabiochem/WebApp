@@ -45,6 +45,9 @@ import COAReportForm from "./pages/Reports/COAReportForm";
 import CommonSelect from "./pages/Auth/CommonSelect";
 import ManageReports from "./pages/Admin/ManageReports";
 import ApeReportForm from "./pages/Reports/ApeReportForm";
+import ApeValidationReport from "./pages/LabReports/ApeValidationReport";
+import ApeReport from "./pages/LabReports/ApeReport";
+import ApeLoginBook from "./loginbooks/ApeLoginBook";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -258,6 +261,28 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
               <ApeReportForm />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "reports/ape-validation/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["MICRO", "MC", "ADMIN", "SYSTEMADMIN"]}>
+              <ApeValidationReport />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+         {
+        path: "reports/ape-report/new",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["MICRO", "MC", "ADMIN", "SYSTEMADMIN"]}>
+              <ApeReport />
             </RequireRole>
           </RequireAuth>
         ),
@@ -537,7 +562,16 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-
+ {
+        path: "apeLoginBook",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["MICRO", "MC", "SYSTEMADMIN", "ADMIN", "QA"]}>
+              <ApeLoginBook />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
       {
         path: "support",
         element: (

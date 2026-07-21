@@ -446,13 +446,13 @@ export class TemplatesService {
     }
 
     // -------------------------
-    // ✅ MICRO/WATER/STERILITY: create Report
+    // ✅ MICRO/WATER/STERILITY/APE: create Report
     // -------------------------
     const data: any = {
       clientCode,
       formType: template.formType,
       formNumber,
-      prefix: 'OM',
+      prefix: template.formType === 'APE' ? 'APE' : 'OM',
       status: 'DRAFT',
       createdBy: user.userId,
       updatedBy: user.userId,
@@ -464,6 +464,16 @@ export class TemplatesService {
       data.microMixWater = { create: clean };
     } else if (template.formType === 'STERILITY') {
       data.sterility = { create: clean };
+    } else if (template.formType === 'APE') {
+      data.ape = {
+        create: {
+          ...clean,
+          footerRevNo: clean.footerRevNo ?? 'Rev-00',
+          footerDateEffective:
+            clean.footerDateEffective ??
+            new Date('2026-07-10T12:00:00.000Z'),
+        },
+      };
     } else {
       throw new BadRequestException(
         `Unsupported formType: ${template.formType}`,
@@ -505,7 +515,9 @@ export class TemplatesService {
         ? `/reports/micro-mix/${created.id}`
         : created.formType === 'MICRO_MIX_WATER'
           ? `/reports/micro-mix-water/${created.id}`
-          : `/reports/sterility/${created.id}`;
+          : created.formType === 'STERILITY'
+            ? `/reports/sterility/${created.id}`
+            : `/reports/ape/${created.id}`;
 
     return { route };
   }
@@ -528,7 +540,7 @@ export class TemplatesService {
     delete obj.corrections;
     delete obj.dateSent;
 
-      obj.dateSent = new Date();
+    obj.dateSent = new Date();
 
     // -------- date coercion (MICRO/WATER/STERILITY/ CHEM)
     const dateKeys = [
@@ -541,6 +553,7 @@ export class TemplatesService {
       'testedDate',
       'reviewedDate',
       'dateReceived', // chemistry
+      'footerDateEffective',
     ];
 
     for (const k of dateKeys) {
@@ -580,13 +593,16 @@ export class TemplatesService {
       obj[k] = isNaN(d.getTime()) ? null : d;
     }
 
-    // pathogens: accept array/object OR JSON string
-    if ('pathogens' in obj && obj.pathogens != null) {
-      if (typeof obj.pathogens === 'string') {
+    // JSON fields: accept array/object OR JSON string.
+    for (const jsonKey of ['pathogens', 'organisms']) {
+      if (!(jsonKey in obj) || obj[jsonKey] == null) continue;
+
+      if (typeof obj[jsonKey] === 'string') {
         try {
-          obj.pathogens = JSON.parse(obj.pathogens);
+          obj[jsonKey] = JSON.parse(obj[jsonKey]);
         } catch {
-          // leave as-is; Prisma Json can accept string but your UI expects array/object
+          // Leave as-is. Prisma Json accepts strings, though the UI normally
+          // expects an array/object.
         }
       }
     }

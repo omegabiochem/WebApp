@@ -3,6 +3,7 @@ export type Role =
   | "SYSTEMADMIN"
   | "ADMIN"
   | "FRONTDESK"
+  | "CHEMISTRY"
   | "MICRO"
   | "MC"
   | "QA"
@@ -83,7 +84,7 @@ export const APE_STATUS_TRANSITIONS: Record<
   },
   UNDER_CLIENT_REVIEW: {
     canSet: ["CLIENT", "SYSTEMADMIN"],
-    next: ["CLIENT_NEEDS_CORRECTION", "APPROVED"],
+    next: ["CHANGE_REQUESTED", "CORRECTION_REQUESTED", "APPROVED"],
     nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
     canEdit: [],
   },
@@ -126,7 +127,12 @@ export const APE_STATUS_TRANSITIONS: Record<
   },
   UNDER_TESTING_REVIEW: {
     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
-    next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
+    next: [
+      "TESTING_ON_HOLD",
+      "CHANGE_REQUESTED",
+      "CORRECTION_REQUESTED",
+      "UNDER_QA_REVIEW",
+    ],
     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
     canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
   },
@@ -156,7 +162,7 @@ export const APE_STATUS_TRANSITIONS: Record<
   },
   UNDER_QA_REVIEW: {
     canSet: ["QA", "SYSTEMADMIN"],
-    next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
+    next: ["CHANGE_REQUESTED", "CORRECTION_REQUESTED", "UNDER_ADMIN_REVIEW"],
     nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: ["QA", "SYSTEMADMIN"],
   },
@@ -169,7 +175,12 @@ export const APE_STATUS_TRANSITIONS: Record<
 
   UNDER_ADMIN_REVIEW: {
     canSet: ["ADMIN", "SYSTEMADMIN"],
-    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
+    next: [
+      "CHANGE_REQUESTED",
+      "CORRECTION_REQUESTED",
+      "ADMIN_REJECTED",
+      "UNDER_CLIENT_REVIEW",
+    ],
     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
     canEdit: ["ADMIN", "SYSTEMADMIN"],
   },
@@ -364,6 +375,7 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
   SYSTEMADMIN: ["*"],
   ADMIN: ["*"],
   FRONTDESK: [],
+  CHEMISTRY: [],
   MICRO: [
     "testSopNo",
     "dateTested",
@@ -406,6 +418,68 @@ export const FIELD_EDIT_MAP: Record<Role, string[]> = {
     "formulaContent",
   ],
 };
+
+/**
+ * Field permissions for APE child lab reports:
+ * - APE Validation Report
+ * - APE Report
+ *
+ * Client/submission header fields are intentionally excluded for MICRO/MC.
+ * ADMIN and SYSTEMADMIN retain full access.
+ */
+export const APE_CHILD_FIELD_EDIT_MAP: Record<Role, readonly string[]> = {
+  SYSTEMADMIN: ["*"],
+  ADMIN: ["*"],
+  FRONTDESK: [],
+  CHEMISTRY: [],
+  MICRO: [
+    "testSopNo",
+    "testReference",
+    "dateTested",
+    "dateCompleted",
+    "validationSections",
+    "apeReportSections",
+    // "testedBy",
+    // "testedDate",
+  ],
+  MC: [
+    "testSopNo",
+    "testReference",
+    "dateTested",
+    "dateCompleted",
+    "validationSections",
+    "apeReportSections",
+    // "testedBy",
+    // "testedDate",
+  ],
+  QA: [],
+  CLIENT: [],
+};
+
+export function canRoleEditApeChildField(
+  role: Role | undefined,
+  field: string,
+): boolean {
+  if (!role) return false;
+
+  const fields = APE_CHILD_FIELD_EDIT_MAP[role] ?? [];
+  return fields.includes("*") || fields.includes(field);
+}
+
+export function pickApeChildEditablePayload<T extends Record<string, any>>(
+  role: Role | undefined,
+  payload: T,
+): Partial<T> {
+  if (!role) return {};
+
+  const fields = APE_CHILD_FIELD_EDIT_MAP[role] ?? [];
+  if (fields.includes("*")) return payload;
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => fields.includes(key)),
+  ) as Partial<T>;
+}
+
 // ---------- Helpers ----------
 export function canRoleEditInStatus(
   role?: Role,

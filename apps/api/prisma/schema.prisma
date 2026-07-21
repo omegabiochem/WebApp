@@ -10,35 +10,39 @@ datasource db {
 }
 
 model Report {
-  id            String                @id @default(cuid())
-  formNumber    String                @unique
-  reportNumber  String?               @unique
-  prefix        String                @default("OM")
-  status        ReportStatus          @default(DRAFT)
-  lockedAt      DateTime?
-  createdBy     String?
-  updatedBy     String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  formType      FormType
-  clientCode    String?
-  version       Int                   @default(1)
+  id           String       @id @default(cuid())
+  formNumber   String       @unique
+  reportNumber String?      @unique
+  prefix       String       @default("OM")
+  status       ReportStatus @default(DRAFT)
+  lockedAt     DateTime?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  formType     FormType
+  clientCode   String?
+  version      Int          @default(1)
 
   ReportnumberAssignedAt DateTime?
   ReportnumberAssignedBy String?
 
-  workflowReturnStatus   ReportStatus?
-  workflowRequestKind    String?
+  workflowReturnStatus    ReportStatus?
+  workflowRequestKind     String?
   workflowRequestedByRole UserRole?
-  workflowRequestedAt    DateTime?
+  workflowRequestedAt     DateTime?
 
-  attachments   Attachment[]
-  microMix      MicroMixDetails?
-  microMixWater MicroMixWaterDetails?
-  sterility     sterilityDetails?
-  ape           ApeDetails?
-  statusHistory StatusHistory[]
+  reportType     ReportType?
+  parentReportId String?
 
+  attachments         Attachment[]
+  microMix            MicroMixDetails?
+  microMixWater       MicroMixWaterDetails?
+  sterility           sterilityDetails?
+  ape                 ApeDetails?
+  apeValidationReport ApeValidationReportDetails?
+  apeReport           ApeReportDetails?
+  statusHistory       StatusHistory[]
 
   @@index([createdAt])
   @@index([updatedAt])
@@ -48,6 +52,9 @@ model Report {
   @@index([clientCode, createdAt])
   @@index([clientCode, status])
   @@index([clientCode, formType])
+  @@index([reportType])
+  @@index([parentReportId])
+  @@index([clientCode, reportType])
 }
 
 model MicroMixDetails {
@@ -87,9 +94,9 @@ model MicroMixDetails {
   updatedAt              DateTime     @updatedAt
   corrections            Json?
 
-  footerRevNo          String?
-  footerDateEffective  DateTime?
-  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  footerRevNo         String?
+  footerDateEffective DateTime?
+  report              Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
 model MicroMixWaterDetails {
@@ -129,88 +136,85 @@ model MicroMixWaterDetails {
   idNo                   String?
   samplingDate           DateTime?
 
-  footerRevNo          String?
-  footerDateEffective  DateTime?
-  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  footerRevNo         String?
+  footerDateEffective DateTime?
+  report              Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
-
 
 model sterilityDetails {
-  reportId               String       @id
-  client                 String?
-  dateSent               DateTime?
-  typeOfTest             String?
-  sampleType             String?
-  formulaNo              String?
-  description            String?
-  lotNo                  String?
-  volumeTested           String?
-  manufactureDate        DateTime?
-  testSopNo              String?
-  dateTested             DateTime?
-  dateCompleted          DateTime?
-  ftm_turbidity          String?
-  scdb_turbidity         String?
-  ftm_observation        String?
-  scdb_observation       String?
-  ftm_result             String?
-  scdb_result            String?
-  comments               String?
-  testedBy               String?
-  testedDate             DateTime?
-  reviewedBy             String?
-  reviewedDate           DateTime?
-  status                 ReportStatus @default(DRAFT)
-  lockedAt               DateTime?
-  createdBy              String?
-  updatedBy              String?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
-  corrections            Json?
+  reportId         String       @id
+  client           String?
+  dateSent         DateTime?
+  typeOfTest       String?
+  sampleType       String?
+  formulaNo        String?
+  description      String?
+  lotNo            String?
+  volumeTested     String?
+  manufactureDate  DateTime?
+  testSopNo        String?
+  dateTested       DateTime?
+  dateCompleted    DateTime?
+  ftm_turbidity    String?
+  scdb_turbidity   String?
+  ftm_observation  String?
+  scdb_observation String?
+  ftm_result       String?
+  scdb_result      String?
+  comments         String?
+  testedBy         String?
+  testedDate       DateTime?
+  reviewedBy       String?
+  reviewedDate     DateTime?
+  status           ReportStatus @default(DRAFT)
+  lockedAt         DateTime?
+  createdBy        String?
+  updatedBy        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  corrections      Json?
 
-  footerRevNo          String?
-  footerDateEffective  DateTime?
-  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  footerRevNo         String?
+  footerDateEffective DateTime?
+  report              Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
-
 model ApeDetails {
-  reportId               String       @id
+  reportId String @id
 
-  client                 String?
-  dateSent               DateTime?
-  typeOfTest             String?
-  sampleType             String?
-  formulaNo              String?
-  description            String?
-  lotNo                  String?
-  manufactureDate        DateTime?
+  client          String?
+  dateSent        DateTime?
+  typeOfTest      String?
+  sampleType      String?
+  formulaNo       String?
+  description     String?
+  lotNo           String?
+  manufactureDate DateTime?
 
-  testSopNo              String?
-  dateTested             DateTime?
-  dateCompleted          DateTime?
+  testSopNo     String?
+  dateTested    DateTime?
+  dateCompleted DateTime?
 
- 
-  organisms              Json?
+  organisms Json?
 
-  comments               String?
-  testedBy               String?
-  testedDate             DateTime?
-  reviewedBy             String?
-  reviewedDate           DateTime?
+  comments     String?
+  testedBy     String?
+  testedDate   DateTime?
+  reviewedBy   String?
+  reviewedDate DateTime?
 
-  status                 ReportStatus @default(DRAFT)
-  lockedAt               DateTime?
-  createdBy              String?
-  updatedBy              String?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
-  corrections            Json?
+  status      ReportStatus @default(DRAFT)
+  lockedAt    DateTime?
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  corrections Json?
 
-  footerRevNo            String?
-  footerDateEffective    DateTime?
+  footerRevNo         String?
+  footerDateEffective DateTime?
 
-  report                 Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
 
 model Sample {
@@ -237,7 +241,7 @@ model User {
   passwordHash       String
   mustChangePassword Boolean  @default(false)
 
-  isCommonAccount    Boolean  @default(false)
+  isCommonAccount Boolean @default(false)
 
   // ✅ add these
   failedLoginCount  Int       @default(0)
@@ -270,53 +274,53 @@ model User {
   auditTrails               AuditTrail[]
   readings                  BalanceReading[]
 
-  notifications             Notification[]
+  notifications Notification[]
 
   // Support Tickets (relations)
   supportTicketsCreated  SupportTicket[] @relation("SupportTicketCreatedBy")
   supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignedTo")
 
-
-  refreshTokenHash   String?   // bcrypt hash of refresh token
-  refreshTokenExpAt  DateTime? // expiry timestamp
+  refreshTokenHash      String? // bcrypt hash of refresh token
+  refreshTokenExpAt     DateTime? // expiry timestamp
   refreshTokenRotatedAt DateTime? // optional: last rotation time (audit/debug)
 
-  resultsLastSeenAt  DateTime?  @db.Timestamp(6)
+  resultsLastSeenAt DateTime? @db.Timestamp(6)
 
   commonAccountMemberships CommonAccountMember[]
 
   @@index([clientCode, role])
 }
+
 model CommonAccount {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  label             String
-  passwordHash      String
-  active            Boolean  @default(true)
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  label        String
+  passwordHash String
+  active       Boolean @default(true)
 
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
   lastFailedLoginAt DateTime?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  members           CommonAccountMember[]
-  challenges        CommonAuthChallenge[]
+  members    CommonAccountMember[]
+  challenges CommonAuthChallenge[]
 }
 
 model CommonAccountMember {
-  id              String        @id @default(cuid())
+  id              String     @id @default(cuid())
   commonAccountId String
   userId          String
-  active          Boolean       @default(true)
-  allowedRoles    UserRole[]    @default([])
+  active          Boolean    @default(true)
+  allowedRoles    UserRole[] @default([])
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  commonAccount   CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commonAccount CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([commonAccountId, userId])
   @@index([commonAccountId, active])
@@ -324,35 +328,32 @@ model CommonAccountMember {
 }
 
 model CommonAuthChallenge {
-  id                 String    @id @default(cuid())
-  challengeToken     String    @unique
-  commonAccountId    String
+  id              String @id @default(cuid())
+  challengeToken  String @unique
+  commonAccountId String
 
-  stage              String
-  selectedUserId     String?
-  selectedRole       UserRole?
+  stage          String
+  selectedUserId String?
+  selectedRole   UserRole?
 
   twoFactorCodeHash  String?
   twoFactorExpiresAt DateTime?
   twoFactorAttempts  Int       @default(0)
 
-  expiresAt          DateTime
-  usedAt             DateTime?
+  expiresAt DateTime
+  usedAt    DateTime?
 
-  ipAddress          String?
-  userAgent          String?
+  ipAddress String?
+  userAgent String?
 
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  commonAccount      CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
+  commonAccount CommonAccount @relation(fields: [commonAccountId], references: [id], onDelete: Cascade)
 
   @@index([commonAccountId, expiresAt])
   @@index([selectedUserId])
 }
-
-
-
 
 model ClientSequence {
   clientCode String @id
@@ -394,21 +395,17 @@ model AuditTrail {
   formType     FormType?
 
   @@index([clientCode, createdAt])
-  
-
   @@index([entity, entityId, createdAt])
   @@index([userId, createdAt])
-
   @@index([formNumber])
   @@index([reportNumber])
   @@index([formType])
   @@index([entity, formNumber])
   @@index([entity, reportNumber])
-
 }
 
 model Attachment {
-  id            String         @id @default(cuid())
+  id            String               @id @default(cuid())
   reportId      String
   kind          AttachmentKind
   filename      String
@@ -417,12 +414,12 @@ model Attachment {
   pages         Int?
   source        String
   meta          Json?
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime             @default(now())
   createdBy     String?
   visibility    AttachmentVisibility @default(LAB_ONLY)
   storageBucket String?
-  storageDriver String         @default("local")
-  report        Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  storageDriver String               @default("local")
+  report        Report               @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, checksum])
   @@index([reportId])
@@ -454,34 +451,32 @@ model MachineClient {
 }
 
 model ChemistryReport {
-  id            String                         @id @default(cuid())
-  formNumber    String                         @unique
-  reportNumber  String?                        @unique
-  prefix        String                         @default("BC")
-  lockedAt      DateTime?
-  createdBy     String?
-  updatedBy     String?
-  createdAt     DateTime                       @default(now())
-  updatedAt     DateTime                       @updatedAt
-  formType      FormType                       @default(CHEMISTRY_MIX)
-  status        ChemistryReportStatus          @default(DRAFT)
-  clientCode    String?
-  version       Int                            @default(1)
+  id           String                @id @default(cuid())
+  formNumber   String                @unique
+  reportNumber String?               @unique
+  prefix       String                @default("BC")
+  lockedAt     DateTime?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  formType     FormType              @default(CHEMISTRY_MIX)
+  status       ChemistryReportStatus @default(DRAFT)
+  clientCode   String?
+  version      Int                   @default(1)
 
   ReportnumberAssignedAt DateTime?
   ReportnumberAssignedBy String?
 
-  workflowReturnStatus   ChemistryReportStatus?
-  workflowRequestKind    String?
+  workflowReturnStatus    ChemistryReportStatus?
+  workflowRequestKind     String?
   workflowRequestedByRole UserRole?
-  workflowRequestedAt    DateTime?
+  workflowRequestedAt     DateTime?
 
-  
   attachments   ChemistryAttachment[]
   chemistryMix  ChemistryMixDetails?
-  coa          COADetails?
+  coa           COADetails?
   statusHistory ChemistryReportStatusHistory[]
-
 
   @@index([createdAt])
   @@index([updatedAt])
@@ -522,53 +517,53 @@ model ChemistryMixDetails {
   dateReceived      DateTime?
   stabilityNote     String?
 
-  footerRevNo          String?
-  footerDateEffective  DateTime?
-  chemistryReport   ChemistryReport       @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+  footerRevNo         String?
+  footerDateEffective DateTime?
+  chemistryReport     ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 }
 
 model COADetails {
-  chemistryId        String       @id
+  chemistryId String @id
 
   // header
-  client             String?
-  dateSent           DateTime?
-  sampleDescription  String?
-  coaVerification    Boolean      @default(false)
+  client            String?
+  dateSent          DateTime?
+  sampleDescription String?
+  coaVerification   Boolean   @default(false)
 
-  lotBatchNo         String?
-  manufactureDate    DateTime?
-  formulaId          String?
-  sampleSize         String?
-  dateReceived       DateTime?
+  lotBatchNo      String?
+  manufactureDate DateTime?
+  formulaId       String?
+  sampleSize      String?
+  dateReceived    DateTime?
 
-  sampleTypes        SampleType[]  // uses your existing enum
+  sampleTypes SampleType[] // uses your existing enum
 
   // ✅ COA SPEC TABLE (store rows)
   // each row: { key, item, standard, result }
-  coaRows            Json?
+  coaRows Json?
 
   // comments/signatures
-  comments           String?
-  testedBy           String?
-  testedDate         DateTime?
-  reviewedBy         String?
-  reviewedDate       DateTime?
+  comments     String?
+  testedBy     String?
+  testedDate   DateTime?
+  reviewedBy   String?
+  reviewedDate DateTime?
 
   // workflow (keep consistent with your other detail models)
-  status             ChemistryReportStatus  @default(DRAFT)
-  lockedAt           DateTime?
-  createdBy          String?
-  updatedBy          String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  status    ChemistryReportStatus @default(DRAFT)
+  lockedAt  DateTime?
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
-  corrections        Json?         // optional if you store corrections in a table elsewhere
+  corrections Json? // optional if you store corrections in a table elsewhere
 
-  footerRevNo          String?
-  footerDateEffective  DateTime?
+  footerRevNo         String?
+  footerDateEffective DateTime?
 
-  chemistryReport   ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+  chemistryReport ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 
   @@index([status])
 }
@@ -589,7 +584,7 @@ model ChemistryReportStatusHistory {
 }
 
 model ChemistryAttachment {
-  id            String          @id @default(cuid())
+  id            String               @id @default(cuid())
   chemistryId   String
   filename      String
   storageKey    String
@@ -597,13 +592,13 @@ model ChemistryAttachment {
   pages         Int?
   source        String
   meta          Json?
-  createdAt     DateTime        @default(now())
+  createdAt     DateTime             @default(now())
   createdBy     String?
   kind          AttachmentKind
   visibility    AttachmentVisibility @default(LAB_ONLY)
   storageBucket String?
-  storageDriver String          @default("local")
-  report        ChemistryReport @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
+  storageDriver String               @default("local")
+  report        ChemistryReport      @relation(fields: [chemistryId], references: [id], onDelete: Cascade)
 
   @@unique([chemistryId, checksum])
   @@index([chemistryId])
@@ -625,27 +620,25 @@ model MessageThread {
 }
 
 model Message {
-  id              String        @id @default(cuid())
-  threadId        String
-  senderId        String
-  senderRole      UserRole
-  senderName      String?
-  body            String
-  mentions        UserRole[]    @default([])
-  attachments     Json?
-  createdAt       DateTime      @default(now())
-  readAt          DateTime?
+  id          String     @id @default(cuid())
+  threadId    String
+  senderId    String
+  senderRole  UserRole
+  senderName  String?
+  body        String
+  mentions    UserRole[] @default([])
+  attachments Json?
+  createdAt   DateTime   @default(now())
+  readAt      DateTime?
 
-  deletedAt       DateTime?
-  deletedBy       String?
-
+  deletedAt DateTime?
+  deletedBy String?
 
   replyToMessageId String?
-  replyTo          Message?   @relation("MessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
-  replies          Message[]  @relation("MessageReply")
+  replyTo          Message?  @relation("MessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[] @relation("MessageReply")
 
-
-  thread          MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
   @@index([replyToMessageId])
@@ -735,8 +728,6 @@ enum ReportStatus {
   LOCKED
   VOID
 
-
-
   UNDER_TESTING_REVIEW
   TESTING_ON_HOLD
   TESTING_NEEDS_CORRECTION
@@ -802,12 +793,10 @@ enum ChemistryReportStatus {
   VOID
   UNDER_RESUBMISSION_QA_REVIEW
 
-
   CHANGE_REQUESTED
   UNDER_CHANGE_UPDATE
   CORRECTION_REQUESTED
   UNDER_CORRECTION_UPDATE
-  
 }
 
 enum TestType {
@@ -863,10 +852,10 @@ model SupportTicket {
   updatedAt DateTime @updatedAt
 
   createdById String
-  createdBy   User     @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User   @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   category SupportTicketCategory
-  status   SupportTicketStatus @default(OPEN)
+  status   SupportTicketStatus   @default(OPEN)
 
   reportId    String?
   reportType  String?
@@ -885,50 +874,48 @@ model SupportTicket {
   @@index([createdById])
 }
 
-
 model ChatUpload {
-  id          String   @id @default(cuid())
-  storageKey  String   @unique
+  id          String @id @default(cuid())
+  storageKey  String @unique
   filename    String
   contentType String
   size        Int
 
-  clientCode  String?  // set for client uploads
-  uploadedBy  String   // userId
-  createdAt   DateTime @default(now())
+  clientCode String? // set for client uploads
+  uploadedBy String // userId
+  createdAt  DateTime @default(now())
 }
 
 model FormTemplate {
   id         String   @id @default(cuid())
   name       String
   formType   FormType
-  clientCode String?      // usually required for CLIENT templates
+  clientCode String? // usually required for CLIENT templates
   data       Json
 
-  version    Int      @default(1)
+  version Int @default(1)
 
-  createdBy  String?
-  updatedBy  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientCode, formType])
   @@index([createdBy])
 }
 
-
 model NotificationOutbox {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
   sentAt    DateTime?
   claimedAt DateTime?
   claimKey  String?
 
   // grouping
-  scope         String   // "LAB" | "CLIENT"
-  dept          String?  // "MICRO" | "CHEMISTRY" | "LAB"
+  scope         String // "LAB" | "CLIENT"
+  dept          String? // "MICRO" | "CHEMISTRY" | "LAB"
   clientCode    String?
-  recipientsKey String   // JSON string of normalized emails
+  recipientsKey String // JSON string of normalized emails
   tag           String?
 
   // event payload
@@ -950,32 +937,32 @@ model NotificationOutbox {
 }
 
 model MessageNotificationOutbox {
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  sentAt       DateTime?
-  claimedAt    DateTime?
-  claimKey     String?
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  claimedAt DateTime?
+  claimKey  String?
 
   // routing
-  scope        String   // "LAB" | "CLIENT"
-  dept         String?  // "FRONTDESK" | "MICRO" | "CHEMISTRY" | "LAB"
-  clientCode   String?
-  recipientsKey String  // JSON string of normalized emails
+  scope         String // "LAB" | "CLIENT"
+  dept          String? // "FRONTDESK" | "MICRO" | "CHEMISTRY" | "LAB"
+  clientCode    String?
+  recipientsKey String // JSON string of normalized emails
 
   // event payload
-  threadId     String
-  messageId    String
-  senderId     String?
-  senderRole   UserRole
-  senderName   String?
-  preview      String
-  actionUrl    String?
+  threadId   String
+  messageId  String
+  senderId   String?
+  senderRole UserRole
+  senderName String?
+  preview    String
+  actionUrl  String?
 
-  reportId     String?
-  chemistryId  String?
+  reportId    String?
+  chemistryId String?
 
-  attempts     Int      @default(0)
-  lastError    String?
+  attempts  Int     @default(0)
+  lastError String?
 
   @@index([sentAt, createdAt])
   @@index([claimedAt])
@@ -983,33 +970,31 @@ model MessageNotificationOutbox {
   @@index([threadId, createdAt])
 }
 
-
-
 model Notification {
-  id         String   @id @default(cuid())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  readAt     DateTime?
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  readAt    DateTime?
 
   userId     String?
   role       UserRole?
   clientCode String?
 
-  kind       String   // STATUS_CHANGE | RESULT_READY | CORRECTION | MESSAGE | SYSTEM
-  title      String
-  body       String
-  severity   String   // INFO | SUCCESS | WARNING | ERROR
+  kind     String // STATUS_CHANGE | RESULT_READY | CORRECTION | MESSAGE | SYSTEM
+  title    String
+  body     String
+  severity String // INFO | SUCCESS | WARNING | ERROR
 
-  entityType String?  // REPORT | CHEMISTRY_REPORT | MESSAGE_THREAD
+  entityType String? // REPORT | CHEMISTRY_REPORT | MESSAGE_THREAD
   entityId   String?
   formType   FormType?
   formNumber String?
   reportUrl  String?
 
-  status     String?  // status snapshot
-  meta       Json?
+  status String? // status snapshot
+  meta   Json?
 
-  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([role, createdAt])
@@ -1017,14 +1002,11 @@ model Notification {
   @@index([readAt, createdAt])
 }
 
-
 enum AttachmentVisibility {
   ALL
   LAB_ONLY
   CLIENT_ONLY
 }
-
-
 
 model DashboardReport {
   id String @id @default(cuid())
@@ -1130,10 +1112,10 @@ model DashboardReport {
   numberOfActives   String?
   stabilityNote     String?
 
-  sampleCollected Json?
-  sampleTypes     Json?
-  testTypes       Json?
-  actives         Json?
+  sampleCollected     Json?
+  sampleTypes         Json?
+  testTypes           Json?
+  actives             Json?
   selectedActivesText String?
 
   // COA-only fields
@@ -1144,7 +1126,6 @@ model DashboardReport {
   searchableText String?
 
   @@unique([sourceType, sourceId])
-
   @@index([sourceType])
   @@index([formType])
   @@index([status])
@@ -1152,7 +1133,6 @@ model DashboardReport {
   @@index([client])
   @@index([formNumber])
   @@index([reportNumber])
-
   @@index([dateSent])
   @@index([dateTested])
   @@index([dateReceived])
@@ -1163,10 +1143,93 @@ model DashboardReport {
   @@index([samplingDate])
   @@index([createdAt])
   @@index([updatedAt])
-
   @@index([clientCode, dateSent])
   @@index([clientCode, createdAt])
   @@index([formType, dateSent])
   @@index([status, dateSent])
   @@index([formType, status, dateSent])
+}
+
+enum ReportType {
+  APE_VALIDATION_REPORT
+  APE_REPORT
+  SYSTEM_SUITABILITY_REPORT
+  ID_REPORT
+  ENVIRONMENTAL_REPORT
+}
+
+model ApeValidationReportDetails {
+  reportId String @id
+
+  client          String?
+  dateSent        DateTime?
+  typeOfTest      String?
+  sampleType      String?
+  formulaNo       String?
+  description     String?
+  lotNo           String?
+  manufactureDate DateTime?
+
+  testSopNo     String?
+  testReference String?
+  dateTested    DateTime?
+  dateCompleted DateTime?
+
+  validationSections Json?
+
+  testedBy     String?
+  testedDate   DateTime?
+  reviewedBy   String?
+  reviewedDate DateTime?
+
+  status      ReportStatus @default(DRAFT)
+  lockedAt    DateTime?
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  corrections Json?
+
+  footerRevNo         String?
+  footerDateEffective DateTime?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+}
+
+model ApeReportDetails {
+  reportId String @id
+
+  client          String?
+  dateSent        DateTime?
+  typeOfTest      String?
+  sampleType      String?
+  formulaNo       String?
+  description     String?
+  lotNo           String?
+  manufactureDate DateTime?
+
+  testSopNo     String?
+  testReference String?
+  dateTested    DateTime?
+  dateCompleted DateTime?
+
+  apeReportSections Json?
+
+  testedBy     String?
+  testedDate   DateTime?
+  reviewedBy   String?
+  reviewedDate DateTime?
+
+  status      ReportStatus @default(DRAFT)
+  lockedAt    DateTime?
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  corrections Json?
+
+  footerRevNo         String?
+  footerDateEffective DateTime?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }

@@ -11,6 +11,7 @@ import {
   UserRole,
   Prisma,
   FormType,
+  ReportType,
   $Enums,
 } from '@prisma/client';
 
@@ -134,7 +135,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tbc_spec',
     'tmy_spec',
     'pathogens',
-    'organisms'
+    'organisms',
   ],
 };
 
@@ -1230,6 +1231,66 @@ type MicroFormType = Extract<
   'MICRO_MIX' | 'MICRO_MIX_WATER' | 'STERILITY' | 'APE'
 >;
 
+type LabReportType = Extract<
+  ReportType,
+  'APE_VALIDATION_REPORT' | 'APE_REPORT'
+>;
+
+
+const APE_CHILD_EDIT_FIELDS: Partial<
+  Record<UserRole, readonly string[]>
+> = {
+  SYSTEMADMIN: ['*'],
+  ADMIN: ['*'],
+  MICRO: [
+    'testSopNo',
+    'testReference',
+    'dateTested',
+    'dateCompleted',
+    'validationSections',
+    'apeReportSections',
+    'testedBy',
+    'testedDate',
+  ],
+  MC: [
+    'testSopNo',
+    'testReference',
+    'dateTested',
+    'dateCompleted',
+    'validationSections',
+    'apeReportSections',
+    'testedBy',
+    'testedDate',
+  ],
+};
+
+function assertApeChildFieldPermissions(
+  role: UserRole,
+  patch: Record<string, any>,
+) {
+  const allowed = APE_CHILD_EDIT_FIELDS[role] ?? [];
+
+  if (allowed.includes('*')) return;
+
+  const denied = Object.keys(patch).filter(
+    (field) => !allowed.includes(field),
+  );
+
+  if (denied.length > 0) {
+    throw new ForbiddenException(
+      `You cannot edit APE client/submission fields: ${denied.join(', ')}`,
+    );
+  }
+}
+
+const REPORT_DETAILS_RELATION: Record<
+  LabReportType,
+  'apeValidationReport' | 'apeReport'
+> = {
+  APE_VALIDATION_REPORT: 'apeValidationReport',
+  APE_REPORT: 'apeReport',
+};
+
 const DETAILS_RELATION: Record<
   MicroFormType,
   'microMix' | 'microMixWater' | 'sterility' | 'ape'
@@ -1269,6 +1330,8 @@ const BASE_FIELDS = new Set([
   'createdAt',
   'updatedAt',
   'formType',
+  'reportType',
+  'parentReportId',
 ]);
 
 // Split a flat patch into base-vs-details
@@ -1283,20 +1346,36 @@ function splitPatch(patch: Record<string, any>) {
 
 // Pick the one details object off an included Report
 function pickDetails(r: any) {
-  return r.microMix ?? r.microMixWater ?? r.sterility ?? r.ape ?? null;
+  return (
+    r.microMix ??
+    r.microMixWater ??
+    r.sterility ??
+    r.ape ??
+    r.apeValidationReport ??
+    r.apeReport ??
+    null
+  );
 }
 
 // Flatten for backwards-compat responses (base + active details on top)
 function flattenReport(r: any) {
-  const { microMix, microMixWater, sterility, ape, ...base } = r;
+  const {
+    microMix,
+    microMixWater,
+    sterility,
+    ape,
+    apeValidationReport,
+    apeReport,
+    ...base
+  } = r;
+
   const dRaw = pickDetails(r) || {};
 
-  // Strip any keys that belong to the base report so they can't override it.
   const d = Object.fromEntries(
-    Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)), // BASE_FIELDS includes "status"
+    Object.entries(dRaw).filter(([k]) => !BASE_FIELDS.has(k)),
   );
 
-  return { ...base, ...d }; // base wins for base fields (incl. status)
+  return { ...base, ...d };
 }
 
 // Micro & Chem department code for reportNumber
@@ -1330,21 +1409,47 @@ function updateDetailsByType(
   if (!data || Object.keys(data).length === 0) return null;
 
   switch (formType) {
-    case "MICRO_MIX":
+    case 'MICRO_MIX':
       return tx.microMixDetails.update({ where: { reportId }, data });
-    case "MICRO_MIX_WATER":
+    case 'MICRO_MIX_WATER':
       return tx.microMixWaterDetails.update({ where: { reportId }, data });
-    case "STERILITY":
+    case 'STERILITY':
       return tx.sterilityDetails.update({ where: { reportId }, data });
-    case "APE":
+    case 'APE':
       return tx.apeDetails.update({ where: { reportId }, data });
     default:
       throw new Error(`Unsupported formType: ${formType}`);
   }
 }
 
+function updateLabReportDetailsByType(
+  tx: PrismaService,
+  reportType: ReportType | null,
+  reportId: string,
+  data: Record<string, any>,
+): Prisma.PrismaPromise<any> | null {
+  if (!data || Object.keys(data).length === 0) return null;
+
+  switch (reportType) {
+    case 'APE_VALIDATION_REPORT':
+      return tx.apeValidationReportDetails.update({
+        where: { reportId },
+        data,
+      });
+
+    case 'APE_REPORT':
+      return tx.apeReportDetails.update({
+        where: { reportId },
+        data,
+      });
+
+    default:
+      return null;
+  }
+}
+
 function transitionsFor(formType: FormType) {
-  return formType === "STERILITY" || formType === "APE"
+  return formType === 'STERILITY' || formType === 'APE'
     ? STERILITY_STATUS_TRANSITIONS
     : STATUS_TRANSITIONS;
 }
@@ -1371,11 +1476,181 @@ export class ReportsService {
     return raw as CorrectionItem[];
   }
 
+  async findApeChildByParent(parentReportId: string, reportType: ReportType) {
+    if (!parentReportId) {
+      throw new BadRequestException('parentReportId is required');
+    }
+
+    if (reportType !== 'APE_VALIDATION_REPORT' && reportType !== 'APE_REPORT') {
+      throw new BadRequestException(`Unsupported reportType: ${reportType}`);
+    }
+
+    const row = await this.prisma.report.findFirst({
+      where: {
+        parentReportId,
+        reportType,
+      },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+        attachments: true,
+        statusHistory: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return row ? flattenReport(row) : null;
+  }
+
+  async createLabReportDraft(
+    user: { userId: string; role: UserRole; clientCode?: string },
+    body: any,
+  ) {
+    if (!['MICRO', 'MC', 'ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Not allowed to create lab report');
+    }
+
+    const reportType: LabReportType = body?.reportType;
+
+    if (!reportType) {
+      throw new BadRequestException('reportType is required');
+    }
+
+    const relationKey = REPORT_DETAILS_RELATION[reportType];
+
+    if (!relationKey) {
+      throw new BadRequestException(`Unsupported reportType: ${reportType}`);
+    }
+
+    let parent: any = null;
+
+    if (body.parentReportId) {
+      parent = await this.prisma.report.findUnique({
+        where: { id: body.parentReportId },
+      });
+
+      if (!parent) {
+        throw new BadRequestException('Parent APE report not found');
+      }
+    }
+    const clientCode =
+      String(body.clientCode ?? '').trim() ||
+      String(parent?.clientCode ?? '').trim() ||
+      String(parent?.formNumber ?? '').split('-')[0] ||
+      String(user.clientCode ?? '').trim();
+
+    if (!clientCode) {
+      throw new BadRequestException(
+        'Client code is required to create lab report',
+      );
+    }
+
+    function yyyy(d: Date = new Date()): string {
+      return String(d.getFullYear());
+    }
+
+    function seqPad(num: number): string {
+      const width = Math.max(4, String(num).length);
+      return String(num).padStart(width, '0');
+    }
+
+    const seqKey = `${clientCode}:${reportType}`;
+
+    const seq = await this.prisma.clientSequence.upsert({
+      where: { clientCode: seqKey },
+      update: { lastNumber: { increment: 1 } },
+      create: { clientCode: seqKey, lastNumber: 1 },
+    });
+
+    const n = seqPad(seq.lastNumber);
+
+    const formNumber =
+      reportType === 'APE_VALIDATION_REPORT'
+        ? `${clientCode}-APEVAL-${yyyy()}${n}`
+        : `${clientCode}-APEREP-${yyyy()}${n}`;
+
+    const prefix = 'APE';
+
+    const {
+      reportType: _rt,
+      formType: _ft,
+      clientCode: _cc,
+      parentReportId: _parentReportId,
+      status: _status,
+      ...rest
+    } = body;
+
+    const created = await this.prisma.report.create({
+      data: {
+        clientCode,
+        formType: FormType.APE,
+        reportType,
+        parentReportId: body.parentReportId ?? null,
+        formNumber,
+        prefix,
+        status: 'DRAFT',
+        createdBy: user.userId,
+        updatedBy: user.userId,
+        [relationKey]: {
+          create: this._coerce({
+            ...rest,
+            footerRevNo: 'Rev-00',
+            footerDateEffective: new Date('2026-07-10T12:00:00.000Z'),
+          }),
+        },
+      },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+      },
+    });
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: 'LAB_REPORT_CREATED',
+        entity: reportType,
+        entityId: created.id,
+        userId: user.userId,
+        role: user.role,
+        ipAddress: getRequestContext()?.ip ?? null,
+        clientCode: created.clientCode ?? null,
+        formNumber: created.formNumber,
+        reportNumber: created.reportNumber ?? null,
+        details: `Created ${reportType}`,
+        changes: {
+          reportType,
+          parentReportId: body.parentReportId ?? null,
+        },
+      },
+    });
+
+    const flat = flattenReport(created);
+    this.reportsGateway.notifyReportCreated(flat);
+    return flat;
+  }
+
   async createDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
   ) {
     // guard
+    const reportType: ReportType | undefined = body?.reportType;
+
+    if (reportType) {
+      return this.createLabReportDraft(user, body);
+    }
+
+    // guard for normal submission forms
     if (!['ADMIN', 'SYSTEMADMIN', 'CLIENT'].includes(user.role)) {
       throw new ForbiddenException('Not allowed to create report');
     }
@@ -1504,6 +1779,8 @@ export class ReportsService {
         microMixWater: true,
         sterility: true,
         ape: true,
+        apeValidationReport: true,
+        apeReport: true,
         attachments: true,
         statusHistory: true,
       },
@@ -1512,7 +1789,255 @@ export class ReportsService {
     return flattenReport(r);
   }
 
-  //// UPDATE METHOD
+  async updateLabReportDraft(
+    user: { userId: string; role: UserRole },
+    id: string,
+    current: any,
+    patchIn: any,
+  ) {
+    if (!['MICRO', 'MC', 'ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Not allowed to update lab report');
+    }
+
+    const {
+      reason: reasonFromBody,
+      eSignPassword: eSignPasswordFromBody,
+      signatureType: signatureTypeFromBody,
+      expectedVersion,
+      ...patch
+    } = { ...patchIn };
+
+    const signatureType = signatureTypeFromBody
+      ? String(signatureTypeFromBody).trim().toUpperCase()
+      : null;
+
+    let signatureAudit:
+      | {
+          parentStatus: ReportStatus;
+          targetStatus: ReportStatus;
+          signatureType: 'TESTED' | 'REVIEWED';
+          reason: string;
+        }
+      | null = null;
+
+    if (signatureType) {
+      if (signatureType !== 'TESTED' && signatureType !== 'REVIEWED') {
+        throw new BadRequestException(
+          'signatureType must be TESTED or REVIEWED',
+        );
+      }
+
+      if (!current.parentReportId) {
+        throw new BadRequestException(
+          'APE child report is missing parentReportId',
+        );
+      }
+
+      if (!reasonFromBody || !String(reasonFromBody).trim()) {
+        throw new BadRequestException(
+          'Reason is required for electronic signature',
+        );
+      }
+
+      if (!eSignPasswordFromBody) {
+        throw new BadRequestException(
+          'Electronic signature (password) is required',
+        );
+      }
+
+      const parent = await this.prisma.report.findUnique({
+        where: { id: current.parentReportId },
+        select: {
+          id: true,
+          status: true,
+          formType: true,
+          formNumber: true,
+          reportNumber: true,
+        },
+      });
+
+      if (!parent || parent.formType !== FormType.APE) {
+        throw new BadRequestException('Parent APE report not found');
+      }
+
+      const expectedTargetStatus =
+        signatureType === 'TESTED'
+          ? ReportStatus.UNDER_QA_REVIEW
+          : ReportStatus.UNDER_CLIENT_REVIEW;
+
+      const expectedParentStatus =
+        signatureType === 'TESTED'
+          ? ReportStatus.UNDER_TESTING_REVIEW
+          : ReportStatus.UNDER_ADMIN_REVIEW;
+
+      if (parent.status !== expectedParentStatus) {
+        throw new ConflictException({
+          code: 'APE_SIGNATURE_STATUS_CONFLICT',
+          message:
+            `Cannot apply ${signatureType} signature while parent APE status is ` +
+            `${parent.status}`,
+          currentStatus: parent.status,
+          expectedStatus: expectedParentStatus,
+        });
+      }
+
+      const allowedRoles: UserRole[] =
+        signatureType === 'TESTED'
+          ? ['MICRO', 'MC', 'SYSTEMADMIN']
+          : ['ADMIN', 'SYSTEMADMIN'];
+
+      if (!allowedRoles.includes(user.role)) {
+        throw new ForbiddenException(
+          `Role ${user.role} cannot apply ${signatureType} APE signature`,
+        );
+      }
+
+      try {
+        await this.esign.verifyPassword(
+          user.userId,
+          String(eSignPasswordFromBody),
+        );
+      } catch {
+        await this.logESignAudit({
+          reportId: current.id,
+          clientCode: current.clientCode ?? null,
+          formType: current.formType,
+          formNumber: current.formNumber,
+          reportNumber: current.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'ESIGN_REJECTED',
+          fromStatus: parent.status,
+          toStatus: expectedTargetStatus,
+          reason: String(reasonFromBody).trim(),
+          details:
+            `Electronic signature rejected for ${current.reportType} ` +
+            `${signatureType} signature`,
+        });
+
+        throw new ForbiddenException('Electronic signature failed');
+      }
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
+
+      const signer =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
+
+      if (signatureType === 'TESTED') {
+        patch.testedBy = signer;
+        patch.testedDate = new Date();
+      } else {
+        patch.reviewedBy = signer;
+        patch.reviewedDate = new Date();
+      }
+
+      signatureAudit = {
+        parentStatus: parent.status,
+        targetStatus: expectedTargetStatus,
+        signatureType,
+        reason: String(reasonFromBody).trim(),
+      };
+    }
+
+    assertApeChildFieldPermissions(user.role, patch);
+
+    if (
+      !['ADMIN', 'SYSTEMADMIN'].includes(user.role) &&
+      typeof expectedVersion !== 'number'
+    ) {
+      throw new BadRequestException('expectedVersion is required');
+    }
+
+    const { base, details } = splitPatch(this._coerce(patch));
+
+    // A child report's own status is used only as a secure marker that this
+    // specific report completed the verified electronic-signature step.
+    // It does not change the parent APE workflow status.
+    if (signatureAudit) {
+      base.status = signatureAudit.targetStatus;
+    }
+
+    const baseRes = await this.prisma.report.updateMany({
+      where: {
+        id,
+        ...(typeof expectedVersion === 'number'
+          ? { version: expectedVersion }
+          : {}),
+      },
+      data: {
+        ...base,
+        updatedBy: user.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    if (typeof expectedVersion === 'number' && baseRes.count === 0) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message:
+          'This report was updated by someone else. Please reload and try again.',
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    await updateLabReportDetailsByType(
+      this.prisma,
+      current.reportType,
+      id,
+      details,
+    );
+
+    const updated = await this.prisma.report.findUnique({
+      where: { id },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+        apeValidationReport: true,
+        apeReport: true,
+      },
+    });
+
+    if (!updated) throw new NotFoundException('Report not found after update');
+
+    if (signatureAudit) {
+      await this.logESignAudit({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: current.reportNumber ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+        action: 'ESIGN_VERIFIED',
+        fromStatus: signatureAudit.parentStatus,
+        toStatus: signatureAudit.targetStatus,
+        reason: signatureAudit.reason,
+        details:
+          `Electronic signature verified for ${current.reportType} ` +
+          `${signatureAudit.signatureType} signature. Parent status was not ` +
+          `changed by this child-signature operation.`,
+      });
+    }
+
+    const flat = flattenReport(updated);
+    this.reportsGateway.notifyReportUpdate(flat);
+
+    return flat;
+  }
+
   async update(
     user: { userId: string; role: UserRole },
     id: string,
@@ -1528,6 +2053,10 @@ export class ReportsService {
       },
     });
     if (!current) throw new NotFoundException('Report not found');
+
+    if (current.reportType) {
+      return this.updateLabReportDraft(user, id, current, patchIn);
+    }
 
     // LOCK guard
     if (
@@ -1672,9 +2201,26 @@ export class ReportsService {
         if (!allowed.includes(user.role)) {
           throw new ForbiddenException(`Role ${user.role} cannot VOID reports`);
         }
-      } else if (isCentralStatus) {
-        // ✅ use centralized rule itself, not current state's rule
+      } else if (isCentralRequestStatus) {
+        // A request must be authorized from the report's CURRENT workflow
+        // state. For example, CLIENT may request a correction while the APE
+        // parent is UNDER_CLIENT_REVIEW.
+        if (!trans.canSet.includes(user.role)) {
+          throw new ForbiddenException(
+            `Role ${user.role} cannot request a correction/change from ${current.status}`,
+          );
+        }
+
+        if (!trans.next.includes(targetStatus)) {
+          throw new BadRequestException(
+            `Invalid centralized request: ${current.status} → ${targetStatus}`,
+          );
+        }
+      } else if (isCentralUpdateStatus) {
+        // Entering the centralized update stage is controlled by the target
+        // status because several roles may be responsible for fixing fields.
         const centralRule = transitions[targetStatus];
+
         if (!centralRule) {
           throw new BadRequestException(
             `No transition config for centralized status: ${targetStatus}`,
@@ -1923,7 +2469,12 @@ export class ReportsService {
     // ✅ Step 4: read updated report and do notifications + email
     const updated = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
@@ -2212,7 +2763,12 @@ export class ReportsService {
     // IMPORTANT: use prisma findUnique so we have base + details
     const current = await this.prisma.report.findUnique({
       where: { id },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
     if (!current) throw new NotFoundException('Report not found');
 
@@ -2343,10 +2899,13 @@ export class ReportsService {
     const updated = await this.prisma.report.update({
       where: { id },
       data: { ...patch, updatedBy: user.userId },
-      include: { microMix: true, microMixWater: true, sterility: true, ape: true },
+      include: {
+        microMix: true,
+        microMixWater: true,
+        sterility: true,
+        ape: true,
+      },
     });
-
- 
 
     // ✅ NOW log status change (StatusHistory + AuditTrail)
     if (prevStatus !== target) {
@@ -2469,11 +3028,16 @@ export class ReportsService {
         microMixWater: true,
         sterility: true,
         ape: true,
+        apeValidationReport: true,
+        apeReport: true,
       },
     });
-    if (!report) throw new NotFoundException('Report not found');
 
-    const mayRequest = [
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const mayRequest: UserRole[] = [
       'FRONTDESK',
       'MICRO',
       'CHEMISTRY',
@@ -2482,38 +3046,90 @@ export class ReportsService {
       'ADMIN',
       'SYSTEMADMIN',
       'CLIENT',
-    ] as const;
-    if (!mayRequest.includes(user.role))
-      throw new ForbiddenException('Not allowed');
+    ];
 
-    const d = pickDetails(report);
-    if (!d)
+    if (!mayRequest.includes(user.role)) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const isApeChild =
+      report.reportType === ReportType.APE_VALIDATION_REPORT ||
+      report.reportType === ReportType.APE_REPORT;
+
+    if (
+      isApeChild &&
+      typeof body.expectedVersion === 'number' &&
+      report.version !== body.expectedVersion
+    ) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message:
+          'This APE child report was updated by someone else. Please reload and try again.',
+        expectedVersion: body.expectedVersion,
+        currentVersion: report.version,
+      });
+    }
+
+    const details = pickDetails(report);
+
+    if (!details) {
       throw new BadRequestException('Details row missing for this report');
+    }
 
     const nowIso = new Date().toISOString();
-    const existing = this._getCorrectionsArray(d);
-    const toAdd = body.items.map((it) => ({
+    const existing = this._getCorrectionsArray(details);
+
+    // A previous two-step request may already have saved the correction
+    // items before the parent status update failed. Avoid creating duplicate
+    // open corrections when the user clicks Send Corrections again.
+    const uniqueItems = body.items.filter((item) => {
+      const fieldKey = String(item.fieldKey || '').trim();
+      const message = String(item.message || '').trim();
+
+      return !existing.some(
+        (correction) =>
+          correction.status === 'OPEN' &&
+          String(correction.fieldKey || '').trim() === fieldKey &&
+          String(correction.message || '').trim() === message,
+      );
+    });
+
+    const toAdd = uniqueItems.map((item) => ({
       id: randomUUID(),
-      fieldKey: it.fieldKey,
-      message: it.message,
+      fieldKey: item.fieldKey,
+      message: item.message,
       status: 'OPEN' as const,
       requestedByUserId: user.userId,
       requestedByRole: user.role,
       createdAt: nowIso,
-
-      // ✅ store snapshot
-      oldValue: it.oldValue ?? null,
-
+      oldValue: item.oldValue ?? null,
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
       resolvedByRole: null as UserRole | null,
       resolutionNote: null as string | null,
     }));
+
     const nextCorrections = [...existing, ...toAdd];
 
-    await updateDetailsByType(this.prisma, report.formType, id, {
-      corrections: nextCorrections,
-    });
+    const correctionWrite = isApeChild
+      ? updateLabReportDetailsByType(
+          this.prisma,
+          report.reportType,
+          report.id,
+          { corrections: nextCorrections },
+        )
+      : updateDetailsByType(this.prisma, report.formType, report.id, {
+          corrections: nextCorrections,
+        });
+
+    if (!correctionWrite) {
+      throw new BadRequestException(
+        'Unsupported report type for corrections',
+      );
+    }
+
+    await correctionWrite;
+
     await this.logCorrectionAudit({
       reportId: report.id,
       clientCode: report.clientCode ?? null,
@@ -2523,28 +3139,63 @@ export class ReportsService {
       actorUserId: user.userId,
       actorRole: user.role,
       action: 'CORRECTION_CREATED',
-      details: `Created ${toAdd.length} correction item(s)`,
+      details:
+        toAdd.length > 0
+          ? `Created ${toAdd.length} correction item(s)`
+          : 'Correction request retried; existing open correction items reused',
       changes: {
+        reportType: report.reportType ?? null,
         targetStatus: body.targetStatus ?? null,
         reason: body.reason ?? null,
-        items: toAdd.map((c) => ({
-          id: c.id,
-          fieldKey: c.fieldKey,
-          message: c.message,
-          oldValue: c.oldValue ?? null,
-          requestedByRole: c.requestedByRole,
-          createdAt: c.createdAt,
+        items: toAdd.map((correction) => ({
+          id: correction.id,
+          fieldKey: correction.fieldKey,
+          message: correction.message,
+          oldValue: correction.oldValue ?? null,
+          requestedByRole: correction.requestedByRole,
+          createdAt: correction.createdAt,
         })),
       },
     });
 
     if (body.targetStatus) {
-      await this.update(user, id, {
-        status: body.targetStatus,
-        reason: body.reason || 'Corrections requested',
-        expectedVersion: body.expectedVersion,
-        workflowReturnStatus: body.workflowReturnStatus ?? body.previousStatus,
-      });
+      if (isApeChild) {
+        if (!report.parentReportId) {
+          throw new BadRequestException(
+            'APE child report is missing parentReportId',
+          );
+        }
+
+        const workflowReturnStatus =
+          body.workflowReturnStatus ?? body.previousStatus ?? null;
+
+        // Corrections belong to the selected child report, but the APE
+        // workflow status belongs to the parent APE form. The frontend changes
+        // the parent status immediately after this request.
+        await this.prisma.report.update({
+          where: { id: report.parentReportId },
+          data: {
+            ...(workflowReturnStatus
+              ? { workflowReturnStatus }
+              : {}),
+            workflowRequestKind:
+              body.targetStatus === ReportStatus.CHANGE_REQUESTED
+                ? 'CHANGE'
+                : 'CORRECTION',
+            workflowRequestedByRole: user.role,
+            workflowRequestedAt: new Date(),
+            updatedBy: user.userId,
+          },
+        });
+      } else {
+        await this.update(user, id, {
+          status: body.targetStatus,
+          reason: body.reason || 'Corrections requested',
+          expectedVersion: body.expectedVersion,
+          workflowReturnStatus:
+            body.workflowReturnStatus ?? body.previousStatus,
+        });
+      }
     }
 
     return nextCorrections;
@@ -2558,11 +3209,22 @@ export class ReportsService {
         microMixWater: true,
         sterility: true,
         ape: true,
+        apeValidationReport: true,
+        apeReport: true,
       },
     });
-    if (!report) throw new NotFoundException('Report not found');
-    const d = pickDetails(report);
-    return this._getCorrectionsArray(d);
+
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const details = pickDetails(report);
+
+    if (!details) {
+      throw new BadRequestException('Details row missing for this report');
+    }
+
+    return this._getCorrectionsArray(details);
   }
 
   async resolveCorrection(
@@ -2578,29 +3240,46 @@ export class ReportsService {
         microMixWater: true,
         sterility: true,
         ape: true,
+        apeValidationReport: true,
+        apeReport: true,
       },
     });
-    if (!report) throw new NotFoundException('Report not found');
 
-    const d = pickDetails(report) || { corrections: [] };
-    const arr = this._getCorrectionsArray(d);
-    const idx = arr.findIndex((c) => c.id === cid);
-    if (idx < 0) throw new NotFoundException('Correction not found');
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const details = pickDetails(report);
+
+    if (!details) {
+      throw new BadRequestException('Details row missing for this report');
+    }
+
+    const corrections = this._getCorrectionsArray(details);
+    const correctionIndex = corrections.findIndex(
+      (correction) => correction.id === cid,
+    );
+
+    if (correctionIndex < 0) {
+      throw new NotFoundException('Correction not found');
+    }
 
     const allowedResolvers: UserRole[] = [
       'CLIENT',
       'MICRO',
+      'MC',
       'FRONTDESK',
       'ADMIN',
       'QA',
       'SYSTEMADMIN',
     ];
+
     if (!allowedResolvers.includes(user.role)) {
       throw new ForbiddenException('Not allowed to resolve');
     }
 
-    arr[idx] = {
-      ...arr[idx],
+    corrections[correctionIndex] = {
+      ...corrections[correctionIndex],
       status: 'RESOLVED',
       resolvedAt: new Date().toISOString(),
       resolvedByUserId: user.userId,
@@ -2608,11 +3287,30 @@ export class ReportsService {
       resolutionNote: body?.resolutionNote ?? null,
     };
 
-    await updateDetailsByType(this.prisma, report.formType, id, {
-      corrections: arr,
-    });
+    const isApeChild =
+      report.reportType === ReportType.APE_VALIDATION_REPORT ||
+      report.reportType === ReportType.APE_REPORT;
 
-    const resolvedItem = arr[idx];
+    const correctionWrite = isApeChild
+      ? updateLabReportDetailsByType(
+          this.prisma,
+          report.reportType,
+          report.id,
+          { corrections },
+        )
+      : updateDetailsByType(this.prisma, report.formType, report.id, {
+          corrections,
+        });
+
+    if (!correctionWrite) {
+      throw new BadRequestException(
+        'Unsupported report type for corrections',
+      );
+    }
+
+    await correctionWrite;
+
+    const resolvedItem = corrections[correctionIndex];
 
     await this.logCorrectionAudit({
       reportId: report.id,
@@ -2625,6 +3323,7 @@ export class ReportsService {
       action: 'CORRECTION_RESOLVED',
       details: `Resolved correction for field ${resolvedItem.fieldKey}`,
       changes: {
+        reportType: report.reportType ?? null,
         correctionId: resolvedItem.id,
         fieldKey: resolvedItem.fieldKey,
         message: resolvedItem.message,
@@ -2636,17 +3335,151 @@ export class ReportsService {
       },
     });
 
-    const allResolved = arr.every((c) => c.status === 'RESOLVED');
+    const correctionWorkflowStatuses: ReportStatus[] = [
+      ReportStatus.UNDER_CHANGE_UPDATE,
+      ReportStatus.UNDER_CORRECTION_UPDATE,
+      ReportStatus.CHANGE_REQUESTED,
+      ReportStatus.CORRECTION_REQUESTED,
+    ];
+
+    if (isApeChild) {
+      if (!report.parentReportId) {
+        throw new BadRequestException(
+          'APE child report is missing parentReportId',
+        );
+      }
+
+      const [parent, apeChildren] = await Promise.all([
+        this.prisma.report.findUnique({
+          where: { id: report.parentReportId },
+          include: {
+            ape: true,
+          },
+        }),
+        this.prisma.report.findMany({
+          where: {
+            parentReportId: report.parentReportId,
+            reportType: {
+              in: [
+                ReportType.APE_VALIDATION_REPORT,
+                ReportType.APE_REPORT,
+              ],
+            },
+          },
+          include: {
+            apeValidationReport: true,
+            apeReport: true,
+          },
+        }),
+      ]);
+
+      if (!parent) {
+        throw new NotFoundException('Parent APE report not found');
+      }
+
+      const allChildCorrections = apeChildren.flatMap((child) =>
+        this._getCorrectionsArray(pickDetails(child)),
+      );
+
+      const hasOpenChildCorrections = allChildCorrections.some(
+        (correction) => correction.status === 'OPEN',
+      );
+
+      const workflowReturnStatus = parent.workflowReturnStatus ?? null;
+
+      if (
+        !hasOpenChildCorrections &&
+        workflowReturnStatus &&
+        correctionWorkflowStatuses.includes(parent.status)
+      ) {
+        const parentStatusBeforeReturn = parent.status;
+
+        const updatedParent = await this.prisma.report.update({
+          where: { id: parent.id },
+          data: {
+            status: workflowReturnStatus,
+            workflowReturnStatus: null,
+            workflowRequestKind: null,
+            workflowRequestedByRole: null,
+            workflowRequestedAt: null,
+            updatedBy: user.userId,
+            version: { increment: 1 },
+          },
+          include: {
+            ape: true,
+          },
+        });
+
+        await this.dashboardSync.syncMicroReport(parent.id);
+
+        await this.logCorrectionAudit({
+          reportId: parent.id,
+          clientCode: parent.clientCode ?? null,
+          formType: parent.formType,
+          formNumber: parent.formNumber,
+          reportNumber: parent.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'CORRECTION_RESOLVED_ALL',
+          details: 'All APE child-report correction items resolved',
+          changes: {
+            returnedFromStatus: parentStatusBeforeReturn,
+            returnedToStatus: workflowReturnStatus,
+            totalCorrections: allChildCorrections.length,
+          },
+        });
+
+        await this.logStatusChange({
+          reportId: parent.id,
+          clientCode: parent.clientCode ?? null,
+          formType: parent.formType,
+          formNumber: parent.formNumber,
+          reportNumber: parent.reportNumber ?? null,
+          from: parentStatusBeforeReturn,
+          to: workflowReturnStatus,
+          reason:
+            'Returned to original status after all APE child-report corrections resolved',
+          actorUserId: user.userId,
+          actorRole: user.role,
+        });
+
+        this.reportsGateway.notifyStatusChange(
+          parent.id,
+          workflowReturnStatus,
+        );
+
+        return {
+          ok: true,
+          parentReportId: parent.id,
+          parentStatus: updatedParent.status,
+          parentVersion: updatedParent.version,
+          allResolved: true,
+        };
+      }
+
+      this.reportsGateway.notifyReportUpdate({ id: report.id });
+
+      return {
+        ok: true,
+        parentReportId: parent.id,
+        parentStatus: parent.status,
+        parentVersion: parent.version,
+        allResolved: !hasOpenChildCorrections,
+      };
+    }
+
+    const allResolved = corrections.every(
+      (correction) => correction.status === 'RESOLVED',
+    );
 
     if (
       allResolved &&
       report.workflowReturnStatus &&
-      (report.status === 'UNDER_CHANGE_UPDATE' ||
-        report.status === 'UNDER_CORRECTION_UPDATE' ||
-        report.status === 'CHANGE_REQUESTED' ||
-        report.status === 'CORRECTION_REQUESTED')
+      correctionWorkflowStatuses.includes(report.status)
     ) {
-      await this.prisma.report.update({
+      const reportStatusBeforeReturn = report.status;
+
+      const updatedReport = await this.prisma.report.update({
         where: { id },
         data: {
           status: report.workflowReturnStatus,
@@ -2672,9 +3505,9 @@ export class ReportsService {
         action: 'CORRECTION_RESOLVED_ALL',
         details: 'All correction items resolved',
         changes: {
-          returnedFromStatus: report.status,
+          returnedFromStatus: reportStatusBeforeReturn,
           returnedToStatus: report.workflowReturnStatus,
-          totalCorrections: arr.length,
+          totalCorrections: corrections.length,
         },
       });
 
@@ -2684,19 +3517,29 @@ export class ReportsService {
         formType: report.formType,
         formNumber: report.formNumber,
         reportNumber: report.reportNumber ?? null,
-        from: report.status,
+        from: reportStatusBeforeReturn,
         to: report.workflowReturnStatus,
         reason: 'Returned to original status after all corrections resolved',
         actorUserId: user.userId,
         actorRole: user.role,
       });
 
-      this.reportsGateway.notifyStatusChange(id, report.workflowReturnStatus);
-    } else {
-      this.reportsGateway.notifyReportUpdate({ id });
+      this.reportsGateway.notifyStatusChange(
+        id,
+        report.workflowReturnStatus,
+      );
+
+      return {
+        ok: true,
+        status: updatedReport.status,
+        version: updatedReport.version,
+        allResolved: true,
+      };
     }
 
-    return { ok: true };
+    this.reportsGateway.notifyReportUpdate({ id });
+
+    return { ok: true, allResolved };
   }
 
   private async findReportOrThrow(user: any, id: string) {

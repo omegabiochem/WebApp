@@ -65,8 +65,8 @@ const badgeColor = (action: string) => {
 
     // ---------- Approvals ----------
     case "REPORT_APPROVED":
-    case "ESIGN_VERIFIED":
-      return "bg-emerald-100 text-emerald-900";
+    // case "ESIGN_VERIFIED":
+    //   return "bg-emerald-100 text-emerald-900";
 
     // ---------- Corrections ----------
     case "CORRECTION_CREATED":
@@ -103,8 +103,8 @@ const badgeColor = (action: string) => {
     case "ATTACHMENT_UPLOADED":
       return "bg-blue-100 text-blue-800";
 
-    case "ATTACHMENT_UPDATED":
-      return "bg-indigo-100 text-indigo-800";
+    // case "ATTACHMENT_UPDATED":
+    //   return "bg-indigo-100 text-indigo-800";
 
     case "ATTACHMENT_DELETED":
       return "bg-red-100 text-red-800";
