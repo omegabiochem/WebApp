@@ -17,6 +17,8 @@ const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 
 // Policies
 const ACCESS_TOKEN_TTL = '15m';
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+
 const LOCK_AFTER_FAILED = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -161,7 +163,6 @@ export class AuthService {
     res.clearCookie(REFRESH_COOKIE_NAME, this.cookieOpts());
   }
 
-
   private async issueRefreshForUser(session: SessionContext, res: any) {
     const { token, jti } = this.signRefreshToken(session);
     const decoded: any = this.jwt.decode(token);
@@ -180,7 +181,6 @@ export class AuthService {
 
     this.setRefreshCookie(res, token, expAt);
   }
- 
 
   private envBool(name: string, def = false) {
     const v = (process.env[name] ?? '').trim().toLowerCase();
@@ -372,8 +372,6 @@ export class AuthService {
 
     return { method: 'EMAIL' as const, expiresAt };
   }
-
-
 
   private async loginCommonAccount(
     userIdRaw: string,
@@ -685,8 +683,6 @@ export class AuthService {
       },
     });
 
-
-
     if (!user) {
       await this.logAuthEvent({
         action: 'LOGIN_FAILED',
@@ -705,23 +701,7 @@ export class AuthService {
       });
     }
 
-    if (!user.active) {
-      await this.logAuthEvent({
-        action: 'LOGIN_FAILED',
-        userId: user.id,
-        role: user.role as any,
-        clientCode: user.clientCode ?? null,
-        ip,
-        entityId: user.userId ?? user.email,
-        details: 'Inactive user login attempt',
-        meta: { userAgent: ua },
-      });
-
-      throw new UnauthorizedException({
-        code: 'USER_INACTIVE',
-        message: 'User account is inactive.',
-      });
-    }
+ 
 
     if (!user.active) {
       await this.logAuthEvent({
@@ -835,8 +815,6 @@ export class AuthService {
         lastFailedLoginAt: null,
       } as any,
     });
-
-
 
     if (this.shouldRequire2FA(user)) {
       const { method, expiresAt } = await this.start2FA(
@@ -1478,6 +1456,9 @@ export class AuthService {
         userId: true,
         clientCode: true,
         active: true,
+
+        lastActivityAt: true,
+
         refreshTokenHash: true,
         refreshTokenExpAt: true,
         mustChangePassword: true,
@@ -1492,6 +1473,30 @@ export class AuthService {
     ) {
       this.clearRefreshCookie(res);
       throw new UnauthorizedException({ code: 'REFRESH_DENIED' });
+    }
+
+    const now = Date.now();
+    const lastActivityTime = user.lastActivityAt?.getTime() ?? 0;
+
+    if (!lastActivityTime || now - lastActivityTime >= IDLE_TIMEOUT_MS) {
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: {
+            refreshTokenHash: null,
+            refreshTokenExpAt: null,
+            refreshTokenRotatedAt: null,
+          },
+        })
+        .catch(() => {});
+
+      this.clearRefreshCookie(res);
+
+      throw new UnauthorizedException({
+        code: 'SESSION_IDLE_TIMEOUT',
+        message:
+          'Your session expired after 15 minutes of inactivity. Please sign in again.',
+      });
     }
 
     if (user.refreshTokenExpAt < new Date()) {
@@ -1611,12 +1616,12 @@ export class AuthService {
     }
 
     if (member.user.mustChangePassword) {
-  throw new ForbiddenException({
-    code: 'PERSONAL_PASSWORD_CHANGE_REQUIRED',
-    message:
-      'Please change your temporary password by logging into your personal account and then try logging in common account.if your temporary password has expired, contact your administrator.',
-  });
-}
+      throw new ForbiddenException({
+        code: 'PERSONAL_PASSWORD_CHANGE_REQUIRED',
+        message:
+          'Please change your temporary password by logging into your personal account and then try logging in common account.if your temporary password has expired, contact your administrator.',
+      });
+    }
 
     await this.prisma.commonAuthChallenge.update({
       where: { id: challenge.id },
