@@ -48,6 +48,11 @@ import {
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 // import { getReportSearchBlob } from "../../utils/clientDashboardutils";
 import { Eye, EyeOff, Pin } from "lucide-react";
+import ApeReportFormView from "../Reports/ApeReportFormView";
+import ApeReport from "../LabReports/ApeReport";
+import ApeValidationReport from "../LabReports/ApeValidationReport";
+import ApeValidationReportView from "../LabReports/ApeValidationReportView";
+import ApeReportView from "../LabReports/ApeReportView";
 
 // ---------------------------------
 // Types
@@ -119,6 +124,7 @@ const formTypeToSlug: Record<string, string> = {
   MICRO_MIX: "micro-mix",
   MICRO_MIX_WATER: "micro-mix-water",
   STERILITY: "sterility",
+  APE: "ape",
   CHEMISTRY_MIX: "chemistry-mix",
   COA: "coa",
 };
@@ -317,6 +323,8 @@ const ADMIN_FIELDS_ON_FORM = [
 
 type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
 
+type ApeReportTab = "APE_VALIDATION_REPORT" | "APE_REPORT";
+
 const defaultViewPane = (): ViewPane => "REPORT";
 // -----------------------------
 // Bulk print area (Admin)
@@ -401,6 +409,21 @@ function BulkPrintArea({
           );
         }
 
+        if (r.formType === "APE") {
+          return (
+            <div key={r.id} className="report-page">
+              <ApeReportFormView
+                report={r as any}
+                onClose={() => {}}
+                showSwitcher={false}
+                isBulkPrint={true}
+                isSingleBulk={isSingle}
+                pane={paneToPrint}
+              />
+            </div>
+          );
+        }
+
         if (r.formType === "CHEMISTRY_MIX") {
           return (
             <div key={r.id} className="report-page">
@@ -442,7 +465,51 @@ function BulkPrintArea({
   );
 }
 
-type ReportFamily = "MICRO" | "MICRO_WATER" | "STERILITY" | "CHEMISTRY" | "COA";
+function ApeChildPrintArea({
+  report,
+  reportType,
+  onAfterPrint,
+}: {
+  report: any;
+  reportType: ApeReportTab;
+  onAfterPrint: () => void;
+}) {
+  React.useEffect(() => {
+    const tid = window.setTimeout(() => window.print(), 200);
+
+    const handleAfterPrint = () => onAfterPrint();
+    window.addEventListener("afterprint", handleAfterPrint);
+
+    return () => {
+      window.clearTimeout(tid);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, [onAfterPrint]);
+
+  return (
+<div id="bulk-print-root" className="hidden print:block ape-child-print-root">
+      <div className="report-page">
+        {reportType === "APE_VALIDATION_REPORT" ? (
+          <ApeValidationReportView
+            report={report}
+            embedded={true}
+            onClose={() => {}}
+          />
+        ) : (
+          <ApeReportView report={report} embedded={true} onClose={() => {}} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type ReportFamily =
+  | "MICRO"
+  | "MICRO_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY"
+  | "COA";
 
 function getReportFamily(r: Report): ReportFamily {
   switch (r.formType) {
@@ -452,6 +519,8 @@ function getReportFamily(r: Report): ReportFamily {
       return "MICRO_WATER";
     case "STERILITY":
       return "STERILITY";
+    case "APE":
+      return "APE";
     case "CHEMISTRY_MIX":
       return "CHEMISTRY";
     case "COA":
@@ -466,7 +535,7 @@ function getStatusesForReportFamily(family: ReportFamily): string[] {
     return ADMIN_CHEM_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
-  if (family === "STERILITY") {
+  if (family === "STERILITY" || family === "APE") {
     return ADMIN_STERILITY_STATUSES.filter((s) => s !== "ALL").map(String);
   }
 
@@ -481,6 +550,8 @@ function getReportFamilyLabel(family: ReportFamily | null) {
       return "Micro Water";
     case "STERILITY":
       return "Sterility";
+    case "APE":
+      return "APE";
     case "CHEMISTRY":
       return "Chemistry";
     case "COA":
@@ -496,6 +567,7 @@ const DEFAULT_ADMIN_FILTERS = {
     | "MICRO"
     | "MICROWATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY"
     | "COA",
   statusFilter: "ALL" as DashboardStatus,
@@ -519,52 +591,6 @@ const DEFAULT_ADMIN_FILTERS = {
     | "createdAt"
     | "updatedAt",
 };
-
-// function extractYearAndSequence(value?: string | number | null): {
-//   year: number | null;
-//   sequence: number | null;
-// } {
-//   if (value == null) return { year: null, sequence: null };
-
-//   const text = String(value).trim();
-
-//   // Example:
-//   // ABC-20260001  => year=2026, sequence=1
-//   // XYZ20260025   => year=2026, sequence=25
-//   const match = text.match(/(\d{5,})$/);
-//   if (!match) return { year: null, sequence: null };
-
-//   const digits = match[1];
-//   if (digits.length < 5) return { year: null, sequence: null };
-
-//   const yearPart = digits.slice(0, 4);
-//   const seqPart = digits.slice(4);
-
-//   const year = Number(yearPart);
-//   const sequence = Number(seqPart);
-
-//   return {
-//     year: Number.isFinite(year) ? year : null,
-//     sequence: Number.isFinite(sequence) ? sequence : null,
-//   };
-// }
-
-// function inRange(
-//   value: number | null,
-//   fromRaw?: string,
-//   toRaw?: string,
-// ): boolean {
-//   if (value == null) return false;
-
-//   const from =
-//     fromRaw && fromRaw.trim() !== "" ? Number(fromRaw.trim()) : undefined;
-//   const to = toRaw && toRaw.trim() !== "" ? Number(toRaw.trim()) : undefined;
-
-//   if (from != null && Number.isFinite(from) && value < from) return false;
-//   if (to != null && Number.isFinite(to) && value > to) return false;
-
-//   return true;
-// }
 
 // ---------------------------------
 // Component
@@ -684,7 +710,7 @@ export default function SystemAdminDashboard() {
   );
 
   const [formFilter, setFormFilter] = useState<
-    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "CHEMISTRY" | "COA"
+    "ALL" | "MICRO" | "MICROWATER" | "STERILITY" | "APE" | "CHEMISTRY" | "COA"
   >(initialFilters.formFilter);
 
   const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
@@ -733,6 +759,18 @@ export default function SystemAdminDashboard() {
 
   const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
 
+  const [selectedModalMode, setSelectedModalMode] = useState<"VIEW" | "UPDATE">(
+    "VIEW",
+  );
+
+  const [apeReportTabs, setApeReportTabs] = useState<
+    Record<string, ApeReportTab>
+  >({});
+
+  const [apeChildReports, setApeChildReports] = useState<Record<string, any>>(
+    {},
+  );
+
   // ✅ status filter now uses combined type
   const [statusFilter, setStatusFilter] = useState<DashboardStatus>(
     initialFilters.statusFilter,
@@ -741,7 +779,7 @@ export default function SystemAdminDashboard() {
   const statusOptions =
     formFilter === "CHEMISTRY" || formFilter === "COA"
       ? ADMIN_CHEM_STATUSES
-      : formFilter === "STERILITY"
+      : formFilter === "STERILITY" || formFilter === "APE"
         ? ADMIN_STERILITY_STATUSES
         : ADMIN_MICRO_STATUSES;
 
@@ -761,6 +799,11 @@ export default function SystemAdminDashboard() {
   const [singlePrintJob, setSinglePrintJob] = useState<{
     report: Report;
     pane: "FORM" | "REPORT";
+  } | null>(null);
+
+  const [apeSinglePrintJob, setApeSinglePrintJob] = useState<{
+    report: any;
+    reportType: ApeReportTab;
   } | null>(null);
 
   const [printingBulk, setPrintingBulk] = useState(false);
@@ -1103,7 +1146,7 @@ export default function SystemAdminDashboard() {
     const opts =
       formFilter === "CHEMISTRY" || formFilter === "COA"
         ? ADMIN_CHEM_STATUSES.map(String)
-        : formFilter === "STERILITY"
+        : formFilter === "STERILITY" || formFilter === "APE"
           ? ADMIN_STERILITY_STATUSES.map(String)
           : ADMIN_MICRO_STATUSES.map(String);
 
@@ -1572,6 +1615,15 @@ export default function SystemAdminDashboard() {
         return;
       }
 
+      if (report.formType === "APE" && requiresBothApeChildReports(nextStatus)) {
+        const canChange = await validateBothApeChildReportsBeforeStatusChange(
+          report,
+          nextStatus,
+        );
+
+        if (!canChange) return;
+      }
+
       const endpoint =
         report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
           ? `/chemistry-reports/${report.id}/change-status`
@@ -1645,20 +1697,9 @@ export default function SystemAdminDashboard() {
     }
   }
 
-  // function goToReportEditor(r: Report) {
-  //   const slug = formTypeToSlug[r.formType] || "micro-mix";
-  //   const returnTo = encodeURIComponent(location.pathname + location.search);
-
-  //   if (r.formType === "CHEMISTRY_MIX" || r.formType === "COA") {
-  //     navigate(`/chemistry-reports/${slug}/${r.id}?returnTo=${returnTo}`);
-  //   } else {
-  //     navigate(`/reports/${slug}/${r.id}?returnTo=${returnTo}`);
-  //   }
-  // }
-
   const badgeClasses = (r: Report) => {
     const isChem = r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
-    const isSterility = r.formType === "STERILITY";
+    const isSterility = r.formType === "STERILITY" || r.formType === "APE";
 
     const cls = isChem
       ? CHEMISTRY_STATUS_COLORS[r.status as ChemistryReportStatus]
@@ -1808,6 +1849,8 @@ export default function SystemAdminDashboard() {
         return "Micro Water";
       case "STERILITY":
         return "Sterility";
+      case "APE":
+        return "APE";
       case "CHEMISTRY":
         return "Chemistry";
       case "COA":
@@ -1926,8 +1969,14 @@ export default function SystemAdminDashboard() {
         return "MICRO";
       case "MICRO_MIX_WATER":
         return "MICRO_WATER";
+      case "STERILITY":
+        return "STERILITY";
+      case "APE":
+        return "APE";
       case "CHEMISTRY_MIX":
         return "CHEMISTRY";
+      case "COA":
+        return "COA";
       default:
         return ft || "-";
     }
@@ -2008,6 +2057,17 @@ export default function SystemAdminDashboard() {
         setBulkSaving(false);
         setBulkESignError("E-signature password is required.");
         return;
+      }
+
+      const apeTargets = reportsToChange.filter((report) => report.formType === "APE");
+
+      for (const apeTarget of apeTargets) {
+        const canChange = await validateBothApeChildReportsBeforeStatusChange(
+          apeTarget,
+          nextStatus,
+        );
+
+        if (!canChange) return;
       }
 
       const updatedReports = await Promise.all(
@@ -2120,7 +2180,7 @@ export default function SystemAdminDashboard() {
   }
 
   function canUpdateAnyReport(r: Report, userObj?: any) {
-    if (r.formType === "STERILITY") {
+    if (r.formType === "STERILITY" || r.formType === "APE") {
       return canUpdateThisSterility(r, userObj);
     }
 
@@ -2135,12 +2195,23 @@ export default function SystemAdminDashboard() {
     const targets = getTargetsForAction(clicked);
 
     if (targets.length <= 1) {
+      setSelectedModalMode("VIEW");
       setSelectedViewPane(defaultViewPane());
-      setSelectedReport(clicked);
-      return;
+
+      if (clicked.formType === "APE") {
+        setApeReportTabs((prev) => ({
+          ...prev,
+          [clicked.id]: prev[clicked.id] ?? "APE_VALIDATION_REPORT",
+        }));
+      }
+
       setSelectedReport(clicked);
       return;
     }
+
+    setSelectedReport(null);
+    setSelectedModalMode("VIEW");
+    setSelectedViewPane("REPORT");
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("VIEW");
@@ -2158,10 +2229,31 @@ export default function SystemAdminDashboard() {
       toast.error("No selected reports are available for update");
       return;
     }
-    // if (targets.length <= 1) {
-    //   goToReportEditor(targets[0]);
-    //   return;
-    // }
+
+    // APE should open normal modal with APE Validation Report / APE Report tabs
+    if (targets.length === 1 && targets[0].formType === "APE") {
+      const target = targets[0];
+
+      setWorkspaceOpen(false);
+      setWorkspaceIds([]);
+      setWorkspaceActiveId(null);
+      setWorkspaceCorrectionKinds([]);
+
+      setSelectedModalMode("UPDATE");
+      setSelectedViewPane("REPORT");
+
+      setApeReportTabs((prev) => ({
+        ...prev,
+        [target.id]: prev[target.id] ?? "APE_VALIDATION_REPORT",
+      }));
+
+      setSelectedReport(target);
+      return;
+    }
+
+    setSelectedReport(null);
+    setSelectedModalMode("UPDATE");
+    setSelectedViewPane("REPORT");
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("UPDATE");
@@ -2527,6 +2619,736 @@ export default function SystemAdminDashboard() {
     });
   };
 
+  function getApeReportTab(parentId: string): ApeReportTab {
+    return apeReportTabs[parentId] ?? "APE_VALIDATION_REPORT";
+  }
+
+  function setApeReportTab(parentId: string, tab: ApeReportTab) {
+    setApeReportTabs((prev) => ({
+      ...prev,
+      [parentId]: tab,
+    }));
+  }
+
+  function apeChildKey(parentId: string, reportType: ApeReportTab) {
+    return `${parentId}:${reportType}`;
+  }
+
+function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
+  const key = apeChildKey(parent.id, reportType);
+  const saved = apeChildReports[key];
+
+  if (saved) {
+    return {
+      ...parent,
+      ...saved,
+
+      // child identity
+      id: saved.id,
+      reportType,
+      parentReportId: parent.id,
+
+      // Preserve the real parent APE identifiers after spreading child data.
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
+
+      // ✅ parent workflow source
+      parentStatus: parent.status,
+      workflowStatus: parent.status,
+      parentVersion: parent.version ?? 0,
+
+      // keep child info separately
+      childStatus: saved.status,
+      childVersion: saved.version,
+
+      // ✅ child screen should use parent status
+      status: parent.status,
+    };
+  }
+
+  return {
+    ...parent,
+    id: null,
+    parentReportId: parent.id,
+    reportType,
+
+    // Preserve the real parent APE identifiers.
+    parentFormNumber: parent.formNumber,
+    parentReportNumber: parent.reportNumber,
+
+    // ✅ parent workflow source
+    parentStatus: parent.status,
+    workflowStatus: parent.status,
+    parentVersion: parent.version ?? 0,
+
+    childStatus: "DRAFT",
+    childVersion: 0,
+
+    // ✅ start child screen from parent status
+    status: parent.status || "UNDER_TESTING_REVIEW",
+
+    reportNumber: "",
+    formType: undefined,
+
+    clientCode:
+      parent.clientCode ||
+      String(parent.formNumber || "").split("-")[0] ||
+      "",
+    dateSent: parent.dateSent ?? "",
+    typeOfTest: parent.typeOfTest ?? "APE",
+    sampleType: parent.sampleType ?? "",
+    formulaNo: parent.formulaNo ?? "",
+    description: parent.description ?? "",
+    lotNo: parent.lotNo ?? "",
+    manufactureDate: parent.manufactureDate ?? "",
+    testSopNo: (parent as any).testSopNo ?? "",
+    testReference: (parent as any).testReference ?? "USP <51> CURRENT",
+    dateTested: parent.dateTested ?? "",
+    dateCompleted: (parent as any).dateCompleted ?? "",
+  };
+}
+
+function handleApeChildSaved(
+  parent: Report,
+  reportType: ApeReportTab,
+  updated: any,
+) {
+  const key = apeChildKey(parent.id, reportType);
+  const base = makeApeChildReport(parent, reportType);
+
+  setApeChildReports((prev) => ({
+    ...prev,
+    [key]: {
+      ...base,
+      ...updated,
+
+      id: updated?.id ?? base.id,
+      reportType,
+      parentReportId: parent.id,
+
+      // Preserve the real parent APE identifiers after spreading updated child data.
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
+
+      // ✅ parent workflow status remains source of truth
+      parentStatus: parent.status,
+      workflowStatus: parent.status,
+      parentVersion: parent.version ?? 0,
+      status: parent.status,
+
+      // child saved status/version stored separately
+      childStatus: updated?.status,
+      childVersion: updated?.version,
+    },
+  }));
+}
+
+
+function handleApeParentStatusChanged(parent: Report, updated: any) {
+  const nextStatus = updated?.status ?? parent.status;
+
+  const nextVersion =
+    typeof updated?.version === "number"
+      ? updated.version
+      : (parent.version ?? 0) + 1;
+
+  const mergedParent: Report = {
+    ...parent,
+    ...updated,
+    id: parent.id,
+    status: nextStatus,
+    version: nextVersion,
+    reportNumber: updated?.reportNumber ?? parent.reportNumber,
+  };
+
+  setReports((prev) =>
+    prev.map((r) =>
+      r.id === parent.id
+        ? {
+            ...r,
+            ...mergedParent,
+          }
+        : r,
+    ),
+  );
+
+  setSelectedReport((prev) =>
+    prev?.id === parent.id
+      ? {
+          ...prev,
+          ...mergedParent,
+        }
+      : prev,
+  );
+
+  // Add this only if this dashboard has selectedReportsById state
+  setSelectedReportsById?.((prev: any) => {
+    if (!prev[parent.id]) return prev;
+
+    return {
+      ...prev,
+      [parent.id]: {
+        ...prev[parent.id],
+        ...mergedParent,
+      },
+    };
+  });
+
+  // ✅ update both child tabs with same parent status
+  setApeChildReports((prev) => {
+    const next = { ...prev };
+
+    (["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeReportTab[]).forEach(
+      (reportType) => {
+        const key = apeChildKey(parent.id, reportType);
+
+        if (next[key]) {
+          next[key] = {
+            ...next[key],
+            parentStatus: nextStatus,
+            workflowStatus: nextStatus,
+            parentVersion: nextVersion,
+            status: nextStatus,
+          };
+        }
+      },
+    );
+
+    return next;
+  });
+}
+
+
+
+
+
+  function isBlankApeValue(value: unknown) {
+    return value === null || value === undefined || String(value).trim() === "";
+  }
+
+  function addApeMissing(missing: string[], label: string, value: unknown) {
+    if (isBlankApeValue(value)) missing.push(label);
+  }
+
+  function requiresBothApeChildReports(targetStatus: string) {
+    const s = String(targetStatus).toUpperCase();
+
+    // Only block forward/approval statuses. Hold, rejection, correction,
+    // void, and draft-style statuses must stay available for fixes.
+    return (
+      s === "UNDER_QA_REVIEW" ||
+      s === "UNDER_ADMIN_REVIEW" ||
+      s === "UNDER_CLIENT_REVIEW" ||
+      s === "APPROVED" ||
+      s === "LOCKED"
+    );
+  }
+
+  function requiresApeReviewedSignature(targetStatus: string) {
+    const s = String(targetStatus).toUpperCase();
+
+    return (
+      s === "UNDER_CLIENT_REVIEW" ||
+      s === "UNDER_ADMIN_REVIEW" ||
+      s === "APPROVED" ||
+      s === "LOCKED"
+    );
+  }
+
+  function getMissingApeValidationFields(child: any, targetStatus: string) {
+    const missing: string[] = [];
+
+    if (!child?.id) {
+      missing.push("APE Validation Report must be saved");
+    }
+
+    addApeMissing(missing, "APE Validation Report - Client", child?.client);
+    addApeMissing(missing, "APE Validation Report - Date Sent", child?.dateSent);
+    addApeMissing(missing, "APE Validation Report - Type of Test", child?.typeOfTest);
+    addApeMissing(missing, "APE Validation Report - Sample Type", child?.sampleType);
+    addApeMissing(missing, "APE Validation Report - Formula #", child?.formulaNo);
+    addApeMissing(missing, "APE Validation Report - Description", child?.description);
+    addApeMissing(missing, "APE Validation Report - Lot #", child?.lotNo);
+    addApeMissing(missing, "APE Validation Report - Test SOP #", child?.testSopNo);
+    addApeMissing(missing, "APE Validation Report - Test Reference", child?.testReference);
+    addApeMissing(missing, "APE Validation Report - Date Tested", child?.dateTested);
+    addApeMissing(missing, "APE Validation Report - Date Completed", child?.dateCompleted);
+
+    const sections = Array.isArray(child?.validationSections)
+      ? child.validationSections
+      : [];
+
+    if (!sections.length) {
+      missing.push("APE Validation Report - Validation table");
+    }
+
+    sections.forEach((section: any) => {
+      const rows = Array.isArray(section?.rows) ? section.rows : [];
+
+      if (!rows.length) {
+        missing.push(
+          `APE Validation Report - ${section?.title || section?.key || "section"} rows`,
+        );
+      }
+
+      rows.forEach((row: any) => {
+        const labelPrefix = `${section?.title || section?.key || "Validation"} - ${
+          row?.organism || "Organism"
+        }`;
+
+        addApeMissing(
+          missing,
+          `APE Validation Report - ${labelPrefix} Control`,
+          row?.control,
+        );
+        addApeMissing(
+          missing,
+          `APE Validation Report - ${labelPrefix} Avg CFU for Test Sample`,
+          row?.avgCfuForTestSample,
+        );
+      });
+    });
+
+    if (requiresApeReviewedSignature(targetStatus)) {
+      addApeMissing(missing, "APE Validation Report - Reviewed By", child?.reviewedBy);
+      addApeMissing(missing, "APE Validation Report - Reviewed Date", child?.reviewedDate);
+    }
+
+    return missing;
+  }
+
+  function getMissingApeReportFields(child: any, targetStatus: string) {
+    const missing: string[] = [];
+
+    if (!child?.id) {
+      missing.push("APE Report must be saved");
+    }
+
+    addApeMissing(missing, "APE Report - Client", child?.client);
+    addApeMissing(missing, "APE Report - Date Sent", child?.dateSent);
+    addApeMissing(missing, "APE Report - Type of Test", child?.typeOfTest);
+    addApeMissing(missing, "APE Report - Sample Type", child?.sampleType);
+    addApeMissing(missing, "APE Report - Formula #", child?.formulaNo);
+    addApeMissing(missing, "APE Report - Description", child?.description);
+    addApeMissing(missing, "APE Report - Lot #", child?.lotNo);
+    addApeMissing(missing, "APE Report - Test SOP #", child?.testSopNo);
+    addApeMissing(missing, "APE Report - Test Reference", child?.testReference);
+    addApeMissing(missing, "APE Report - Date Tested", child?.dateTested);
+    addApeMissing(missing, "APE Report - Date Completed", child?.dateCompleted);
+
+    const sections = Array.isArray(child?.apeReportSections)
+      ? child.apeReportSections
+      : [];
+
+    if (!sections.length) {
+      missing.push("APE Report - Results table");
+    }
+
+    sections.forEach((section: any) => {
+      const rows = Array.isArray(section?.rows) ? section.rows : [];
+
+      if (!rows.length) {
+        missing.push(
+          `APE Report - ${section?.dayLabel || section?.key || "section"} rows`,
+        );
+      }
+
+      rows.forEach((row: any) => {
+        const labelPrefix = `${section?.dayLabel || section?.key || "Day"} - ${
+          row?.organism || "Organism"
+        }`;
+
+        addApeMissing(
+          missing,
+          `APE Report - ${labelPrefix} Control Growth`,
+          row?.controlGrowth,
+        );
+        addApeMissing(
+          missing,
+          `APE Report - ${labelPrefix} Sample Growth`,
+          row?.sampleGrowth,
+        );
+        addApeMissing(
+          missing,
+          `APE Report - ${labelPrefix} % Decrease`,
+          row?.decrease,
+        );
+        addApeMissing(
+          missing,
+          section?.key === "DAY_0"
+            ? `APE Report - ${labelPrefix} Innoculum Level`
+            : `APE Report - ${labelPrefix} Log Reduction`,
+          row?.innoculumLevel,
+        );
+      });
+    });
+
+    if (requiresApeReviewedSignature(targetStatus)) {
+      addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
+      addApeMissing(missing, "APE Report - Reviewed Date", child?.reviewedDate);
+    }
+
+    return missing;
+  }
+
+  async function fetchLatestApeChildReport(
+    parentId: string,
+    reportType: ApeReportTab,
+  ) {
+    try {
+      const child = await api<any>(
+        `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+          parentId,
+        )}&reportType=${reportType}`,
+      );
+
+      return child?.id ? child : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function validateBothApeChildReportsBeforeStatusChange(
+    parent: Report,
+    targetStatus: string,
+    currentChild?: any,
+  ) {
+    if (!requiresBothApeChildReports(targetStatus)) {
+      return true;
+    }
+
+    const validationChildBase = makeApeChildReport(
+      parent,
+      "APE_VALIDATION_REPORT",
+    );
+    const apeChildBase = makeApeChildReport(parent, "APE_REPORT");
+
+    const [latestValidation, latestApeReport] = await Promise.all([
+      fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_REPORT"),
+    ]);
+
+    if (latestValidation?.id || latestApeReport?.id) {
+      setApeChildReports((prev) => {
+        const next = { ...prev };
+
+        if (latestValidation?.id) {
+          next[apeChildKey(parent.id, "APE_VALIDATION_REPORT")] = {
+            ...parent,
+            ...latestValidation,
+            reportType: "APE_VALIDATION_REPORT",
+            parentReportId: parent.id,
+            parentFormNumber: parent.formNumber,
+            parentReportNumber: parent.reportNumber,
+            parentStatus: parent.status,
+            workflowStatus: parent.status,
+            parentVersion: parent.version ?? 0,
+            childStatus: latestValidation.status,
+            childVersion: latestValidation.version,
+            status: parent.status,
+            clientCode:
+              latestValidation.clientCode ||
+              parent.clientCode ||
+              String(parent.formNumber || "").split("-")[0] ||
+              "",
+          };
+        }
+
+        if (latestApeReport?.id) {
+          next[apeChildKey(parent.id, "APE_REPORT")] = {
+            ...parent,
+            ...latestApeReport,
+            reportType: "APE_REPORT",
+            parentReportId: parent.id,
+            parentFormNumber: parent.formNumber,
+            parentReportNumber: parent.reportNumber,
+            parentStatus: parent.status,
+            workflowStatus: parent.status,
+            parentVersion: parent.version ?? 0,
+            childStatus: latestApeReport.status,
+            childVersion: latestApeReport.version,
+            status: parent.status,
+            clientCode:
+              latestApeReport.clientCode ||
+              parent.clientCode ||
+              String(parent.formNumber || "").split("-")[0] ||
+              "",
+          };
+        }
+
+        return next;
+      });
+    }
+
+    const validationChild =
+      currentChild?.reportType === "APE_VALIDATION_REPORT"
+        ? { ...validationChildBase, ...latestValidation, ...currentChild }
+        : { ...validationChildBase, ...latestValidation };
+
+    const apeChild =
+      currentChild?.reportType === "APE_REPORT"
+        ? { ...apeChildBase, ...latestApeReport, ...currentChild }
+        : { ...apeChildBase, ...latestApeReport };
+
+    const validationMissing = getMissingApeValidationFields(
+      validationChild,
+      targetStatus,
+    );
+    const apeReportMissing = getMissingApeReportFields(apeChild, targetStatus);
+    const missing = [...validationMissing, ...apeReportMissing];
+
+    if (!missing.length) return true;
+
+    const firstInvalidTab =
+      validationMissing.length > 0 ? "APE_VALIDATION_REPORT" : "APE_REPORT";
+
+    setApeReportTab(parent.id, firstInvalidTab);
+
+    toast(
+      `Warning: Please complete both APE Validation Report and APE Report before changing status to ${niceStatus(
+        targetStatus,
+      )}.`,
+      {
+        icon: "⚠️",
+        duration: 5000,
+        style: {
+          border: "1px solid #f59e0b",
+          background: "#fffbeb",
+          color: "#92400e",
+        },
+      },
+    );
+
+    return false;
+  }
+
+  function renderApeReportTabs(parent: Report, readOnly = false) {
+    const activeTab = getApeReportTab(parent.id);
+
+    const validationChild = makeApeChildReport(parent, "APE_VALIDATION_REPORT");
+
+    const apeChild = makeApeChildReport(parent, "APE_REPORT");
+
+    const beforeParentStatusChange = (targetStatus: string, currentChild?: any) =>
+      validateBothApeChildReportsBeforeStatusChange(
+        parent,
+        targetStatus,
+        currentChild,
+      );
+
+    const tabClass = (tab: ApeReportTab) =>
+      classNames(
+        "rounded-lg px-3 py-1.5 text-sm font-semibold border transition",
+        activeTab === tab
+          ? "bg-slate-900 text-white border-slate-900"
+          : "bg-white text-slate-700 hover:bg-slate-50",
+      );
+
+    return (
+      <div>
+        <div className="no-print mb-4 rounded-xl border bg-white px-3 py-2 mx-auto">
+          <div className="flex flex-wrap gap-2 justify-center">
+            <button
+              type="button"
+              className={tabClass("APE_VALIDATION_REPORT")}
+              onClick={() =>
+                setApeReportTab(parent.id, "APE_VALIDATION_REPORT")
+              }
+            >
+              APE Validation Report
+            </button>
+
+            <button
+              type="button"
+              className={tabClass("APE_REPORT")}
+              onClick={() => setApeReportTab(parent.id, "APE_REPORT")}
+            >
+              APE Report
+            </button>
+          </div>
+        </div>
+
+        {activeTab === "APE_VALIDATION_REPORT" &&
+          (readOnly ? (
+            <ApeValidationReportView
+              key={
+                validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:view`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeValidationReport
+              key={
+                validationChild.id ??
+                `${parent.id}:APE_VALIDATION_REPORT:update`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(parent, "APE_VALIDATION_REPORT", updated)
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={beforeParentStatusChange}
+            />
+          ))}
+
+        {activeTab === "APE_REPORT" &&
+          (readOnly ? (
+            <ApeReportView
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:view`}
+              report={apeChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeReport
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:update`}
+              report={apeChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(parent, "APE_REPORT", updated)
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={beforeParentStatusChange}
+            />
+          ))}
+      </div>
+    );
+  }
+
+  function renderSelectedApeBody(report: Report) {
+    if (selectedModalMode === "UPDATE") {
+      return renderApeReportTabs(report, false);
+    }
+
+    if (selectedViewPane === "FORM") {
+      return (
+        <ApeReportFormView
+          report={report as any}
+          onClose={() => setSelectedReport(null)}
+          showSwitcher={false}
+          pane="FORM"
+          onPaneChange={setSelectedViewPane}
+        />
+      );
+    }
+
+    if (selectedViewPane === "ATTACHMENTS") {
+      return (
+        <ApeReportFormView
+          report={report as any}
+          onClose={() => setSelectedReport(null)}
+          showSwitcher={false}
+          pane="ATTACHMENTS"
+          onPaneChange={setSelectedViewPane}
+        />
+      );
+    }
+
+    return renderApeReportTabs(report, true);
+  }
+
+  // Load saved APE Validation Report / APE Report after reload
+  useEffect(() => {
+    const currentParent = selectedReport;
+
+    if (!currentParent || currentParent.formType !== "APE") return;
+
+    const parent: Report = currentParent;
+    const parentId = parent.id;
+
+    let cancelled = false;
+
+    async function loadSavedApeChildReports() {
+      try {
+        const [validationReport, apeReport] = await Promise.all([
+          api<any>(
+            `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+              parentId,
+            )}&reportType=APE_VALIDATION_REPORT`,
+          ),
+          api<any>(
+            `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+              parentId,
+            )}&reportType=APE_REPORT`,
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        setApeChildReports((prev) => {
+          const next = { ...prev };
+
+          if (validationReport?.id) {
+            next[`${parentId}:APE_VALIDATION_REPORT`] = {
+              ...parent,
+              ...validationReport,
+              reportType: "APE_VALIDATION_REPORT",
+              parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
+              clientCode:
+                validationReport.clientCode ||
+                parent.clientCode ||
+                String(parent.formNumber || "").split("-")[0] ||
+                "",
+            };
+          }
+
+          if (apeReport?.id) {
+            next[`${parentId}:APE_REPORT`] = {
+              ...parent,
+              ...apeReport,
+              reportType: "APE_REPORT",
+              parentReportId: parentId,
+              parentFormNumber: parent.formNumber,
+              parentReportNumber: parent.reportNumber,
+              clientCode:
+                apeReport.clientCode ||
+                parent.clientCode ||
+                String(parent.formNumber || "").split("-")[0] ||
+                "",
+            };
+          }
+
+          return next;
+        });
+      } catch (e) {
+        console.error("Failed to load saved APE child reports", e);
+      }
+    }
+
+    loadSavedApeChildReports();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReport?.id, selectedReport?.formType]);
+
   if (!colsHydrated || !pinsHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
@@ -2643,7 +3465,7 @@ export default function SystemAdminDashboard() {
       {/* -----------------------------
           PRINT PORTAL (bulk + single)
          ----------------------------- */}
-      {(isBulkPrinting || !!singlePrintJob) &&
+      {(isBulkPrinting || !!singlePrintJob || !!apeSinglePrintJob) &&
         createPortal(
           <>
             <style>
@@ -2678,6 +3500,20 @@ export default function SystemAdminDashboard() {
         min-height: 279mm !important;
       }
 
+      #bulk-print-root.ape-child-print-root .sheet {
+  min-height: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+#bulk-print-root.ape-child-print-root .report-page {
+  min-height: auto !important;
+  height: auto !important;
+  break-inside: auto !important;
+  page-break-inside: auto !important;
+}
+
       #bulk-print-root .report-page + .report-page {
         break-before: page;
         page-break-before: always;
@@ -2690,22 +3526,31 @@ export default function SystemAdminDashboard() {
   `}
             </style>
 
-            <BulkPrintArea
-              reports={
-                isBulkPrinting
-                  ? selectedReportObjects
-                  : singlePrintJob
-                    ? [singlePrintJob.report]
-                    : []
-              }
-              printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
-              onAfterPrint={() => {
-                if (isBulkPrinting) setIsBulkPrinting(false);
-                setSinglePrintJob(null);
-                setPrintingBulk(false);
-                setPrintingSingle(false);
-              }}
-            />
+            {apeSinglePrintJob ? (
+              <ApeChildPrintArea
+                report={apeSinglePrintJob.report}
+                reportType={apeSinglePrintJob.reportType}
+                onAfterPrint={() => {
+                  setApeSinglePrintJob(null);
+                  setPrintingSingle(false);
+                }}
+              />
+            ) : (
+              <BulkPrintArea
+                reports={
+                  isBulkPrinting
+                    ? selectedReportObjects
+                    : [singlePrintJob!.report]
+                }
+                printPane={isBulkPrinting ? undefined : singlePrintJob!.pane}
+                onAfterPrint={() => {
+                  if (isBulkPrinting) setIsBulkPrinting(false);
+                  if (singlePrintJob) setSinglePrintJob(null);
+                  setPrintingBulk(false);
+                  setPrintingSingle(false);
+                }}
+              />
+            )}
           </>,
           document.body,
         )}
@@ -2901,6 +3746,7 @@ export default function SystemAdminDashboard() {
               "MICRO",
               "MICROWATER",
               "STERILITY",
+              "APE",
               "CHEMISTRY",
               "COA",
             ] as const
@@ -2926,9 +3772,11 @@ export default function SystemAdminDashboard() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : ft === "COA"
-                          ? "COA"
-                          : "Chemistry"}
+                        : ft === "APE"
+                          ? "APE"
+                          : ft === "COA"
+                            ? "COA"
+                            : "Chemistry"}
               </button>
             );
           })}
@@ -3337,7 +4185,8 @@ export default function SystemAdminDashboard() {
 
                 {!loading &&
                   pageRows.map((r) => {
-                    const isSterility = r.formType === "STERILITY";
+                    const isSterility =
+                      r.formType === "STERILITY" || r.formType === "APE";
                     const isMicro =
                       r.formType === "MICRO_MIX" ||
                       r.formType === "MICRO_MIX_WATER";
@@ -3564,7 +4413,8 @@ export default function SystemAdminDashboard() {
                                   r.formType === "CHEMISTRY_MIX" ||
                                   r.formType === "COA"
                                     ? ADMIN_CHEM_STATUSES
-                                    : r.formType === "STERILITY"
+                                    : r.formType === "STERILITY" ||
+                                        r.formType === "APE"
                                       ? ADMIN_STERILITY_STATUSES
                                       : ADMIN_MICRO_STATUSES;
 
@@ -3665,7 +4515,11 @@ export default function SystemAdminDashboard() {
           aria-modal="true"
           aria-label="Report details"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedReport(null);
+            if (e.target === e.currentTarget) {
+              setSelectedReport(null);
+              setSelectedModalMode("VIEW");
+              setSelectedViewPane("REPORT");
+            }
           }}
         >
           <div className="h-[90vh] max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl flex flex-col">
@@ -3674,29 +4528,34 @@ export default function SystemAdminDashboard() {
                 Report #{displayReportNo(selectedReport)}
               </h2>
 
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
-                <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs shadow-sm">
-                  {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
-                    (p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setSelectedViewPane(p)}
-                        className={classNames(
-                          "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
-                          selectedViewPane === p
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
-                        )}
-                      >
-                        {p === "ATTACHMENTS"
-                          ? "Attachments"
-                          : p[0] + p.slice(1).toLowerCase()}
-                      </button>
-                    ),
-                  )}
+              {!(
+                selectedReport.formType === "APE" &&
+                selectedModalMode === "UPDATE"
+              ) && (
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 no-print">
+                  <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                    {(["FORM", "REPORT", "ATTACHMENTS"] as ViewPane[]).map(
+                      (p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setSelectedViewPane(p)}
+                          className={classNames(
+                            "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                            selectedViewPane === p
+                              ? "bg-blue-600 text-white shadow-sm"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                          )}
+                        >
+                          {p === "ATTACHMENTS"
+                            ? "Attachments"
+                            : p[0] + p.slice(1).toLowerCase()}
+                        </button>
+                      ),
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center gap-2 justify-self-end">
                 {/* ✅ Print single */}
@@ -3706,6 +4565,62 @@ export default function SystemAdminDashboard() {
                   onClick={() => {
                     if (printingSingle) return;
 
+                    // ✅ APE Report tab should print active child report
+                    if (
+                      selectedReport.formType === "APE" &&
+                      selectedViewPane === "REPORT"
+                    ) {
+                      const activeApeTab = getApeReportTab(selectedReport.id);
+                      const childReport = makeApeChildReport(
+                        selectedReport,
+                        activeApeTab,
+                      );
+
+                      if (!childReport?.id) {
+                        toast.error(
+                          activeApeTab === "APE_VALIDATION_REPORT"
+                            ? "APE Validation Report is not generated yet"
+                            : "APE Report is not generated yet",
+                        );
+                        return;
+                      }
+
+                      logUiEvent({
+                        action: "UI_PRINT_SINGLE",
+                        entity: activeApeTab,
+                        entityId: childReport.id,
+                        details: `Printed ${activeApeTab} for ${
+                          selectedReport.formNumber ?? selectedReport.id
+                        }`,
+                        meta: {
+                          formNumber: selectedReport.formNumber,
+                          parentReportId: selectedReport.id,
+                          childReportId: childReport.id,
+                          formType: selectedReport.formType,
+                          reportType: activeApeTab,
+                          status: selectedReport.status,
+                          pane: selectedViewPane,
+                        },
+                        formNumber: selectedReport.formNumber ?? null,
+                        reportNumber:
+                          childReport.reportNumber != null
+                            ? String(childReport.reportNumber)
+                            : selectedReport.reportNumber != null
+                              ? String(selectedReport.reportNumber)
+                              : null,
+                        formType: selectedReport.formType,
+                        clientCode: selectedReport.client || null,
+                      });
+
+                      setPrintingSingle(true);
+                      setApeSinglePrintJob({
+                        report: childReport,
+                        reportType: activeApeTab,
+                      });
+                      return;
+                    }
+
+                    // ✅ Existing print behavior for all normal reports
                     logUiEvent({
                       action: "UI_PRINT_SINGLE",
                       entity:
@@ -3719,11 +4634,15 @@ export default function SystemAdminDashboard() {
                         formNumber: selectedReport.formNumber,
                         formType: selectedReport.formType,
                         status: selectedReport.status,
+                        pane: selectedViewPane,
                       },
-                      formNumber: null,
-                      reportNumber: null,
-                      formType: null,
-                      clientCode: null,
+                      formNumber: selectedReport.formNumber ?? null,
+                      reportNumber:
+                        selectedReport.reportNumber != null
+                          ? String(selectedReport.reportNumber)
+                          : null,
+                      formType: selectedReport.formType,
+                      clientCode: selectedReport.client || null,
                     });
 
                     setPrintingSingle(true);
@@ -3738,45 +4657,54 @@ export default function SystemAdminDashboard() {
                 </button>
 
                 {/* ✅ show Update in modal for micro or chem */}
-                {(selectedReport.formType === "CHEMISTRY_MIX" ||
-                selectedReport.formType === "COA"
-                  ? canUpdateThisChem(selectedReport, user)
-                  : selectedReport.formType === "STERILITY"
-                    ? canUpdateThisSterility(selectedReport, user)
-                    : canUpdateThisMicro(selectedReport, user)) && (
-                  <button
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                    onClick={async () => {
-                      try {
-                        let target = selectedReport;
+                {!(
+                  selectedReport.formType === "APE" &&
+                  selectedModalMode === "UPDATE"
+                ) &&
+                  (selectedReport.formType === "CHEMISTRY_MIX" ||
+                  selectedReport.formType === "COA"
+                    ? canUpdateThisChem(selectedReport, user)
+                    : selectedReport.formType === "STERILITY" ||
+                        selectedReport.formType === "APE"
+                      ? canUpdateThisSterility(selectedReport, user)
+                      : canUpdateThisMicro(selectedReport, user)) && (
+                    <button
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                      onClick={async () => {
+                        try {
+                          let target = selectedReport;
 
-                        if (
-                          target.formType !== "CHEMISTRY_MIX" &&
-                          target.formType !== "COA" &&
-                          target.status ===
-                            "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                        ) {
-                          target = await setStatus(
-                            target,
-                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                            "Sent back to client for correction",
-                          );
+                          if (
+                            target.formType !== "CHEMISTRY_MIX" &&
+                            target.formType !== "COA" &&
+                            target.status ===
+                              "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          ) {
+                            target = await setStatus(
+                              target,
+                              "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                              "Sent back to client for correction",
+                            );
+                          }
+
+                          setSelectedReport(null);
+                          openUpdateTarget(target);
+                        } catch (e: any) {
+                          alert(e?.message || "Failed to update status");
                         }
-
-                        setSelectedReport(null);
-                        openUpdateTarget(target);
-                      } catch (e: any) {
-                        alert(e?.message || "Failed to update status");
-                      }
-                    }}
-                  >
-                    Update
-                  </button>
-                )}
+                      }}
+                    >
+                      Update
+                    </button>
+                  )}
 
                 <button
                   className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedReport(null)}
+                  onClick={() => {
+                    setSelectedReport(null);
+                    setSelectedModalMode("VIEW");
+                    setSelectedViewPane("REPORT");
+                  }}
                 >
                   Close
                 </button>
@@ -3808,6 +4736,8 @@ export default function SystemAdminDashboard() {
                   pane={selectedViewPane}
                   onPaneChange={setSelectedViewPane}
                 />
+              ) : selectedReport?.formType === "APE" ? (
+                renderSelectedApeBody(selectedReport)
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
                   report={selectedReport as any}
@@ -3945,7 +4875,8 @@ export default function SystemAdminDashboard() {
                   {(changeStatusReport.formType === "CHEMISTRY_MIX" ||
                   changeStatusReport.formType === "COA"
                     ? ADMIN_CHEM_STATUSES
-                    : changeStatusReport.formType === "STERILITY"
+                    : changeStatusReport.formType === "STERILITY" ||
+                        changeStatusReport.formType === "APE"
                       ? ADMIN_STERILITY_STATUSES
                       : ADMIN_MICRO_STATUSES
                   )

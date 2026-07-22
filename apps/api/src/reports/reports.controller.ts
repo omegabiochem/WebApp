@@ -10,10 +10,11 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { ReportStatus, Prisma, FormType } from '@prisma/client';
+import { ReportStatus, Prisma, FormType, ReportType } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   setRequestContext,
@@ -46,6 +47,8 @@ const slugToFormType = (slug: string): FormType | null => {
       return 'MICRO_MIX_WATER';
     case 'sterility':
       return 'STERILITY';
+    case 'ape':
+      return 'APE';
     default:
       return null;
   }
@@ -86,6 +89,14 @@ export class ReportsController {
       ...body,
       formType: formType ?? 'MICRO_MIX',
     });
+  }
+
+    @Get('ape-child/by-parent')
+  getApeChildByParent(
+    @Query('parentReportId') parentReportId: string,
+    @Query('reportType') reportType: ReportType,
+  ) {
+    return this.svc.findApeChildByParent(parentReportId, reportType);
   }
 
   @Get(':id')
