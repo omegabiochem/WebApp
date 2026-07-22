@@ -37,17 +37,6 @@ export class AuthController {
   ) {
     return this.auth.loginWithUserId(body.userId, body.password, req, res);
   }
-  // ✅ Who am I?
-  // @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
-  // @Get('me')
-  // // async getMe(@Req() req: any) {
-  // //   const dbId = req.user?.userId as string; // JwtStrategy maps sub → userId
-  // //   if (!dbId) throw new BadRequestException('Unauthenticated');
-  // //   return this.auth.getMe(dbId);
-  // // }
-  // getMe(@Req() req) {
-  //   return req.user; // sub, role, uid, etc.
-  // }
 
   @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('me')
@@ -76,7 +65,7 @@ export class AuthController {
     return {
       id: dbUser.id,
       email: dbUser.email,
-     role: req.user?.role ?? dbUser.role,
+      role: req.user?.role ?? dbUser.role,
       actualRole: dbUser.role,
       name: dbUser.name ?? undefined,
       userId: dbUser.userId ?? undefined,
@@ -108,14 +97,14 @@ export class AuthController {
     @Req() req: any,
     @Body() body: { currentPassword: string; newPassword: string },
   ) {
-    // const dbId = req.user?.userId as string;
-    // if (!dbId) throw new BadRequestException('Unauthenticated');
-    // return this.auth.changeOwnPassword(dbId, body.currentPassword, body.newPassword, req);
+    const userDbId = req.user?.sub as string;
 
-    const userId = req.user?.userId as string; // DB id
-    if (!userId) throw new BadRequestException('Unauthenticated');
+    if (!userDbId) {
+      throw new BadRequestException('Unauthenticated');
+    }
+
     return this.auth.changeOwnPassword(
-      userId,
+      userDbId,
       body.currentPassword,
       body.newPassword,
       req,
@@ -123,13 +112,19 @@ export class AuthController {
   }
 
   // ✅ NEW: Logout endpoint (audited)
-  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const { sub, role, uid, jti, clientCode } = req.user ?? {};
+
     return this.auth.logout(
       req,
-      { id: sub, role, userId: uid, clientCode },
+      {
+        id: sub,
+        role,
+        userId: uid,
+        clientCode,
+      },
       jti,
       res,
     );
@@ -225,17 +220,26 @@ export class AuthController {
     return this.auth.selectCommonIdentity(body, req);
   }
 
-
   // auth.controller.ts
 
-@Post("activity")
-@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
-async activity(@Req() req) {
-  await this.prisma.user.update({
-    where: { id: req.user.sub },
-    data: { lastActivityAt: new Date() },
-  });
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
+  @Post('activity')
+  async activity(@Req() req: any) {
+    const userId = req.user?.sub as string;
 
-  return { ok: true };
-}
+    if (!userId) {
+      throw new UnauthorizedException('Unauthenticated');
+    }
+
+    await this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        lastActivityAt: new Date(),
+      },
+    });
+
+    return { ok: true };
+  }
 }
