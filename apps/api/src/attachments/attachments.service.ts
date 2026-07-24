@@ -1,6 +1,12 @@
 // attachments.service.ts
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'prisma/prisma.service';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
 import { StorageService } from '../storage/storage.service';
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
@@ -9,8 +15,10 @@ import type { Express } from 'express';
 import { ReadStream } from 'fs';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
-import { getRequestContext } from 'src/common/request-context';
+
 import { raw } from '@prisma/client/runtime/library';
+import { PrismaService } from '../../prisma/prisma.service';
+import { getRequestContext } from '../common/request-context';
 
 type CreateInput = {
   reportId: string;
@@ -21,7 +29,51 @@ type CreateInput = {
   providedChecksum?: string;
   createdBy?: string;
   meta?: Record<string, any>;
+  visibility?: 'ALL' | 'LAB_ONLY' | 'CLIENT_ONLY';
 };
+
+const LAB_ROLES = [
+  'SYSTEMADMIN',
+  'ADMIN',
+  'FRONTDESK',
+  'MICRO',
+  'MC',
+  'QA',
+  'CHEMISTRY',
+];
+
+function defaultVisibilityForRole(role?: string) {
+  return role === 'CLIENT' ? 'CLIENT_ONLY' : 'LAB_ONLY';
+}
+
+function canViewAttachment(
+  role: string | undefined,
+  visibility: string,
+) {
+  // SYSTEMADMIN sees everything
+  if (role === "SYSTEMADMIN") return true;
+
+  const LAB_ROLES = [
+    "ADMIN",
+    "FRONTDESK",
+    "MICRO",
+    "MC",
+    "QA",
+    "CHEMISTRY",
+  ];
+
+  if (visibility === "ALL") return true;
+
+  if (visibility === "LAB_ONLY") {
+    return !!role && LAB_ROLES.includes(role);
+  }
+
+  if (visibility === "CLIENT_ONLY") {
+    return role === "CLIENT";
+  }
+
+  return false;
+}
 
 @Injectable()
 export class AttachmentsService {
@@ -78,18 +130,18 @@ export class AttachmentsService {
     const checksum =
       input.providedChecksum ?? (await this.sha256FromPath(filePath));
 
-      const duplicate = await this.prisma.attachment.findFirst({
-  where: {
-    reportId: input.reportId,
-    checksum,
-  },
-  select: { id: true },
-});
+    const duplicate = await this.prisma.attachment.findFirst({
+      where: {
+        reportId: input.reportId,
+        checksum,
+      },
+      select: { id: true },
+    });
 
-if (duplicate) {
-  if (isTemp) await fs.unlink(filePath).catch(() => {});
-  throw new ConflictException('Duplicate attachment already exists.');
-}
+    if (duplicate) {
+      if (isTemp) await fs.unlink(filePath).catch(() => {});
+      throw new ConflictException('Duplicate attachment already exists.');
+    }
 
     const storageKey = await this.storage.put({
       filePath,
@@ -100,6 +152,10 @@ if (duplicate) {
     // If storage.put() copied (not renamed), we can delete any temp file
     // (If it renamed, the original path no longer exists; unlink will just fail silently.)
     if (isTemp) await fs.unlink(filePath).catch(() => {});
+
+    const ctx = getRequestContext() || {};
+    const role = String((ctx as any).role || '');
+    const visibility = input.visibility ?? defaultVisibilityForRole(role);
 
     try {
       const attachment = await this.prisma.attachment.create({
@@ -113,6 +169,7 @@ if (duplicate) {
           pages: input.pages,
           createdBy: input.createdBy ?? null,
           meta: input.meta ?? {},
+          visibility,
         },
       });
       try {
@@ -130,9 +187,9 @@ if (duplicate) {
       return { ok: true, id: attachment.id };
     } catch (e: any) {
       // Handle duplicate checksum (unique on [reportId, checksum])
-   if (e.code === 'P2002') {
-  throw new ConflictException('Duplicate attachment already exists.');
-}
+      if (e.code === 'P2002') {
+        throw new ConflictException('Duplicate attachment already exists.');
+      }
       throw e;
     }
   }
@@ -140,7 +197,10 @@ if (duplicate) {
   // ...listForReport/meta/stream unchanged
 
   async listForReport(reportId: string) {
-    return this.prisma.attachment.findMany({
+    const ctx = getRequestContext() || {};
+    const role = String((ctx as any).role || '');
+
+    const rows = await this.prisma.attachment.findMany({
       where: { reportId },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -152,38 +212,60 @@ if (duplicate) {
         source: true,
         createdAt: true,
         createdBy: true,
+        visibility: true,
       },
     });
+
+    return rows.filter((a) => canViewAttachment(role, a.visibility));
   }
 
-  async meta(id: string) {
-    const a = await this.prisma.attachment.findUnique({ where: { id } });
-    if (!a) throw new NotFoundException('Attachment not found');
-    const st = await this.storage.stat(a.storageKey).catch(() => null);
-    return { ...a, size: st?.size ?? null };
+ async meta(id: string) {
+  const a = await this.prisma.attachment.findUnique({ where: { id } });
+  if (!a) throw new NotFoundException('Attachment not found');
+
+  const ctx = getRequestContext() || {};
+  const role = String((ctx as any).role || '');
+
+  if (!canViewAttachment(role, a.visibility)) {
+    throw new ForbiddenException(
+      'You do not have permission to view this attachment',
+    );
   }
 
-  async stream(id: string): Promise<{
-    stream: NodeJS.ReadableStream;
-    mime: string;
-    filename: string;
-  }> {
-    const a = await this.prisma.attachment.findUnique({ where: { id } });
-    if (!a) throw new NotFoundException('Attachment not found');
+  const st = await this.storage.stat(a.storageKey).catch(() => null);
+  return { ...a, size: st?.size ?? null };
+}
 
-    const ext = path.extname(a.filename).toLowerCase();
-    const mime =
-      ext === '.pdf'
-        ? 'application/pdf'
-        : ext === '.png'
-          ? 'image/png'
-          : ext === '.jpg' || ext === '.jpeg'
-            ? 'image/jpeg'
-            : 'application/octet-stream';
+async stream(id: string): Promise<{
+  stream: NodeJS.ReadableStream;
+  mime: string;
+  filename: string;
+}> {
+  const a = await this.prisma.attachment.findUnique({ where: { id } });
+  if (!a) throw new NotFoundException('Attachment not found');
 
-    const stream = await this.storage.createReadStream(a.storageKey);
-    return { stream: stream as any, mime, filename: a.filename };
+  const ctx = getRequestContext() || {};
+  const role = String((ctx as any).role || '');
+
+  if (!canViewAttachment(role, a.visibility)) {
+    throw new ForbiddenException(
+      'You do not have permission to view this attachment',
+    );
   }
+
+  const ext = path.extname(a.filename).toLowerCase();
+  const mime =
+    ext === '.pdf'
+      ? 'application/pdf'
+      : ext === '.png'
+        ? 'image/png'
+        : ext === '.jpg' || ext === '.jpeg'
+          ? 'image/jpeg'
+          : 'application/octet-stream';
+
+  const stream = await this.storage.createReadStream(a.storageKey);
+  return { stream: stream as any, mime, filename: a.filename };
+}
 
   async remove(id: string) {
     const a = await this.prisma.attachment.findUnique({
@@ -272,4 +354,18 @@ if (duplicate) {
       },
     });
   }
+
+  async updateVisibility(
+  id: string,
+  visibility: 'ALL' | 'LAB_ONLY' | 'CLIENT_ONLY',
+) {
+  if (!['ALL', 'LAB_ONLY', 'CLIENT_ONLY'].includes(visibility)) {
+    throw new BadRequestException('Invalid attachment visibility');
+  }
+
+  return this.prisma.attachment.update({
+    where: { id },
+    data: { visibility },
+  });
+}
 }

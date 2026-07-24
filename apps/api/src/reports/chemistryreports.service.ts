@@ -77,16 +77,15 @@ function flattenReport(r: any) {
   return { ...base, ...d };
 }
 
+type Transition = {
+  next: ChemistryReportStatus[];
+  canSet: UserRole[];
+  nextEditableBy: UserRole[];
+  canEdit: UserRole[];
+};
+
 // 🔁 Keep this in sync with backend
-const STATUS_TRANSITIONS: Record<
-  ChemistryReportStatus,
-  {
-    canSet: UserRole[];
-    next: ChemistryReportStatus[];
-    nextEditableBy: UserRole[];
-    canEdit: UserRole[];
-  }
-> = {
+const STATUS_TRANSITIONS = {
   DRAFT: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
     next: ['UNDER_DRAFT_REVIEW', 'SUBMITTED_BY_CLIENT'],
@@ -107,29 +106,11 @@ const STATUS_TRANSITIONS: Record<
   },
   UNDER_CLIENT_REVIEW: {
     canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['CLIENT_NEEDS_CORRECTION', 'APPROVED'],
+    next: ["CHANGE_REQUESTED","CORRECTION_REQUESTED", 'APPROVED'],
     nextEditableBy: ['ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  CLIENT_NEEDS_CORRECTION: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_CLIENT_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    canEdit: ['CLIENT', 'SYSTEMADMIN'],
-  },
-
-  RESUBMISSION_BY_CLIENT: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['ADMIN', 'QA', 'CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+ 
   RECEIVED_BY_FRONTDESK: {
     canSet: ['FRONTDESK', 'SYSTEMADMIN'],
     next: ['UNDER_CLIENT_REVIEW', 'FRONTDESK_ON_HOLD'],
@@ -142,15 +123,9 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['FRONTDESK', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  FRONTDESK_NEEDS_CORRECTION: {
-    canSet: ['FRONTDESK', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-    next: ['SUBMITTED_BY_CLIENT'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
   UNDER_TESTING_REVIEW: {
     canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['TESTING_ON_HOLD', 'TESTING_NEEDS_CORRECTION', 'UNDER_QA_REVIEW'],
+    next: ['TESTING_ON_HOLD', 'CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_QA_REVIEW'],
     nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
     canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
   },
@@ -160,67 +135,29 @@ const STATUS_TRANSITIONS: Record<
     nextEditableBy: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  TESTING_NEEDS_CORRECTION: {
-    canSet: ['CLIENT', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_CORRECTION'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
-  UNDER_RESUBMISSION_TESTING_REVIEW: {
-    canSet: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    next: ['UNDER_RESUBMISSION_QA_REVIEW', 'QA_NEEDS_CORRECTION'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: ['CHEMISTRY', 'MC', 'ADMIN', 'QA', 'SYSTEMADMIN'],
-  },
-  RESUBMISSION_BY_TESTING: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['UNDER_CLIENT_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+
   UNDER_QA_REVIEW: {
     canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['QA_NEEDS_CORRECTION', 'RECEIVED_BY_FRONTDESK'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'UNDER_ADMIN_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: ['QA', 'SYSTEMADMIN'],
   },
-  QA_NEEDS_CORRECTION: {
-    canSet: ['QA', 'SYSTEMADMIN', 'CHEMISTRY', 'MC'],
-    next: ['UNDER_TESTING_REVIEW'],
-    nextEditableBy: ['CHEMISTRY', 'MC', 'SYSTEMADMIN'],
-    canEdit: [],
-  },
+
 
   UNDER_ADMIN_REVIEW: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['ADMIN_NEEDS_CORRECTION', 'ADMIN_REJECTED', 'RECEIVED_BY_FRONTDESK'],
+    next: ['CHANGE_REQUESTED', 'CORRECTION_REQUESTED', 'ADMIN_REJECTED', 'UNDER_CLIENT_REVIEW'],
     nextEditableBy: ['QA', 'ADMIN', 'SYSTEMADMIN'],
     canEdit: ['ADMIN', 'SYSTEMADMIN'],
   },
-  ADMIN_NEEDS_CORRECTION: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['UNDER_QA_REVIEW'],
-    nextEditableBy: ['QA', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+
   ADMIN_REJECTED: {
     canSet: ['ADMIN', 'SYSTEMADMIN'],
     next: ['UNDER_QA_REVIEW'],
     nextEditableBy: ['QA', 'SYSTEMADMIN'],
     canEdit: [],
   },
-  UNDER_RESUBMISSION_QA_REVIEW: {
-    canSet: ['QA', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['QA', 'SYSTEMADMIN'],
-  },
-  UNDER_RESUBMISSION_ADMIN_REVIEW: {
-    canSet: ['ADMIN', 'SYSTEMADMIN'],
-    next: ['RECEIVED_BY_FRONTDESK'],
-    nextEditableBy: ['CLIENT', 'SYSTEMADMIN'],
-    canEdit: ['ADMIN', 'SYSTEMADMIN'],
-  },
+
   APPROVED: {
     canSet: [],
     next: [],
@@ -339,7 +276,7 @@ const STATUS_TRANSITIONS: Record<
       'SYSTEMADMIN',
     ],
   },
-};
+} as const satisfies Partial<Record<ChemistryReportStatus, Transition>>;
 
 const EDIT_MAP: Record<UserRole, string[]> = {
   SYSTEMADMIN: ['*'],
@@ -946,6 +883,7 @@ export class ChemistryReportsService {
       }
 
       // e-sign requirements
+
       if (
         patchIn.status === 'UNDER_CLIENT_REVIEW' ||
         patchIn.status === 'LOCKED' ||
@@ -964,6 +902,89 @@ export class ChemistryReportsService {
       }
 
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
+
+      if (
+        patchIn.status === 'UNDER_QA_REVIEW' ||
+        patchIn.status === 'UNDER_CLIENT_REVIEW' ||
+        patchIn.status === 'LOCKED' ||
+        patchIn.status === 'VOID'
+      ) {
+        const password =
+          _pwdFromBody ||
+          (patchIn as any)?.eSignPassword ||
+          (ctx as any)?.eSignPassword ||
+          null;
+        if (!password)
+          throw new BadRequestException(
+            'Electronic signature (password) is required',
+          );
+        try {
+          await this.esign.verifyPassword(user.userId, String(password));
+        } catch {
+          await this.logESignAudit({
+            reportId: current.id,
+            clientCode: current.clientCode ?? null,
+
+            formType: current.formType,
+            formNumber: current.formNumber,
+            reportNumber: current.reportNumber ?? null,
+
+            actorUserId: user.userId,
+            actorRole: user.role,
+
+            action: 'ESIGN_REJECTED',
+
+            fromStatus: current.status,
+            toStatus: patchIn.status,
+
+            reason: reasonFromCtxOrBody,
+
+            details:
+              `Electronic signature rejected ` +
+              `for ${current.status} → ${patchIn.status}`,
+          });
+
+          throw new ForbiddenException('Electronic signature failed');
+        }
+      }
+
+      if (
+        current.status === 'UNDER_TESTING_REVIEW' &&
+        patchIn.status === 'UNDER_QA_REVIEW' &&
+        (user.role === 'CHEMISTRY' || user.role === 'MC')
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.testedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.testedDate = new Date();
+      }
+
+      if (
+        current.status === 'UNDER_ADMIN_REVIEW' &&
+        patchIn.status === 'UNDER_CLIENT_REVIEW' &&
+        user.role === 'ADMIN'
+      ) {
+        const actor = await this.prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, email: true, userId: true },
+        });
+
+        details.reviewedBy =
+          actor?.name?.trim() ||
+          actor?.userId?.trim() ||
+          actor?.email?.trim() ||
+          'Unknown';
+
+        details.reviewedDate = new Date();
+      }
 
       base.status = patchIn.status;
     }
@@ -1064,6 +1085,32 @@ export class ChemistryReportsService {
     if (newStatus && prevStatus !== newStatus) {
       const ctx = getRequestContext() || {};
 
+      if (
+        patchIn.status &&
+        prevStatus !== String(patchIn.status) &&
+        (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
+          patchIn.status === 'UNDER_QA_REVIEW' ||
+          patchIn.status === 'UNDER_CLIENT_REVIEW' ||
+          patchIn.status === 'LOCKED' ||
+          patchIn.status === 'VOID')
+      ) {
+        await this.logESignAudit({
+          reportId: current.id,
+          clientCode: current.clientCode ?? null,
+          formType: current.formType,
+          formNumber: current.formNumber,
+          reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'ESIGN_VERIFIED',
+          fromStatus: current.status,
+          toStatus: patchIn.status,
+          reason: reasonFromCtxOrBody,
+          details: `Electronic signature verified for ${current.status} → ${patchIn.status}`,
+        });
+      }
+
       const reason =
         (ctx as any).reason ?? _reasonFromBody ?? patchIn?.reason ?? null;
 
@@ -1122,13 +1169,58 @@ export class ChemistryReportsService {
     return flattenReport(updated);
   }
 
-  // async updateStatus(
-  //   user: { userId: string; role: UserRole },
-  //   id: string,
-  //   status: ChemistryReportStatus,
-  // ) {
-  //   return this.update(user, id, { status });
-  // }
+  private async logESignAudit(args: {
+    reportId: string;
+    clientCode: string | null;
+    formType: FormType;
+    formNumber: string;
+    reportNumber: string | null;
+
+    actorUserId: string;
+    actorRole: UserRole;
+
+    action: 'ESIGN_VERIFIED' | 'ESIGN_REJECTED';
+
+    fromStatus?: ChemistryReportStatus | null;
+    toStatus?: ChemistryReportStatus | null;
+
+    reason?: string | null;
+
+    details: string;
+  }) {
+    const ctx = getRequestContext();
+
+    if (ctx?.skipAudit) return;
+
+    await this.prisma.auditTrail.create({
+      data: {
+        action: args.action,
+
+        entity: args.formType,
+        entityId: args.reportId,
+
+        userId: args.actorUserId,
+        role: args.actorRole,
+
+        ipAddress: ctx?.ip ?? null,
+
+        clientCode: args.clientCode ?? null,
+
+        details: args.details,
+
+        changes: {
+          fromStatus: args.fromStatus ?? null,
+          toStatus: args.toStatus ?? null,
+          reason: args.reason ?? null,
+          signedAt: new Date().toISOString(),
+        },
+
+        formNumber: args.formNumber,
+        reportNumber: args.reportNumber ?? null,
+        formType: args.formType,
+      },
+    });
+  }
 
   async updateStatus(
     user: { userId: string; role: UserRole },

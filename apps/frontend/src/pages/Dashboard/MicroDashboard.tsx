@@ -9,7 +9,7 @@ import {
   type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
@@ -25,7 +25,14 @@ import {
   type SterilityReportStatus,
 } from "../../utils/SterilityReportFormWorkflow";
 import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
-import { COLS, isTerminalStatus, type ColKey } from "../../utils/globalUtils";
+// import { getReportSearchBlob } from "../../utils/clientDashboardutils";
+import {
+  COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
+  isTerminalStatus,
+  type ColKey,
+} from "../../utils/globalUtils";
 import { Pin } from "lucide-react";
 import ApeReportFormView from "../Reports/ApeReportFormView";
 import ApeReport from "../LabReports/ApeReport";
@@ -88,39 +95,39 @@ type Report = {
 // Statuses
 // -----------------------------
 // Micro + Micro Water (prelim/final workflow)
-const MICRO_ONLY_STATUSES = [
+const MICRO_ONLY_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "FINAL_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  // "UNDER_CLIENT_FINAL_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "FINAL_RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_TESTING_ON_HOLD",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_TESTING",
-  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
-  "FINAL_RESUBMISSION_BY_TESTING",
+  // "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  // "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  // "FINAL_RESUBMISSION_BY_TESTING",
   "PRELIMINARY_APPROVED",
   "UNDER_FINAL_TESTING_REVIEW",
   "FINAL_TESTING_ON_HOLD",
-  "FINAL_TESTING_NEEDS_CORRECTION",
-  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  // // "FINAL_TESTING_NEEDS_CORRECTION",
+  // "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_PRELIMINARY_REVIEW",
-  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  // "QA_NEEDS_PRELIMINARY_CORRECTION",
   "UNDER_QA_FINAL_REVIEW",
-  "QA_NEEDS_FINAL_CORRECTION",
+  // "QA_NEEDS_FINAL_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
   "LOCKED",
   "VOID",
@@ -129,30 +136,30 @@ const MICRO_ONLY_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
 // Sterility (chemistry-like workflow)
-const STERILITY_ONLY_STATUSES = [
+const STERILITY_ONLY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -161,7 +168,7 @@ const STERILITY_ONLY_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
 type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY" | "APE";
 
@@ -819,7 +826,18 @@ export default function MicroDashboard() {
   // ✅ Loading guards for buttons
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
+
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   // ✅ Per-row update guard
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -2535,18 +2553,10 @@ export default function MicroDashboard() {
     );
   }
 
-  function requiresApeReviewedSignature(targetStatus: string) {
-    const s = String(targetStatus).toUpperCase();
-
-    return (
-      s === "UNDER_CLIENT_REVIEW" ||
-      s === "UNDER_ADMIN_REVIEW" ||
-      s === "APPROVED" ||
-      s === "LOCKED"
-    );
-  }
-
-  function getMissingApeValidationFields(child: any, targetStatus: string) {
+  function getMissingApeValidationFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2614,14 +2624,16 @@ export default function MicroDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Validation Report - ${section?.title || section?.key || "section"} rows`,
+          `APE Validation Report - ${
+            section?.title || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.title || section?.key || "Validation"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.title || section?.key || "Validation"
+        } - ${row?.organism || "Organism"}`;
 
         addApeMissing(
           missing,
@@ -2636,23 +2648,13 @@ export default function MicroDashboard() {
       });
     });
 
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(
-        missing,
-        "APE Validation Report - Reviewed By",
-        child?.reviewedBy,
-      );
-      addApeMissing(
-        missing,
-        "APE Validation Report - Reviewed Date",
-        child?.reviewedDate,
-      );
-    }
-
     return missing;
   }
 
-  function getMissingApeReportFields(child: any, targetStatus: string) {
+  function getMissingApeReportFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2667,9 +2669,17 @@ export default function MicroDashboard() {
     addApeMissing(missing, "APE Report - Description", child?.description);
     addApeMissing(missing, "APE Report - Lot #", child?.lotNo);
     addApeMissing(missing, "APE Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Report - Test Reference", child?.testReference);
+    addApeMissing(
+      missing,
+      "APE Report - Test Reference",
+      child?.testReference,
+    );
     addApeMissing(missing, "APE Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.apeReportSections)
       ? child.apeReportSections
@@ -2684,46 +2694,51 @@ export default function MicroDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Report - ${section?.dayLabel || section?.key || "section"} rows`,
+          `APE Report - ${
+            section?.dayLabel || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.dayLabel || section?.key || "Day"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.dayLabel || section?.key || "Day"
+        } - ${row?.organism || "Organism"}`;
 
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} Control Growth`,
-          row?.controlGrowth,
-        );
+        if (section?.key === "DAY_0") {
+          addApeMissing(
+            missing,
+            `APE Report - ${labelPrefix} Control Growth`,
+            row?.controlGrowth,
+          );
+        }
+
         addApeMissing(
           missing,
           `APE Report - ${labelPrefix} Sample Growth`,
           row?.sampleGrowth,
         );
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} % Decrease`,
-          row?.decrease,
-        );
-        addApeMissing(
-          missing,
-          section?.key === "DAY_0"
-            ? `APE Report - ${labelPrefix} Innoculum Level`
-            : `APE Report - ${labelPrefix} Log Reduction`,
-          row?.innoculumLevel,
-        );
       });
     });
 
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
-      addApeMissing(missing, "APE Report - Reviewed Date", child?.reviewedDate);
-    }
-
     return missing;
+  }
+
+  async function fetchLatestApeChildReport(
+    parentId: string,
+    reportType: ApeReportTab,
+  ) {
+    try {
+      const child = await api<any>(
+        `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+          parentId,
+        )}&reportType=${reportType}&_=${Date.now()}`,
+      );
+
+      return child?.id ? child : null;
+    } catch {
+      return null;
+    }
   }
 
   async function validateBothApeChildReportsBeforeStatusChange(
@@ -2741,21 +2756,29 @@ export default function MicroDashboard() {
     );
     const apeChildBase = makeApeChildReport(parent, "APE_REPORT");
 
+    const [latestValidation, latestApeReport] = await Promise.all([
+      fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_REPORT"),
+    ]);
+
     const validationChild =
       currentChild?.reportType === "APE_VALIDATION_REPORT"
-        ? { ...validationChildBase, ...currentChild }
-        : validationChildBase;
+        ? { ...validationChildBase, ...latestValidation, ...currentChild }
+        : { ...validationChildBase, ...latestValidation };
 
     const apeChild =
       currentChild?.reportType === "APE_REPORT"
-        ? { ...apeChildBase, ...currentChild }
-        : apeChildBase;
+        ? { ...apeChildBase, ...latestApeReport, ...currentChild }
+        : { ...apeChildBase, ...latestApeReport };
 
     const validationMissing = getMissingApeValidationFields(
       validationChild,
       targetStatus,
     );
-    const apeReportMissing = getMissingApeReportFields(apeChild, targetStatus);
+    const apeReportMissing = getMissingApeReportFields(
+      apeChild,
+      targetStatus,
+    );
 
     const missing = [...validationMissing, ...apeReportMissing];
 
@@ -2766,10 +2789,18 @@ export default function MicroDashboard() {
 
     setApeReportTab(parent.id, firstInvalidTab);
 
+    const missingPreview = missing
+      .slice(0, 6)
+      .map((item) => `• ${item}`)
+      .join("\n");
+
+    const remainingMissing =
+      missing.length > 6 ? `\n• +${missing.length - 6} more` : "";
+
     toast(
-      `Warning: Please complete both APE Validation Report and APE Report before changing status to ${niceStatus(
+      `Warning: Both APE Validation Report and APE Report must be complete before changing status to ${niceStatus(
         targetStatus,
-      )}.`,
+      )}.\n\n${missingPreview}${remainingMissing}`,
       {
         icon: "⚠️",
         duration: 5000,
@@ -2937,6 +2968,31 @@ export default function MicroDashboard() {
     // VIEW mode Report tab should be read-only
     return renderApeReportTabs(report, true);
   }
+
+
+    async function uploadAttachmentForReport(r: Report, file: File) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("source", "manual-upload");
+      form.append("createdBy", user?.name || user?.role || "micro");
+      form.append("kind", "SIGNED_FORM");
+      form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+      form.append("visibility", attachmentVisibility);
+  
+      const token = localStorage.getItem("token");
+  
+      const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: form,
+      });
+  
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+    }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3512,6 +3568,10 @@ export default function MicroDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -3706,6 +3766,28 @@ export default function MicroDashboard() {
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3942,6 +4024,38 @@ export default function MicroDashboard() {
               )}
 
               <div className="flex items-center gap-2">
+                <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 {/* Print this report */}
                 <button
                   disabled={printingSingle}
@@ -4090,6 +4204,7 @@ export default function MicroDashboard() {
             <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4098,6 +4213,7 @@ export default function MicroDashboard() {
                 />
               ) : selectedReport.formType === "STERILITY" ? (
                 <SterilityReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4108,6 +4224,7 @@ export default function MicroDashboard() {
                 renderSelectedApeBody(selectedReport)
               ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4164,6 +4281,20 @@ export default function MicroDashboard() {
             >
               Raise Correction
             </button>
+
+            {/* <button
+                    type="button"
+                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+                    onClick={() => {
+                      closeCorrectionMenu();
+                      openSelectedForCorrection([
+                        "REQUEST_CHANGE",
+                        "RAISE_CORRECTION",
+                      ]);
+                    }}
+                  >
+                    Open Both
+                  </button> */}
           </div>,
           document.body,
         )}

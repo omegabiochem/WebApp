@@ -4,6 +4,7 @@ import {
   Get, Res,
   Req,
   Delete,
+  Patch,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -20,6 +21,7 @@ type UploadMeta = {
   checksum?: string;
   createdBy?: string;
   kind?: 'SIGNED_FORM' | 'RAW_SCAN' | 'OTHER';
+  visibility?: 'ALL' | 'LAB_ONLY' | 'CLIENT_ONLY';
 };
 
 // Use the same root your StorageService uses
@@ -57,6 +59,7 @@ export class AttachmentsController {
       pages: meta.pages !== undefined ? Number(meta.pages) : undefined,
       providedChecksum: meta.checksum,
       createdBy: meta.createdBy ?? 'ingestor',
+     visibility: meta.visibility,
     });
   }
 
@@ -79,7 +82,13 @@ export class AttachmentsController {
     stream.pipe(res);
   }
 
-
+@Patch(':attId/visibility')
+updateVisibility(
+  @Param('attId') attId: string,
+  @Body('visibility') visibility: 'ALL' | 'LAB_ONLY' | 'CLIENT_ONLY',
+) {
+  return this.svc.updateVisibility(attId, visibility);
+}
 
   
 }

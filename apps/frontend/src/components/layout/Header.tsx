@@ -195,7 +195,7 @@ export default function Header() {
     try {
       const list = await api<any[]>("/notifications");
 
-      console.log("notifications list:", list);
+      // console.log("notifications list:", list);
 
       setNotifications(Array.isArray(list) ? list : []);
     } catch (e) {

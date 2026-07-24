@@ -7,6 +7,8 @@ import {
   getCorrections,
   type CorrectionItem,
 } from "../../utils/microMixReportValidation";
+import { Eye } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -26,6 +28,7 @@ type AttachmentItem = {
   filename: string;
   kind: string;
   createdAt: string;
+  visibility?: "ALL" | "LAB_ONLY" | "CLIENT_ONLY";
 };
 
 // // one helper, at top of the file
@@ -60,12 +63,14 @@ function useAttachments(reportId?: string) {
     })();
   }, [reportId]);
 
-  return { items, loading };
+  return { items, setItems, loading };
 }
 
 function AttachmentGallery({ reportId }: { reportId?: string }) {
-  const { items, loading } = useAttachments(reportId);
+  const { user } = useAuth();
+  const { items, setItems, loading } = useAttachments(reportId);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [visibilityMenuId, setVisibilityMenuId] = useState<string | null>(null);
 
   if (loading)
     return (
@@ -78,6 +83,27 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
       <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>
     );
 
+  const LAB_ROLES = ["ADMIN", "FRONTDESK", "MICRO", "MC", "QA", "CHEMISTRY"];
+
+  const visibilityOptions =
+    user?.role === "SYSTEMADMIN"
+      ? [
+          ["ALL", "All can view"],
+          ["LAB_ONLY", "Only lab can view"],
+          ["CLIENT_ONLY", "Only client can view"],
+        ]
+      : user?.role === "CLIENT"
+        ? [
+            ["ALL", "All can view"],
+            ["CLIENT_ONLY", "Only client can view"],
+          ]
+        : LAB_ROLES.includes(user?.role || "")
+          ? [
+              ["ALL", "All can view"],
+              ["LAB_ONLY", "Only lab can view"],
+            ]
+          : [["ALL", "All can view"]];
+
   return (
     <div className="no-print mt-4">
       <div className="mb-2 text-sm font-semibold">Attachments</div>
@@ -89,15 +115,14 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
           const isPdf = ext === "pdf";
 
           return (
-            <button
+            <div
               key={a.id}
-              type="button"
               onClick={() =>
                 isImage || isPdf
                   ? setOpenId(a.id)
                   : window.open(filePath, "_blank")
               }
-              className="group text-left border rounded-lg p-3 hover:shadow-sm transition bg-white"
+              className="relative group cursor-pointer text-left border rounded-lg p-3 pb-1 hover:shadow-sm transition bg-white"
               title="Click to preview"
             >
               <div className="h-28 w-full border rounded flex items-center justify-center overflow-hidden bg-slate-50">
@@ -119,10 +144,97 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
               >
                 {a.filename}
               </div>
-              <div className="text-xs text-slate-500">
+              {/* <div className="text-xs text-slate-500">
                 {a.kind} • {new Date(a.createdAt).toLocaleString()}
+              </div> */}
+
+              <div className="mt-1 flex items-center justify-between">
+                <div className="text-xs text-slate-500">{a.kind}</div>
+
+                <span
+                  className={`rounded-full px-2 py-2 text-[10px] font-medium ${
+                    a.visibility === "ALL"
+                      ? "bg-green-100 text-green-700"
+                      : a.visibility === "CLIENT_ONLY"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {a.visibility === "ALL"
+                    ? "ALL"
+                    : a.visibility === "CLIENT_ONLY"
+                      ? "CLIENT"
+                      : "LAB"}
+                </span>
               </div>
-            </button>
+
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>{new Date(a.createdAt).toLocaleString()}</span>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVisibilityMenuId(
+                        visibilityMenuId === a.id ? null : a.id,
+                      );
+                    }}
+                    className="rounded p-2 hover:bg-slate-100"
+                    title="Visibility"
+                  >
+                    <Eye className="h-4 w-4 text-slate-600" />
+                  </button>
+
+                  {visibilityMenuId === a.id && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg border bg-white p-1 shadow-lg"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {visibilityOptions.map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={`block w-full rounded px-3 py-2 text-left text-xs hover:bg-slate-100 ${
+                            a.visibility === value
+                              ? "bg-blue-50 font-semibold text-blue-700"
+                              : ""
+                          }`}
+                          onClick={async () => {
+                            const nextVisibility = value as
+                              | "ALL"
+                              | "LAB_ONLY"
+                              | "CLIENT_ONLY";
+
+                            await api(
+                              `${attBase(reportId ?? "")}/${a.id}/visibility`,
+                              {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  visibility: nextVisibility,
+                                }),
+                              },
+                            );
+
+                            setItems((prev) =>
+                              prev.map((x) =>
+                                x.id === a.id
+                                  ? { ...x, visibility: nextVisibility }
+                                  : x,
+                              ),
+                            );
+
+                            setVisibilityMenuId(null);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -528,7 +640,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     "PRELIMINARY_RESUBMISSION_BY_CLIENT",
     "FINAL_RESUBMISSION_BY_CLIENT",
     "UNDER_CLIENT_PRELIMINARY_REVIEW",
-    "UNDER_CLIENT_FINAL_REVIEW",
     "UNDER_PRELIMINARY_TESTING_REVIEW",
     "PRELIMINARY_TESTING_ON_HOLD",
     "PRELIMINARY_TESTING_NEEDS_CORRECTION",
@@ -1140,10 +1251,10 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   >
                     TESTED BY:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none font-medium ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={report?.testedBy || ""}
+                      value={report?.testedBy?.toUpperCase() || ""}
                       readOnly
                       disabled
                     />
@@ -1154,10 +1265,13 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   >
                     DATE:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none font-medium ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={formatDateForInput(report?.testedDate) || ""}
+                      value={
+                        formatDateForInput(report?.testedDate) ||
+                        ""
+                      }
                       readOnly
                       disabled
                     />
@@ -1171,10 +1285,10 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                   >
                     REVIEWED BY:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none font-medium ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
-                      value={report?.reviewedBy || ""}
+                      value={report?.reviewedBy?.toUpperCase() || ""}
                       readOnly
                       disabled
                     />

@@ -38,6 +38,8 @@ import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -115,7 +117,7 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
 ];
 
 // used to know which viewer to render
@@ -2494,7 +2496,10 @@ export default function FrontDeskDashboard() {
     );
   }
 
-  function getMissingApeValidationFields(child: any, _targetStatus: string) {
+  function getMissingApeValidationFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2502,16 +2507,52 @@ export default function FrontDeskDashboard() {
     }
 
     addApeMissing(missing, "APE Validation Report - Client", child?.client);
-    addApeMissing(missing, "APE Validation Report - Date Sent", child?.dateSent);
-    addApeMissing(missing, "APE Validation Report - Type of Test", child?.typeOfTest);
-    addApeMissing(missing, "APE Validation Report - Sample Type", child?.sampleType);
-    addApeMissing(missing, "APE Validation Report - Formula #", child?.formulaNo);
-    addApeMissing(missing, "APE Validation Report - Description", child?.description);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Sent",
+      child?.dateSent,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Type of Test",
+      child?.typeOfTest,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Sample Type",
+      child?.sampleType,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Formula #",
+      child?.formulaNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Description",
+      child?.description,
+    );
     addApeMissing(missing, "APE Validation Report - Lot #", child?.lotNo);
-    addApeMissing(missing, "APE Validation Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Validation Report - Test Reference", child?.testReference);
-    addApeMissing(missing, "APE Validation Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Validation Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test SOP #",
+      child?.testSopNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test Reference",
+      child?.testReference,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Tested",
+      child?.dateTested,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.validationSections)
       ? child.validationSections
@@ -2526,14 +2567,16 @@ export default function FrontDeskDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Validation Report - ${section?.title || section?.key || "section"} rows`,
+          `APE Validation Report - ${
+            section?.title || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.title || section?.key || "Validation"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.title || section?.key || "Validation"
+        } - ${row?.organism || "Organism"}`;
 
         addApeMissing(
           missing,
@@ -2551,7 +2594,10 @@ export default function FrontDeskDashboard() {
     return missing;
   }
 
-  function getMissingApeReportFields(child: any, _targetStatus: string) {
+  function getMissingApeReportFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2566,9 +2612,17 @@ export default function FrontDeskDashboard() {
     addApeMissing(missing, "APE Report - Description", child?.description);
     addApeMissing(missing, "APE Report - Lot #", child?.lotNo);
     addApeMissing(missing, "APE Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Report - Test Reference", child?.testReference);
+    addApeMissing(
+      missing,
+      "APE Report - Test Reference",
+      child?.testReference,
+    );
     addApeMissing(missing, "APE Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.apeReportSections)
       ? child.apeReportSections
@@ -2583,36 +2637,29 @@ export default function FrontDeskDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Report - ${section?.dayLabel || section?.key || "section"} rows`,
+          `APE Report - ${
+            section?.dayLabel || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.dayLabel || section?.key || "Day"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.dayLabel || section?.key || "Day"
+        } - ${row?.organism || "Organism"}`;
 
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} Control Growth`,
-          row?.controlGrowth,
-        );
+        if (section?.key === "DAY_0") {
+          addApeMissing(
+            missing,
+            `APE Report - ${labelPrefix} Control Growth`,
+            row?.controlGrowth,
+          );
+        }
+
         addApeMissing(
           missing,
           `APE Report - ${labelPrefix} Sample Growth`,
           row?.sampleGrowth,
-        );
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} % Decrease`,
-          row?.decrease,
-        );
-        addApeMissing(
-          missing,
-          section?.key === "DAY_0"
-            ? `APE Report - ${labelPrefix} Innoculum Level`
-            : `APE Report - ${labelPrefix} Log Reduction`,
-          row?.innoculumLevel,
         );
       });
     });
@@ -2628,7 +2675,7 @@ export default function FrontDeskDashboard() {
       const child = await api<any>(
         `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
           parentId,
-        )}&reportType=${reportType}`,
+        )}&reportType=${reportType}&_=${Date.now()}`,
       );
 
       return child?.id ? child : null;
@@ -2653,12 +2700,8 @@ export default function FrontDeskDashboard() {
     const apeChildBase = makeApeChildReport(parent, "APE_REPORT");
 
     const [latestValidation, latestApeReport] = await Promise.all([
-      validationChildBase?.id
-        ? Promise.resolve(null)
-        : fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
-      apeChildBase?.id
-        ? Promise.resolve(null)
-        : fetchLatestApeChildReport(parent.id, "APE_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_REPORT"),
     ]);
 
     const validationChild =
@@ -3560,6 +3603,9 @@ Missing: ${missing
                       disabled={printingBulk}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -3744,6 +3790,28 @@ Missing: ${missing
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (

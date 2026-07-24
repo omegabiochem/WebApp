@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 import {
@@ -13,11 +21,12 @@ import {
   todayISO,
 } from "../../utils/microMixReportFormWorkflow";
 import {
-  STERILITY_STATUS_TRANSITIONS,
+  APE_STATUS_TRANSITIONS,
+  canRoleEditApeChildField,
+  pickApeChildEditablePayload,
+  type ApeReportStatus,
   type CorrectionItem,
-  type SterilityReportStatus,
-} from "../../utils/SterilityReportFormWorkflow";
-
+} from "../../utils/apeReportFormWorkflow";
 import * as QRCode from "qrcode";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
@@ -62,6 +71,8 @@ type ValidationSection = {
   rows: ValidationRow[];
 };
 
+type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
+
 type ApeValidationReportProps = {
   report?: any;
   onClose?: () => void;
@@ -76,6 +87,9 @@ type ApeValidationReportProps = {
     targetStatus: ReportStatus,
     currentChild?: any,
   ) => boolean | Promise<boolean>;
+  correctionLaunch?: boolean;
+  correctionKinds?: CorrectionLaunchKind[];
+  isWorkspaceActive?: boolean;
 };
 
 const REPORT_TYPE = "APE_VALIDATION_REPORT";
@@ -155,6 +169,46 @@ const statusButtons: Record<string, { label: string; color: string }> = {
 
 function formatStatus(status: string) {
   return status.replaceAll("_", " ");
+}
+
+function eSignActionTitle(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("APPROVED") || s.includes("FINAL_APPROVED")) {
+    return "Electronic Approval";
+  }
+
+  if (s.includes("QA") || s.includes("REVIEW")) {
+    return "Electronic Review Authorization";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Electronic Lock Authorization";
+  }
+
+  if (s.includes("CORRECTION")) {
+    return "Electronic Correction Authorization";
+  }
+
+  return "Electronic Signature Verification";
+}
+
+function eSignButtonText(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("APPROVED") || s.includes("FINAL_APPROVED")) {
+    return "Verify & Approve";
+  }
+
+  if (s.includes("REVIEW")) {
+    return "Verify & Continue";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Verify & Lock";
+  }
+
+  return "Verify Signature";
 }
 
 type ParentApeOrganism = {
@@ -299,41 +353,15 @@ function formatDateForInput(value?: string | null) {
 const PrintStyles = () => (
   <style>{`
     @media print {
-      /* Use almost the full sheet; leave a little bottom room for the QR */
-      @page { size: A4 portrait; margin: 6mm 10mm 12mm 10mm; } /* top right bottom left */
-
-      /* Remove UA margins/padding that add mystery whitespace */
-      html, body { margin: 0 !important; padding: 0 !important; }
-
-      /* Make the sheet fill the printable area and remove internal padding */
-      .sheet {
-        width: 100% !important;
-        box-shadow: none !important;
+      @page { size: A4 portrait; margin: 14mm; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+      .sheet { box-shadow: none !important; border: none !important; }
+      input, textarea {
         border: none !important;
-        padding: 0 !important;           /* kills p-4 top/bottom */
-        max-height: none !important;     
-       overflow: visible !important;
+        outline: none !important;
+        box-shadow: none !important;
       }
-        .no-print { display: none !important; }
-
-      /* Pull the letterhead up & tighten its spacing */
-      .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
-
-      /* Keep the last block on the same page and tighten its top gap */
-      .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
-
-      /* Optional: slightly smaller line-height for dense tables */
-      .tight-row { line-height: 1.1 !important; }
-
-img, svg {
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-
-img {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
     }
   `}</style>
 );
@@ -382,7 +410,24 @@ const DashStyles = () => (
       }
     }
     @media (prefers-reduced-motion: reduce) { .dash::after { animation:none; } }
-    @media print { .dash::after { display:none; } }
+    [data-correction-state="open"] {
+      position: relative;
+      outline: 2px dashed #dc2626;
+      outline-offset: -2px;
+      animation: correction-pulse 1.05s linear infinite;
+    }
+    [data-correction-state="resolved"] {
+      position: relative;
+      outline: 2px dashed #16a34a;
+      outline-offset: -2px;
+    }
+    @keyframes correction-pulse {
+      50% { outline-color: #fb7185; }
+    }
+    @media print {
+      .dash::after,
+      [data-correction-state] { outline: none !important; animation: none !important; }
+    }
   `}</style>
 );
 
@@ -401,17 +446,7 @@ function normalizeForCompare(value: unknown) {
   }
 }
 
-function isNeedsCorrectionStatus(status: ReportStatus) {
-  return (
-    status === "FRONTDESK_NEEDS_CORRECTION" ||
-    status === "TESTING_NEEDS_CORRECTION" ||
-    status === "QA_NEEDS_CORRECTION" ||
-    status === "ADMIN_NEEDS_CORRECTION" ||
-    status === "CLIENT_NEEDS_CORRECTION" ||
-    status === "CHANGE_REQUESTED" ||
-    status === "CORRECTION_REQUESTED"
-  );
-}
+
 
 // function requiresReviewedSignature(targetStatus: ReportStatus) {
 //   return (
@@ -426,13 +461,16 @@ export default function ApeValidationReportView({
   report,
   onClose,
   embedded = false,
-  pageMode = "UPDATE",
+  pageMode = "VIEW",
   hideTopActions = false,
   hideBottomActions = false,
   forcePageReadOnly = false,
   onSaved,
   onStatusChanged,
   beforeParentStatusChange,
+  correctionLaunch = false,
+  correctionKinds = [],
+  isWorkspaceActive = true,
 }: ApeValidationReportProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
@@ -463,17 +501,114 @@ export default function ApeValidationReportView({
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
+
+  const [showESign, setShowESign] = useState(false);
+  const [changeReason, setChangeReason] = useState("");
+  const [eSignPassword, setESignPassword] = useState("");
+  const [showESignPassword, setShowESignPassword] = useState(false);
+  const [eSignSubmitting, setESignSubmitting] = useState(false);
+  const [eSignError, setESignError] = useState<string | null>(null);
+  const [eSignConfirmed, setESignConfirmed] = useState(false);
+  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
+
+  const eSignDragRef = useRef({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+  });
+
+  function startESignDrag(e: ReactMouseEvent) {
+    eSignDragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: eSignPos.x,
+      origY: eSignPos.y,
+    };
+
+    window.onmousemove = (event) => {
+      if (!eSignDragRef.current.dragging) return;
+
+      setESignPos({
+        x:
+          eSignDragRef.current.origX +
+          event.clientX -
+          eSignDragRef.current.startX,
+        y:
+          eSignDragRef.current.origY +
+          event.clientY -
+          eSignDragRef.current.startY,
+      });
+    };
+
+    window.onmouseup = () => {
+      eSignDragRef.current.dragging = false;
+      window.onmousemove = null;
+      window.onmouseup = null;
+    };
+  }
+
+  useEffect(() => {
+    return () => {
+      window.onmousemove = null;
+      window.onmouseup = null;
+    };
+  }, []);
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
-  const [selectedCorrectionField, setSelectedCorrectionField] = useState("");
+  const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
   const [showCorrTray, setShowCorrTray] = useState(false);
+  const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
+  const [flash, setFlash] = useState<Record<string, boolean>>({});
+  const [resolveTarget, setResolveTarget] = useState<CorrectionItem | null>(null);
+  const [resolveFieldTarget, setResolveFieldTarget] = useState<string | null>(null);
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const [resolveReason, setResolveReason] = useState("");
   const [status, setStatus] = useState<ReportStatus>(
     report?.id
       ? report?.status || detail?.status || INITIAL_APE_CHILD_STATUS
       : INITIAL_APE_CHILD_STATUS,
   );
+
+  const canShowFloatingUi = !embedded || isWorkspaceActive;
+
+  const correctionModeActive =
+    (status === "UNDER_CORRECTION_UPDATE" ||
+      status === "UNDER_CHANGE_UPDATE") &&
+    openCorrections.length > 0;
+
+  function getCentralizedCorrectionStatus(
+    kinds: CorrectionLaunchKind[] = [],
+  ): ReportStatus {
+    if (kinds.includes("RAISE_CORRECTION")) return "CORRECTION_REQUESTED";
+    if (kinds.includes("REQUEST_CHANGE")) return "CHANGE_REQUESTED";
+    return "CORRECTION_REQUESTED";
+  }
+
+  function getWorkflowReturnStatus(current: ReportStatus): ReportStatus {
+    if (current === "UNDER_CLIENT_REVIEW") return "UNDER_QA_REVIEW";
+    return current;
+  }
+
+  useEffect(() => {
+    if (!correctionLaunch) return;
+    if (pageMode !== "UPDATE" || forcePageReadOnly) return;
+    if (!isWorkspaceActive) return;
+
+    setSelectingCorrections(true);
+    setPendingCorrections([]);
+    setPendingStatus(getCentralizedCorrectionStatus(correctionKinds));
+  }, [
+    correctionLaunch,
+    correctionKinds.join("|"),
+    pageMode,
+    forcePageReadOnly,
+    isWorkspaceActive,
+  ]);
 
   const [reportId, setReportId] = useState<string | null>(report?.id || null);
 
@@ -585,17 +720,17 @@ export default function ApeValidationReportView({
   }, [qrValue]);
 
   const FOOTER_IMAGES = [
-    { src: pjla, alt: "FDA Registered" },
-    { src: ilacmra, alt: "ISO Certified" },
+    { src: pjla, alt: "PJLA accreditation" },
+    { src: ilacmra, alt: "ILAC MRA accreditation" },
   ];
 
-  const footerRevNo = report?.footerRevNo || "Rev-01";
+  const footerRevNo = report?.footerRevNo || "Rev-00";
 
   const footerDateEffective = report?.footerDateEffective
     ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
         timeZone: "UTC",
       })
-    : "03/10/2026";
+    : "07/10/2026";
 
   const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
@@ -782,6 +917,55 @@ export default function ApeValidationReportView({
       : "";
   }
 
+  function hasOpenCorrection(fieldKey: string) {
+    return openCorrections.some(
+      (item) =>
+        item.fieldKey === fieldKey ||
+        item.fieldKey.startsWith(`${fieldKey}.`) ||
+        item.fieldKey.startsWith(`${fieldKey}:`),
+    );
+  }
+
+  function isFieldRequestedForCorrection(fieldKey: string) {
+    return hasOpenCorrection(fieldKey);
+  }
+
+  function correctionState(fieldKey: string) {
+    if (hasOpenCorrection(fieldKey)) return "open";
+    if (flash[fieldKey]) return "resolved";
+    return undefined;
+  }
+
+  function flashResolved(fieldKey: string) {
+    setFlash((prev) => ({ ...prev, [fieldKey]: true }));
+    window.setTimeout(
+      () => setFlash((prev) => ({ ...prev, [fieldKey]: false })),
+      1600,
+    );
+  }
+
+  function roleCanEditCorrectionField(fieldKey: string) {
+    if (!role) return false;
+    if (role === "SYSTEMADMIN") return true;
+    const baseField = fieldKey.split(/[.:]/)[0];
+    return canRoleEditApeChildField(role as any, baseField);
+  }
+
+  function handleCorrectionTargetClick(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!selectingCorrections) return;
+
+    const target = event.target as HTMLElement;
+    const fieldElement = target.closest<HTMLElement>("[data-correction-field]");
+    const fieldKey = fieldElement?.dataset.correctionField;
+
+    if (!fieldKey) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setAddForField(fieldKey);
+    setAddMessage("");
+  }
+
   function fieldHasChanged(c: CorrectionItem) {
     return (
       normalizeForCompare(getFieldDisplayValue(c.fieldKey)) !==
@@ -790,9 +974,91 @@ export default function ApeValidationReportView({
   }
 
   function canResolveCorrection(c: CorrectionItem) {
-    if (role === "SYSTEMADMIN") return !isDirty;
-    return !isDirty && fieldHasChanged(c);
+    if (c.status !== "OPEN" || isDirty) return false;
+    if (role === "SYSTEMADMIN") return true;
+    return roleCanEditCorrectionField(c.fieldKey) && fieldHasChanged(c);
   }
+
+  function canResolveAllForFieldKey(fieldKey: string) {
+    const items = openCorrections.filter(
+      (item) =>
+        item.fieldKey === fieldKey ||
+        item.fieldKey.startsWith(`${fieldKey}.`) ||
+        item.fieldKey.startsWith(`${fieldKey}:`),
+    );
+
+    return items.length > 0 && items.every((item) => canResolveCorrection(item));
+  }
+
+  async function resolveField(fieldKey: string, reason = "Fixed") {
+    if (!reportIdRef.current) return;
+
+    return runBusy("RESOLVE", async () => {
+      const items = openCorrections.filter(
+        (item) =>
+          item.fieldKey === fieldKey ||
+          item.fieldKey.startsWith(`${fieldKey}.`) ||
+          item.fieldKey.startsWith(`${fieldKey}:`),
+      );
+
+      await Promise.all(
+        items.map((item) =>
+          resolveCorrection(reportIdRef.current!, item.id, reason),
+        ),
+      );
+
+      const fresh = await getCorrections(reportIdRef.current!);
+      setCorrections(fresh);
+      flashResolved(fieldKey);
+    });
+  }
+
+  function ResolveOverlay({ field }: { field: string }) {
+    if (!hasOpenCorrection(field) || !roleCanEditCorrectionField(field)) {
+      return null;
+    }
+
+    const disabled = !canResolveAllForFieldKey(field);
+
+    return (
+      <button
+        type="button"
+        className={`no-print absolute -right-2 -top-2 z-20 grid h-5 w-5 place-items-center rounded-full text-white shadow ${
+          disabled
+            ? "cursor-not-allowed bg-emerald-300 opacity-60"
+            : "bg-emerald-600 hover:bg-emerald-700"
+        }`}
+        disabled={disabled || busy !== null}
+        title={
+          role === "SYSTEMADMIN"
+            ? "Resolve with reason"
+            : isDirty
+              ? "Save the report before resolving"
+              : disabled
+                ? "Edit this field before resolving"
+                : "Mark resolved"
+        }
+        onClick={(event) => {
+          event.stopPropagation();
+          if (disabled) return;
+
+          if (role === "SYSTEMADMIN") {
+            setResolveTarget(null);
+            setResolveFieldTarget(field);
+            setResolveReason("");
+            setShowResolveModal(true);
+            return;
+          }
+
+          resolveField(field);
+        }}
+      >
+        ✓
+      </button>
+    );
+  }
+
+
 
   function shouldBlockStatusChangeForUnresolvedCorrections() {
     const pending = openCorrections.filter((c) => fieldHasChanged(c));
@@ -808,21 +1074,22 @@ export default function ApeValidationReportView({
     return false;
   }
 
-  async function resolveOneCorrection(c: CorrectionItem) {
+  async function resolveOneCorrection(
+    c: CorrectionItem,
+    reason = "Fixed",
+  ) {
     if (!reportIdRef.current) return;
 
     return runBusy("RESOLVE", async () => {
-      await resolveCorrection(reportIdRef.current!, c.id, "Fixed");
+      await resolveCorrection(reportIdRef.current!, c.id, reason);
       const fresh = await getCorrections(reportIdRef.current!);
       setCorrections(fresh);
+      flashResolved(c.fieldKey);
     });
   }
 
-  function addPendingCorrection() {
-    const option = correctionFieldOptions.find(
-      (item) => item.key === selectedCorrectionField,
-    );
-
+  function addPendingCorrection(fieldKey: string) {
+    const option = correctionFieldOptions.find((item) => item.key === fieldKey);
     if (!option || !addMessage.trim()) return;
 
     setPendingCorrections((prev) => [
@@ -833,7 +1100,8 @@ export default function ApeValidationReportView({
         oldValue: option.value,
       },
     ]);
-    setSelectedCorrectionField("");
+
+    setAddForField(null);
     setAddMessage("");
   }
 
@@ -854,15 +1122,23 @@ export default function ApeValidationReportView({
 
     return runBusy("SEND_CORRECTIONS", async () => {
       try {
+        const returnStatus = getWorkflowReturnStatus(status);
+
         await createCorrections(
           reportIdRef.current!,
           pendingCorrections,
-          pendingStatus as SterilityReportStatus,
+          pendingStatus as ApeReportStatus,
           "Corrections requested",
           reportVersionRef.current,
           {
-            previousStatus: status as SterilityReportStatus,
-            workflowReturnStatus: status as SterilityReportStatus,
+            kinds:
+              correctionKinds.length > 0
+                ? correctionKinds
+                : pendingStatus === "CHANGE_REQUESTED"
+                  ? ["REQUEST_CHANGE"]
+                  : ["RAISE_CORRECTION"],
+            previousStatus: returnStatus as ApeReportStatus,
+            workflowReturnStatus: returnStatus as ApeReportStatus,
           },
         );
 
@@ -890,6 +1166,8 @@ export default function ApeValidationReportView({
         setSelectingCorrections(false);
         setPendingCorrections([]);
         setPendingStatus(null);
+        setAddForField(null);
+        setCorrectionActionOpen(false);
 
         onStatusChanged?.({
           ...report,
@@ -903,9 +1181,7 @@ export default function ApeValidationReportView({
           version: nextVersion,
         });
 
-        alert(
-          `✅ Corrections sent and parent APE status changed to ${pendingStatus}`,
-        );
+        alert(`✅ Corrections sent and parent APE status changed to ${pendingStatus}`);
       } catch (err: any) {
         console.error(err);
         alert(
@@ -1010,8 +1286,23 @@ export default function ApeValidationReportView({
     if (!isDirty) setIsDirty(true);
   }
 
-  function lock(_field: string) {
-    return !canEditForm;
+  function canEditField(
+    field: string,
+    correctionFieldKey = field,
+  ) {
+    const roleAllowed =
+      canEditForm && canRoleEditApeChildField(role as any, field);
+
+    if (!roleAllowed) return false;
+    if (correctionModeActive) {
+      return isFieldRequestedForCorrection(correctionFieldKey);
+    }
+
+    return true;
+  }
+
+  function lock(field: string, correctionFieldKey = field) {
+    return !canEditField(field, correctionFieldKey);
   }
 
   function validationFieldKey(
@@ -1101,13 +1392,29 @@ export default function ApeValidationReportView({
       try {
         const payload = makePayload();
 
+        let requestPayload = reportId
+          ? pickApeChildEditablePayload(role as any, payload)
+          : payload;
+
+        if (reportId && correctionModeActive) {
+          const requestedBaseFields = new Set(
+            openCorrections.map((item) => item.fieldKey.split(/[.:]/)[0]),
+          );
+
+          requestPayload = Object.fromEntries(
+            Object.entries(requestPayload).filter(([key]) =>
+              requestedBaseFields.has(key),
+            ),
+          );
+        }
+
         let saved: any;
 
         if (reportId) {
           saved = await api(`/reports/${reportId}`, {
             method: "PATCH",
             body: JSON.stringify({
-              ...payload,
+              ...requestPayload,
               reason: "Saving APE Validation Report",
               expectedVersion: reportVersion,
             }),
@@ -1141,7 +1448,14 @@ export default function ApeValidationReportView({
         reportVersionRef.current = nextVersion;
 
         setReportId(nextReportId);
-        setStatus(saved?.status ?? INITIAL_APE_CHILD_STATUS);
+
+        const nextWorkflowStatus =
+          (report as any)?.parentStatus ||
+          (report as any)?.workflowStatus ||
+          status ||
+          INITIAL_APE_CHILD_STATUS;
+
+        setStatus(nextWorkflowStatus);
 
         if (saved?.reportNumber != null) {
           setReportNumber(String(saved.reportNumber));
@@ -1163,6 +1477,10 @@ export default function ApeValidationReportView({
             (report as any)?.clientCode ??
             String((report as any)?.formNumber || "").split("-")[0] ??
             "",
+          childStatus: saved?.status,
+          status: nextWorkflowStatus,
+          parentStatus: nextWorkflowStatus,
+          workflowStatus: nextWorkflowStatus,
           version: nextVersion,
         });
 
@@ -1218,11 +1536,39 @@ export default function ApeValidationReportView({
     else navigate("/", { replace: true });
   }
 
+  const previewTestingSignature =
+    showESign &&
+    status === "UNDER_TESTING_REVIEW" &&
+    pendingStatus === "UNDER_QA_REVIEW" &&
+    (role === "MICRO" || role === "MC");
+
+  const previewReviewSignature =
+    showESign &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    pendingStatus === "UNDER_CLIENT_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
+
+  const displayTestedBy = previewTestingSignature
+    ? user?.name || user?.email || ""
+    : testedBy;
+
+  const displayTestedDate = previewTestingSignature
+    ? todayISO()
+    : testedDate;
+
+  const displayReviewedBy = previewReviewSignature
+    ? user?.name || user?.email || ""
+    : reviewedBy;
+
+  const displayReviewedDate = previewReviewSignature
+    ? todayISO()
+    : reviewedDate;
+
   const inputClass = (field: string) =>
-    `w-full input-editable py-0 text-[11px] leading-[13px] border border-black/70 bg-transparent px-1 outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
+    `w-full input-editable py-[2px] text-[12px] leading-snug border border-black/70 bg-transparent px-1 outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
 
   const tableInputClass = (field: string) =>
-    `w-full input-editable border border-black/70 bg-transparent px-1 py-[1px] text-[10px] leading-tight outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
+    `w-full input-editable border border-black/70 bg-transparent px-1 py-[2px] text-[12px] outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
 
   const signatureInputClass = (field: string) =>
     `flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 bg-transparent disabled:cursor-not-allowed disabled:bg-transparent ${signatureFieldErrorClass(field)}`;
@@ -1231,33 +1577,134 @@ export default function ApeValidationReportView({
 
   function getNextStatuses() {
     return (
-      STERILITY_STATUS_TRANSITIONS?.[status as SterilityReportStatus]?.next ??
+      APE_STATUS_TRANSITIONS?.[status as ApeReportStatus]?.next ??
       []
     );
   }
 
   async function canChangeParentStatusWithDashboardGuard(
     targetStatus: ReportStatus,
+    currentChildOverride?: any,
   ) {
     if (!beforeParentStatusChange) return true;
 
-    return await beforeParentStatusChange(targetStatus, {
-      ...report,
-      ...makePayload(),
-      id: reportIdRef.current,
-      reportType: REPORT_TYPE,
-      parentReportId: workflowReportIdRef.current,
-      status,
-      version: reportVersionRef.current,
-    });
+    return await beforeParentStatusChange(
+      targetStatus,
+      currentChildOverride ?? {
+        ...report,
+        ...makePayload(),
+        id: reportIdRef.current,
+        reportType: REPORT_TYPE,
+        parentReportId: workflowReportIdRef.current,
+        status,
+        version: reportVersionRef.current,
+      },
+    );
   }
 
-  async function handleStatusChange(newStatus: ReportStatus) {
+  type ApeChildSignatureType = "TESTED" | "REVIEWED";
+
+  function getApeChildSignatureType(
+    targetStatus: ReportStatus,
+  ): ApeChildSignatureType | null {
+    if (
+      status === "UNDER_TESTING_REVIEW" &&
+      targetStatus === "UNDER_QA_REVIEW" &&
+      (role === "MICRO" || role === "MC" || role === "SYSTEMADMIN")
+    ) {
+      return "TESTED";
+    }
+
+    if (
+      status === "UNDER_ADMIN_REVIEW" &&
+      targetStatus === "UNDER_CLIENT_REVIEW" &&
+      (role === "ADMIN" || role === "SYSTEMADMIN")
+    ) {
+      return "REVIEWED";
+    }
+
+    return null;
+  }
+
+  function hasApeChildSignature(
+    child: any,
+    signatureType: ApeChildSignatureType,
+    targetStatus: ReportStatus,
+  ) {
+    const signedChildStatus = String(
+      child?.childStatus ?? child?.status ?? "",
+    );
+
+    if (signedChildStatus !== String(targetStatus)) return false;
+
+    if (signatureType === "TESTED") {
+      return !isBlank(child?.testedBy) && !isBlank(child?.testedDate);
+    }
+
+    return !isBlank(child?.reviewedBy) && !isBlank(child?.reviewedDate);
+  }
+
+  async function fetchSiblingApeChildReport() {
+    const parentId = workflowReportIdRef.current;
+    if (!parentId) return null;
+
+    const siblingReportType =
+      REPORT_TYPE === "APE_VALIDATION_REPORT"
+        ? "APE_REPORT"
+        : "APE_VALIDATION_REPORT";
+
+    try {
+      const sibling = await api<any>(
+        `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+          parentId,
+        )}&reportType=${siblingReportType}&_=${Date.now()}`,
+      );
+
+      return sibling?.id ? sibling : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const uiNeedsESign = (targetStatus: ReportStatus) =>
+    (role === "ADMIN" ||
+      role === "SYSTEMADMIN" ||
+      role === "FRONTDESK" ||
+      role === "MICRO" ||
+      role === "MC") &&
+    (targetStatus === "UNDER_CLIENT_REVIEW" ||
+      targetStatus === "UNDER_QA_REVIEW" ||
+      targetStatus === "LOCKED");
+
+  function getDefaultESignReason(
+    fromStatus: ReportStatus,
+    toStatus: ReportStatus,
+  ) {
+    return `Electronic signature authorization for status transition from ${formatStatus(
+      fromStatus,
+    )} to ${formatStatus(toStatus)}.`;
+  }
+
+  function closeESignModal() {
+    setShowESign(false);
+    setPendingStatus(null);
+    setShowESignPassword(false);
+    setESignPassword("");
+    setChangeReason("");
+    setESignError(null);
+    setESignConfirmed(false);
+    setESignPos({ x: 0, y: 0 });
+  }
+
+    async function handleStatusChange(
+    newStatus: ReportStatus,
+    opts?: { reason?: string; eSignPassword?: string },
+  ): Promise<boolean> {
     const parentIdForStatus = workflowReportIdRef.current;
 
     if (!parentIdForStatus) {
       alert("⚠️ Parent APE form id is missing. Cannot change workflow status.");
-      return;
+      return false;
     }
 
     const okFields = validateForStatusChange(newStatus);
@@ -1265,81 +1712,209 @@ export default function ApeValidationReportView({
       alert(
         "⚠️ Please fill the highlighted/missing fields before changing status.",
       );
-      return;
+      return false;
     }
 
     if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-      return;
+      return false;
     }
 
-    if (!reportId || isDirty) {
+    if (!reportIdRef.current || isDirty) {
       const saved = await handleSave();
-      if (!saved) return;
+      if (!saved) return false;
     }
 
-    const canChangeParentStatus =
-      await canChangeParentStatusWithDashboardGuard(newStatus);
-
-    if (!canChangeParentStatus) return;
-
-    return runBusy("STATUS", async () => {
+    const result = await runBusy("STATUS", async () => {
       try {
+        const signatureType = opts?.eSignPassword
+          ? getApeChildSignatureType(newStatus)
+          : null;
+
+        let signedCurrentChild: any = null;
+
+        if (signatureType) {
+          const signed: any = await api(`/reports/${reportIdRef.current}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              signatureType,
+              reason:
+                opts?.reason ??
+                "Electronic signature applied to APE Validation Report",
+              eSignPassword: opts?.eSignPassword,
+              expectedVersion: reportVersionRef.current,
+            }),
+          });
+
+          const nextChildVersion =
+            typeof signed?.version === "number"
+              ? signed.version
+              : reportVersionRef.current + 1;
+
+          reportVersionRef.current = nextChildVersion;
+          setReportVersion(nextChildVersion);
+
+          const signerName =
+            signed?.testedBy ||
+            signed?.reviewedBy ||
+            user?.name ||
+            user?.email ||
+            "";
+
+          const signedDate =
+            formatDateForInput(
+              signed?.testedDate || signed?.reviewedDate,
+            ) || todayISO();
+
+          if (signatureType === "TESTED") {
+            setTestedBy(signed?.testedBy || signerName);
+            setTestedDate(
+              formatDateForInput(signed?.testedDate) || signedDate,
+            );
+          } else {
+            setReviewedBy(signed?.reviewedBy || signerName);
+            setReviewedDate(
+              formatDateForInput(signed?.reviewedDate) || signedDate,
+            );
+          }
+
+          signedCurrentChild = {
+            ...report,
+            ...makePayload(),
+            ...signed,
+            id: reportIdRef.current,
+            reportType: REPORT_TYPE,
+            parentReportId: parentIdForStatus,
+            parentStatus: status,
+            workflowStatus: status,
+            parentVersion: workflowVersionRef.current,
+            status,
+            childStatus: signed?.status,
+            version: nextChildVersion,
+            testedBy:
+              signatureType === "TESTED"
+                ? signed?.testedBy || signerName
+                : signed?.testedBy ?? testedBy,
+            testedDate:
+              signatureType === "TESTED"
+                ? formatDateForInput(signed?.testedDate) || signedDate
+                : formatDateForInput(signed?.testedDate) || testedDate,
+            reviewedBy:
+              signatureType === "REVIEWED"
+                ? signed?.reviewedBy || signerName
+                : signed?.reviewedBy ?? reviewedBy,
+            reviewedDate:
+              signatureType === "REVIEWED"
+                ? formatDateForInput(signed?.reviewedDate) || signedDate
+                : formatDateForInput(signed?.reviewedDate) || reviewedDate,
+          };
+
+          onSaved?.(signedCurrentChild);
+
+          const sibling = await fetchSiblingApeChildReport();
+          const bothReportsSigned =
+            hasApeChildSignature(
+              signedCurrentChild,
+              signatureType,
+              newStatus,
+            ) &&
+            hasApeChildSignature(sibling, signatureType, newStatus);
+
+          if (!bothReportsSigned) {
+            const signatureLabel =
+              signatureType === "TESTED" ? "testing" : "review";
+
+            alert(
+              `✅ APE Validation Report ${signatureLabel} signature saved.\n\n` +
+                `Parent APE status remains ${formatStatus(status)}. ` +
+                `APE Report must also be electronically signed before the status can change.`,
+            );
+
+            return true;
+          }
+        }
+
+        const canChangeParentStatus =
+          await canChangeParentStatusWithDashboardGuard(
+            newStatus,
+            signedCurrentChild ?? undefined,
+          );
+
+        if (!canChangeParentStatus) return false;
+
         const updated: any = await api(`/reports/${parentIdForStatus}/status`, {
           method: "PATCH",
           body: JSON.stringify({
             status: newStatus,
-            reason: "Changing APE parent workflow status from child report",
+            reason:
+              opts?.reason ??
+              "Changing APE parent workflow status from child report",
+            eSignPassword: opts?.eSignPassword ?? undefined,
             expectedVersion: workflowVersionRef.current,
           }),
         });
 
         const nextStatus = updated?.status ?? newStatus;
-
         const nextVersion =
           typeof updated?.version === "number"
             ? updated.version
             : workflowVersionRef.current + 1;
 
         workflowVersionRef.current = nextVersion;
-
         setStatus(nextStatus);
         setErrors({});
 
-        const mergedParentUpdate = {
+        onStatusChanged?.({
           ...report,
           ...updated,
-
-          // ✅ important: this id is parent APE form id
           id: parentIdForStatus,
           parentReportId: parentIdForStatus,
-
           status: nextStatus,
           parentStatus: nextStatus,
           workflowStatus: nextStatus,
           parentVersion: nextVersion,
           version: nextVersion,
-        };
+        });
 
-        onStatusChanged?.(mergedParentUpdate);
-
-        alert(`✅ Parent APE status changed to ${newStatus}`);
+        alert(
+          `✅ Both APE reports are signed. Parent APE status changed to ${formatStatus(
+            newStatus,
+          )}.`,
+        );
+        return true;
       } catch (err: any) {
         console.error(err);
-        alert(
-          "❌ Error changing parent APE status: " +
-            (err?.message || "Unknown error"),
-        );
+
+        const message =
+          err?.response?.data?.message ||
+          err?.response?.message ||
+          err?.message ||
+          "Unknown error";
+
+        if (opts?.eSignPassword) {
+          throw new Error(
+            Array.isArray(message) ? message.join(", ") : String(message),
+          );
+        }
+
+        alert("❌ Error changing parent APE status: " + message);
+        return false;
       }
     });
+
+    return result ?? false;
   }
 
-  function requestStatusChange(targetStatus: ReportStatus) {
+  async function requestStatusChange(targetStatus: ReportStatus) {
     if (!workflowReportIdRef.current) {
       alert("⚠️ Parent APE form id is missing. Cannot change workflow status.");
       return;
     }
 
-    if (isNeedsCorrectionStatus(targetStatus)) {
+    const isCorrectionAction =
+      targetStatus === "CHANGE_REQUESTED" ||
+      targetStatus === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       if (!reportIdRef.current) {
         alert("⚠️ Please save the report first before sending corrections.");
         return;
@@ -1353,15 +1928,50 @@ export default function ApeValidationReportView({
       setSelectingCorrections(true);
       setPendingCorrections([]);
       setPendingStatus(targetStatus);
+      setCorrectionActionOpen(false);
       return;
     }
 
-    handleStatusChange(targetStatus);
+    if (uiNeedsESign(targetStatus)) {
+      if (!reportIdRef.current) {
+        alert("⚠️ Please save the report before electronic signature.");
+        return;
+      }
+
+      if (isDirty) {
+        alert(
+          "⚠️ You have unsaved changes. Please update/save the report before electronic signature.",
+        );
+        return;
+      }
+
+      const okFields = validateForStatusChange(targetStatus);
+      if (!okFields) {
+        alert("⚠️ Please fill all required fields before electronic signature.");
+        return;
+      }
+
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
+
+      setESignError(null);
+      setESignPassword("");
+      setChangeReason(getDefaultESignReason(status, targetStatus));
+      setPendingStatus(targetStatus);
+      setESignConfirmed(false);
+      setShowESignPassword(false);
+      setESignPos({ x: 0, y: 0 });
+      setShowESign(true);
+      return;
+    }
+
+    await handleStatusChange(targetStatus);
   }
 
   return (
     <>
-      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4" onPointerDownCapture={handleCorrectionTargetClick}>
         <PrintStyles />
         <DashStyles />
 
@@ -1400,8 +2010,20 @@ export default function ApeValidationReportView({
           </div>
         )}
 
+        {selectingCorrections && (
+          <div className="no-print mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Correction selection is active. Click a field in the report to add a correction note.
+          </div>
+        )}
+
+        {correctionModeActive && (
+          <div className="no-print mb-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            Only fields with requested corrections can be edited. Save the report, then resolve each correction.
+          </div>
+        )}
+
         {/* Letterhead - same as ApeReportForm */}
-        <div className="mb-2 text-center">
+        <div className="mb-0 text-center">
           <div
             className="font-bold tracking-wide text-[22px]"
             style={{ color: "blue" }}
@@ -1456,8 +2078,9 @@ export default function ApeValidationReportView({
         <div className="w-full border border-black text-[15px]">
           {/* CLIENT / DATE SENT */}
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="client" data-correction-state={correctionState("client")}>
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
+              <ResolveOverlay field="client" />
 
               {lock("client") ? (
                 <div className="flex-1 min-h-[14px]">{client}</div>
@@ -1474,8 +2097,9 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
+            <div className="px-2 flex items-center gap-1 relative" data-correction-field="dateSent" data-correction-state={correctionState("dateSent")}>
               <div className="whitespace-nowrap font-medium">DATE SENT:</div>
+              <ResolveOverlay field="dateSent" />
 
               {lock("dateSent") ? (
                 <div className="flex-1 min-h-[14px]">
@@ -1499,8 +2123,9 @@ export default function ApeValidationReportView({
 
           {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
           <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="typeOfTest" data-correction-state={correctionState("typeOfTest")}>
               <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
+              <ResolveOverlay field="typeOfTest" />
 
               {lock("typeOfTest") ? (
                 <div className="flex-1 min-h-[14px]">{typeOfTest}</div>
@@ -1527,8 +2152,9 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="sampleType" data-correction-state={correctionState("sampleType")}>
               <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
+              <ResolveOverlay field="sampleType" />
 
               {lock("sampleType") ? (
                 <div className="flex-1 min-h-[14px]">{sampleType}</div>
@@ -1555,8 +2181,9 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
+            <div className="px-2 flex items-center gap-1 relative" data-correction-field="formulaNo" data-correction-state={correctionState("formulaNo")}>
               <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+              <ResolveOverlay field="formulaNo" />
 
               {lock("formulaNo") ? (
                 <div className="flex-1 min-h-[14px]">{formulaNo}</div>
@@ -1575,8 +2202,9 @@ export default function ApeValidationReportView({
           </div>
 
           {/* DESCRIPTION */}
-          <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative">
+          <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative" data-correction-field="description" data-correction-state={correctionState("description")}>
             <div className="w-28 font-medium">DESCRIPTION:</div>
+              <ResolveOverlay field="description" />
 
             {lock("description") ? (
               <div className="flex-1 min-h-[14px]">{description}</div>
@@ -1595,8 +2223,9 @@ export default function ApeValidationReportView({
 
           {/* LOT # / MANUFACTURE DATE */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="lotNo" data-correction-state={correctionState("lotNo")}>
               <div className="font-medium whitespace-nowrap">LOT #:</div>
+              <ResolveOverlay field="lotNo" />
 
               {lock("lotNo") ? (
                 <div className="flex-1 min-h-[14px]">{lotNo}</div>
@@ -1613,10 +2242,11 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
+            <div className="px-2 flex items-center gap-1 relative" data-correction-field="manufactureDate" data-correction-state={correctionState("manufactureDate")}>
               <div className="font-medium whitespace-nowrap">
                 MANUFACTURE DATE:
               </div>
+              <ResolveOverlay field="manufactureDate" />
 
               {lock("manufactureDate") ? (
                 <div className="flex-1 min-h-[14px]">
@@ -1639,8 +2269,9 @@ export default function ApeValidationReportView({
 
           {/* TEST SOP # / DATE TESTED */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="testSopNo" data-correction-state={correctionState("testSopNo")}>
               <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
+              <ResolveOverlay field="testSopNo" />
 
               {lock("testSopNo") ? (
                 <div className="flex-1 min-h-[14px]">{testSopNo}</div>
@@ -1657,8 +2288,9 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
+            <div className="px-2 flex items-center gap-1 relative" data-correction-field="dateTested" data-correction-state={correctionState("dateTested")}>
               <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
+              <ResolveOverlay field="dateTested" />
 
               {lock("dateTested") ? (
                 <div className="flex-1 min-h-[14px]">
@@ -1683,10 +2315,11 @@ export default function ApeValidationReportView({
           {/* DATE COMPLETED */}
           {/* TEST REFERENCE / DATE COMPLETED */}
           <div className="grid grid-cols-[55%_45%] text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div className="px-2 border-r border-black flex items-center gap-1 relative" data-correction-field="testReference" data-correction-state={correctionState("testReference")}>
               <div className="font-medium whitespace-nowrap">
                 TEST REFERENCE:
               </div>
+              <ResolveOverlay field="testReference" />
 
               {lock("testReference") ? (
                 <div className="flex-1 min-h-[14px]">{testReference}</div>
@@ -1703,10 +2336,11 @@ export default function ApeValidationReportView({
               )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
+            <div className="px-2 flex items-center gap-1 relative" data-correction-field="dateCompleted" data-correction-state={correctionState("dateCompleted")}>
               <div className="font-medium whitespace-nowrap">
                 DATE COMPLETED:
               </div>
+              <ResolveOverlay field="dateCompleted" />
 
               {lock("dateCompleted") ? (
                 <div className="min-h-[14px] flex-1">
@@ -1730,34 +2364,25 @@ export default function ApeValidationReportView({
         </div>
 
         {/* APE Validation Data Table */}
-        <div className="mt-3 w-full border border-black text-[11px] leading-[13px]">
-          {/* Main header row */}
-          <div className="grid grid-cols-[54%_20%_26%] border-b border-black text-center font-bold">
-            <div className="border-r border-black px-1.5 py-[2px]" />
-
-            <div className="flex items-center justify-center border-r border-black px-1.5 py-[2px]">
-              <span className="inline-block w-full text-center tracking-[0.18em] whitespace-nowrap">
-                CONTROL
-              </span>
+        <div className="mt-3 border border-black text-[12px]">
+          <div className="grid grid-cols-[54%_20%_26%] min-h-[38px] border-b border-black text-center font-bold">
+            <div className="border-r border-black p-1" />
+            <div className="flex items-end justify-center border-r border-black p-1">
+              CONTROL
             </div>
-
-            <div className="flex items-center justify-center px-1.5 py-[2px]">
-              <span className="inline-block w-full text-center tracking-[0.08em] leading-[12px]">
-                AVG CFU FOR TEST SAMPLE
-              </span>
+            <div className="flex items-center justify-center p-1">
+              AVG CFU FOR TEST
+              <br />
+              SAMPLE
             </div>
           </div>
 
           {validationSections.map((section, sectionIndex) => (
             <div key={section.key}>
-              {/* Validation section row */}
-              <div className="grid grid-cols-[54%_20%_26%] border-b border-black text-[10px] leading-[13px]">
-                <div className="border-r border-black px-1.5 py-[2px] font-bold">
-                  <span className="inline-block w-full tracking-[0.04em]">
-                    {section.title}
-                  </span>
+              <div className="grid grid-cols-[54%_20%_26%] border-b border-black min-h-[26px]">
+                <div className="border-r border-black p-1 font-bold">
+                  {section.title}
                 </div>
-
                 <div className="border-r border-black" />
                 <div />
               </div>
@@ -1770,17 +2395,32 @@ export default function ApeValidationReportView({
                 return (
                   <div
                     key={`${section.key}-${row.organism}`}
-                    className={`grid grid-cols-[54%_20%_26%] text-[11px] leading-[13px] ${
+                    className={`grid grid-cols-[54%_20%_26%] min-h-[22px] ${
                       isLastRow ? "" : "border-b border-black"
                     }`}
                   >
-                    <div className="flex items-center border-r border-black px-1.5 py-[1px]">
-                      <span className="inline-block w-full tracking-[0.03em]">
-                        {row.organism}
-                      </span>
+                    <div className="border-r border-black px-2 py-[2px]">
+                      {row.organism}
                     </div>
 
-                    <div className="flex items-center border-r border-black px-1.5 py-[1px]">
+                    <div
+                      className="border-r border-black px-1 py-[2px] relative"
+                      data-correction-field={validationFieldKey(
+                        section.key,
+                        rowIndex,
+                        "control",
+                      )}
+                      data-correction-state={correctionState(
+                        validationFieldKey(section.key, rowIndex, "control"),
+                      )}
+                    >
+                      <ResolveOverlay
+                        field={validationFieldKey(
+                          section.key,
+                          rowIndex,
+                          "control",
+                        )}
+                      />
                       <input
                         className={tableInputClass(
                           validationFieldKey(section.key, rowIndex, "control"),
@@ -1794,11 +2434,32 @@ export default function ApeValidationReportView({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("validationSections", validationFieldKey(section.key, rowIndex, "control"))}
                       />
                     </div>
 
-                    <div className="flex items-center px-1.5 py-[1px]">
+                    <div
+                      className="px-1 py-[2px] relative"
+                      data-correction-field={validationFieldKey(
+                        section.key,
+                        rowIndex,
+                        "avgCfuForTestSample",
+                      )}
+                      data-correction-state={correctionState(
+                        validationFieldKey(
+                          section.key,
+                          rowIndex,
+                          "avgCfuForTestSample",
+                        ),
+                      )}
+                    >
+                      <ResolveOverlay
+                        field={validationFieldKey(
+                          section.key,
+                          rowIndex,
+                          "avgCfuForTestSample",
+                        )}
+                      />
                       <input
                         className={tableInputClass(
                           validationFieldKey(
@@ -1816,7 +2477,7 @@ export default function ApeValidationReportView({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditForm}
+                        disabled={!canEditField("validationSections", validationFieldKey(section.key, rowIndex, "avgCfuForTestSample"))}
                       />
                     </div>
                   </div>
@@ -1827,15 +2488,16 @@ export default function ApeValidationReportView({
         </div>
 
         {/* Signatures */}
-        <div className="mt- grid grid-cols-2 gap-2 text-[11px]">
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
           {showSignatures && (
             <>
               <div className="p-2 relative">
-                <div className="font-medium mb-2 flex items-center gap-2">
+                <div className="font-medium mb-2 flex items-center gap-2 relative" data-correction-field="testedBy" data-correction-state={correctionState("testedBy")}>
                   TESTED BY:
+                  <ResolveOverlay field="testedBy" />
                   <input
                     className={signatureInputClass("testedBy")}
-                    value={testedBy.toUpperCase()}
+                    value={displayTestedBy.toUpperCase()}
                     onChange={(e) => {
                       setTestedBy(e.target.value);
                       clearFieldError("testedBy");
@@ -1846,13 +2508,14 @@ export default function ApeValidationReportView({
                   />
                 </div>
 
-                <div className="font-medium mt-2 flex items-center gap-2 relative">
+                <div className="font-medium mt-2 flex items-center gap-2 relative" data-correction-field="testedDate" data-correction-state={correctionState("testedDate")}>
                   DATE:
+                  <ResolveOverlay field="testedDate" />
                   <input
                     className={signatureInputClass("testedDate")}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(testedDate)}
+                    value={formatDateForInput(displayTestedDate)}
                     onChange={(e) => {
                       setTestedDate(e.target.value);
                       clearFieldError("testedDate");
@@ -1864,11 +2527,12 @@ export default function ApeValidationReportView({
               </div>
 
               <div className="p-2 relative">
-                <div className="font-medium mb-2 flex items-center gap-2">
+                <div className="font-medium mb-2 flex items-center gap-2 relative" data-correction-field="reviewedBy" data-correction-state={correctionState("reviewedBy")}>
                   REVIEWED BY:
+                  <ResolveOverlay field="reviewedBy" />
                   <input
                     className={signatureInputClass("reviewedBy")}
-                    value={reviewedBy.toUpperCase()}
+                    value={displayReviewedBy.toUpperCase()}
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
                       clearFieldError("reviewedBy");
@@ -1879,13 +2543,14 @@ export default function ApeValidationReportView({
                   />
                 </div>
 
-                <div className="font-medium mt-2 flex items-center gap-2 relative">
+                <div className="font-medium mt-2 flex items-center gap-2 relative" data-correction-field="reviewedDate" data-correction-state={correctionState("reviewedDate")}>
                   DATE:
+                  <ResolveOverlay field="reviewedDate" />
                   <input
                     className={signatureInputClass("reviewedDate")}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(reviewedDate)}
+                    value={formatDateForInput(displayReviewedDate)}
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
                       clearFieldError("reviewedDate");
@@ -1901,7 +2566,7 @@ export default function ApeValidationReportView({
 
         {/* Footer */}
         <div
-          className="mt-2 flex items-end justify-between print-footer"
+          className="mt-0 flex items-end justify-between print-footer"
           style={{ pageBreakInside: "avoid", breakInside: "avoid" }}
         >
           <div className="flex flex-col gap-2">
@@ -1911,12 +2576,12 @@ export default function ApeValidationReportView({
                   key={idx}
                   src={img.src}
                   alt={img.alt}
-                  className="w-[60px] h-[60px] object-contain border border-black/10 rounded bg-white"
+                  className="h-[60px] w-[60px] rounded border border-black/10 bg-white object-contain"
                 />
               ))}
             </div>
 
-            <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+            <div className="w-[136px] text-center text-[8px] font-bold leading-tight text-slate-700">
               Accreditation No: <span className="font-bold">109344</span>
             </div>
 
@@ -1935,9 +2600,10 @@ export default function ApeValidationReportView({
                 {report?.parentReportId || report?.id || ""}
               </div>
 
-              {report?.reportNumber && (
+              {((report as any)?.parentReportNumber || reportNumber) && (
                 <div className="text-[11px]">
-                  Report # {report.reportNumber}
+                  Report #{" "}
+                  {(report as any)?.parentReportNumber || reportNumber}
                 </div>
               )}
 
@@ -1947,7 +2613,7 @@ export default function ApeValidationReportView({
             </div>
 
             {qrSvg ? (
-              <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+              <div className="shrink-0 bg-white p-1" aria-label="Report QR">
                 <div
                   className="qr-code-box"
                   style={{ width: "36mm", height: "36mm" }}
@@ -1964,44 +2630,101 @@ export default function ApeValidationReportView({
             )}
           </div>
         </div>
+
       </div>
 
-      {!hideBottomActions && (
-        <div className="no-print mt-4 flex items-center justify-between gap-3">
+      {!hideBottomActions && !correctionLaunch && (
+        <div className="no-print mt-4 flex items-center justify-between">
           {/* Left: status action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2">
             {canUseStatusButtons &&
-              getNextStatuses().map((targetStatus) => {
+              (() => {
                 const transition =
-                  STERILITY_STATUS_TRANSITIONS[status as SterilityReportStatus];
+                  APE_STATUS_TRANSITIONS[
+                    status as ApeReportStatus
+                  ];
 
                 if (!transition?.canSet?.includes(role as any)) return null;
-                if (!statusButtons[targetStatus]) return null;
 
-                const { label, color } = statusButtons[targetStatus];
+                const nextStatuses = getNextStatuses();
+                const correctionStatuses = nextStatuses.filter(
+                  (target) =>
+                    target === "CHANGE_REQUESTED" ||
+                    target === "CORRECTION_REQUESTED",
+                );
+                const normalStatuses = nextStatuses.filter(
+                  (target) =>
+                    target !== "CHANGE_REQUESTED" &&
+                    target !== "CORRECTION_REQUESTED",
+                );
 
                 return (
-                  <div key={targetStatus} className="relative group">
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                      onClick={() =>
-                        requestStatusChange(
-                          targetStatus as SterilityReportStatus,
-                        )
-                      }
-                      disabled={busy !== null}
-                    >
-                      {busy === "STATUS" && <Spinner />}
-                      {label}
-                    </button>
+                  <>
+                    {correctionStatuses.length > 0 && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 rounded-md border bg-amber-700 px-4 py-2 text-white hover:bg-amber-800 disabled:opacity-60"
+                          onClick={() => setCorrectionActionOpen((value) => !value)}
+                          disabled={busy !== null}
+                        >
+                          Corrections ▾
+                        </button>
 
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                      {label} → {formatStatus(targetStatus)}
-                    </div>
-                  </div>
+                        {correctionActionOpen && (
+                          <div className="absolute left-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-lg border bg-white shadow-lg">
+                            {correctionStatuses.includes("CHANGE_REQUESTED") && (
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                onClick={() => requestStatusChange("CHANGE_REQUESTED")}
+                              >
+                                Request Change
+                              </button>
+                            )}
+                            {correctionStatuses.includes("CORRECTION_REQUESTED") && (
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                onClick={() => requestStatusChange("CORRECTION_REQUESTED")}
+                              >
+                                Raise Correction
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {normalStatuses.map((targetStatus) => {
+                      if (!statusButtons[targetStatus]) return null;
+                      const { label, color } = statusButtons[targetStatus];
+
+                      return (
+                        <div key={targetStatus} className="relative group">
+                          <button
+                            type="button"
+                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                            onClick={() =>
+                              requestStatusChange(
+                                targetStatus as ApeReportStatus,
+                              )
+                            }
+                            disabled={busy !== null}
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            {label}
+                          </button>
+
+                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                            {label} → {formatStatus(targetStatus)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 );
-              })}
+              })()}
 
             <div className="flex items-center text-sm text-slate-500">
               Status: <b className="ml-1">{formatStatus(status)}</b>
@@ -2012,67 +2735,278 @@ export default function ApeValidationReportView({
         </div>
       )}
 
-      {selectingCorrections && (
+      {showESign && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Electronic signature"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
+            <div
+              className="mb-4 flex cursor-move select-none items-start gap-3"
+              onMouseDown={startESignDrag}
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                🔐
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {eSignActionTitle(pendingStatus)}
+                </h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  21 CFR Part 11 Electronic Signature Authorization
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Authorization Summary
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Document</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    APE Validation Report
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Current Status</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {formatStatus(status)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">New Status</span>
+                  <span className="text-right font-semibold text-blue-700">
+                    {formatStatus(String(pendingStatus || ""))}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Parent Report No.</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {(report as any)?.parentReportNumber ||
+                      reportNumber ||
+                      "Not assigned"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Signing By</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {user?.name || user?.email || "Current user"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This electronic signature is saved to this report with the user,
+              timestamp, and reason. The parent APE status changes only after
+              both APE reports have the required electronic signature.
+            </p>
+
+            <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={eSignConfirmed}
+                onChange={(event) => {
+                  setESignConfirmed(event.target.checked);
+                  setESignError(null);
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm that this electronic signature represents my legally
+                binding authorization for this action.
+              </span>
+            </label>
+
+            <input
+              type="text"
+              placeholder="Reason for change"
+              value={changeReason}
+              onChange={(event) => {
+                setChangeReason(event.target.value);
+                setESignError(null);
+              }}
+              className="mb-3 mt-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              disabled={eSignSubmitting}
+            />
+
+            <div className="relative">
+              <input
+                type={showESignPassword ? "text" : "password"}
+                value={eSignPassword}
+                onChange={(event) => {
+                  setESignPassword(event.target.value);
+                  setESignError(null);
+                }}
+                className="w-full rounded-lg border px-3 py-2 pr-10 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter e-signature password"
+                autoComplete="current-password"
+                disabled={eSignSubmitting}
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowESignPassword((value) => !value)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 transition hover:text-slate-700"
+                aria-label={
+                  showESignPassword ? "Hide password" : "Show password"
+                }
+                title={showESignPassword ? "Hide password" : "Show password"}
+                disabled={eSignSubmitting}
+              >
+                {showESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {eSignError && (
+              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {eSignError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                onClick={closeESignModal}
+                disabled={eSignSubmitting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                disabled={
+                  eSignSubmitting ||
+                  !pendingStatus ||
+                  !changeReason.trim() ||
+                  !eSignPassword.trim() ||
+                  !eSignConfirmed
+                }
+                onClick={async () => {
+                  if (!pendingStatus) return;
+
+                  const reason = changeReason.trim();
+                  const password = eSignPassword.trim();
+
+                  if (!reason) {
+                    setESignError("Reason is required.");
+                    return;
+                  }
+
+                  if (!password) {
+                    setESignError("E-signature password is required.");
+                    return;
+                  }
+
+                  if (!eSignConfirmed) {
+                    setESignError("Please confirm the electronic-signature statement.");
+                    return;
+                  }
+
+                  const statusToApply = pendingStatus;
+                  setESignSubmitting(true);
+                  setESignError(null);
+
+                  try {
+                    const success = await handleStatusChange(statusToApply, {
+                      reason,
+                      eSignPassword: password,
+                    });
+
+                    if (!success) {
+                      setESignError(
+                        "The status change could not be completed. Review the report and try again.",
+                      );
+                      return;
+                    }
+
+                    if (previewTestingSignature) {
+                      setTestedBy(user?.name || user?.email || "");
+                      setTestedDate(todayISO());
+                    }
+
+                    if (previewReviewSignature) {
+                      setReviewedBy(user?.name || user?.email || "");
+                      setReviewedDate(todayISO());
+                    }
+
+                    closeESignModal();
+                  } catch (error: any) {
+                    const message =
+                      error?.response?.data?.message ||
+                      error?.response?.message ||
+                      error?.message ||
+                      "Electronic signature failed.";
+                    const normalizedMessage = Array.isArray(message)
+                      ? message.join(", ")
+                      : String(message);
+
+                    if (
+                      normalizedMessage.toLowerCase().includes("password") ||
+                      normalizedMessage.toLowerCase().includes("invalid") ||
+                      normalizedMessage.toLowerCase().includes("incorrect")
+                    ) {
+                      setESignError("❌ Incorrect e-signature password.");
+                    } else {
+                      setESignError(normalizedMessage);
+                    }
+                  } finally {
+                    setESignSubmitting(false);
+                  }
+                }}
+              >
+                {eSignSubmitting && <Spinner />}
+                {eSignSubmitting
+                  ? "Verifying..."
+                  : eSignButtonText(pendingStatus)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canShowFloatingUi && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 w-[560px] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border bg-white/95 p-4 shadow-xl">
           <div className="text-sm font-semibold">Corrections picker</div>
           <div className="text-xs text-slate-600">
-            Select a field, enter correction reason, then send corrections.
-          </div>
-
-          <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
-            <select
-              className="rounded-lg border px-2 py-1 text-xs"
-              value={selectedCorrectionField}
-              onChange={(e) => setSelectedCorrectionField(e.target.value)}
-            >
-              <option value="">Select field...</option>
-              {correctionFieldOptions.map((field) => (
-                <option key={field.key} value={field.key}>
-                  {field.label}
-                </option>
-              ))}
-            </select>
-
-            <input
-              className="rounded-lg border px-2 py-1 text-xs"
-              value={addMessage}
-              onChange={(e) => setAddMessage(e.target.value)}
-              placeholder="Correction note"
-            />
-
-            <button
-              type="button"
-              className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-              disabled={
-                !selectedCorrectionField || !addMessage.trim() || busy !== null
-              }
-              onClick={() =>
-                runBusy("ADD_CORRECTION", async () => addPendingCorrection())
-              }
-            >
-              Add
-            </button>
+            Click a field in the report to add a correction note.
           </div>
 
           <ul className="mt-3 max-h-32 overflow-auto text-xs">
-            {pendingCorrections.map((c, i) => {
+            {pendingCorrections.map((item, index) => {
               const option = correctionFieldOptions.find(
-                (f) => f.key === c.fieldKey,
+                (field) => field.key === item.fieldKey,
               );
+
               return (
                 <li
-                  key={`${c.fieldKey}-${i}`}
+                  key={`${item.fieldKey}-${index}`}
                   className="flex items-center justify-between gap-2 border-b py-1"
                 >
                   <span className="truncate">
-                    <b>{option?.label ?? c.fieldKey}</b>: {c.message}
+                    <b>{option?.label ?? item.fieldKey}</b>: {item.message}
                   </span>
                   <button
                     type="button"
                     className="text-rose-600 hover:underline"
                     onClick={() =>
                       setPendingCorrections((prev) =>
-                        prev.filter((_, idx) => idx !== i),
+                        prev.filter((_, itemIndex) => itemIndex !== index),
                       )
                     }
                   >
@@ -2082,7 +3016,7 @@ export default function ApeValidationReportView({
               );
             })}
             {pendingCorrections.length === 0 && (
-              <li className="text-slate-400">No correction notes added yet.</li>
+              <li className="text-slate-400">No items yet</li>
             )}
           </ul>
 
@@ -2094,7 +3028,7 @@ export default function ApeValidationReportView({
                 setSelectingCorrections(false);
                 setPendingCorrections([]);
                 setPendingStatus(null);
-                setSelectedCorrectionField("");
+                setAddForField(null);
                 setAddMessage("");
               }}
             >
@@ -2115,6 +3049,47 @@ export default function ApeValidationReportView({
         </div>
       )}
 
+      {canShowFloatingUi && addForField && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="mb-2 text-base font-semibold">Add correction</h3>
+            <p className="mb-2 text-xs text-slate-600">
+              Field: <b>{correctionFieldOptions.find((item) => item.key === addForField)?.label ?? addForField}</b>
+            </p>
+            <textarea
+              autoFocus
+              rows={3}
+              value={addMessage}
+              onChange={(event) => setAddMessage(event.target.value)}
+              placeholder="Describe what needs to be corrected"
+              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setAddForField(null);
+                  setAddMessage("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={!addMessage.trim() || busy !== null}
+                onClick={() => addPendingCorrection(addForField)}
+              >
+                {busy === "ADD_CORRECTION" && <Spinner />}
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canShowFloatingUi && (
       <div className="no-print fixed bottom-20 right-6 z-40">
         <button
           type="button"
@@ -2129,8 +3104,9 @@ export default function ApeValidationReportView({
           )}
         </button>
       </div>
+      )}
 
-      {showCorrTray && (
+      {canShowFloatingUi && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[430px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5">
           <div className="border-b bg-slate-50 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
@@ -2204,7 +3180,19 @@ export default function ApeValidationReportView({
                             : "cursor-not-allowed bg-slate-100 text-slate-400"
                         }`}
                         disabled={!canResolve || busy !== null}
-                        onClick={() => resolveOneCorrection(c)}
+                        onClick={() => {
+                          if (!canResolve) return;
+
+                          if (role === "SYSTEMADMIN") {
+                            setResolveTarget(c);
+                            setResolveFieldTarget(null);
+                            setResolveReason("");
+                            setShowResolveModal(true);
+                            return;
+                          }
+
+                          resolveOneCorrection(c);
+                        }}
                         title={
                           isDirty
                             ? "Save the report before resolving"
@@ -2224,6 +3212,63 @@ export default function ApeValidationReportView({
           </div>
         </div>
       )}
+
+      {canShowFloatingUi &&
+        showResolveModal &&
+        (resolveTarget || resolveFieldTarget) && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="mb-2 text-base font-semibold">Resolve Correction</h3>
+              <p className="mb-2 text-xs text-slate-600">
+                Field: <b>{resolveTarget?.fieldKey ?? resolveFieldTarget}</b>
+              </p>
+              <textarea
+                autoFocus
+                rows={3}
+                value={resolveReason}
+                onChange={(event) => setResolveReason(event.target.value)}
+                placeholder="Enter reason for resolving this correction"
+                className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border px-3 py-1.5 text-sm"
+                  onClick={() => {
+                    setShowResolveModal(false);
+                    setResolveTarget(null);
+                    setResolveFieldTarget(null);
+                    setResolveReason("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                  disabled={!resolveReason.trim() || busy === "RESOLVE"}
+                  onClick={async () => {
+                    const reason = `SystemAdmin override: ${resolveReason.trim()}`;
+
+                    if (resolveFieldTarget) {
+                      await resolveField(resolveFieldTarget, reason);
+                    } else if (resolveTarget) {
+                      await resolveOneCorrection(resolveTarget, reason);
+                    }
+
+                    setShowResolveModal(false);
+                    setResolveTarget(null);
+                    setResolveFieldTarget(null);
+                    setResolveReason("");
+                  }}
+                >
+                  {busy === "RESOLVE" && <Spinner />}
+                  Confirm Resolve
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </>
   );
 }

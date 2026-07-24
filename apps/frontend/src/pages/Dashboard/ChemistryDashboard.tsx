@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 
 import { createPortal } from "react-dom";
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
@@ -26,6 +26,8 @@ import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 
 import {
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   getInt,
   isTerminalStatus,
   type ChemistryColKey,
@@ -72,28 +74,28 @@ type Report = {
 // -----------------------------
 // Statuses
 // -----------------------------
-const CHEMISTRY_STATUSES = [
+const CHEMISTRY_STATUSES: ("ALL" | ChemistryReportStatus)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -102,7 +104,7 @@ const CHEMISTRY_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
 // -----------------------------
 // Utilities
@@ -517,6 +519,17 @@ export default function ChemistryDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   // ✅ Per-row update guard
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -2138,6 +2151,30 @@ export default function ChemistryDashboard() {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
+
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
+    }
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2734,6 +2771,9 @@ export default function ChemistryDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -2914,6 +2954,28 @@ export default function ChemistryDashboard() {
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -3138,6 +3200,38 @@ export default function ChemistryDashboard() {
               </div>
 
               <div className="flex items-center gap-2">
+                <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 <button
                   disabled={printingSingle}
                   className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
@@ -3211,6 +3305,7 @@ export default function ChemistryDashboard() {
             <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -3219,6 +3314,7 @@ export default function ChemistryDashboard() {
                 />
               ) : selectedReport.formType === "COA" ? (
                 <COAReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

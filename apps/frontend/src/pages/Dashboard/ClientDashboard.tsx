@@ -11,7 +11,7 @@ import {
   canShowUpdateButton,
   STATUS_COLORS,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 import toast from "react-hot-toast";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import React from "react";
@@ -52,6 +52,8 @@ import { isTerminalStatus } from "../../utils/globalUtils";
 import ApeReportFormView from "../Reports/ApeReportFormView";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
 import ApeReportView from "../LabReports/ApeReportView";
+import ApeValidationReport from "../LabReports/ApeValidationReport";
+import ApeReport from "../LabReports/ApeReport";
 import ApeReportForm from "../Reports/ApeReportForm";
 import {
   APE_STATUS_TRANSITIONS,
@@ -109,12 +111,12 @@ const CLIENT_MICRO_STATUSES: DashboardStatus[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "FINAL_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  // "UNDER_CLIENT_FINAL_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "FINAL_RESUBMISSION_BY_CLIENT",
   "LOCKED",
   "VOID",
 ];
@@ -131,9 +133,9 @@ const CLIENT_CHEM_STATUSES: DashboardStatus[] = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "LOCKED",
   "VOID",
 ];
@@ -879,6 +881,17 @@ export default function ClientDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
 
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
+
   // optional: refresh loading
   const [refreshing, setRefreshing] = useState(false);
 
@@ -992,31 +1005,6 @@ export default function ClientDashboard() {
     fromDate,
     toDate,
   ]);
-
-  useEffect(() => {
-    const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
-
-    setFormFilter(next.formFilter);
-    setStatusFilter(next.statusFilter);
-    setSearchClient(next.searchClient);
-    setSearchReport(next.searchReport);
-    setSearch(next.searchText);
-    setSortBy(next.sortBy);
-    setSortDir(next.sortDir);
-    setPerPage(next.perPage);
-    setPage(next.page);
-    setDatePreset(next.datePreset);
-    setFromDate(next.fromDate);
-    setToDate(next.toDate);
-    setNumberRangeType(next.numberRangeType);
-    setFormNoFrom(next.formNoFrom);
-    setFormNoTo(next.formNoTo);
-    setReportNoFrom(next.reportNoFrom);
-    setReportNoTo(next.reportNoTo);
-
-    hydratedFromUrlRef.current = true;
-    setFiltersHydrated(true);
-  }, [searchParams, FILTER_STORAGE_KEY]);
 
   useEffect(() => {
     // ✅ IMPORTANT: don't get stuck if key isn't ready yet
@@ -1413,6 +1401,31 @@ export default function ClientDashboard() {
   ]);
 
   useEffect(() => {
+    const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
+
+    setFormFilter(next.formFilter);
+    setStatusFilter(next.statusFilter);
+    setSearchClient(next.searchClient);
+    setSearchReport(next.searchReport);
+    setSearch(next.searchText);
+    setSortBy(next.sortBy);
+    setSortDir(next.sortDir);
+    setPerPage(next.perPage);
+    setPage(next.page);
+    setDatePreset(next.datePreset);
+    setFromDate(next.fromDate);
+    setToDate(next.toDate);
+    setNumberRangeType(next.numberRangeType);
+    setFormNoFrom(next.formNoFrom);
+    setFormNoTo(next.formNoTo);
+    setReportNoFrom(next.reportNoFrom);
+    setReportNoTo(next.reportNoTo);
+
+    hydratedFromUrlRef.current = true;
+    setFiltersHydrated(true);
+  }, [searchParams, FILTER_STORAGE_KEY]);
+
+  useEffect(() => {
     if (!hydratedFromUrlRef.current) return;
 
     const tid = window.setTimeout(() => {
@@ -1511,6 +1524,57 @@ export default function ClientDashboard() {
 
     return merged;
   }
+
+
+  async function uploadAttachmentForReport(report: Report, file: File) {
+  if (!report?.id) {
+    throw new Error("Missing report id");
+  }
+
+  const isChemistry =
+    report.formType === "CHEMISTRY_MIX" || report.formType === "COA";
+
+  const url = isChemistry
+    ? `${API_URL}/chemistry-reports/${report.id}/attachments`
+    : `${API_URL}/reports/${report.id}/attachments`;
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("visibility", attachmentVisibility);
+
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    let message = text || "Upload failed";
+
+    try {
+      const parsed = JSON.parse(text);
+      message = parsed?.message || parsed?.error || message;
+    } catch {
+      // response was plain text
+    }
+
+    throw new Error(Array.isArray(message) ? message.join(", ") : String(message));
+  }
+
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text;
+  }
+}
 
   // selection
   // selection
@@ -2251,18 +2315,10 @@ export default function ClientDashboard() {
     );
   }
 
-  function requiresApeReviewedSignature(targetStatus: string) {
-    const s = String(targetStatus).toUpperCase();
-
-    return (
-      s === "UNDER_CLIENT_REVIEW" ||
-      s === "UNDER_ADMIN_REVIEW" ||
-      s === "APPROVED" ||
-      s === "LOCKED"
-    );
-  }
-
-  function getMissingApeValidationFields(child: any, targetStatus: string) {
+  function getMissingApeValidationFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2330,14 +2386,16 @@ export default function ClientDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Validation Report - ${section?.title || section?.key || "section"} rows`,
+          `APE Validation Report - ${
+            section?.title || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.title || section?.key || "Validation"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.title || section?.key || "Validation"
+        } - ${row?.organism || "Organism"}`;
 
         addApeMissing(
           missing,
@@ -2352,23 +2410,13 @@ export default function ClientDashboard() {
       });
     });
 
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(
-        missing,
-        "APE Validation Report - Reviewed By",
-        child?.reviewedBy,
-      );
-      addApeMissing(
-        missing,
-        "APE Validation Report - Reviewed Date",
-        child?.reviewedDate,
-      );
-    }
-
     return missing;
   }
 
-  function getMissingApeReportFields(child: any, targetStatus: string) {
+  function getMissingApeReportFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2408,44 +2456,32 @@ export default function ClientDashboard() {
 
       if (!rows.length) {
         missing.push(
-          `APE Report - ${section?.dayLabel || section?.key || "section"} rows`,
+          `APE Report - ${
+            section?.dayLabel || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.dayLabel || section?.key || "Day"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.dayLabel || section?.key || "Day"
+        } - ${row?.organism || "Organism"}`;
 
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} Control Growth`,
-          row?.controlGrowth,
-        );
+        if (section?.key === "DAY_0") {
+          addApeMissing(
+            missing,
+            `APE Report - ${labelPrefix} Control Growth`,
+            row?.controlGrowth,
+          );
+        }
+
         addApeMissing(
           missing,
           `APE Report - ${labelPrefix} Sample Growth`,
           row?.sampleGrowth,
         );
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} % Decrease`,
-          row?.decrease,
-        );
-        addApeMissing(
-          missing,
-          section?.key === "DAY_0"
-            ? `APE Report - ${labelPrefix} Innoculum Level`
-            : `APE Report - ${labelPrefix} Log Reduction`,
-          row?.innoculumLevel,
-        );
       });
     });
-
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
-      addApeMissing(missing, "APE Report - Reviewed Date", child?.reviewedDate);
-    }
 
     return missing;
   }
@@ -2458,7 +2494,7 @@ export default function ClientDashboard() {
       const child = await api<any>(
         `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
           parentId,
-        )}&reportType=${reportType}`,
+        )}&reportType=${reportType}&_=${Date.now()}`,
       );
 
       return child?.id ? child : null;
@@ -2584,7 +2620,112 @@ export default function ClientDashboard() {
     return false;
   }
 
-  function renderApeReportTabs(parent: Report) {
+  function shouldOpenApeChildReportsForClientUpdate(status: unknown) {
+    return String(status || "").toUpperCase() === "UNDER_CLIENT_REVIEW";
+  }
+
+  function handleApeChildSaved(
+    parent: Report,
+    reportType: ApeReportTab,
+    updated: any,
+  ) {
+    if (!updated?.id) return;
+
+    const key = apeChildKey(parent.id, reportType);
+
+    setApeChildReports((prev) => ({
+      ...prev,
+      [key]: {
+        ...parent,
+        ...prev[key],
+        ...updated,
+        id: updated.id,
+        reportType,
+        parentReportId: parent.id,
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+        childStatus: updated.status,
+        childVersion:
+          typeof updated.version === "number"
+            ? updated.version
+            : (prev[key]?.childVersion ?? 0) + 1,
+      },
+    }));
+  }
+
+  function handleApeParentStatusChanged(parent: Report, updated: any) {
+    const nextStatus =
+      updated?.parentStatus ??
+      updated?.workflowStatus ??
+      updated?.status ??
+      parent.status;
+
+    const nextVersion =
+      typeof updated?.parentVersion === "number"
+        ? updated.parentVersion
+        : typeof updated?.version === "number"
+          ? updated.version
+          : (parent.version ?? 0) + 1;
+
+    const mergedParent: Report = {
+      ...parent,
+      ...updated,
+      id: parent.id,
+      formType: parent.formType,
+      formNumber: parent.formNumber,
+      reportNumber: updated?.reportNumber ?? parent.reportNumber,
+      status: nextStatus,
+      version: nextVersion,
+    };
+
+    setReports((prev) =>
+      prev.map((item) =>
+        item.id === parent.id ? { ...item, ...mergedParent } : item,
+      ),
+    );
+
+    setSelectedReportsById((prev) => {
+      if (!prev[parent.id]) return prev;
+
+      return {
+        ...prev,
+        [parent.id]: {
+          ...prev[parent.id],
+          ...mergedParent,
+        },
+      };
+    });
+
+    setSelectedReport((prev) =>
+      prev?.id === parent.id ? { ...prev, ...mergedParent } : prev,
+    );
+
+    setApeChildReports((prev) => {
+      const next = { ...prev };
+
+      (["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeReportTab[]).forEach(
+        (reportType) => {
+          const key = apeChildKey(parent.id, reportType);
+
+          if (next[key]) {
+            next[key] = {
+              ...next[key],
+              parentStatus: nextStatus,
+              workflowStatus: nextStatus,
+              parentVersion: nextVersion,
+            };
+          }
+        },
+      );
+
+      return next;
+    });
+  }
+
+  function renderApeReportTabs(parent: Report, readOnly = true) {
     const activeTab = getApeReportTab(parent.id);
 
     const validationChild = makeApeChildReport(parent, "APE_VALIDATION_REPORT");
@@ -2623,40 +2764,104 @@ export default function ClientDashboard() {
           </div>
         </div>
 
-        {activeTab === "APE_VALIDATION_REPORT" && (
-          <ApeValidationReportView
-            key={
-              validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:view`
-            }
-            report={validationChild}
-            embedded={true}
-            pageMode="VIEW"
-            forcePageReadOnly={true}
-            hideTopActions={true}
-            hideBottomActions={true}
-            onClose={() => {}}
-          />
-        )}
+        {activeTab === "APE_VALIDATION_REPORT" &&
+          (readOnly ? (
+            <ApeValidationReportView
+              key={
+                validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:view`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeValidationReport
+              key={
+                validationChild.id ??
+                `${parent.id}:APE_VALIDATION_REPORT:update`
+              }
+              report={validationChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(
+                  parent,
+                  "APE_VALIDATION_REPORT",
+                  updated,
+                )
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={(targetStatus, currentChild) =>
+                validateBothApeChildReportsBeforeStatusChange(
+                  parent,
+                  targetStatus,
+                  currentChild,
+                )
+              }
+            />
+          ))}
 
-        {activeTab === "APE_REPORT" && (
-          <ApeReportView
-            key={apeChild.id ?? `${parent.id}:APE_REPORT:view`}
-            report={apeChild}
-            embedded={true}
-            pageMode="VIEW"
-            forcePageReadOnly={true}
-            hideTopActions={true}
-            hideBottomActions={true}
-            onClose={() => {}}
-          />
-        )}
+        {activeTab === "APE_REPORT" &&
+          (readOnly ? (
+            <ApeReportView
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:view`}
+              report={apeChild}
+              embedded={true}
+              pageMode="VIEW"
+              forcePageReadOnly={true}
+              hideTopActions={true}
+              hideBottomActions={true}
+              onClose={() => {}}
+            />
+          ) : (
+            <ApeReport
+              key={apeChild.id ?? `${parent.id}:APE_REPORT:update`}
+              report={apeChild}
+              embedded={true}
+              pageMode="UPDATE"
+              forcePageReadOnly={false}
+              hideTopActions={false}
+              hideBottomActions={false}
+              onClose={() => {}}
+              onSaved={(updated) =>
+                handleApeChildSaved(parent, "APE_REPORT", updated)
+              }
+              onStatusChanged={(updated) =>
+                handleApeParentStatusChanged(parent, updated)
+              }
+              beforeParentStatusChange={(targetStatus, currentChild) =>
+                validateBothApeChildReportsBeforeStatusChange(
+                  parent,
+                  targetStatus,
+                  currentChild,
+                )
+              }
+            />
+          ))}
       </div>
     );
   }
 
 
   function renderSelectedApeBody(report: Report) {
-    // ✅ Client APE Update should open editable parent APE form
+    if (
+      selectedModalMode === "UPDATE" &&
+      shouldOpenApeChildReportsForClientUpdate(report.status)
+    ) {
+      return renderApeReportTabs(report, false);
+    }
+
+    // Before Client Review, the client updates the original APE request form.
     if (selectedModalMode === "UPDATE") {
       return (
         <ApeReportForm
@@ -2702,7 +2907,7 @@ export default function ClientDashboard() {
       );
     }
 
-    return renderApeReportTabs(report);
+    return renderApeReportTabs(report, true);
   }
 
   useEffect(() => {
@@ -2970,9 +3175,10 @@ export default function ClientDashboard() {
       return;
     }
 
-    // ✅ Client APE Update should open parent APE FORM only
     if (targets.length === 1 && targets[0].formType === "APE") {
       const target = targets[0];
+      const openChildReports =
+        shouldOpenApeChildReportsForClientUpdate(target.status);
 
       setWorkspaceOpen(false);
       setWorkspaceIds([]);
@@ -2980,7 +3186,15 @@ export default function ClientDashboard() {
       setWorkspaceCorrectionKinds([]);
 
       setSelectedModalMode("UPDATE");
-      setSelectedViewPane("FORM");
+      setSelectedViewPane(openChildReports ? "REPORT" : "FORM");
+
+      if (openChildReports) {
+        setApeReportTabs((prev) => ({
+          ...prev,
+          [target.id]: prev[target.id] ?? "APE_VALIDATION_REPORT",
+        }));
+      }
+
       setSelectedReport(target);
       return;
     }
@@ -4104,6 +4318,7 @@ export default function ClientDashboard() {
                                 });
 
                                 // setSelectedReport(r);
+                                setSelectedViewPane("REPORT");
                                 openViewTarget(r);
                               }}
                             >
@@ -4338,6 +4553,38 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="flex items-center justify-end gap-2">
+                  <input
+                    ref={modalUploadInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file || !selectedReport) return;
+
+                      setModalUploading(true);
+                      try {
+                        await uploadAttachmentForReport(selectedReport, file);
+                        toast.success("Uploaded!");
+                        setAttachmentRefreshKey((k) => k + 1);
+                        setSelectedViewPane("ATTACHMENTS");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Upload failed");
+                      } finally {
+                        setModalUploading(false);
+                      }
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    disabled={modalUploading || !selectedReport?.id}
+                    onClick={() => modalUploadInputRef.current?.click()}
+                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  >
+                    {modalUploading ? <Spinner /> : "⬆️"}
+                    {modalUploading ? "Uploading..." : "Upload"}
+                  </button>
                   <button
                     className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     disabled={
@@ -4523,6 +4770,7 @@ export default function ClientDashboard() {
                 <ReportNotGeneratedMessage report={selectedReport} />
               ) : selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4531,6 +4779,7 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4538,6 +4787,7 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4547,6 +4797,7 @@ export default function ClientDashboard() {
                 renderSelectedApeBody(selectedReport)
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4554,6 +4805,7 @@ export default function ClientDashboard() {
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

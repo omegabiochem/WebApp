@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { useAuth } from "../../context/AuthContext";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 
 import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
@@ -15,6 +15,7 @@ import {
   STATUS_COLORS,
   canShowUpdateButton,
   type ReportStatus as MicroReportStatus,
+  type ReportStatus,
   type Role,
 } from "../../utils/microMixReportFormWorkflow";
 
@@ -44,6 +45,8 @@ import ReportWorkspaceModal from "../../utils/ReportWorkspaceModal";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   isTerminalStatus,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -97,9 +100,12 @@ type MicroReport = {
 
   comments?: string | null;
   testedBy?: string | null;
+  testedDate?: string | null;
   reviewedBy?: string | null;
+  reviewedDate?: string | null;
 
   pathogens?: unknown;
+  organisms?: unknown;
 };
 
 type ChemReport = {
@@ -201,39 +207,39 @@ function intersectAll(lists: string[][]): string[] {
 // ----------------------------------
 // Status lists (same as your pages)
 // ----------------------------------
-const MICRO_STATUSES = [
+const MICRO_STATUSES: ("ALL" | ReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "FINAL_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  // "UNDER_CLIENT_FINAL_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "FINAL_RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_TESTING_ON_HOLD",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_TESTING",
-  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
-  "FINAL_RESUBMISSION_BY_TESTING",
+  // "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  // "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  // "FINAL_RESUBMISSION_BY_TESTING",
   "PRELIMINARY_APPROVED",
   "UNDER_FINAL_TESTING_REVIEW",
   "FINAL_TESTING_ON_HOLD",
-  "FINAL_TESTING_NEEDS_CORRECTION",
-  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  // "FINAL_TESTING_NEEDS_CORRECTION",
+  // "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_PRELIMINARY_REVIEW",
-  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  // "QA_NEEDS_PRELIMINARY_CORRECTION",
   "UNDER_QA_FINAL_REVIEW",
-  "QA_NEEDS_FINAL_CORRECTION",
+  // "QA_NEEDS_FINAL_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
   "LOCKED",
   "VOID",
@@ -242,29 +248,29 @@ const MICRO_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
-const STERILITY_STATUSES = [
+const STERILITY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -273,29 +279,29 @@ const STERILITY_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
-const CHEMISTRY_STATUSES = [
+const CHEMISTRY_STATUSES: ("ALL" | ChemistryReportStatus)[] = [
   "ALL",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -304,7 +310,7 @@ const CHEMISTRY_STATUSES = [
   "CORRECTION_REQUESTED",
   "UNDER_CORRECTION_UPDATE",
   "CHANGE_REQUESTED",
-] as const;
+];
 
 // APE follows the same workflow/status list as Sterility.
 const APE_STATUSES = [...STERILITY_STATUSES] as string[];
@@ -1051,6 +1057,18 @@ export default function MCDashboard() {
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
+
   const [updatingKey, setUpdatingKey] = useState<string | null>(null); // `${kind}:${id}`
   const [modalUpdating, setModalUpdating] = useState(false);
 
@@ -2917,6 +2935,7 @@ export default function MCDashboard() {
         // Preserve the parent APE identifiers after the child spread.
         parentFormNumber: parent.formNumber,
         parentReportNumber: parent.reportNumber,
+        organisms: parent.organisms,
 
         // ✅ parent workflow source
         parentStatus: parent.status,
@@ -2924,8 +2943,8 @@ export default function MCDashboard() {
         parentVersion: parent.version ?? 0,
 
         // keep child info separately
-        childStatus: saved.status,
-        childVersion: saved.version,
+        childStatus: saved.childStatus ?? saved.status,
+        childVersion: saved.childVersion ?? saved.version,
 
         // ✅ child screen should use parent status
         status: parent.status,
@@ -2941,6 +2960,7 @@ export default function MCDashboard() {
       // Preserve the parent APE identifiers.
       parentFormNumber: parent.formNumber,
       parentReportNumber: parent.reportNumber,
+      organisms: parent.organisms,
 
       // ✅ parent workflow source
       parentStatus: parent.status,
@@ -2995,6 +3015,7 @@ export default function MCDashboard() {
         // Preserve the parent APE identifiers after the updated-child spread.
         parentFormNumber: parent.formNumber,
         parentReportNumber: parent.reportNumber,
+        organisms: parent.organisms,
 
         // ✅ parent workflow status remains source of truth
         parentStatus: parent.status,
@@ -3003,8 +3024,8 @@ export default function MCDashboard() {
         status: parent.status,
 
         // child saved status/version stored separately
-        childStatus: updated?.status,
-        childVersion: updated?.version,
+        childStatus: updated?.childStatus ?? updated?.status,
+        childVersion: updated?.childVersion ?? updated?.version,
       },
     }));
   }
@@ -3118,12 +3139,23 @@ export default function MCDashboard() {
     );
   }
 
+  function requiresApeTestedSignature(targetStatus: string) {
+    const s = String(targetStatus).toUpperCase();
+
+    return (
+      s === "UNDER_QA_REVIEW" ||
+      s === "UNDER_ADMIN_REVIEW" ||
+      s === "UNDER_CLIENT_REVIEW" ||
+      s === "APPROVED" ||
+      s === "LOCKED"
+    );
+  }
+
   function requiresApeReviewedSignature(targetStatus: string) {
     const s = String(targetStatus).toUpperCase();
 
     return (
       s === "UNDER_CLIENT_REVIEW" ||
-      s === "UNDER_ADMIN_REVIEW" ||
       s === "APPROVED" ||
       s === "LOCKED"
     );
@@ -3219,6 +3251,19 @@ export default function MCDashboard() {
       });
     });
 
+    if (requiresApeTestedSignature(targetStatus)) {
+      addApeMissing(
+        missing,
+        "APE Validation Report - Tested By",
+        child?.testedBy,
+      );
+      addApeMissing(
+        missing,
+        "APE Validation Report - Tested Date",
+        child?.testedDate,
+      );
+    }
+
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(
         missing,
@@ -3284,30 +3329,26 @@ export default function MCDashboard() {
           row?.organism || "Organism"
         }`;
 
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} Control Growth`,
-          row?.controlGrowth,
-        );
+        if (section?.key === "DAY_0") {
+          addApeMissing(
+            missing,
+            `APE Report - ${labelPrefix} Control Growth`,
+            row?.controlGrowth,
+          );
+        }
+
         addApeMissing(
           missing,
           `APE Report - ${labelPrefix} Sample Growth`,
           row?.sampleGrowth,
         );
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} % Decrease`,
-          row?.decrease,
-        );
-        addApeMissing(
-          missing,
-          section?.key === "DAY_0"
-            ? `APE Report - ${labelPrefix} Innoculum Level`
-            : `APE Report - ${labelPrefix} Log Reduction`,
-          row?.innoculumLevel,
-        );
       });
     });
+
+    if (requiresApeTestedSignature(targetStatus)) {
+      addApeMissing(missing, "APE Report - Tested By", child?.testedBy);
+      addApeMissing(missing, "APE Report - Tested Date", child?.testedDate);
+    }
 
     if (requiresApeReviewedSignature(targetStatus)) {
       addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
@@ -3350,12 +3391,8 @@ export default function MCDashboard() {
     const apeChildBase = makeApeChildReport(parent, "APE_REPORT");
 
     const [latestValidation, latestApeReport] = await Promise.all([
-      validationChildBase?.id
-        ? Promise.resolve(null)
-        : fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
-      apeChildBase?.id
-        ? Promise.resolve(null)
-        : fetchLatestApeChildReport(parent.id, "APE_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_VALIDATION_REPORT"),
+      fetchLatestApeChildReport(parent.id, "APE_REPORT"),
     ]);
 
     const validationChild =
@@ -3384,7 +3421,7 @@ export default function MCDashboard() {
     setApeReportTab(parent.id, firstInvalidTab);
 
      toast(
-       `Warning: Please complete both APE Validation Report and APE Report before changing status to ${niceStatus(
+       `Warning: Both APE Validation Report and APE Report must be complete and separately signed before changing status to ${niceStatus(
          targetStatus,
        )}.`,
        {
@@ -3598,6 +3635,7 @@ export default function MCDashboard() {
               parentReportId: parentId,
               parentFormNumber: parent.formNumber,
               parentReportNumber: parent.reportNumber,
+              organisms: parent.organisms,
               clientCode:
                 validationReport.clientCode ||
                 parent.clientCode ||
@@ -3614,6 +3652,7 @@ export default function MCDashboard() {
               parentReportId: parentId,
               parentFormNumber: parent.formNumber,
               parentReportNumber: parent.reportNumber,
+              organisms: parent.organisms,
               clientCode:
                 apeReport.clientCode ||
                 parent.clientCode ||
@@ -3740,6 +3779,30 @@ export default function MCDashboard() {
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
+
+  async function uploadAttachmentForReport(r: UnifiedRow, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
+
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
+    }
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4435,6 +4498,9 @@ export default function MCDashboard() {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -4631,6 +4697,28 @@ export default function MCDashboard() {
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -4915,6 +5003,38 @@ export default function MCDashboard() {
               )}
 
               <div className="flex items-center gap-2">
+                <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 {/* Print single */}
                 <button
                   disabled={printingSingle}
@@ -5098,6 +5218,7 @@ export default function MCDashboard() {
               {selectedReport.kind === "MICRO" ? (
                 selectedReport.formType === "MICRO_MIX" ? (
                   <MicroMixReportFormView
+                    key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
@@ -5106,6 +5227,7 @@ export default function MCDashboard() {
                   />
                 ) : selectedReport.formType === "STERILITY" ? (
                   <SterilityReportFormView
+                    key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
@@ -5114,6 +5236,7 @@ export default function MCDashboard() {
                   />
                 ) : selectedReport.formType === "MICRO_MIX_WATER" ? (
                   <MicroMixWaterReportFormView
+                    key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                     report={selectedReport as any}
                     onClose={() => setSelectedReport(null)}
                     showSwitcher={false}
@@ -5132,6 +5255,7 @@ export default function MCDashboard() {
                 )
               ) : selectedReport.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -5140,6 +5264,7 @@ export default function MCDashboard() {
                 />
               ) : selectedReport.formType === "COA" ? (
                 <COAReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}

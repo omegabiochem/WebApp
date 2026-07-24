@@ -9,7 +9,7 @@ import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView"
 import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
 
 import { useAuth } from "../../context/AuthContext";
-import { api } from "../../lib/api";
+import { api, API_URL } from "../../lib/api";
 // import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 
@@ -37,6 +37,8 @@ import COAReportFormView from "../Reports/COAReportFormView";
 import {
   ChemistryCOLS,
   COLS,
+  getDayCountClass,
+  getDaysFromDateSent,
   getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
@@ -138,58 +140,58 @@ const ALL_STATUSES: (
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
-  "CLIENT_NEEDS_FINAL_CORRECTION",
-  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-  "UNDER_CLIENT_FINAL_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
-  "FINAL_RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  // "CLIENT_NEEDS_FINAL_CORRECTION",
+  // "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  // "UNDER_CLIENT_FINAL_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  // "FINAL_RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_PRELIMINARY_REVIEW",
   "UNDER_CLIENT_FINAL_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_PRELIMINARY_TESTING_REVIEW",
   "PRELIMINARY_TESTING_ON_HOLD",
-  "PRELIMINARY_TESTING_NEEDS_CORRECTION",
-  "PRELIMINARY_RESUBMISSION_BY_TESTING",
-  "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
-  "FINAL_RESUBMISSION_BY_TESTING",
+  // "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+  // "PRELIMINARY_RESUBMISSION_BY_TESTING",
+  // "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW",
+  // "FINAL_RESUBMISSION_BY_TESTING",
   "PRELIMINARY_APPROVED",
   "UNDER_FINAL_TESTING_REVIEW",
   "FINAL_TESTING_ON_HOLD",
-  "FINAL_TESTING_NEEDS_CORRECTION",
-  "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
+  // "FINAL_TESTING_NEEDS_CORRECTION",
+  // "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_PRELIMINARY_REVIEW",
-  "QA_NEEDS_PRELIMINARY_CORRECTION",
+  // "QA_NEEDS_PRELIMINARY_CORRECTION",
   "UNDER_QA_FINAL_REVIEW",
-  "QA_NEEDS_FINAL_CORRECTION",
+  // "QA_NEEDS_FINAL_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW",
   "FINAL_APPROVED",
   "LOCKED",
   "VOID",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
 
   "UNDER_CHANGE_UPDATE",
@@ -219,24 +221,24 @@ const ADMIN_CHEM_STATUSES: DashboardStatus[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -251,24 +253,24 @@ const ADMIN_STERILITY_STATUSES: ("ALL" | SterilityReportStatus)[] = [
   "ALL",
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
-  "CLIENT_NEEDS_CORRECTION",
-  "UNDER_CLIENT_CORRECTION",
-  "RESUBMISSION_BY_CLIENT",
+  // "CLIENT_NEEDS_CORRECTION",
+  // "UNDER_CLIENT_CORRECTION",
+  // "RESUBMISSION_BY_CLIENT",
   "UNDER_CLIENT_REVIEW",
   "RECEIVED_BY_FRONTDESK",
   "FRONTDESK_ON_HOLD",
-  "FRONTDESK_NEEDS_CORRECTION",
+  // "FRONTDESK_NEEDS_CORRECTION",
   "UNDER_TESTING_REVIEW",
   "TESTING_ON_HOLD",
-  "TESTING_NEEDS_CORRECTION",
-  "RESUBMISSION_BY_TESTING",
-  "UNDER_RESUBMISSION_TESTING_REVIEW",
+  // "TESTING_NEEDS_CORRECTION",
+  // "RESUBMISSION_BY_TESTING",
+  // "UNDER_RESUBMISSION_TESTING_REVIEW",
   "UNDER_QA_REVIEW",
-  "QA_NEEDS_CORRECTION",
+  // "QA_NEEDS_CORRECTION",
   "UNDER_ADMIN_REVIEW",
-  "ADMIN_NEEDS_CORRECTION",
+  // "ADMIN_NEEDS_CORRECTION",
   "ADMIN_REJECTED",
-  "UNDER_RESUBMISSION_ADMIN_REVIEW",
+  // "UNDER_RESUBMISSION_ADMIN_REVIEW",
   "APPROVED",
   "LOCKED",
   "VOID",
@@ -807,6 +809,18 @@ export default function AdminDashboard() {
   } | null>(null);
   const [printingBulk, setPrintingBulk] = useState(false);
   const [printingSingle, setPrintingSingle] = useState(false);
+
+  const [modalUploading, setModalUploading] = useState(false);
+  const modalUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  // const [refreshing, setRefreshing] = useState(false);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
+
+  const defaultAttachmentVisibility =
+    user?.role === "CLIENT" ? "CLIENT_ONLY" : "LAB_ONLY";
+
+  const [attachmentVisibility] = useState<"ALL" | "LAB_ONLY" | "CLIENT_ONLY">(
+    defaultAttachmentVisibility,
+  );
 
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
@@ -2764,18 +2778,10 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     );
   }
 
-  function requiresApeReviewedSignature(targetStatus: string) {
-    const s = String(targetStatus).toUpperCase();
-
-    return (
-      s === "UNDER_CLIENT_REVIEW" ||
-      s === "UNDER_ADMIN_REVIEW" ||
-      s === "APPROVED" ||
-      s === "LOCKED"
-    );
-  }
-
-  function getMissingApeValidationFields(child: any, targetStatus: string) {
+  function getMissingApeValidationFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2783,16 +2789,52 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     }
 
     addApeMissing(missing, "APE Validation Report - Client", child?.client);
-    addApeMissing(missing, "APE Validation Report - Date Sent", child?.dateSent);
-    addApeMissing(missing, "APE Validation Report - Type of Test", child?.typeOfTest);
-    addApeMissing(missing, "APE Validation Report - Sample Type", child?.sampleType);
-    addApeMissing(missing, "APE Validation Report - Formula #", child?.formulaNo);
-    addApeMissing(missing, "APE Validation Report - Description", child?.description);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Sent",
+      child?.dateSent,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Type of Test",
+      child?.typeOfTest,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Sample Type",
+      child?.sampleType,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Formula #",
+      child?.formulaNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Description",
+      child?.description,
+    );
     addApeMissing(missing, "APE Validation Report - Lot #", child?.lotNo);
-    addApeMissing(missing, "APE Validation Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Validation Report - Test Reference", child?.testReference);
-    addApeMissing(missing, "APE Validation Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Validation Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test SOP #",
+      child?.testSopNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test Reference",
+      child?.testReference,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Tested",
+      child?.dateTested,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.validationSections)
       ? child.validationSections
@@ -2807,14 +2849,16 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
 
       if (!rows.length) {
         missing.push(
-          `APE Validation Report - ${section?.title || section?.key || "section"} rows`,
+          `APE Validation Report - ${
+            section?.title || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.title || section?.key || "Validation"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.title || section?.key || "Validation"
+        } - ${row?.organism || "Organism"}`;
 
         addApeMissing(
           missing,
@@ -2829,15 +2873,13 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
       });
     });
 
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(missing, "APE Validation Report - Reviewed By", child?.reviewedBy);
-      addApeMissing(missing, "APE Validation Report - Reviewed Date", child?.reviewedDate);
-    }
-
     return missing;
   }
 
-  function getMissingApeReportFields(child: any, targetStatus: string) {
+  function getMissingApeReportFields(
+    child: any,
+    _targetStatus: string,
+  ) {
     const missing: string[] = [];
 
     if (!child?.id) {
@@ -2852,9 +2894,17 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     addApeMissing(missing, "APE Report - Description", child?.description);
     addApeMissing(missing, "APE Report - Lot #", child?.lotNo);
     addApeMissing(missing, "APE Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Report - Test Reference", child?.testReference);
+    addApeMissing(
+      missing,
+      "APE Report - Test Reference",
+      child?.testReference,
+    );
     addApeMissing(missing, "APE Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.apeReportSections)
       ? child.apeReportSections
@@ -2869,44 +2919,32 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
 
       if (!rows.length) {
         missing.push(
-          `APE Report - ${section?.dayLabel || section?.key || "section"} rows`,
+          `APE Report - ${
+            section?.dayLabel || section?.key || "section"
+          } rows`,
         );
       }
 
       rows.forEach((row: any) => {
-        const labelPrefix = `${section?.dayLabel || section?.key || "Day"} - ${
-          row?.organism || "Organism"
-        }`;
+        const labelPrefix = `${
+          section?.dayLabel || section?.key || "Day"
+        } - ${row?.organism || "Organism"}`;
 
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} Control Growth`,
-          row?.controlGrowth,
-        );
+        if (section?.key === "DAY_0") {
+          addApeMissing(
+            missing,
+            `APE Report - ${labelPrefix} Control Growth`,
+            row?.controlGrowth,
+          );
+        }
+
         addApeMissing(
           missing,
           `APE Report - ${labelPrefix} Sample Growth`,
           row?.sampleGrowth,
         );
-        addApeMissing(
-          missing,
-          `APE Report - ${labelPrefix} % Decrease`,
-          row?.decrease,
-        );
-        addApeMissing(
-          missing,
-          section?.key === "DAY_0"
-            ? `APE Report - ${labelPrefix} Innoculum Level`
-            : `APE Report - ${labelPrefix} Log Reduction`,
-          row?.innoculumLevel,
-        );
       });
     });
-
-    if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(missing, "APE Report - Reviewed By", child?.reviewedBy);
-      addApeMissing(missing, "APE Report - Reviewed Date", child?.reviewedDate);
-    }
 
     return missing;
   }
@@ -2919,7 +2957,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
       const child = await api<any>(
         `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
           parentId,
-        )}&reportType=${reportType}`,
+        )}&reportType=${reportType}&_=${Date.now()}`,
       );
 
       return child?.id ? child : null;
@@ -3371,6 +3409,30 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     isCorrectionFlowStatus(String(r.status)),
   );
 
+  async function uploadAttachmentForReport(r: Report, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "manual-upload");
+    form.append("createdBy", user?.name || user?.role || "micro");
+    form.append("kind", "SIGNED_FORM");
+    form.append("meta", JSON.stringify({ via: "micro-dashboard-modal" }));
+    form.append("visibility", attachmentVisibility);
+
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_URL}/reports/${r.id}/attachments`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
+    }
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3695,9 +3757,9 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
           ref={statusScrollerRef}
           className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
         >
-          {statusOptions.map((s) => (
+          {statusOptions.map((s, index) => (
             <button
-              key={String(s)}
+              key={`${String(s)}-${index}`}
               ref={(el) => {
                 statusChipRefs.current[String(s)] = el;
               }}
@@ -3955,6 +4017,9 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                       onChange={toggleSelectPage}
                     />
                   </th>
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
+                    {/* Days */}
+                  </th>
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -4143,6 +4208,28 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                             onChange={() => toggleRow(r)}
                             disabled={rowBusy}
                           />
+                        </td>
+
+                        <td className=" py-3 whitespace-nowrap">
+                          {(() => {
+                            const days = getDaysFromDateSent(r.dateSent);
+
+                            return (
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                                  getDayCountClass(days),
+                                )}
+                                title={
+                                  r.dateSent
+                                    ? `Date Sent: ${formatDate(r.dateSent)}`
+                                    : "No Date Sent"
+                                }
+                              >
+                                {days == null ? "-" : `${days}d`}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {selectedCols.map((k) => (
@@ -4464,6 +4551,38 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
               )}
 
               <div className="flex items-center gap-2 justify-self-end">
+                <input
+                  ref={modalUploadInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !selectedReport) return;
+
+                    setModalUploading(true);
+                    try {
+                      await uploadAttachmentForReport(selectedReport, file);
+                      toast.success("Uploaded!");
+                      setAttachmentRefreshKey((k) => k + 1);
+                      setSelectedViewPane("ATTACHMENTS");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Upload failed");
+                    } finally {
+                      setModalUploading(false);
+                    }
+                  }}
+                />
+
+                <button
+                  type="button"
+                  disabled={modalUploading || !selectedReport?.id}
+                  onClick={() => modalUploadInputRef.current?.click()}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {modalUploading ? <Spinner /> : "⬆️"}
+                  {modalUploading ? "Uploading..." : "Upload"}
+                </button>
                 {/* ✅ Print single */}
                 <button
                   disabled={printingSingle}
@@ -4622,6 +4741,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
             <div className="modal-body flex-1 min-h-0 overflow-y-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {selectedReport?.formType === "MICRO_MIX" ? (
                 <MicroMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4630,6 +4750,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                 />
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <MicroMixWaterReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4638,6 +4759,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                 />
               ) : selectedReport?.formType === "STERILITY" ? (
                 <SterilityReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4648,6 +4770,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                 renderSelectedApeBody(selectedReport)
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <ChemistryMixReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
@@ -4656,6 +4779,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
                 />
               ) : selectedReport?.formType === "COA" ? (
                 <COAReportFormView
+                  key={`${selectedReport.id}-${selectedViewPane}-${attachmentRefreshKey}`}
                   report={selectedReport as any}
                   onClose={() => setSelectedReport(null)}
                   showSwitcher={false}
