@@ -404,6 +404,18 @@ useEffect(() => {
     useState<SterilityReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
+  const [fieldSignatureMode, setFieldSignatureMode] = useState<
+    "TESTED_BY" | "REVIEWED_BY" | null
+  >(null);
+
+  // Keep the verified field-signature authorization only in memory until the
+  // matching Approve button is clicked. This preserves the existing backend
+  // status-transition e-signature requirement without auto-approving.
+  const pendingApprovalESignRef = useRef<{
+    target: SterilityReportStatus;
+    reason: string;
+    password: string;
+  } | null>(null);
 
   const [showESignPassword, setShowESignPassword] = useState(false);
   const [autoFillSnapshot, setAutoFillSnapshot] = useState<{
@@ -622,14 +634,90 @@ useEffect(() => {
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
-  // UI policy: only when server will enforce
+  // Status actions keep their existing behavior. The Tested By / Reviewed By
+  // e-signature is handled separately and must never change report status.
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" ||
       role === "SYSTEMADMIN" ||
       role === "FRONTDESK" ||
       role === "MICRO" ||
       role === "MC") &&
-    (s === "UNDER_CLIENT_REVIEW" || s === "UNDER_QA_REVIEW" || s === "LOCKED");
+    s === "LOCKED";
+
+  function openFieldSignature(mode: "TESTED_BY" | "REVIEWED_BY") {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before signing.");
+      return;
+    }
+
+    if (isDirty) {
+      alert("⚠️ You have unsaved changes. Please UPDATE the report before signing.");
+      return;
+    }
+
+    const isTestingSignature = mode === "TESTED_BY";
+    const allowed = isTestingSignature
+      ? status === "UNDER_TESTING_REVIEW" &&
+        (role === "MICRO" || role === "MC")
+      : status === "UNDER_ADMIN_REVIEW" &&
+        (role === "ADMIN" || role === "SYSTEMADMIN");
+
+    if (!allowed) {
+      alert("⚠️ You are not allowed to sign this field in the current status.");
+      return;
+    }
+
+    const signerName = user?.name || user?.email || "";
+    const signedDate = todayISO();
+    const values = makeValues();
+    const validationValues = {
+      ...values,
+      ...(isTestingSignature
+        ? { testedBy: signerName, testedDate: signedDate }
+        : { reviewedBy: signerName, reviewedDate: signedDate }),
+    };
+
+    if (!validateAndSetErrors(validationValues)) {
+      alert("⚠️ Please fill all required fields before e-signature.");
+      return;
+    }
+
+    if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+      return;
+    }
+
+    if (isTestingSignature) {
+      setAutoFillSnapshot({
+        testedBy,
+        testedDate,
+        wasDirty: isDirty,
+      });
+      setTestedBy(signerName);
+      setTestedDate(signedDate);
+      clearError("testedBy");
+      clearError("testedDate");
+      setPendingStatus("UNDER_QA_REVIEW");
+      setChangeReason("Electronic signature authorization for Tested By.");
+    } else {
+      setAutoFillSnapshot({
+        reviewedBy,
+        reviewedDate,
+        wasDirty: isDirty,
+      });
+      setReviewedBy(signerName);
+      setReviewedDate(signedDate);
+      clearError("reviewedBy");
+      clearError("reviewedDate");
+      setPendingStatus("UNDER_CLIENT_REVIEW");
+      setChangeReason("Electronic signature authorization for Reviewed By.");
+    }
+
+    setFieldSignatureMode(mode);
+    setESignError(null);
+    setESignPassword("");
+    setESignConfirmed(false);
+    setShowESign(true);
+  }
 
   function requestStatusChange(target: SterilityReportStatus) {
     if (!reportId) {
@@ -678,6 +766,16 @@ useEffect(() => {
       return;
     }
 
+    const pendingApprovalESign = pendingApprovalESignRef.current;
+
+    if (pendingApprovalESign?.target === target) {
+      handleStatusChange(target, {
+        reason: pendingApprovalESign.reason,
+        eSignPassword: pendingApprovalESign.password,
+      });
+      return;
+    }
+
     if (uiNeedsESign(target)) {
       const shouldAutoFillTestingSignature =
         status === "UNDER_TESTING_REVIEW" &&
@@ -709,40 +807,19 @@ useEffect(() => {
           : {}),
       };
       if (shouldAutoFillTestingSignature) {
-        // const autoName = user?.name || user?.email || "";
-        // const autoDate = todayISO();
-
         setAutoFillSnapshot({
           testedBy,
           testedDate,
           wasDirty: isDirty,
         });
-
-        // if (!testedBy.trim()) {
-        //   setTestedBy(autoName);
-        // }
-
-        // if (!testedDate) {
-        //   setTestedDate(autoDate);
-        // }
       }
-      if (shouldAutoFillReviewSignature) {
-        // const autoName = user?.name || user?.email || "";
-        // const autoDate = todayISO();
 
+      if (shouldAutoFillReviewSignature) {
         setAutoFillSnapshot({
           reviewedBy,
           reviewedDate,
           wasDirty: isDirty,
-        } as any);
-
-        // if (!reviewedBy.trim()) {
-        //   setReviewedBy(autoName);
-        // }
-
-        // if (!reviewedDate) {
-        //   setReviewedDate(autoDate);
-        // }
+        });
       }
 
       const okFields = validateAndSetErrors(validationValues);
@@ -762,6 +839,22 @@ useEffect(() => {
 
       if (shouldBlockStatusChangeForUnresolvedCorrections()) {
         return;
+      }
+
+      // Preview the authenticated signer and today's date immediately.
+      // The existing Cancel/error logic restores the previous values.
+      if (shouldAutoFillTestingSignature) {
+        setTestedBy(user?.name || user?.email || "");
+        setTestedDate(todayISO());
+        clearError("testedBy");
+        clearError("testedDate");
+      }
+
+      if (shouldAutoFillReviewSignature) {
+        setReviewedBy(user?.name || user?.email || "");
+        setReviewedDate(todayISO());
+        clearError("reviewedBy");
+        clearError("reviewedDate");
       }
 
       setESignError(null);
@@ -1347,6 +1440,11 @@ useEffect(() => {
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
         setIsDirty(false);
+
+        if (pendingApprovalESignRef.current?.target === newStatus) {
+          pendingApprovalESignRef.current = null;
+        }
+
         onStatusChanged?.(updated);
         alert(`✅ Status changed to ${newStatus}`);
 
@@ -1707,16 +1805,10 @@ useEffect(() => {
   }
 
   const previewTestingSignature =
-    showESign &&
-    status === "UNDER_TESTING_REVIEW" &&
-    pendingStatus === "UNDER_QA_REVIEW" &&
-    (role === "MICRO" || role === "MC");
+    showESign && fieldSignatureMode === "TESTED_BY";
 
   const previewReviewSignature =
-    showESign &&
-    status === "UNDER_ADMIN_REVIEW" &&
-    pendingStatus === "UNDER_CLIENT_REVIEW" &&
-    (role === "ADMIN" || role === "SYSTEMADMIN");
+    showESign && fieldSignatureMode === "REVIEWED_BY";
 
   const displayTestedBy = previewTestingSignature
     ? user?.name || user?.email || ""
@@ -1731,6 +1823,18 @@ useEffect(() => {
   const displayReviewedDate = previewReviewSignature
     ? todayISO()
     : reviewedDate;
+
+  const showTestedBySignButton =
+    !forceReadOnly &&
+    !testedBy.trim() &&
+    status === "UNDER_TESTING_REVIEW" &&
+    (role === "MICRO" || role === "MC");
+
+  const showReviewedBySignButton =
+    !forceReadOnly &&
+    !reviewedBy.trim() &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2713,24 +2817,50 @@ useEffect(() => {
                   TESTED BY:
                   <FieldErrorBadge name="testedBy" errors={errors} />
                   <ResolveOverlay field="testedBy" />
-                  <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
-                      errors.testedBy ? "border-b-red-500" : "border-b-black/70"
-                    } ${
-                      hasCorrection("testedBy")
-                        ? "ring-2 ring-rose-500 animate-pulse"
-                        : ""
-                    }`}
-                    value={displayTestedBy.toUpperCase()}
-                    onChange={(e) => {
-                      setTestedBy(e.target.value);
-                      clearError("testedBy");
-                      markDirty();
-                    }}
-                    readOnly={lock("testedBy")}
-                    placeholder="Name"
-                    aria-invalid={!!errors.testedBy}
-                  />
+
+                  {showTestedBySignButton ? (
+                    <div
+                      className={`flex-1 min-h-[26px] border-b flex items-center ${
+                        errors.testedBy
+                          ? "border-b-red-500"
+                          : "border-b-black/70"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="no-print inline-flex items-center rounded-md border border-blue-700 bg-blue-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openFieldSignature("TESTED_BY");
+                        }}
+                        title="Apply Tested By electronic signature"
+                      >
+                        Sign
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
+                        errors.testedBy
+                          ? "border-b-red-500"
+                          : "border-b-black/70"
+                      } ${
+                        hasCorrection("testedBy")
+                          ? "ring-2 ring-rose-500 animate-pulse"
+                          : ""
+                      }`}
+                      value={displayTestedBy.toUpperCase()}
+                      onChange={(e) => {
+                        setTestedBy(e.target.value);
+                        clearError("testedBy");
+                        markDirty();
+                      }}
+                      readOnly={lock("testedBy")}
+                      placeholder="Name"
+                      aria-invalid={!!errors.testedBy}
+                    />
+                  )}
                 </div>
 
                 <div
@@ -2785,26 +2915,50 @@ useEffect(() => {
                   REVIEWED BY:
                   <FieldErrorBadge name="reviewedBy" errors={errors} />
                   <ResolveOverlay field="reviewedBy" />
-                  <input
-                    className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
-                      errors.reviewedBy
-                        ? "border-b-red-500"
-                        : "border-b-black/70"
-                    } ${
-                      hasCorrection("reviewedBy")
-                        ? "ring-2 ring-rose-500 animate-pulse"
-                        : ""
-                    }`}
-                    value={displayReviewedBy.toUpperCase()}
-                    onChange={(e) => {
-                      setReviewedBy(e.target.value);
-                      clearError("reviewedBy");
-                      markDirty();
-                    }}
-                    readOnly={lock("reviewedBy")}
-                    placeholder="Name"
-                    aria-invalid={!!errors.reviewedBy}
-                  />
+
+                  {showReviewedBySignButton ? (
+                    <div
+                      className={`flex-1 min-h-[26px] border-b flex items-center ${
+                        errors.reviewedBy
+                          ? "border-b-red-500"
+                          : "border-b-black/70"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="no-print inline-flex items-center rounded-md border border-indigo-700 bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openFieldSignature("REVIEWED_BY");
+                        }}
+                        title="Apply Reviewed By electronic signature"
+                      >
+                        Sign
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 font-medium ${
+                        errors.reviewedBy
+                          ? "border-b-red-500"
+                          : "border-b-black/70"
+                      } ${
+                        hasCorrection("reviewedBy")
+                          ? "ring-2 ring-rose-500 animate-pulse"
+                          : ""
+                      }`}
+                      value={displayReviewedBy.toUpperCase()}
+                      onChange={(e) => {
+                        setReviewedBy(e.target.value);
+                        clearError("reviewedBy");
+                        markDirty();
+                      }}
+                      readOnly={lock("reviewedBy")}
+                      placeholder="Name"
+                      aria-invalid={!!errors.reviewedBy}
+                    />
+                  )}
                 </div>
 
                 <div
@@ -3006,7 +3160,11 @@ useEffect(() => {
 
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
-                  {eSignActionTitle(pendingStatus)}
+                  {previewTestingSignature
+                    ? "Electronic Tested By Signature"
+                    : previewReviewSignature
+                      ? "Electronic Reviewed By Signature"
+                      : eSignActionTitle(pendingStatus)}
                 </h2>
                 <p className="mt-1 text-xs font-medium text-slate-500">
                   21 CFR Part 11 Electronic Signature Authorization
@@ -3036,7 +3194,9 @@ useEffect(() => {
                 <div className="flex justify-between gap-4">
                   <span className="text-slate-500">New Status</span>
                   <span className="text-right font-semibold text-blue-700">
-                    {formatStatusText(String(pendingStatus || ""))}
+                    {fieldSignatureMode
+                      ? "NO STATUS CHANGE"
+                      : formatStatusText(String(pendingStatus || ""))}
                   </span>
                 </div>
 
@@ -3057,8 +3217,9 @@ useEffect(() => {
             </div>
 
             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              This electronic signature will be recorded in the audit trail with
-              user, timestamp, reason, and status transition.
+              {fieldSignatureMode
+                ? "This action records the signer name and date only. The report status will not change."
+                : "This electronic signature will be recorded in the audit trail with user, timestamp, reason, and status transition."}
             </p>
 
             <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
@@ -3133,6 +3294,7 @@ useEffect(() => {
 
                   setShowESign(false);
                   setPendingStatus(null);
+                  setFieldSignatureMode(null);
                   setShowESignPassword(false);
                   setESignPassword("");
                   setChangeReason("");
@@ -3145,13 +3307,13 @@ useEffect(() => {
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
                   eSignSubmitting ||
-                  !pendingStatus ||
+                  (!pendingStatus && !fieldSignatureMode) ||
                   !changeReason.trim() ||
                   !eSignPassword.trim() ||
                   !eSignConfirmed
                 }
                 onClick={async () => {
-                  if (!pendingStatus) return;
+                  if (!pendingStatus && !fieldSignatureMode) return;
 
                   const reason = changeReason.trim();
                   const pwd = eSignPassword.trim();
@@ -3172,6 +3334,83 @@ useEffect(() => {
                   setESignError(null);
 
                   try {
+                    if (fieldSignatureMode) {
+                      if (!reportId) return;
+
+                      const signerName = user?.name || user?.email || "";
+                      const signedDate = todayISO();
+                      const signaturePayload =
+                        fieldSignatureMode === "TESTED_BY"
+                          ? {
+                              testedBy: signerName,
+                              testedDate: signedDate,
+                            }
+                          : {
+                              reviewedBy: signerName,
+                              reviewedDate: signedDate,
+                            };
+
+                      const updated = await api<any>(`/reports/${reportId}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({
+                          ...signaturePayload,
+                          reason,
+                          eSignPassword: pwd,
+                          expectedVersion: reportVersion,
+                        }),
+                      });
+
+                      setReportVersion((prev) =>
+                        typeof updated?.version === "number"
+                          ? updated.version
+                          : prev + 1,
+                      );
+
+                      if (fieldSignatureMode === "TESTED_BY") {
+                        setTestedBy(updated?.testedBy || signerName);
+                        setTestedDate(
+                          formatDateForInput(updated?.testedDate) || signedDate,
+                        );
+                      } else {
+                        setReviewedBy(updated?.reviewedBy || signerName);
+                        setReviewedDate(
+                          formatDateForInput(updated?.reviewedDate) || signedDate,
+                        );
+                      }
+
+                      setIsDirty(false);
+
+                      const approvalTarget: SterilityReportStatus =
+                        fieldSignatureMode === "TESTED_BY"
+                          ? "UNDER_QA_REVIEW"
+                          : "UNDER_CLIENT_REVIEW";
+
+                      pendingApprovalESignRef.current = {
+                        target: approvalTarget,
+                        reason: getDefaultESignReason(status, approvalTarget),
+                        password: pwd,
+                      };
+
+                      onSaved?.({
+                        ...report,
+                        ...updated,
+                        id: updated?.id ?? reportId,
+                      });
+
+                      setShowESign(false);
+                      setPendingStatus(null);
+                      setFieldSignatureMode(null);
+                      setAutoFillSnapshot(null);
+                      setShowESignPassword(false);
+                      setESignPassword("");
+                      setChangeReason("");
+                      setESignError(null);
+                      alert("✅ Signature saved. Report status was not changed.");
+                      return;
+                    }
+
+                    if (!statusToApply) return;
+
                     const success = await handleStatusChange(statusToApply, {
                       reason,
                       eSignPassword: pwd,
@@ -3179,18 +3418,9 @@ useEffect(() => {
 
                     if (!success) return;
 
-                    if (previewTestingSignature) {
-                      setTestedBy(user?.name || user?.email || "");
-                      setTestedDate(todayISO());
-                    }
-
-                    if (previewReviewSignature) {
-                      setReviewedBy(user?.name || user?.email || "");
-                      setReviewedDate(todayISO());
-                    }
-
                     setShowESign(false);
                     setPendingStatus(null);
+                    setFieldSignatureMode(null);
                     setAutoFillSnapshot(null);
                     setShowESignPassword(false);
                     setESignPassword("");
@@ -3241,8 +3471,12 @@ useEffect(() => {
               >
                 {eSignSubmitting && <Spinner />}
                 {eSignSubmitting
-                  ? "Verifying..."
-                  : eSignButtonText(pendingStatus)}
+                  ? fieldSignatureMode
+                    ? "Signing..."
+                    : "Verifying..."
+                  : fieldSignatureMode
+                    ? "Verify & Sign"
+                    : eSignButtonText(pendingStatus)}
               </button>
             </div>
           </div>
