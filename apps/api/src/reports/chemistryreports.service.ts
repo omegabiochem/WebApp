@@ -675,6 +675,138 @@ export class ChemistryReportsService {
       ...patch
     } = { ...patchIn };
 
+    // A standalone field signature is the PATCH made by the Sign button.
+    // It saves Tested By / Reviewed By without changing workflow status.
+    const hasTestedSignaturePatch =
+      !patchIn.status && ('testedBy' in patch || 'testedDate' in patch);
+    const hasReviewedSignaturePatch =
+      !patchIn.status && ('reviewedBy' in patch || 'reviewedDate' in patch);
+
+    let standaloneSignatureAudit:
+      | {
+          signatureType: 'TESTED_BY' | 'REVIEWED_BY';
+          reason: string;
+          approvalTarget: ChemistryReportStatus;
+        }
+      | null = null;
+
+    if (hasTestedSignaturePatch || hasReviewedSignaturePatch) {
+      if (hasTestedSignaturePatch && hasReviewedSignaturePatch) {
+        throw new BadRequestException(
+          'Only one electronic signature may be applied per request',
+        );
+      }
+
+      const signatureType: 'TESTED_BY' | 'REVIEWED_BY' =
+        hasTestedSignaturePatch ? 'TESTED_BY' : 'REVIEWED_BY';
+
+      const reason = String(
+        (ctx as any)?.reason ?? _reasonFromBody ?? '',
+      ).trim();
+
+      const password =
+        _pwdFromBody ?? (ctx as any)?.eSignPassword ?? null;
+
+      if (!reason) {
+        throw new BadRequestException(
+          'Reason is required for electronic signature',
+        );
+      }
+
+      if (!password) {
+        throw new BadRequestException(
+          'Electronic signature (password) is required',
+        );
+      }
+
+      const expectedStatus =
+        signatureType === 'TESTED_BY'
+          ? ChemistryReportStatus.UNDER_TESTING_REVIEW
+          : ChemistryReportStatus.UNDER_ADMIN_REVIEW;
+
+      const approvalTarget =
+        signatureType === 'TESTED_BY'
+          ? ChemistryReportStatus.UNDER_QA_REVIEW
+          : ChemistryReportStatus.UNDER_CLIENT_REVIEW;
+
+      const allowedRoles: UserRole[] =
+        signatureType === 'TESTED_BY'
+          ? [UserRole.CHEMISTRY, UserRole.MC, UserRole.SYSTEMADMIN]
+          : [UserRole.ADMIN, UserRole.SYSTEMADMIN];
+
+      if (current.status !== expectedStatus) {
+        throw new ConflictException({
+          code: 'ESIGN_STATUS_CONFLICT',
+          message:
+            `Cannot apply ${signatureType} signature while report status is ` +
+            `${current.status}. Required status is ${expectedStatus}.`,
+          currentStatus: current.status,
+          expectedStatus,
+        });
+      }
+
+      if (!allowedRoles.includes(user.role)) {
+        throw new ForbiddenException(
+          `Role ${user.role} cannot apply ${signatureType} signature`,
+        );
+      }
+
+      try {
+        await this.esign.verifyPassword(user.userId, String(password));
+      } catch {
+        await this.logESignAudit({
+          reportId: current.id,
+          clientCode: current.clientCode ?? null,
+          formType: current.formType,
+          formNumber: current.formNumber,
+          reportNumber: current.reportNumber ?? null,
+          actorUserId: user.userId,
+          actorRole: user.role,
+          action: 'ESIGN_REJECTED',
+          fromStatus: current.status,
+          toStatus: current.status,
+          reason,
+          signatureType,
+          statusChanged: false,
+          approvalTarget,
+          details:
+            `${signatureType === 'TESTED_BY' ? 'Tested By' : 'Reviewed By'} ` +
+            `electronic signature rejected. Report status was not changed.`,
+        });
+
+        throw new ForbiddenException('Electronic signature failed');
+      }
+
+      const actor = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: {
+          name: true,
+          userId: true,
+          email: true,
+        },
+      });
+
+      const signerName =
+        actor?.name?.trim() ||
+        actor?.userId?.trim() ||
+        actor?.email?.trim() ||
+        'Unknown';
+
+      if (signatureType === 'TESTED_BY') {
+        patch.testedBy = signerName;
+        patch.testedDate = new Date();
+      } else {
+        patch.reviewedBy = signerName;
+        patch.reviewedDate = new Date();
+      }
+
+      standaloneSignatureAudit = {
+        signatureType,
+        reason,
+        approvalTarget,
+      };
+    }
+
     // ✅ optimistic locking: require version for non-admin edits
     if (
       !['ADMIN', 'SYSTEMADMIN'].includes(user.role) &&
@@ -1056,6 +1188,28 @@ export class ChemistryReportsService {
     });
     if (!updated) throw new NotFoundException('Report not found after update');
 
+    if (standaloneSignatureAudit) {
+      await this.logESignAudit({
+        reportId: current.id,
+        clientCode: current.clientCode ?? null,
+        formType: current.formType,
+        formNumber: current.formNumber,
+        reportNumber: updated.reportNumber ?? current.reportNumber ?? null,
+        actorUserId: user.userId,
+        actorRole: user.role,
+        action: 'ESIGN_VERIFIED',
+        fromStatus: current.status,
+        toStatus: current.status,
+        reason: standaloneSignatureAudit.reason,
+        signatureType: standaloneSignatureAudit.signatureType,
+        statusChanged: false,
+        approvalTarget: standaloneSignatureAudit.approvalTarget,
+        details:
+          `${standaloneSignatureAudit.signatureType === 'TESTED_BY' ? 'Tested By' : 'Reviewed By'} ` +
+          `electronic signature verified and recorded. Report status was not changed.`,
+      });
+    }
+
     if (!current.reportNumber && updated.reportNumber) {
       await this.prisma.auditTrail.create({
         data: {
@@ -1080,6 +1234,20 @@ export class ChemistryReportsService {
 
     const prevStatus = String(current.status);
 
+    const currentDetailsBeforeUpdate = pickDetails(current);
+    const statusTarget = patchIn.status ? String(patchIn.status) : null;
+
+    const isFieldSignatureApprovalTransition =
+      !!statusTarget &&
+      (
+        (statusTarget === 'UNDER_QA_REVIEW' &&
+          !!currentDetailsBeforeUpdate?.testedBy &&
+          !!currentDetailsBeforeUpdate?.testedDate) ||
+        (statusTarget === 'UNDER_CLIENT_REVIEW' &&
+          !!currentDetailsBeforeUpdate?.reviewedBy &&
+          !!currentDetailsBeforeUpdate?.reviewedDate)
+      );
+
     const newStatus = patchIn.status ? String(patchIn.status) : null;
 
     if (newStatus && prevStatus !== newStatus) {
@@ -1088,6 +1256,7 @@ export class ChemistryReportsService {
       if (
         patchIn.status &&
         prevStatus !== String(patchIn.status) &&
+        !isFieldSignatureApprovalTransition &&
         (patchIn.status === 'UNDER_CLIENT_FINAL_REVIEW' ||
           patchIn.status === 'UNDER_QA_FINAL_REVIEW' ||
           patchIn.status === 'UNDER_QA_REVIEW' ||
@@ -1107,6 +1276,9 @@ export class ChemistryReportsService {
           fromStatus: current.status,
           toStatus: patchIn.status,
           reason: reasonFromCtxOrBody,
+          signatureType: 'STATUS',
+          statusChanged: true,
+          approvalTarget: patchIn.status,
           details: `Electronic signature verified for ${current.status} → ${patchIn.status}`,
         });
       }
@@ -1186,6 +1358,10 @@ export class ChemistryReportsService {
 
     reason?: string | null;
 
+    signatureType?: string | null;
+    statusChanged?: boolean;
+    approvalTarget?: ChemistryReportStatus | null;
+
     details: string;
   }) {
     const ctx = getRequestContext();
@@ -1212,6 +1388,9 @@ export class ChemistryReportsService {
           fromStatus: args.fromStatus ?? null,
           toStatus: args.toStatus ?? null,
           reason: args.reason ?? null,
+          signatureType: args.signatureType ?? null,
+          statusChanged: args.statusChanged ?? null,
+          approvalTarget: args.approvalTarget ?? null,
           signedAt: new Date().toISOString(),
         },
 
