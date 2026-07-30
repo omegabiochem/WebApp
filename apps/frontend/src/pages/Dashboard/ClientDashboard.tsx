@@ -274,19 +274,6 @@ function getReportDetailsEndpoint(report: Report) {
     : `/reports/${report.id}`;
 }
 
-function JJLCreatedByLine({ report }: { report: Report }) {
-  if (!isJJLSubmissionForm(report)) return null;
-
-  const creatorName = String(report.createdByName || "").trim();
-  if (!creatorName) return null;
-
-  return (
-    <div className="mx-auto mt-2 max-w-[800px] px-4 pb-2 text-right text-[12px] text-black">
-      <span className="font-semibold">Created by:</span>{" "}
-      <span>{creatorName}</span>
-    </div>
-  );
-}
 
 // const isMicro = (ft?: string) =>
 //   typeof ft === "string" && ft.startsWith("MICRO");
@@ -537,7 +524,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "MICRO_MIX_WATER") {
@@ -551,7 +537,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "STERILITY") {
@@ -565,7 +550,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "APE") {
@@ -579,7 +563,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "CHEMISTRY_MIX") {
@@ -593,7 +576,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "COA") {
@@ -607,7 +589,6 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
-              <JJLCreatedByLine report={r} />
             </div>
           );
         } else {
@@ -4728,9 +4709,6 @@ export default function ClientDashboard() {
                     // pane={paneFor(String(selectedReport.status))}
                     pane={selectedViewPane}
                   />
-                  {selectedViewPane === "FORM" && (
-                    <JJLCreatedByLine report={selectedReport} />
-                  )}
                 </>
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
                 <>
@@ -4740,9 +4718,6 @@ export default function ClientDashboard() {
                     showSwitcher={false}
                     pane={selectedViewPane}
                   />
-                  {selectedViewPane === "FORM" && (
-                    <JJLCreatedByLine report={selectedReport} />
-                  )}
                 </>
               ) : selectedReport?.formType === "STERILITY" ? (
                 <>
@@ -4752,17 +4727,10 @@ export default function ClientDashboard() {
                     showSwitcher={false}
                     pane={selectedViewPane}
                   />
-                  {selectedViewPane === "FORM" && (
-                    <JJLCreatedByLine report={selectedReport} />
-                  )}
                 </>
               ) : selectedReport?.formType === "APE" ? (
                 <>
                   {renderSelectedApeBody(selectedReport)}
-                  {selectedViewPane === "FORM" &&
-                    selectedModalMode === "VIEW" && (
-                      <JJLCreatedByLine report={selectedReport} />
-                    )}
                 </>
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <>
@@ -4772,9 +4740,6 @@ export default function ClientDashboard() {
                     showSwitcher={false}
                     pane={selectedViewPane}
                   />
-                  {selectedViewPane === "FORM" && (
-                    <JJLCreatedByLine report={selectedReport} />
-                  )}
                 </>
               ) : selectedReport?.formType === "COA" ? (
                 <>
@@ -4784,9 +4749,6 @@ export default function ClientDashboard() {
                     showSwitcher={false}
                     pane={selectedViewPane}
                   />
-                  {selectedViewPane === "FORM" && (
-                    <JJLCreatedByLine report={selectedReport} />
-                  )}
                 </>
               ) : (
                 <div className="text-sm text-slate-600">
