@@ -701,8 +701,6 @@ export class AuthService {
       });
     }
 
- 
-
     if (!user.active) {
       await this.logAuthEvent({
         action: 'LOGIN_FAILED',
@@ -839,13 +837,22 @@ export class AuthService {
 
     // ✅ If OTP not enabled, and mustChangePassword => force reset now
     if (user.mustChangePassword) {
-      const payload = {
-        sub: user.id,
-        role: user.role,
-        uid: user.userId ?? null,
-        mcp: true,
-        clientCode: user.clientCode ?? null,
-      };
+      // Initialize the temporary authenticated session.
+      // Without this, IdleTimeoutGuard rejects /auth/activity and
+      // /auth/change-password because lastActivityAt is null.
+      setRequestContext({ skipAudit: true });
+
+      try {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            lastLoginAt: new Date(),
+            lastActivityAt: new Date(),
+          },
+        });
+      } finally {
+        setRequestContext({ skipAudit: false });
+      }
 
       const accessToken = this.signAccessTokenForSession({
         sub: user.id,
@@ -853,6 +860,7 @@ export class AuthService {
         uid: user.userId ?? null,
         clientCode: user.clientCode ?? null,
         mcp: true,
+        authMode: 'NORMAL',
       });
 
       return {
@@ -865,6 +873,7 @@ export class AuthService {
           name: user.name ?? undefined,
           mustChangePassword: true,
           clientCode: user.clientCode ?? null,
+          authMode: 'NORMAL',
         },
       };
     }
@@ -1108,6 +1117,7 @@ export class AuthService {
     currentPassword: string,
     newPassword: string,
     req?: any,
+    res?: any,
   ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userDbId },
@@ -1190,6 +1200,20 @@ export class AuthService {
       authMode: 'NORMAL',
     });
 
+    if (res) {
+      await this.issueRefreshForUser(
+        {
+          sub: user.id,
+          role: user.role,
+          uid: user.userId ?? null,
+          clientCode: user.clientCode ?? null,
+          mcp: false,
+          authMode: 'NORMAL',
+        },
+        res,
+      );
+    }
+
     return {
       accessToken,
       user: {
@@ -1199,6 +1223,7 @@ export class AuthService {
         name: user.name ?? undefined,
         mustChangePassword: false,
         clientCode: user.clientCode ?? null,
+        authMode: 'NORMAL',
       },
     };
   }

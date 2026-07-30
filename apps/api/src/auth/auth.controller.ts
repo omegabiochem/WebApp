@@ -91,25 +91,30 @@ export class AuthController {
   }
 
   // ✅ Regular authenticated password change (pass req so we can audit)
-  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
-  @Post('change-password')
-  async changePassword(
-    @Req() req: any,
-    @Body() body: { currentPassword: string; newPassword: string },
-  ) {
-    const userDbId = req.user?.sub as string;
+@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
+@Post('change-password')
+async changePassword(
+  @Req() req: any,
+  @Res({ passthrough: true }) res: Response,
+  @Body() body: {
+    currentPassword: string;
+    newPassword: string;
+  },
+) {
+  const userDbId = req.user?.sub as string;
 
-    if (!userDbId) {
-      throw new BadRequestException('Unauthenticated');
-    }
-
-    return this.auth.changeOwnPassword(
-      userDbId,
-      body.currentPassword,
-      body.newPassword,
-      req,
-    );
+  if (!userDbId) {
+    throw new BadRequestException('Unauthenticated');
   }
+
+  return this.auth.changeOwnPassword(
+    userDbId,
+    body.currentPassword,
+    body.newPassword,
+    req,
+    res,
+  );
+}
 
   // ✅ NEW: Logout endpoint (audited)
   @UseGuards(JwtAuthGuard)
