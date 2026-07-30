@@ -126,8 +126,11 @@ function mapFormFilter(form?: string): FormType | undefined {
       return 'STERILITY';
     case 'CHEMISTRY':
       return 'CHEMISTRY_MIX';
+      
     case 'COA':
       return 'COA';
+    case 'APE':
+      return 'APE';
     default:
       return undefined;
   }

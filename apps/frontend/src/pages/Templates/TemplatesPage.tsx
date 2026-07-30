@@ -9,6 +9,7 @@ type TemplateRow = {
     | "MICRO_MIX"
     | "MICRO_MIX_WATER"
     | "STERILITY"
+    | "APE"
     | "CHEMISTRY_MIX"
     | "COA";
   version?: number;
@@ -43,6 +44,8 @@ function labelFor(formType: TemplateRow["formType"]) {
       return "Micro Water";
     case "STERILITY":
       return "Sterility";
+    case "APE":
+      return "APE";
     case "CHEMISTRY_MIX":
       return "Chemistry";
     case "COA":
@@ -55,6 +58,7 @@ const TEMPLATE_NEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
   MICRO_MIX: "/reports/micro-mix/new?mode=template",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=template",
   STERILITY: "/reports/sterility/new?mode=template",
+  APE: "/reports/ape/new?mode=template",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=template",
   COA: "/reports/coa/new?mode=template",
 };
@@ -63,6 +67,7 @@ const TEMPLATE_VIEW_PATH_BY_FORM: Record<TemplateRow["formType"], string> = {
   MICRO_MIX: "/reports/micro-mix/new?mode=templateView",
   MICRO_MIX_WATER: "/reports/micro-mix-water/new?mode=templateView",
   STERILITY: "/reports/sterility/new?mode=templateView",
+  APE: "/reports/ape/new?mode=templateView",
   CHEMISTRY_MIX: "/reports/chemistry-mix/new?mode=templateView",
   COA: "/reports/coa/new?mode=templateView",
 };
@@ -83,6 +88,7 @@ type FormFilter =
   | "MICRO"
   | "MICROWATER"
   | "STERILITY"
+  | "APE"
   | "CHEMISTRY"
   | "COA";
 type SortBy = "updatedAt" | "name";
@@ -165,6 +171,7 @@ export default function TemplatesPage() {
         return navigate(`/reports/micro-mix-water/${id}`);
       if (t.formType === "STERILITY")
         return navigate(`/reports/sterility/${id}`);
+      if (t.formType === "APE") return navigate(`/reports/ape/${id}`);
     } catch (e: any) {
       alert(e?.message ?? "Failed to create submission from template");
     } finally {
@@ -207,6 +214,7 @@ export default function TemplatesPage() {
             if (formFilter === "MICROWATER")
               return t.formType === "MICRO_MIX_WATER";
             if (formFilter === "STERILITY") return t.formType === "STERILITY";
+            if (formFilter === "APE") return t.formType === "APE";
             if (formFilter === "CHEMISTRY")
               return t.formType === "CHEMISTRY_MIX";
             if (formFilter === "COA") return t.formType === "COA";
@@ -361,6 +369,7 @@ export default function TemplatesPage() {
               "MICRO",
               "MICROWATER",
               "STERILITY",
+              "APE",
               "CHEMISTRY",
               "COA",
             ] as const
@@ -386,7 +395,9 @@ export default function TemplatesPage() {
                       ? "Micro Water"
                       : ft === "STERILITY"
                         ? "Sterility"
-                        : ft === "COA"
+                        : ft === "APE"
+                          ? "APE"
+                          : ft === "COA"
                           ? "Coa"
                           : "Chemistry"}
               </button>

@@ -1,0 +1,1000 @@
+// src/permissions/reportWorkflow.ts
+export type Role =
+  | "SYSTEMADMIN"
+  | "ADMIN"
+  | "FRONTDESK"
+  | "CHEMISTRY"
+  | "MICRO"
+  | "MC"
+  | "QA"
+  | "CLIENT";
+
+export type CorrectionItem = {
+  id: string;
+  fieldKey: string;
+  message: string;
+  status: "OPEN" | "RESOLVED";
+  requestedByRole: Role;
+  createdAt: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  resolvedAt?: string | null;
+  resolvedByRole?: Role | null;
+  resolutionNote?: string | null;
+};
+
+export type ApeReportStatus =
+  | "DRAFT"
+  | "UNDER_DRAFT_REVIEW"
+  | "SUBMITTED_BY_CLIENT"
+  | "CLIENT_NEEDS_CORRECTION"
+  | "UNDER_CLIENT_CORRECTION"
+  | "RESUBMISSION_BY_CLIENT"
+  | "UNDER_CLIENT_REVIEW"
+  | "RECEIVED_BY_FRONTDESK"
+  | "FRONTDESK_ON_HOLD"
+  | "FRONTDESK_NEEDS_CORRECTION"
+  | "UNDER_TESTING_REVIEW"
+  | "TESTING_ON_HOLD"
+  | "TESTING_NEEDS_CORRECTION"
+  | "RESUBMISSION_BY_TESTING"
+  | "UNDER_RESUBMISSION_TESTING_REVIEW"
+  | "UNDER_QA_REVIEW"
+  | "QA_NEEDS_CORRECTION"
+  | "UNDER_RESUBMISSION_QA_REVIEW"
+  | "UNDER_ADMIN_REVIEW"
+  | "ADMIN_NEEDS_CORRECTION"
+  | "ADMIN_REJECTED"
+  | "UNDER_RESUBMISSION_ADMIN_REVIEW"
+  | "APPROVED"
+  | "LOCKED"
+  | "VOID"
+  | "UNDER_CHANGE_UPDATE"
+  | "CORRECTION_REQUESTED"
+  | "UNDER_CORRECTION_UPDATE"
+  | "CHANGE_REQUESTED";
+
+// 🔁 Keep this in sync with backend
+export const APE_STATUS_TRANSITIONS: Record<
+  ApeReportStatus,
+  {
+    canSet: Role[];
+    next: ApeReportStatus[];
+    nextEditableBy: Role[];
+    canEdit: Role[];
+  }
+> = {
+  DRAFT: {
+    canSet: ["CLIENT", "SYSTEMADMIN"],
+    next: ["UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"],
+    nextEditableBy: ["CLIENT", "FRONTDESK", "SYSTEMADMIN"],
+    canEdit: ["CLIENT", "SYSTEMADMIN"],
+  },
+  UNDER_DRAFT_REVIEW: {
+    canSet: ["CLIENT", "SYSTEMADMIN"],
+    next: ["DRAFT", "SUBMITTED_BY_CLIENT"], // ✅
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: ["CLIENT", "SYSTEMADMIN"],
+  },
+  SUBMITTED_BY_CLIENT: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  UNDER_CLIENT_REVIEW: {
+    canSet: ["CLIENT", "SYSTEMADMIN"],
+    next: ["CLIENT_NEEDS_CORRECTION", "APPROVED"],
+    nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  CLIENT_NEEDS_CORRECTION: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  UNDER_CLIENT_CORRECTION: {
+    canSet: ["CLIENT", "SYSTEMADMIN"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+    canEdit: ["CLIENT", "SYSTEMADMIN"],
+  },
+
+  RESUBMISSION_BY_CLIENT: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  RECEIVED_BY_FRONTDESK: {
+    canSet: ["FRONTDESK", "SYSTEMADMIN"],
+    next: ["UNDER_CLIENT_REVIEW", "FRONTDESK_ON_HOLD"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  FRONTDESK_ON_HOLD: {
+    canSet: ["FRONTDESK", "SYSTEMADMIN"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["FRONTDESK"],
+    canEdit: [],
+  },
+  FRONTDESK_NEEDS_CORRECTION: {
+    canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
+    next: ["SUBMITTED_BY_CLIENT"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  UNDER_TESTING_REVIEW: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+  },
+  TESTING_ON_HOLD: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  TESTING_NEEDS_CORRECTION: {
+    canSet: ["CLIENT", "SYSTEMADMIN"],
+    next: ["UNDER_CLIENT_CORRECTION"],
+    nextEditableBy: ["CLIENT"],
+    canEdit: [],
+  },
+  UNDER_RESUBMISSION_TESTING_REVIEW: {
+    canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+    next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+  },
+  RESUBMISSION_BY_TESTING: {
+    canSet: ["QA", "SYSTEMADMIN"],
+    next: ["UNDER_CLIENT_REVIEW"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  UNDER_QA_REVIEW: {
+    canSet: ["QA", "SYSTEMADMIN"],
+    next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["QA", "SYSTEMADMIN"],
+  },
+  QA_NEEDS_CORRECTION: {
+    canSet: ["QA", "SYSTEMADMIN", "MC", "MICRO"], // added MC and MICRO as they often need to make corrections based on QA feedback
+    next: ["UNDER_TESTING_REVIEW"],
+    nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+
+  UNDER_ADMIN_REVIEW: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
+  },
+  ADMIN_NEEDS_CORRECTION: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_QA_REVIEW"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
+  },
+  ADMIN_REJECTED: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_QA_REVIEW"],
+    nextEditableBy: ["QA", "SYSTEMADMIN"],
+    canEdit: [],
+  },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    canSet: ["QA", "SYSTEMADMIN"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: ["QA", "SYSTEMADMIN"],
+  },
+  UNDER_RESUBMISSION_ADMIN_REVIEW: {
+    canSet: ["ADMIN", "SYSTEMADMIN"],
+    next: ["RECEIVED_BY_FRONTDESK"],
+    nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+    canEdit: ["ADMIN", "SYSTEMADMIN"],
+  },
+  APPROVED: {
+    canSet: [],
+    next: [],
+    nextEditableBy: [],
+    canEdit: [],
+  },
+  LOCKED: {
+    canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN"],
+    next: [],
+    nextEditableBy: [],
+    canEdit: [],
+  },
+  VOID: {
+    canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN", "QA"], // nobody can set FROM VOID (no transitions out)
+    next: [],
+    nextEditableBy: ["SYSTEMADMIN"],
+    canEdit: [],
+  },
+
+  CHANGE_REQUESTED: {
+    canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_CHANGE_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CHANGE_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+  },
+
+  CORRECTION_REQUESTED: {
+    canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
+    next: ["UNDER_CORRECTION_UPDATE"],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [],
+  },
+
+  UNDER_CORRECTION_UPDATE: {
+    canSet: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    next: [],
+    nextEditableBy: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+    canEdit: [
+      "CLIENT",
+      "FRONTDESK",
+      "MICRO",
+      "MC",
+      "QA",
+      "ADMIN",
+      "SYSTEMADMIN",
+    ],
+  },
+};
+
+//  these are designed for readable badges on white UI
+export const APE_STATUS_COLORS: Record<ApeReportStatus, string> = {
+  DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+  UNDER_DRAFT_REVIEW: "bg-gray-100 text-gray-700 ring-1 ring-gray-500",
+
+  SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+
+  UNDER_CLIENT_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+
+  CLIENT_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+  UNDER_CLIENT_CORRECTION:
+    "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+
+  RESUBMISSION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+
+  RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+  FRONTDESK_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
+  FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+  UNDER_TESTING_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  TESTING_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
+  TESTING_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+  RESUBMISSION_BY_TESTING: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
+  UNDER_RESUBMISSION_TESTING_REVIEW:
+    "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+
+  UNDER_QA_REVIEW: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
+  QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+  UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
+  ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  ADMIN_REJECTED: "bg-red-100 text-red-800 ring-1 ring-red-200",
+  UNDER_RESUBMISSION_ADMIN_REVIEW:
+    "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
+  UNDER_RESUBMISSION_QA_REVIEW:
+    "bg-violet-100 text-violet-900 ring-1 ring-violet-400",
+
+  APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+  VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
+
+  CHANGE_REQUESTED: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  UNDER_CHANGE_UPDATE: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+  CORRECTION_REQUESTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
+  UNDER_CORRECTION_UPDATE:
+    "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+};
+
+// Field-level permissions (frontend hint; backend is source of truth)
+export const FIELD_EDIT_MAP: Record<Role, string[]> = {
+  SYSTEMADMIN: ["*"],
+  ADMIN: ["*"],
+  FRONTDESK: [],
+  CHEMISTRY: [],
+  MICRO: [
+    "testSopNo",
+    "dateTested",
+    "dateCompleted",
+    "ftm_turbidity",
+    "ftm_observation",
+    "ftm_result",
+    "scdb_turbidity",
+    "scdb_observation",
+    "scdb_result",
+    "comments",
+  ],
+  MC: [
+    "testSopNo",
+    "dateTested",
+    "dateCompleted",
+    "ftm_turbidity",
+    "ftm_observation",
+    "ftm_result",
+    "scdb_turbidity",
+    "scdb_observation",
+    "scdb_result",
+    "comments",
+  ],
+  QA: ["reviewedBy", "reviewedDate"],
+  CLIENT: [
+    "client",
+    "dateSent",
+    "sampleDescription",
+    "testTypes",
+    "sampleCollected",
+    "lotBatchNo",
+    "manufactureDate",
+    "formulaId",
+    "sampleSize",
+    "numberOfActives",
+    "sampleTypes",
+    "comments",
+    "actives",
+    "formulaContent",
+  ],
+};
+
+/**
+ * Field permissions for APE child lab reports:
+ * - APE Validation Report
+ * - APE Report
+ *
+ * Client/submission header fields are intentionally excluded for MICRO/MC.
+ * ADMIN and SYSTEMADMIN retain full access.
+ */
+export const APE_CHILD_FIELD_EDIT_MAP: Record<Role, readonly string[]> = {
+  SYSTEMADMIN: ["*"],
+  ADMIN: ["*"],
+  FRONTDESK: [],
+  CHEMISTRY: [],
+  MICRO: [
+    "testSopNo",
+    "testReference",
+    "dateTested",
+    "dateCompleted",
+    "validationSections",
+    "apeReportSections",
+    // "testedBy",
+    // "testedDate",
+  ],
+  MC: [
+    "testSopNo",
+    "testReference",
+    "dateTested",
+    "dateCompleted",
+    "validationSections",
+    "apeReportSections",
+    // "testedBy",
+    // "testedDate",
+  ],
+  QA: [],
+  CLIENT: [],
+};
+
+export function canRoleEditApeChildField(
+  role: Role | undefined,
+  field: string,
+): boolean {
+  if (!role) return false;
+
+  const fields = APE_CHILD_FIELD_EDIT_MAP[role] ?? [];
+  return fields.includes("*") || fields.includes(field);
+}
+
+export function pickApeChildEditablePayload<T extends Record<string, any>>(
+  role: Role | undefined,
+  payload: T,
+): Partial<T> {
+  if (!role) return {};
+
+  const fields = APE_CHILD_FIELD_EDIT_MAP[role] ?? [];
+  if (fields.includes("*")) return payload;
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => fields.includes(key)),
+  ) as Partial<T>;
+}
+
+// ---------- Helpers ----------
+export function canRoleEditInStatus(
+  role?: Role,
+  status?: ApeReportStatus,
+): boolean {
+  if (!role || !status) return false;
+  const t = APE_STATUS_TRANSITIONS[status];
+  return !!t?.canSet?.includes(role);
+}
+
+export function canRoleEditField(
+  role: Role | undefined,
+  status: ApeReportStatus | undefined,
+  field: string,
+): boolean {
+  if (!role || !status) return false;
+  const t = APE_STATUS_TRANSITIONS[status];
+  if (!t || !t.canEdit.includes(role)) return false;
+
+  const fields = FIELD_EDIT_MAP[role] || [];
+  if (fields.includes("*")) return true;
+  return fields.includes(field);
+}
+
+/**
+ * Show "Update" button if:
+ *  - user can edit in this status (status-level), and
+ *  - there is at least one field they’re allowed to edit (field-level).
+ * You can pass a list of fields relevant to that screen; default checks any field in the map.
+ */
+export function canShowSterilityUpdateButton(
+  role: Role | undefined,
+  status: ApeReportStatus | undefined,
+  fieldsToConsider?: string[],
+): boolean {
+  if (!role || !status) return false;
+  if (!canRoleEditInStatus(role, status)) return false;
+
+  const allow = FIELD_EDIT_MAP[role] ?? [];
+  const effective = allow.includes("*")
+    ? (fieldsToConsider ?? ["*"])
+    : (fieldsToConsider ?? allow);
+  return (
+    effective.length > 0 &&
+    (allow.includes("*") || effective.some((f) => allow.includes(f)))
+  );
+}
+
+export function splitDateInitial(value?: string) {
+  if (!value) return { date: "", initial: "" };
+  const [d, i] = value.split("/").map((s) => s?.trim() ?? "");
+  return { date: d ?? "", initial: i ?? "" };
+}
+
+export function joinDateInitial(date: string, initial: string) {
+  if (!date && !initial) return "";
+  return `${date || ""} / ${initial || ""}`.trim();
+}
+
+
+
+
+// // src/permissions/reportWorkflow.ts
+// export type Role =
+//   | "SYSTEMADMIN"
+//   | "ADMIN"
+//   | "FRONTDESK"
+//   | "MICRO"
+//   | "MC"
+//   | "QA"
+//   | "CLIENT";
+
+// export type CorrectionItem = {
+//   id: string;
+//   fieldKey: string;
+//   message: string;
+//   status: "OPEN" | "RESOLVED";
+//   requestedByRole: Role;
+//   createdAt: string;
+//   oldValue?: string | null;
+//   newValue?: string | null;
+//   resolvedAt?: string | null;
+//   resolvedByRole?: Role | null;
+//   resolutionNote?: string | null;
+// };
+
+// export type ApeReportStatus =
+//   | "DRAFT"
+//   | "UNDER_DRAFT_REVIEW"
+//   | "SUBMITTED_BY_CLIENT"
+//   | "CLIENT_NEEDS_CORRECTION"
+//   | "UNDER_CLIENT_CORRECTION"
+//   | "RESUBMISSION_BY_CLIENT"
+//   | "UNDER_CLIENT_REVIEW"
+//   | "RECEIVED_BY_FRONTDESK"
+//   | "FRONTDESK_ON_HOLD"
+//   | "FRONTDESK_NEEDS_CORRECTION"
+//   | "UNDER_TESTING_REVIEW"
+//   | "TESTING_ON_HOLD"
+//   | "TESTING_NEEDS_CORRECTION"
+//   | "RESUBMISSION_BY_TESTING"
+//   | "UNDER_RESUBMISSION_TESTING_REVIEW"
+//   | "UNDER_QA_REVIEW"
+//   | "QA_NEEDS_CORRECTION"
+//   | "UNDER_RESUBMISSION_QA_REVIEW"
+//   | "UNDER_ADMIN_REVIEW"
+//   | "ADMIN_NEEDS_CORRECTION"
+//   | "ADMIN_REJECTED"
+//   | "UNDER_RESUBMISSION_ADMIN_REVIEW"
+//   | "APPROVED"
+//   | "LOCKED"
+//   | "VOID"
+//   | "UNDER_CHANGE_UPDATE"
+//   | "CORRECTION_REQUESTED"
+//   | "UNDER_CORRECTION_UPDATE"
+//   | "CHANGE_REQUESTED";
+
+// // 🔁 Keep this in sync with backend
+// export const APE_STATUS_TRANSITIONS: Record<
+//   ApeReportStatus,
+//   {
+//     canSet: Role[];
+//     next: ApeReportStatus[];
+//     nextEditableBy: Role[];
+//     canEdit: Role[];
+//   }
+// > = {
+//   DRAFT: {
+//     canSet: ["CLIENT", "SYSTEMADMIN"],
+//     next: ["UNDER_DRAFT_REVIEW", "SUBMITTED_BY_CLIENT"],
+//     nextEditableBy: ["CLIENT", "FRONTDESK", "SYSTEMADMIN"],
+//     canEdit: ["CLIENT", "SYSTEMADMIN"],
+//   },
+//   UNDER_DRAFT_REVIEW: {
+//     canSet: ["CLIENT", "SYSTEMADMIN"],
+//     next: ["DRAFT", "SUBMITTED_BY_CLIENT"], // ✅
+//     nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+//     canEdit: ["CLIENT", "SYSTEMADMIN"],
+//   },
+//   SUBMITTED_BY_CLIENT: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_REVIEW: {
+//     canSet: ["CLIENT", "SYSTEMADMIN"],
+//     next: ["CLIENT_NEEDS_CORRECTION", "APPROVED"],
+//     nextEditableBy: ["ADMIN", "QA", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   CLIENT_NEEDS_CORRECTION: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_CLIENT_CORRECTION: {
+//     canSet: ["CLIENT", "SYSTEMADMIN"],
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+//     canEdit: ["CLIENT", "SYSTEMADMIN"],
+//   },
+
+//   RESUBMISSION_BY_CLIENT: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["ADMIN", "QA", "MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   RECEIVED_BY_FRONTDESK: {
+//     canSet: ["FRONTDESK", "SYSTEMADMIN"],
+//     next: ["UNDER_CLIENT_REVIEW", "FRONTDESK_ON_HOLD"],
+//     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   FRONTDESK_ON_HOLD: {
+//     canSet: ["FRONTDESK", "SYSTEMADMIN"],
+//     next: ["RECEIVED_BY_FRONTDESK"],
+//     nextEditableBy: ["FRONTDESK"],
+//     canEdit: [],
+//   },
+//   FRONTDESK_NEEDS_CORRECTION: {
+//     canSet: ["FRONTDESK", "ADMIN", "QA", "SYSTEMADMIN"],
+//     next: ["SUBMITTED_BY_CLIENT"],
+//     nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_TESTING_REVIEW: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["TESTING_ON_HOLD", "TESTING_NEEDS_CORRECTION", "UNDER_QA_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+//   },
+//   TESTING_ON_HOLD: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   TESTING_NEEDS_CORRECTION: {
+//     canSet: ["CLIENT", "SYSTEMADMIN"],
+//     next: ["UNDER_CLIENT_CORRECTION"],
+//     nextEditableBy: ["CLIENT"],
+//     canEdit: [],
+//   },
+//   UNDER_RESUBMISSION_TESTING_REVIEW: {
+//     canSet: ["MICRO", "MC", "SYSTEMADMIN"],
+//     next: ["UNDER_RESUBMISSION_QA_REVIEW", "QA_NEEDS_CORRECTION"],
+//     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: ["MICRO", "MC", "ADMIN", "QA", "SYSTEMADMIN"],
+//   },
+//   RESUBMISSION_BY_TESTING: {
+//     canSet: ["QA", "SYSTEMADMIN"],
+//     next: ["UNDER_CLIENT_REVIEW"],
+//     nextEditableBy: ["QA", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_QA_REVIEW: {
+//     canSet: ["QA", "SYSTEMADMIN"],
+//     next: ["QA_NEEDS_CORRECTION", "RECEIVED_BY_FRONTDESK"],
+//     nextEditableBy: ["QA", "SYSTEMADMIN"],
+//     canEdit: ["QA", "SYSTEMADMIN"],
+//   },
+//   QA_NEEDS_CORRECTION: {
+//     canSet: ["QA", "SYSTEMADMIN", "MC", "MICRO"], // added MC and MICRO as they often need to make corrections based on QA feedback
+//     next: ["UNDER_TESTING_REVIEW"],
+//     nextEditableBy: ["MICRO", "MC", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+
+//   UNDER_ADMIN_REVIEW: {
+//     canSet: ["ADMIN", "SYSTEMADMIN"],
+//     next: ["ADMIN_NEEDS_CORRECTION", "ADMIN_REJECTED", "RECEIVED_BY_FRONTDESK"],
+//     nextEditableBy: ["QA", "ADMIN", "SYSTEMADMIN"],
+//     canEdit: ["ADMIN", "SYSTEMADMIN"],
+//   },
+//   ADMIN_NEEDS_CORRECTION: {
+//     canSet: ["ADMIN", "SYSTEMADMIN"],
+//     next: ["UNDER_QA_REVIEW"],
+//     nextEditableBy: ["QA", "SYSTEMADMIN"],
+//     canEdit: ["ADMIN", "SYSTEMADMIN"],
+//   },
+//   ADMIN_REJECTED: {
+//     canSet: ["ADMIN", "SYSTEMADMIN"],
+//     next: ["UNDER_QA_REVIEW"],
+//     nextEditableBy: ["QA", "SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+//   UNDER_RESUBMISSION_QA_REVIEW: {
+//     canSet: ["QA", "SYSTEMADMIN"],
+//     next: ["RECEIVED_BY_FRONTDESK"],
+//     nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+//     canEdit: ["QA", "SYSTEMADMIN"],
+//   },
+//   UNDER_RESUBMISSION_ADMIN_REVIEW: {
+//     canSet: ["ADMIN", "SYSTEMADMIN"],
+//     next: ["RECEIVED_BY_FRONTDESK"],
+//     nextEditableBy: ["CLIENT", "SYSTEMADMIN"],
+//     canEdit: ["ADMIN", "SYSTEMADMIN"],
+//   },
+//   APPROVED: {
+//     canSet: [],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   LOCKED: {
+//     canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN"],
+//     next: [],
+//     nextEditableBy: [],
+//     canEdit: [],
+//   },
+//   VOID: {
+//     canSet: ["CLIENT", "ADMIN", "SYSTEMADMIN", "QA"], // nobody can set FROM VOID (no transitions out)
+//     next: [],
+//     nextEditableBy: ["SYSTEMADMIN"],
+//     canEdit: [],
+//   },
+
+//   CHANGE_REQUESTED: {
+//     canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
+//     next: ["UNDER_CHANGE_UPDATE"],
+//     nextEditableBy: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CHANGE_UPDATE: {
+//     canSet: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     next: [],
+//     nextEditableBy: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     canEdit: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//   },
+
+//   CORRECTION_REQUESTED: {
+//     canSet: ["QA", "ADMIN", "SYSTEMADMIN"],
+//     next: ["UNDER_CORRECTION_UPDATE"],
+//     nextEditableBy: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     canEdit: [],
+//   },
+
+//   UNDER_CORRECTION_UPDATE: {
+//     canSet: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     next: [],
+//     nextEditableBy: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//     canEdit: [
+//       "CLIENT",
+//       "FRONTDESK",
+//       "MICRO",
+//       "MC",
+//       "QA",
+//       "ADMIN",
+//       "SYSTEMADMIN",
+//     ],
+//   },
+// };
+
+// //  these are designed for readable badges on white UI
+// export const APE_STATUS_COLORS: Record<ApeReportStatus, string> = {
+//   DRAFT: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
+//   UNDER_DRAFT_REVIEW: "bg-gray-100 text-gray-700 ring-1 ring-gray-500",
+
+//   SUBMITTED_BY_CLIENT: "bg-blue-100 text-blue-800 ring-1 ring-blue-200",
+
+//   UNDER_CLIENT_REVIEW: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+
+//   CLIENT_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+//   UNDER_CLIENT_CORRECTION:
+//     "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-200",
+
+//   RESUBMISSION_BY_CLIENT: "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+
+//   RECEIVED_BY_FRONTDESK: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+//   FRONTDESK_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
+//   FRONTDESK_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+//   UNDER_TESTING_REVIEW: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+//   TESTING_ON_HOLD: "bg-orange-100 text-orange-800 ring-1 ring-orange-200",
+//   TESTING_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+//   RESUBMISSION_BY_TESTING: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
+//   UNDER_RESUBMISSION_TESTING_REVIEW:
+//     "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+
+//   UNDER_QA_REVIEW: "bg-purple-100 text-purple-800 ring-1 ring-purple-200",
+//   QA_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+
+//   UNDER_ADMIN_REVIEW: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
+//   ADMIN_NEEDS_CORRECTION: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+//   ADMIN_REJECTED: "bg-red-100 text-red-800 ring-1 ring-red-200",
+//   UNDER_RESUBMISSION_ADMIN_REVIEW:
+//     "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
+//   UNDER_RESUBMISSION_QA_REVIEW:
+//     "bg-violet-100 text-violet-900 ring-1 ring-violet-400",
+
+//   APPROVED: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+//   LOCKED: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
+//   VOID: "bg-red-100 text-red-800 ring-1 ring-red-200",
+
+//   CHANGE_REQUESTED: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+//   UNDER_CHANGE_UPDATE: "bg-yellow-100 text-yellow-900 ring-1 ring-yellow-200",
+//   CORRECTION_REQUESTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
+//   UNDER_CORRECTION_UPDATE:
+//     "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+// };
+
+// // Field-level permissions (frontend hint; backend is source of truth)
+// export const FIELD_EDIT_MAP: Record<Role, string[]> = {
+//   SYSTEMADMIN: ["*"],
+//   ADMIN: ["*"],
+//   FRONTDESK: [],
+//   MICRO: [
+//     "testSopNo",
+//     "dateTested",
+//     "dateCompleted",
+//     "ftm_turbidity",
+//     "ftm_observation",
+//     "ftm_result",
+//     "scdb_turbidity",
+//     "scdb_observation",
+//     "scdb_result",
+//     "comments",
+//   ],
+//   MC: [
+//     "testSopNo",
+//     "dateTested",
+//     "dateCompleted",
+//     "ftm_turbidity",
+//     "ftm_observation",
+//     "ftm_result",
+//     "scdb_turbidity",
+//     "scdb_observation",
+//     "scdb_result",
+//     "comments",
+//   ],
+//   QA: ["reviewedBy", "reviewedDate"],
+//   CLIENT: [
+//     "client",
+//     "dateSent",
+//     "sampleDescription",
+//     "testTypes",
+//     "sampleCollected",
+//     "lotBatchNo",
+//     "manufactureDate",
+//     "formulaId",
+//     "sampleSize",
+//     "numberOfActives",
+//     "sampleTypes",
+//     "comments",
+//     "actives",
+//     "formulaContent",
+//   ],
+// };
+// // ---------- Helpers ----------
+// export function canRoleEditInStatus(
+//   role?: Role,
+//   status?: ApeReportStatus,
+// ): boolean {
+//   if (!role || !status) return false;
+//   const t = APE_STATUS_TRANSITIONS[status];
+//   return !!t?.canSet?.includes(role);
+// }
+
+// export function canRoleEditField(
+//   role: Role | undefined,
+//   status: ApeReportStatus | undefined,
+//   field: string,
+// ): boolean {
+//   if (!role || !status) return false;
+//   const t = APE_STATUS_TRANSITIONS[status];
+//   if (!t || !t.canEdit.includes(role)) return false;
+
+//   const fields = FIELD_EDIT_MAP[role] || [];
+//   if (fields.includes("*")) return true;
+//   return fields.includes(field);
+// }
+
+// /**
+//  * Show "Update" button if:
+//  *  - user can edit in this status (status-level), and
+//  *  - there is at least one field they’re allowed to edit (field-level).
+//  * You can pass a list of fields relevant to that screen; default checks any field in the map.
+//  */
+// export function canShowSterilityUpdateButton(
+//   role: Role | undefined,
+//   status: ApeReportStatus | undefined,
+//   fieldsToConsider?: string[],
+// ): boolean {
+//   if (!role || !status) return false;
+//   if (!canRoleEditInStatus(role, status)) return false;
+
+//   const allow = FIELD_EDIT_MAP[role] ?? [];
+//   const effective = allow.includes("*")
+//     ? (fieldsToConsider ?? ["*"])
+//     : (fieldsToConsider ?? allow);
+//   return (
+//     effective.length > 0 &&
+//     (allow.includes("*") || effective.some((f) => allow.includes(f)))
+//   );
+// }
+
+// export function splitDateInitial(value?: string) {
+//   if (!value) return { date: "", initial: "" };
+//   const [d, i] = value.split("/").map((s) => s?.trim() ?? "");
+//   return { date: d ?? "", initial: i ?? "" };
+// }
+
+// export function joinDateInitial(date: string, initial: string) {
+//   if (!date && !initial) return "";
+//   return `${date || ""} / ${initial || ""}`.trim();
+// }

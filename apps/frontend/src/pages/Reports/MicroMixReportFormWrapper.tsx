@@ -12,10 +12,12 @@ import MicroMixWaterReportForm from "./MicroMixWaterReportForm"; // MICRO_MIX_WA
 import type { MicroMixReportDTO } from "../../../../SharedTypes/Reports/MicroMixReportDto";
 import type { MicroMixWaterReportDTO } from "../../../../SharedTypes/Reports/MicroMixWaterReportDto";
 import type { SterilityReportDTO } from "../../../../SharedTypes/Reports/SterilityReportDto";
+import type { APEReportDTO } from "../../../../SharedTypes/Reports/APEReportDto";
 import SterilityReportForm from "./SterilityReportForm";
+import ApeReportForm from "./ApeReportForm";
 
 // base discriminator that MUST be present in API response
-type FormType = "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY";
+type FormType = "MICRO_MIX" | "MICRO_MIX_WATER" | "STERILITY" | "APE"; // add other form types as needed
 
 type BaseReport = { id: string; formType: FormType };
 
@@ -33,6 +35,10 @@ function isMixWater(r: AnyReportDTO): r is BaseReport & MicroMixWaterReportDTO {
 }
 function isSterility(r: AnyReportDTO): r is BaseReport & SterilityReportDTO {
   return r.formType === "STERILITY";
+}
+
+function isAPE(r: AnyReportDTO): r is BaseReport & APEReportDTO {
+  return r.formType === "APE";
 }
 
 export default function MicroMixReportFormWrapper() {
@@ -68,6 +74,7 @@ export default function MicroMixReportFormWrapper() {
   if (isMix(report)) return <MicroMixReportForm report={report} />;
   if (isMixWater(report)) return <MicroMixWaterReportForm report={report} />;
   if (isSterility(report)) return <SterilityReportForm report={report} />;
+  if (isAPE(report)) return <ApeReportForm report={report} />;
 
   return (
     <div className="p-4 text-sm text-slate-600">

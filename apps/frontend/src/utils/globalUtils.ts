@@ -168,3 +168,4 @@ export function isTerminalStatus(status?: string) {
   const s = String(status || "").toUpperCase();
   return s === "VOID" || s === "LOCKED" || s === "FINAL_APPROVED" || s === "APPROVED";
 }
+

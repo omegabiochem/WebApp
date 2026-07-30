@@ -1,27 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../../lib/api";
+import { Eye, EyeOff } from "lucide-react";
 import {
-  useReportValidation,
+  createCorrections,
   FieldErrorBadge,
-  type MicroMixReportFormValues,
-  deriveMicroPhaseFromStatus,
-  type MicroPhase,
-  MICRO_PHASE_FIELDS,
-  type CorrectionItem,
   getCorrections,
   resolveCorrection,
-  createCorrections,
-} from "../../utils/microMixReportValidation";
+  useReportValidation,
+  type CorrectionItem,
+  type ApeReportFormValues,
+  type ReportStatus,
+  type Role,
+} from "../../utils/apeReportValidation";
 import {
   JJL_SAMPLE_TYPE_OPTIONS,
   JJL_TYPE_OF_TEST_OPTIONS,
-  STATUS_TRANSITIONS,
   todayISO,
-  type ReportStatus,
-  type Role,
 } from "../../utils/microMixReportFormWorkflow";
-import { api } from "../../lib/api";
+import { APE_STATUS_TRANSITIONS } from "../../utils/apeReportFormWorkflow";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -43,126 +41,88 @@ function useConfirmOnLeave(isDirty: boolean) {
 const statusButtons: Record<string, { label: string; color: string }> = {
   UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
   SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-  UNDER_CLIENT_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_CLIENT_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_APPROVED: { label: "Approve", color: "bg-green-600" },
-  CLIENT_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  CLIENT_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
+
   RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
   FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
   FRONTDESK_NEEDS_CORRECTION: {
     label: "Needs Correction",
-    color: "bg-red-600",
+    color: "bg-yellow-600",
   },
-  UNDER_PRELIMINARY_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  PRELIMINARY_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  PRELIMINARY_TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  PRELIMINARY_RESUBMISSION_BY_TESTING: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  PRELIMINARY_RESUBMISSION_BY_CLIENT: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
-  UNDER_FINAL_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  UNDER_FINAL_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
-  FINAL_TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FINAL_TESTING_NEEDS_CORRECTION: {
+
+  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
+  CLIENT_NEEDS_CORRECTION: {
     label: "Needs Correction",
     color: "bg-yellow-600",
   },
-  UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW: {
+  UNDER_CLIENT_CORRECTION: {
+    label: "Correct",
+    color: "bg-blue-600",
+  },
+  RESUBMISSION_BY_CLIENT: {
     label: "Resubmit",
     color: "bg-blue-600",
   },
-  UNDER_FINAL_RESUBMISSION_QA_REVIEW: {
+
+  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  TESTING_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-600",
+  },
+  RESUBMISSION_BY_TESTING: {
     label: "Resubmit",
+    color: "bg-blue-600",
+  },
+  UNDER_RESUBMISSION_TESTING_REVIEW: {
+    label: "Approve",
+    color: "bg-blue-600",
+  },
+
+  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
+  QA_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-600",
+  },
+  UNDER_RESUBMISSION_QA_REVIEW: {
+    label: "Approve",
     color: "bg-blue-700",
   },
-  UNDER_QA_PRELIMINARY_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_PRELIMINARY_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  UNDER_QA_FINAL_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_FINAL_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
-  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
-  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-  FINAL_APPROVED: { label: "Approve", color: "bg-green-700" },
 
-  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
-  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
-  UNDER_CORRECTION_UPDATE: {
-    label: "Approve",
-    color: "bg-green-800",
+  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
+  ADMIN_NEEDS_CORRECTION: {
+    label: "Needs Correction",
+    color: "bg-yellow-600",
   },
+  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
+  UNDER_RESUBMISSION_ADMIN_REVIEW: {
+    label: "Approve",
+    color: "bg-blue-700",
+  },
+
+  APPROVED: { label: "Approve", color: "bg-green-700" },
+  LOCKED: { label: "Lock", color: "bg-slate-700" },
+  VOID: { label: "Void", color: "bg-red-700" },
+
+  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-500" },
+  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
+  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-600" },
+  UNDER_CORRECTION_UPDATE: { label: "Approve", color: "bg-green-800" },
 };
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
 function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
   if (!role || !status) return false;
-  const transition = STATUS_TRANSITIONS[status]; // ✅ safe now
+  const transition = APE_STATUS_TRANSITIONS[status]; // ✅ safe now
   if (!transition || !transition.canEdit?.includes(role)) {
     return false;
   }
 
-  // --- PHASE GUARD ---
-  const p = deriveMicroPhaseFromStatus(status);
-  if (role === "QA") {
-    return p === "FINAL";
-  }
-
-  // Block FINAL fields during PRELIM for MICRO & ADMIN
-  if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
-    p === "PRELIM"
-  ) {
-    if (MICRO_PHASE_FIELDS.FINAL.includes(field)) return false;
-  }
-
-  // (Optional) Once in FINAL, freeze PRELIM fields too:
-  if (
-    (role === "MICRO" || role === "MC" || role === "ADMIN") &&
-    p === "FINAL"
-  ) {
-    if (MICRO_PHASE_FIELDS.PRELIM.includes(field)) return false;
-  }
   const map: Record<Role, string[]> = {
     SYSTEMADMIN: ["*"],
     ADMIN: [
       "testSopNo",
       "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      "tbc_gram",
-      "tbc_result",
-      "tbc_spec",
-      "tmy_gram",
-      "tmy_result",
-      "tmy_spec",
-      "pathogens",
+      "organisms",
       "comments",
       "testedBy",
       "testedDate",
@@ -180,40 +140,8 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "lotNo",
       "manufactureDate",
     ],
-    MICRO: [
-      "testSopNo",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      "dateCompleted",
-      // "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      // "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
-      "comments",
-      // "testedBy",
-      // "testedDate",
-    ],
-    MC: [
-      "testSopNo",
-      "dateTested",
-      "preliminaryResults",
-      "preliminaryResultsDate",
-      // "tbc_dilution",
-      "tbc_gram",
-      "tbc_result",
-      // "tmy_dilution",
-      "tmy_gram",
-      "tmy_result",
-      "pathogens",
-      "dateCompleted",
-      "comments",
-      // "testedBy",
-      // "testedDate",
-    ],
+    MICRO: ["testSopNo", "dateTested", "dateCompleted", "comments"],
+    MC: ["testSopNo", "dateTested", "dateCompleted", "comments"],
     QA: ["comments"],
     CLIENT: [
       "client",
@@ -224,9 +152,7 @@ function canEdit(role: Role | undefined, field: string, status?: ReportStatus) {
       "description",
       "lotNo",
       "manufactureDate",
-      "tbc_spec",
-      "tmy_spec",
-      "pathogens",
+      "organisms",
       "comments",
     ], // read-only
   };
@@ -292,7 +218,7 @@ const DashStyles = () => (
 
 type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
 
-type MicroReportFormProps = {
+type ApeReportFormProps = {
   report?: any;
   onClose?: () => void;
 
@@ -309,7 +235,7 @@ type MicroReportFormProps = {
   isWorkspaceActive?: boolean;
 };
 
-const HIDE_SAVE_FOR = new Set<ReportStatus>(["FINAL_APPROVED", "LOCKED"]);
+const HIDE_SAVE_FOR = new Set<ReportStatus>(["APPROVED", "LOCKED"]);
 
 function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -335,7 +261,7 @@ function SpinnerDark({ className = "" }: { className?: string }) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main component
 
-export default function MicroMixReportForm({
+export default function ApeReportForm({
   report,
   onClose,
   embedded = false,
@@ -348,7 +274,7 @@ export default function MicroMixReportForm({
   correctionLaunch = false,
   correctionKinds = [],
   isWorkspaceActive = true,
-}: MicroReportFormProps) {
+}: ApeReportFormProps) {
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
@@ -460,7 +386,7 @@ export default function MicroMixReportForm({
 
           creatorId = String(fullReport?.createdBy || "").trim();
         } catch {
-          // The form can still render even when creator lookup is unavailable.
+          // Keep the form available even if creator lookup is unavailable.
         }
       }
 
@@ -491,9 +417,7 @@ export default function MicroMixReportForm({
 
         const creator = creators.find((item) => item.id === creatorId);
         const resolvedName =
-          creator?.name?.trim() ||
-          creator?.email?.trim() ||
-          "";
+          creator?.name?.trim() || creator?.email?.trim() || "";
 
         if (!cancelled) setCreatedByName(resolvedName);
       } catch {
@@ -543,223 +467,43 @@ export default function MicroMixReportForm({
   );
   const [testSopNo, setTestSopNo] = useState(report?.testSopNo || "");
   const [dateTested, setDateTested] = useState(report?.dateTested || "");
-  const [preliminaryResults, setPreliminaryResults] = useState(
-    report?.preliminaryResults || "",
-  );
-  const [preliminaryResultsDate, setPreliminaryResultsDate] = useState(
-    report?.preliminaryResultsDate || "",
-  );
   const [dateCompleted, setDateCompleted] = useState(
     report?.dateCompleted || "",
   );
 
-  type Unit = "CFU/mL" | "CFU/g" | "CFU/mL/g" | "CFU / device";
-
-  const normalizeSpec = (v: any) => {
-    const s = String(v ?? "").trim();
-    if (!s) return "";
-
-    // remove any trailing unit text variations
-    return s
-      .replace(/\s*CFU\s*\/?\s*mL\s*\/?\s*g\s*$/i, "")
-      .replace(/\s*CFU\s*\/?\s*ml\s*\/?\s*g\s*$/i, "")
-      .replace(/\s*CFU.*$/i, "") // fallback: remove anything starting from CFU
-      .trim();
-  };
-
-  // TBC/TFC blocks
-  //   const [tbc_dilution, set_tbc_dilution] = useState("x 10^1");
-  const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
-  const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
-  const [tbc_spec, set_tbc_spec] = useState(() =>
-    normalizeSpec(report?.tbc_spec),
-  );
-
-  //   const [tmy_dilution, set_tmy_dilution] = useState("x 10^1"); // Total Mold & Yeast
-  const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
-  const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
-  const [tmy_spec, set_tmy_spec] = useState(() =>
-    normalizeSpec(report?.tmy_spec),
-  );
-
-  // const [tbcUnit, setTbcUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
-  // const [tmyUnit, setTmyUnit] = useState<"CFU/mL" | "CFU/g">("CFU/mL");
-  const extractUnit = (v: any): Unit => {
-    const s = String(v ?? "").trim();
-
-    if (!s) return "CFU/mL/g";
-
-    if (/CFU\s*\/?\s*device/i.test(s)) return "CFU / device";
-    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
-    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
-
-    return "CFU/mL/g";
-  };
-  const [tbcUnit, setTbcUnit] = useState<Unit>(() =>
-    extractUnit(report?.tbc_spec),
-  );
-
-  const [tmyUnit, setTmyUnit] = useState<Unit>(() =>
-    extractUnit(report?.tmy_spec),
-  );
-
-  // Spec dropdown presets
-  const UNIT_OPTIONS: Unit[] = ["CFU/mL", "CFU/g", "CFU / device"];
-  const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
-
-  // const extractUnit = (v: any): "CFU/mL" | "CFU/g" => {
-  //   const s = String(v ?? "");
-  //   return /CFU\s*\/\s*g/i.test(s) ? "CFU/g" : "CFU/mL";
-  // };
-
-  // const formatSpec = (v: string) => (v ? `${v} CFU / mL / g` : "");
-  // const formatSpec = (v: string, unit: "CFU/mL" | "CFU/g") =>
-  //   v ? `${v} ${unit}` : "";
-
-  const formatSpec = (v: string, unit: Unit) => (v ? `${v} ${unit}` : "");
-
-  useEffect(() => {
-    const loadedTbcSpec = normalizeSpec(report?.tbc_spec);
-    const loadedTmySpec = normalizeSpec(report?.tmy_spec);
-    const loadedTbcUnit = extractUnit(report?.tbc_spec);
-    const loadedTmyUnit = extractUnit(report?.tmy_spec);
-
-    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
-      const sharedSpec = loadedTbcSpec || loadedTmySpec;
-      set_tbc_spec(sharedSpec);
-      set_tmy_spec(sharedSpec);
-      setTbcUnit("CFU / device");
-      setTmyUnit("CFU / device");
-      return;
-    }
-
-    set_tbc_spec(loadedTbcSpec);
-    set_tmy_spec(loadedTmySpec);
-    setTbcUnit(loadedTbcUnit);
-    setTmyUnit(loadedTmyUnit);
-  }, [report?.id]);
-
-  const isDeviceSpecification =
-    tbcUnit === "CFU / device" || tmyUnit === "CFU / device";
-
-  // Allow user-added custom spec values (shared by both TBC + TMY)
-  const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
-
-  // Small modal for adding custom spec
-  const [showAddSpec, setShowAddSpec] = useState(false);
-  const [specTarget, setSpecTarget] = useState<"tbc_spec" | "tmy_spec" | null>(
-    null,
-  );
-  const [newSpecValue, setNewSpecValue] = useState("");
-
-  type PathogenSpec = "Absent" | "Present" | "";
-
-  // Pathogens (Absent/Present + sample grams)
-  type PathRow = {
-    checked: boolean;
+  type ApeOrganismRow = {
     key: string;
     label: string;
-    grams: string;
-    result: "Absent" | "Present" | "";
-    spec: PathogenSpec;
+    checked: boolean;
   };
-  const pathogenDefaults: PathRow[] = useMemo(
-    () => [
-      {
-        checked: false,
-        key: "E_COLI",
-        label: "E.coli",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "P_AER",
-        label: "P.aeruginosa",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "S_AUR",
-        label: "S.aureus",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "SALM",
-        label: "Salmonella",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "CLOSTRIDIA",
-        label: "Clostridia species",
-        grams: "3g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "C_ALB",
-        label: "C.albicans",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "B_CEP",
-        label: "B.cepacia",
-        grams: "11g",
-        result: "",
-        spec: "",
-      },
-      {
-        checked: false,
-        key: "OTHER",
-        label: "Other",
-        grams: "",
-        result: "",
-        spec: "",
-      },
-    ],
-    [],
-  );
 
-  const gramsFor = (p: PathRow) => p.grams ?? "11g";
+  const apeOrganismDefaults: ApeOrganismRow[] = [
+    { key: "E_COLI", label: "E.coli", checked: true },
+    { key: "P_AERUGINOSA", label: "p.aeruginosa", checked: true },
+    { key: "S_AUREUS", label: "s.aureus", checked: true },
+    { key: "C_ALBICANS", label: "c.albicans", checked: true },
+    { key: "A_NIGER", label: "A.niger", checked: true },
+    { key: "B_CEPACIA", label: "B.cepacia", checked: false },
+  ];
 
-  // const [pathogens, setPathogens] = useState<PathRow[]>(pathogenDefaults);
-  const [pathogens, setPathogens] = useState<PathRow[]>(
-    report?.pathogens || pathogenDefaults,
-  );
+  const [organisms, setOrganisms] = useState<ApeOrganismRow[]>(() => {
+    if (Array.isArray(report?.organisms) && report.organisms.length > 0) {
+      return report.organisms;
+    }
 
-  // --- Row-level errors for pathogens ---
-  type PathogenRowError = { result?: string; spec?: string };
-  const [pathogenRowErrors, setPathogenRowErrors] = useState<
-    PathogenRowError[]
-  >([]);
+    return apeOrganismDefaults;
+  });
 
-  const [pathogensTableError, setPathogensTableError] = useState<string | null>(
-    null,
-  );
+  function setOrganismChecked(idx: number, checked: boolean) {
+    setOrganisms((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], checked };
+      return copy;
+    });
 
-  // function organismDisabled() {
-  //   // Only CLIENT decides which organisms to test
-  //   return role !== "CLIENT";
-  // }
-
-  // function resultDisabled(p: PathRow) {
-  //   // Only MICRO can set results, and only if the organism is checked
-  //   return !p.checked || (role !== "MICRO" && role !== "ADMIN" && phase !== "FINAL");
-  // }
-  const phase = deriveMicroPhaseFromStatus(status);
+    clearError("organisms");
+    markDirty();
+  }
 
   // --- E-Sign modal state (Admin-only) ---
   // Admin E-sign modal state
@@ -767,6 +511,66 @@ export default function MicroMixReportForm({
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
+  const [showFieldESign, setShowFieldESign] = useState(false);
+  const [fieldSignatureMode, setFieldSignatureMode] = useState<
+    "TESTED_BY" | "REVIEWED_BY" | null
+  >(null);
+  const [fieldSignaturePassword, setFieldSignaturePassword] = useState("");
+  const [showFieldESignPassword, setShowFieldESignPassword] = useState(false);
+  const [fieldSignatureReason, setFieldSignatureReason] = useState("");
+  const [fieldSignatureConfirmed, setFieldSignatureConfirmed] = useState(false);
+  const [fieldSignatureSubmitting, setFieldSignatureSubmitting] =
+    useState(false);
+  const [fieldSignatureError, setFieldSignatureError] = useState<string | null>(
+    null,
+  );
+  const [fieldSignatureSnapshot, setFieldSignatureSnapshot] = useState<{
+    testedBy?: string;
+    testedDate?: string;
+    reviewedBy?: string;
+    reviewedDate?: string;
+    wasDirty: boolean;
+  } | null>(null);
+
+  const pendingApprovalESignRef = useRef<{
+    target: ReportStatus;
+    reason: string;
+    password: string;
+  } | null>(null);
+
+  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+  });
+
+  function startESignDrag(e: React.MouseEvent) {
+    dragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: eSignPos.x,
+      origY: eSignPos.y,
+    };
+
+    window.onmousemove = (ev) => {
+      if (!dragRef.current.dragging) return;
+      setESignPos({
+        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+      });
+    };
+
+    window.onmouseup = () => {
+      dragRef.current.dragging = false;
+      window.onmousemove = null;
+      window.onmouseup = null;
+    };
+  }
+
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
@@ -858,14 +662,6 @@ export default function MicroMixReportForm({
     setTemplateId(urlTemplateId); // works for view + edit
   }, [isAnyTemplateMode, urlTemplateId]);
 
-  // if opening an existing template later, you will prefill these
-  function stringify(v: any) {
-    if (v === null || v === undefined) return "";
-    if (Array.isArray(v)) return v.join(", ");
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  }
-
   useEffect(() => {
     if (!effectiveCorrectionLaunch) return;
     if (pageMode !== "UPDATE") return;
@@ -890,7 +686,7 @@ export default function MicroMixReportForm({
   ]);
 
   function getFieldDisplayValue(fieldKey: string) {
-    const [base, key, col] = fieldKey.split(":");
+    const [base] = fieldKey.split(":");
 
     // ---- top-level MicroMix fields ----
     switch (base) {
@@ -925,32 +721,14 @@ export default function MicroMixReportForm({
       case "dateTested":
         return formatDateForInput(dateTested);
 
-      case "preliminaryResults":
-        return preliminaryResults;
-
-      case "preliminaryResultsDate":
-        return formatDateForInput(preliminaryResultsDate);
-
       case "dateCompleted":
         return formatDateForInput(dateCompleted);
 
-      case "tbc_gram":
-        return tbc_gram;
-
-      case "tbc_result":
-        return tbc_result;
-
-      case "tbc_spec":
-        return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
-
-      case "tmy_gram":
-        return tmy_gram;
-
-      case "tmy_result":
-        return tmy_result;
-
-      case "tmy_spec":
-        return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
+      case "organisms":
+        return organisms
+          .filter((o) => o.checked)
+          .map((o) => o.label)
+          .join(", ");
 
       case "comments":
         return comments;
@@ -967,35 +745,6 @@ export default function MicroMixReportForm({
       case "reviewedDate":
         return formatDateForInput(reviewedDate);
 
-      // ---- nested pathogens ----
-      // fieldKey format you use: "pathogens:KEY:checked|result|spec|label|grams"
-      case "pathogens": {
-        // if they just click "pathogens" (no key/col), store whole table snapshot
-        if (!key) return stringify(pathogens);
-
-        const row = pathogens.find((p) => p.key === key);
-        if (!row) return "";
-
-        // if they didn't specify col, store whole row snapshot
-        if (!col) return stringify(row);
-
-        switch (col) {
-          case "checked":
-            return row.checked ? "Checked" : "Unchecked";
-          case "result":
-            return row.result || "";
-          case "spec":
-            return row.spec || "";
-          case "label":
-            return row.label || "";
-          case "grams":
-            return row.grams || "";
-          default:
-            // fallback: allow anything else safely
-            return stringify((row as any)[col]);
-        }
-      }
-
       default:
         return "";
     }
@@ -1007,7 +756,93 @@ export default function MicroMixReportForm({
   // UI policy: only when server will enforce
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
-    (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
+    (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
+
+
+  function closeFieldSignatureModal(restorePreview: boolean) {
+    if (restorePreview && fieldSignatureSnapshot) {
+      if ("testedBy" in fieldSignatureSnapshot) {
+        setTestedBy(fieldSignatureSnapshot.testedBy || "");
+        setTestedDate(fieldSignatureSnapshot.testedDate || "");
+      }
+      if ("reviewedBy" in fieldSignatureSnapshot) {
+        setReviewedBy(fieldSignatureSnapshot.reviewedBy || "");
+        setReviewedDate(fieldSignatureSnapshot.reviewedDate || "");
+      }
+      setIsDirty(fieldSignatureSnapshot.wasDirty);
+    }
+
+    setShowFieldESign(false);
+    setFieldSignatureMode(null);
+    setFieldSignatureSnapshot(null);
+    setFieldSignaturePassword("");
+    setShowFieldESignPassword(false);
+    setFieldSignatureReason("");
+    setFieldSignatureConfirmed(false);
+    setFieldSignatureError(null);
+  }
+
+  function openFieldSignature(mode: "TESTED_BY" | "REVIEWED_BY") {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before signing.");
+      return;
+    }
+    if (isDirty) {
+      alert("⚠️ You have unsaved changes. Please UPDATE the report before signing.");
+      return;
+    }
+
+    const isTestingSignature = mode === "TESTED_BY";
+    const allowed = isTestingSignature
+      ? status === "UNDER_TESTING_REVIEW" && (role === "MICRO" || role === "MC")
+      : status === "UNDER_ADMIN_REVIEW" && (role === "ADMIN" || role === "SYSTEMADMIN");
+
+    if (!allowed) {
+      alert("⚠️ You are not allowed to sign this field in the current status.");
+      return;
+    }
+
+    const signerName = user?.name || user?.email || "";
+    const signedDate = todayISO();
+    const values = makeValues();
+    const validationValues = {
+      ...values,
+      ...(isTestingSignature
+        ? { testedBy: signerName, testedDate: signedDate }
+        : { reviewedBy: signerName, reviewedDate: signedDate }),
+    };
+
+    const okFields = validateAndSetErrors(validationValues);
+    if (!(okFields)) {
+      alert("⚠️ Please fill all required fields before e-signature.");
+      return;
+    }
+
+    if (shouldBlockStatusChangeForUnresolvedCorrections()) return;
+
+    if (isTestingSignature) {
+      setFieldSignatureSnapshot({ testedBy, testedDate, wasDirty: isDirty });
+      setTestedBy(signerName);
+      setTestedDate(signedDate);
+      clearError("testedBy");
+      clearError("testedDate");
+      setFieldSignatureReason("Electronic signature authorization for Tested By.");
+    } else {
+      setFieldSignatureSnapshot({ reviewedBy, reviewedDate, wasDirty: isDirty });
+      setReviewedBy(signerName);
+      setReviewedDate(signedDate);
+      clearError("reviewedBy");
+      clearError("reviewedDate");
+      setFieldSignatureReason("Electronic signature authorization for Reviewed By.");
+    }
+
+    setFieldSignatureMode(mode);
+    setFieldSignaturePassword("");
+    setShowFieldESignPassword(false);
+    setFieldSignatureConfirmed(false);
+    setFieldSignatureError(null);
+    setShowFieldESign(true);
+  }
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -1024,13 +859,7 @@ export default function MicroMixReportForm({
     }
     const isNeeds =
       target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-      target === "FINAL_TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "QA_NEEDS_FINAL_CORRECTION" ||
       target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-      target === "CLIENT_NEEDS_FINAL_CORRECTION" ||
       target === "CHANGE_REQUESTED" ||
       target === "CORRECTION_REQUESTED";
 
@@ -1041,34 +870,37 @@ export default function MicroMixReportForm({
       return;
     }
     // existing path (incl. e-sign if required)
+    const signatureRequirement =
+      target === "UNDER_QA_REVIEW"
+        ? "TESTED_BY"
+        : target === "UNDER_CLIENT_REVIEW"
+          ? "REVIEWED_BY"
+          : null;
+
+    if (signatureRequirement === "TESTED_BY" && !testedBy.trim()) {
+      alert("⚠️ Please click Sign under TESTED BY before approving.");
+      return;
+    }
+    if (signatureRequirement === "REVIEWED_BY" && !reviewedBy.trim()) {
+      alert("⚠️ Please click Sign under REVIEWED BY before approving.");
+      return;
+    }
+
+    const pendingApprovalESign = pendingApprovalESignRef.current;
+    if (pendingApprovalESign?.target === target) {
+      handleStatusChange(target, {
+        reason: pendingApprovalESign.reason,
+        eSignPassword: pendingApprovalESign.password,
+      });
+      return;
+    }
+
     if (uiNeedsESign(target)) {
       setPendingStatus(target);
       setShowESign(true);
     } else {
       handleStatusChange(target);
     }
-  }
-
-  function resultDisabled(p: PathRow) {
-    if (!p.checked) return true;
-
-    if (correctionModeActive) {
-      const resultFieldLocked = lockCorrectionField(
-        `pathogens:${p.key}:result`,
-        "pathogens",
-      );
-      if (resultFieldLocked) return true;
-    }
-
-    if (role === "MICRO" || role === "MC") {
-      return phase !== "FINAL";
-    }
-
-    if (role === "ADMIN") {
-      return false;
-    }
-
-    return true;
   }
 
   const canResolveField = (field: string) => {
@@ -1165,9 +997,6 @@ export default function MicroMixReportForm({
     );
   }
 
-  const normalizeGrams = (v: string) =>
-    v.trim() ? (/[gG]$/.test(v) ? v : v + "g") : v;
-
   const [showCorrTray, setShowCorrTray] = useState(false);
 
   // fields to briefly show as "resolved" (green halo)
@@ -1185,134 +1014,6 @@ export default function MicroMixReportForm({
       : flash[keyOrPrefix]
         ? "dash dash-green"
         : "";
-  // const dashClass = (field: string) =>
-  //   hasOpenCorrection(field)
-  //     ? "dash dash-red"
-  //     : flash[field]
-  //     ? "dash dash-green"
-  //     : "";
-
-  function validatePathogenRows(
-    rows: PathRow[],
-    who: Role | undefined = role,
-    phase: MicroPhase | undefined = deriveMicroPhaseFromStatus(status),
-  ) {
-    const rowErrs: PathogenRowError[] = rows.map(() => ({}));
-    let tableErr: string | null = null;
-
-    const anyChecked = rows.some((r) => r.checked);
-
-    // 👉 If nothing selected, it's not required: clear errors and pass.
-    if (!anyChecked) {
-      setPathogenRowErrors(rowErrs);
-      setPathogensTableError(null);
-      return true;
-    }
-
-    if (who === "CLIENT") {
-      rows.forEach((r, i) => {
-        if (r.checked && r.spec !== "Absent" && r.spec !== "Present") {
-          rowErrs[i].spec = "Choose Absent or Present";
-        }
-      });
-    }
-
-    if (
-      (who === "MICRO" || who === "MC" || who === "ADMIN") &&
-      phase === "FINAL"
-    ) {
-      rows.forEach((r, i) => {
-        if (r.checked && !r.result) {
-          rowErrs[i].result = "Select Absent or Present";
-        }
-      });
-    }
-
-    setPathogenRowErrors(rowErrs);
-    setPathogensTableError(tableErr);
-    return !tableErr && rowErrs.every((e) => !e.result && !e.spec);
-  }
-
-  function setPathogenChecked(idx: number, checked: boolean) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Clear the row error if we unchecked (no result required anymore)
-    setPathogenRowErrors((prev) => {
-      const c = [...prev];
-      c[idx] = {};
-      return c;
-    });
-    markDirty();
-  }
-
-  function setPathogenResult(idx: number, value: "Absent" | "Present") {
-    setPathogens((prev) => {
-      const row = prev[idx];
-      if (!row.checked) return prev; // ignore if organism not selected
-      const copy = [...prev];
-      copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Clear the row error once result is set
-    setPathogenRowErrors((prev) => {
-      const copy = [...prev];
-      copy[idx] = {};
-      return copy;
-    });
-    clearError("pathogens"); // optional if you still keep a table-level error elsewhere
-    markDirty();
-  }
-
-  function clearPathogenResult(idx: number) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role, phase);
-      return copy;
-    });
-    // Keep/restore the row error because a checked row without result is invalid
-    setPathogenRowErrors((prev) => {
-      const copy = [...prev];
-      // if the row is still checked, show the error again
-      copy[idx] = pathogens[idx]?.checked
-        ? { result: "Select Absent or Present" }
-        : {};
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenSpec(idx: number, value: PathogenSpec) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], spec: value };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenLabel(idx: number, label: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], label };
-      return copy;
-    });
-    markDirty();
-  }
-
-  function setPathogenGrams(idx: number, grams: string) {
-    setPathogens((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], grams };
-      return copy;
-    });
-    markDirty();
-  }
 
   const [comments, setComments] = useState(report?.comments || "");
   const [testedBy, setTestedBy] = useState(report?.testedBy || "");
@@ -1348,7 +1049,7 @@ export default function MicroMixReportForm({
     },
   );
 
-  function hydrateForm(data: Partial<MicroMixReportFormValues> | any) {
+  function hydrateForm(data: Partial<ApeReportFormValues> | any) {
     // data is what you stored in template.data (your payload)
     setClient(data?.client ?? "");
     setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
@@ -1360,35 +1061,12 @@ export default function MicroMixReportForm({
     setManufactureDate(data?.manufactureDate ?? "");
     setTestSopNo(data?.testSopNo ?? "");
     setDateTested(data?.dateTested ?? "");
-    setPreliminaryResults(data?.preliminaryResults ?? "");
-    setPreliminaryResultsDate(data?.preliminaryResultsDate ?? "");
     setDateCompleted(data?.dateCompleted ?? "");
-
-    set_tbc_gram(data?.tbc_gram ?? "");
-    set_tbc_result(data?.tbc_result ?? "");
-    const loadedTbcSpec = normalizeSpec(data?.tbc_spec ?? "");
-    const loadedTmySpec = normalizeSpec(data?.tmy_spec ?? "");
-    const loadedTbcUnit = extractUnit(data?.tbc_spec);
-    const loadedTmyUnit = extractUnit(data?.tmy_spec);
-
-    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
-      const sharedSpec = loadedTbcSpec || loadedTmySpec;
-      set_tbc_spec(sharedSpec);
-      set_tmy_spec(sharedSpec);
-      setTbcUnit("CFU / device");
-      setTmyUnit("CFU / device");
-    } else {
-      set_tbc_spec(loadedTbcSpec);
-      set_tmy_spec(loadedTmySpec);
-      setTbcUnit(loadedTbcUnit);
-      setTmyUnit(loadedTmyUnit);
-    }
-
-    set_tmy_gram(data?.tmy_gram ?? "");
-    set_tmy_result(data?.tmy_result ?? "");
-
-    setPathogens(data?.pathogens ?? pathogenDefaults);
-
+    setOrganisms(
+      Array.isArray(data?.organisms) && data.organisms.length > 0
+        ? data.organisms
+        : apeOrganismDefaults,
+    );
     setComments(data?.comments ?? "");
     setTestedBy(data?.testedBy ?? "");
     setTestedDate(data?.testedDate ?? "");
@@ -1418,7 +1096,7 @@ export default function MicroMixReportForm({
   }, [isAnyTemplateMode, templateId]);
 
   // Current values snapshot (use inside handlers)
-  const makeValues = (): MicroMixReportFormValues => ({
+  const makeValues = (): ApeReportFormValues => ({
     client,
     dateSent,
     typeOfTest,
@@ -1429,21 +1107,13 @@ export default function MicroMixReportForm({
     manufactureDate,
     testSopNo,
     dateTested,
-    preliminaryResults,
-    preliminaryResultsDate,
-    tbc_gram,
-    tbc_result,
-    tbc_spec,
-    tmy_gram,
-    tmy_result,
-    tmy_spec,
+    organisms,
     comments,
     testedBy,
     testedDate,
     dateCompleted,
     reviewedBy,
     reviewedDate,
-    pathogens,
   });
 
   // ----------- Save handler -----------
@@ -1461,7 +1131,6 @@ export default function MicroMixReportForm({
         const values = makeValues();
 
         validateAndSetErrors(values);
-        validatePathogenRows(values.pathogens, role, phase);
 
         // Build full payload
         const fullPayload: any = {
@@ -1475,51 +1144,13 @@ export default function MicroMixReportForm({
           manufactureDate: manufactureDate?.trim() ? manufactureDate : "NA",
           testSopNo,
           dateTested,
-          preliminaryResults,
-          preliminaryResultsDate,
           dateCompleted,
-          tbc_gram,
-          tbc_result,
-          tbc_spec: tbc_spec ? `${tbc_spec} ${tbcUnit}` : "",
-          tmy_gram,
-          tmy_result,
-          tmy_spec: tmy_spec ? `${tmy_spec} ${tmyUnit}` : "",
-          pathogens,
+          organisms,
           comments,
           testedBy,
           reviewedBy,
           testedDate,
           reviewedDate,
-        };
-
-        // added to control overwrite of fields based on phase
-        // MicroPhase-based field guard
-        // During PRELIM, MICRO & ADMIN cannot write FINAL-only fields
-        // (Optional) Once in FINAL, MICRO & ADMIN cannot write PRELIM-only fields either
-
-        const PHASE_WRITE_GUARD = (fields: string[]) => {
-          if (role === "MICRO" || role === "MC" || role === "ADMIN") {
-            if (phase === "PRELIM") {
-              // drop FINAL-only fields during PRELIM
-              return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.FINAL.includes(f),
-              );
-            }
-            // (Optional) once in FINAL, drop PRELIM-only fields:
-            if (phase === "FINAL") {
-              return fields.filter(
-                (f) => !MICRO_PHASE_FIELDS.PRELIM.includes(f),
-              );
-            }
-          }
-
-          // // ✅ QA: only allow dateCompleted in FINAL
-          // if (role === "MICRO" || role === "MC" || role === "QA" || role === "ADMIN") {
-          //   if (phase === "PRELIM") {
-          //     return fields.filter((f) => f !== "dateCompleted");
-          //   }
-          // }
-          return fields;
         };
 
         const BASE_ALLOWED: Record<Role, string[]> = {
@@ -1535,40 +1166,8 @@ export default function MicroMixReportForm({
             "lotNo",
             "manufactureDate",
           ],
-          MICRO: [
-            "testSopNo",
-            "tbc_dilution",
-            "tbc_gram",
-            "tbc_result",
-            "tmy_dilution",
-            "tmy_gram",
-            "tmy_result",
-            "pathogens",
-            "dateTested",
-            "preliminaryResults",
-            "preliminaryResultsDate",
-            "dateCompleted",
-            // "testedBy",
-            // "testedDate",
-            "comments",
-          ],
-          MC: [
-            "testSopNo",
-            "tbc_dilution",
-            "tbc_gram",
-            "tbc_result",
-            "tmy_dilution",
-            "tmy_gram",
-            "tmy_result",
-            "pathogens",
-            "dateTested",
-            "preliminaryResults",
-            "preliminaryResultsDate",
-            "dateCompleted",
-            // "testedBy",
-            // "testedDate",
-            "comments",
-          ],
+          MICRO: ["testSopNo", "dateTested", "dateCompleted", "comments"],
+          MC: ["testSopNo", "dateTested", "dateCompleted", "comments"],
           QA: ["comments"],
           CLIENT: [
             "client",
@@ -1579,9 +1178,7 @@ export default function MicroMixReportForm({
             "description",
             "lotNo",
             "manufactureDate",
-            "tbc_spec",
-            "tmy_spec",
-            "pathogens",
+            "organisms",
             "comments",
           ],
         };
@@ -1589,7 +1186,7 @@ export default function MicroMixReportForm({
         const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
-          : PHASE_WRITE_GUARD(allowedBase);
+          : allowedBase;
 
         // const payload = Object.fromEntries(
         //   Object.entries(fullPayload).filter(([k]) => allowed.includes(k)),
@@ -1625,18 +1222,12 @@ export default function MicroMixReportForm({
               alert("⚠️ Please enter a Template name before saving.");
               return false;
             }
-            // ✅ template payload: store data + formType + name
-            // const templatePayload = {
-            //   name,
-            //   formType: "MICRO_MIX",
-            //   data: { ...payload }, // store only allowed fields
-            // };
 
             const { dateSent: _dateSent, ...templateData } = payload;
 
             const templatePayload = {
               name,
-              formType: "MICRO_MIX",
+              formType: "APE",
               data: templateData,
             };
 
@@ -1682,7 +1273,7 @@ export default function MicroMixReportForm({
           } else {
             saved = await api(`/reports`, {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+              body: JSON.stringify({ ...payload, formType: "APE" }),
             });
           }
 
@@ -1696,15 +1287,10 @@ export default function MicroMixReportForm({
           );
 
           setIsDirty(false);
-          setCreatedByName((previous) => previous || currentUserDisplayName);
           onSaved?.({
             ...report,
+            ...fullPayload,
             ...saved,
-            createdByName:
-              saved?.createdByName ||
-              createdByName ||
-              currentUserDisplayName ||
-              null,
             id: saved.id ?? reportId,
           });
           alert("✅ Report saved as '" + saved.status + "'");
@@ -1739,48 +1325,23 @@ export default function MicroMixReportForm({
     return await runBusy("STATUS", async () => {
       const values = makeValues();
       const okFields = validateAndSetErrors(values);
-      const okRows = validatePathogenRows(values.pathogens, role, phase);
-
+      if (!okFields) {
+        alert("⚠️ Please fix the highlighted fields before saving.");
+        return false;
+      }
       if (
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
-        newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
-        newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-        newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
-        newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
-        newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
-        newStatus === "UNDER_QA_FINAL_REVIEW" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
-        newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
-        newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
-        newStatus === "PRELIMINARY_APPROVED" ||
-        newStatus === "FINAL_TESTING_ON_HOLD" ||
-        newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
         newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-        newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-        newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
-        newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
-        newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
         newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-        newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
-        newStatus === "LOCKED" ||
-        newStatus === "FINAL_APPROVED"
+        newStatus === "LOCKED"
       ) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
-        }
-        if (!okRows) {
-          alert("⚠️ Please fix the highlighted rows before changing status.");
           return;
         }
       }
@@ -1824,28 +1385,12 @@ export default function MicroMixReportForm({
         setIsDirty(false);
         onStatusChanged?.({
           ...report,
+          ...makeValues(),
           ...updated,
           id: reportId,
           status: updated.status ?? newStatus,
         });
         alert(`✅ Status changed to ${newStatus}`);
-        // if (embedded) return;
-        // if (role === "CLIENT") {
-        //   backToDashboard();
-        // } else if (role === "FRONTDESK") {
-        //   navigate("/frontdeskDashboard");
-        // } else if (role === "MICRO") {
-        //   // navigate("/microDashboard");
-        //   backToDashboard();
-        // } else if (role === "MC") {
-        //   navigate("/mcDashboard");
-        // } else if (role === "QA") {
-        //   navigate("/qaDashboard");
-        // } else if (role === "ADMIN") {
-        //   navigate("/adminDashboard");
-        // } else if (role === "SYSTEMADMIN") {
-        //   navigate("/systemAdminDashboard");
-        // }
 
         if (embedded) return;
         backToDashboard();
@@ -1919,16 +1464,7 @@ export default function MicroMixReportForm({
 
     navigate(fallbackRoute, { replace: true });
   };
-  // const handleClose = () => {
-  //   if (onClose) return onClose();
 
-  //   // If opened from Gmail, history may not have a previous in-app page
-  //   if (window.history.length > 1) navigate(-1);
-  //   else navigate(fallbackRoute, { replace: true });
-  // };
-
-  // any open correction = red
-  // const hasOpenCorrection = (field: string) => !!corrByField[field];
   const hasOpenCorrection = (keyOrPrefix: string) =>
     openCorrections.some(
       (c) =>
@@ -1995,75 +1531,11 @@ export default function MicroMixReportForm({
   }, [reportId]);
 
   const APPROVE_REQUIRES_ATTACHMENT = new Set<ReportStatus>([
-    "UNDER_CLIENT_FINAL_REVIEW",
+    "UNDER_CLIENT_REVIEW",
   ]);
 
   function isApproveAction(targetStatus: ReportStatus) {
     return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
-  }
-
-  const specOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        [
-          ...DEFAULT_SPEC_OPTIONS,
-          ...customSpecOptions,
-          normalizeSpec(tbc_spec),
-          normalizeSpec(tmy_spec),
-        ].filter(Boolean),
-      ),
-    );
-  }, [customSpecOptions, tbc_spec, tmy_spec]);
-
-  function openAddSpec(target: "tbc_spec" | "tmy_spec") {
-    setSpecTarget(target);
-    setNewSpecValue("");
-    setShowAddSpec(true);
-  }
-
-  function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    const [specValue, parsedUnit] = value.split("|") as [string, Unit | undefined];
-    const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
-    const unitValue = parsedUnit || currentUnit;
-
-    if (unitValue === "CFU / device") {
-      set_tbc_spec(specValue);
-      set_tmy_spec(specValue);
-      setTbcUnit("CFU / device");
-      setTmyUnit("CFU / device");
-      clearError("tbc_spec");
-      clearError("tmy_spec");
-      markDirty();
-      return;
-    }
-
-    if (target === "tbc_spec") {
-      set_tbc_spec(specValue);
-      setTbcUnit(unitValue);
-      clearError("tbc_spec");
-    } else {
-      set_tmy_spec(specValue);
-      setTmyUnit(unitValue);
-      clearError("tmy_spec");
-    }
-    markDirty();
-  }
-
-  function saveCustomSpec() {
-    const v = newSpecValue.trim();
-
-    // normalize input
-    const normalized = v.replace(/CFU.*$/i, "").trim();
-
-    if (!normalized || !specTarget) return;
-
-    setCustomSpecOptions((prev) =>
-      prev.includes(normalized) ? prev : [...prev, normalized],
-    );
-
-    applySpecValue(specTarget, normalized);
-
-    setShowAddSpec(false);
   }
 
   // ✅ JJL-only dropdown behavior
@@ -2075,9 +1547,19 @@ export default function MicroMixReportForm({
     "SUBMITTED_BY_CLIENT",
   ]);
 
+  const createdByClientCode = String(
+    report?.clientCode ||
+      (role === "CLIENT" ? user?.clientCode : "") ||
+      String(report?.formNumber || "").split("-")[0] ||
+      client ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
   const showJJLCreatedBy =
     !isAnyTemplateMode &&
-    isJJL &&
+    createdByClientCode === "JJL" &&
     JJL_CREATED_BY_STATUSES.has(status as ReportStatus) &&
     createdByName.trim().length > 0;
 
@@ -2104,15 +1586,14 @@ export default function MicroMixReportForm({
         const updated = await api<any>(`/reports/${reportId}/status`, {
           method: "PATCH",
           body: JSON.stringify({
-            status: "UNDER_PRELIMINARY_TESTING_REVIEW",
+            status: "UNDER_TESTING_REVIEW",
             reason: "Assign report number / start prelim testing",
             expectedVersion: reportVersion,
           }),
         });
 
         const nextStatus =
-          (updated?.status as ReportStatus) ||
-          "UNDER_PRELIMINARY_TESTING_REVIEW";
+          (updated?.status as ReportStatus) || "UNDER_TESTING_REVIEW";
 
         const nextVersion =
           typeof updated?.version === "number"
@@ -2127,7 +1608,7 @@ export default function MicroMixReportForm({
         }
 
         onStatusChanged?.(updated);
-        alert("✅ Report number assigned and moved to preliminary testing.");
+        alert("✅ Report number assigned and moved to testing.");
       } catch (err: any) {
         console.error(err);
         alert(
@@ -2156,8 +1637,6 @@ export default function MicroMixReportForm({
     return "CORRECTION_REQUESTED";
   }
 
-
-
   function getCorrectionTargetStatus(
     _current: ReportStatus,
     kinds: CorrectionLaunchKind[] = [],
@@ -2166,18 +1645,13 @@ export default function MicroMixReportForm({
   }
 
   function getWorkflowReturnStatus(current: ReportStatus): ReportStatus {
-    if (current === "UNDER_CLIENT_PRELIMINARY_REVIEW") {
-      return "UNDER_QA_PRELIMINARY_REVIEW";
-    }
-
-    if (current === "UNDER_CLIENT_FINAL_REVIEW") {
-      return "UNDER_QA_FINAL_REVIEW";
+    if (current === "UNDER_CLIENT_REVIEW") {
+      return "UNDER_QA_REVIEW";
     }
 
     // For any other status, return to same original status
     return current;
   }
-
   function normalizeForCompare(v: any): string {
     if (v === null || v === undefined) return "";
 
@@ -2225,30 +1699,7 @@ export default function MicroMixReportForm({
   }
 
   function isCorrectionUpdateStatus(s?: ReportStatus) {
-    return (
-      s === "UNDER_CORRECTION_UPDATE" ||
-      s === "UNDER_CHANGE_UPDATE" ||
-      s === "UNDER_CLIENT_PRELIMINARY_CORRECTION" ||
-      s === "UNDER_CLIENT_FINAL_CORRECTION"
-    );
-  }
-
-  function lockCorrectionField(fieldKey: string, baseField?: string) {
-    if (forceReadOnly) return true;
-
-    const fieldForPermission = baseField ?? fieldKey.split(":")[0];
-    const baseLocked = !canEdit(
-      role,
-      fieldForPermission,
-      status as ReportStatus,
-    );
-    if (baseLocked) return true;
-
-    if (correctionModeActive) {
-      return !openCorrections.some((c) => c.fieldKey === fieldKey);
-    }
-
-    return false;
+    return s === "UNDER_CORRECTION_UPDATE" || s === "UNDER_CHANGE_UPDATE";
   }
 
   function shouldBlockStatusChangeForUnresolvedCorrections() {
@@ -2292,6 +1743,19 @@ export default function MicroMixReportForm({
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+  const showTestedBySignButton =
+    !forceReadOnly &&
+    !testedBy.trim() &&
+    status === "UNDER_TESTING_REVIEW" &&
+    (role === "MICRO" || role === "MC");
+
+  const showReviewedBySignButton =
+    !forceReadOnly &&
+    !reviewedBy.trim() &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
 
   return (
     <>
@@ -2343,7 +1807,7 @@ export default function MicroMixReportForm({
                   disabled={
                     role === "FRONTDESK" ||
                     isBusy ||
-                    status === "UNDER_CLIENT_FINAL_REVIEW" ||
+                    status === "UNDER_CLIENT_REVIEW" ||
                     status === "LOCKED" ||
                     disableSaveUntilAssigned ||
                     (isTemplateMode && !templateName.trim())
@@ -2412,8 +1876,8 @@ export default function MicroMixReportForm({
               {status === "DRAFT" ||
               status === "UNDER_DRAFT_REVIEW" ||
               status === "SUBMITTED_BY_CLIENT"
-                ? "MICRO SUBMISSION FORM"
-                : "MICRO REPORT"}
+                ? "APE SUBMISSION FORM"
+                : "APE REPORT"}
             </div>
             <div className="text-right text-[12px] font-bold font-medium">
               {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
@@ -2898,88 +2362,6 @@ export default function MicroMixReportForm({
             </div>
           </div>
 
-          {/* PRELIMINARY RESULTS / PRELIMINARY RESULTS DATE */}
-          <div className="grid grid-cols-[45%_55%] border-b border-black text-[12px] leading-snug">
-            <div
-              id="f-preliminaryResults"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("preliminaryResults");
-                setAddMessage("");
-              }}
-              className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass(
-                "preliminaryResults",
-              )}`}
-            >
-              <div className="font-medium">PRELIMINARY RESULTS:</div>
-              <FieldErrorBadge name="preliminaryResults" errors={errors} />
-              <ResolveOverlay field="preliminaryResults" />
-              {lock("preliminaryResults") ? (
-                <div className="flex-1  min-h-[14px]">{preliminaryResults}</div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.preliminaryResults
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("preliminaryResults")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  value={preliminaryResults}
-                  onChange={(e) => {
-                    setPreliminaryResults(e.target.value);
-                    clearError("preliminaryResults");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.preliminaryResults}
-                />
-              )}
-            </div>
-            <div
-              id="f-preliminaryResultsDate"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("preliminaryResultsDate");
-                setAddMessage("");
-              }}
-              className={`px-2 flex items-center gap-1 relative ${dashClass(
-                "preliminaryResultsDate",
-              )}`}
-            >
-              <div className="font-medium">PRELIMINARY RESULTS DATE:</div>
-              <FieldErrorBadge name="preliminaryResultsDate" errors={errors} />
-              <ResolveOverlay field="preliminaryResultsDate" />
-              {lock("preliminaryResultsDate") ? (
-                <div className="flex-1  min-h-[14px]">
-                  {formatDateForInput(preliminaryResultsDate)}
-                </div>
-              ) : (
-                <input
-                  className={`flex-1 input-editable py-[2px] text-[12px] leading-snug border ${
-                    errors.preliminaryResultsDate
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  }  ${
-                    hasCorrection("preliminaryResultsDate")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  } `}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(preliminaryResultsDate)}
-                  onChange={(e) => {
-                    setPreliminaryResultsDate(e.target.value);
-                    clearError("preliminaryResultsDate");
-                    markDirty();
-                  }}
-                  aria-invalid={!!errors.preliminaryResultsDate}
-                />
-              )}
-            </div>
-          </div>
-
           {/* DATE COMPLETED (full row, label + input) */}
           <div
             id="f-dateCompleted"
@@ -3024,573 +2406,61 @@ export default function MicroMixReportForm({
           </div>
         </div>
 
-        <div className="p-2 font-bold">TBC / TFC RESULTS:</div>
-
-        {/* TBC/TFC table */}
-        <div className="mt-2 border border-black">
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] text-center items-center font-semibold border-b border-black">
-            <div className="p-2  border-r border-black">TYPE OF TEST</div>
-            <div className="p-2 border-r border-black">DILUTION</div>
-            <div className="p-2 border-r border-black">GRAM STAIN</div>
-            <div className="p-2 border-r border-black">RESULT</div>
-            <div className="p-2">SPECIFICATION</div>
-          </div>
-
-                    <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-          {/* Row 1: Total Bacterial Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-b border-black">
-              Total Bacterial Count:
-            </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-b border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
-
-            {/* GRAM STAIN */}
-            <div
-              id="f-tbc_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_gram" errors={errors} />
-              <ResolveOverlay field="tbc_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tbc_gram") && errors.tbc_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                } focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_gram}
-                onChange={(e) => {
-                  set_tbc_gram(e.target.value);
-                  clearError("tbc_gram");
-                  markDirty();
-                }}
-                readOnly={lock("tbc_gram")}
-                aria-invalid={!!errors.tbc_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tbc_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_result" errors={errors} />
-              <ResolveOverlay field="tbc_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tbc_result") && errors.tbc_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_result}
-                onChange={(e) => {
-                  set_tbc_result(e.target.value);
-                  clearError("tbc_result");
-                  markDirty();
-                }}
-                readOnly={lock("tbc_result")}
-                placeholder={tbc_spec ? `${tbcUnit}` : ""}
-                aria-invalid={!!errors.tbc_result}
-              />
-              <div className="py-1 px-2 text-center">{tbcUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            <div
-              id="f-tbc_spec"
-              className={`py-1 px-2 flex relative ${
-                isDeviceSpecification
-                  ? "row-span-2 items-center"
-                  : "border-b border-black"
-              } ${dashClass("tbc_spec")} ${
-                isDeviceSpecification && hasCorrection("tmy_spec")
-                  ? "dash dash-red"
-                  : ""
-              }`}
-            >
-              <FieldErrorBadge name="tbc_spec" errors={errors} />
-              {isDeviceSpecification && (
-                <FieldErrorBadge name="tmy_spec" errors={errors} />
-              )}
-              <ResolveOverlay field="tbc_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tbc_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TBC specification"
-                  aria-label="Add correction for TBC specification"
-                />
-              )}
-
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tbc_spec") && errors.tbc_spec
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("tbc_spec")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }`}
-                  value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
-                  onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
-                  disabled={lock("tbc_spec")}
-                  aria-invalid={!!errors.tbc_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
-
-                {!lock("tbc_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tbc_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Total Mold & Yeast Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-black">
-              Total Mold & Yeast Count:
-            </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
-
-            {/* GRAM STAIN */}
-            <div
-              id="f-tmy_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_gram" errors={errors} />
-              <ResolveOverlay field="tmy_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tmy_gram") && errors.tmy_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_gram}
-                onChange={(e) => {
-                  set_tmy_gram(e.target.value);
-                  clearError("tmy_gram");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_gram")}
-                aria-invalid={!!errors.tmy_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tmy_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_result" errors={errors} />
-              <ResolveOverlay field="tmy_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tmy_result") && errors.tmy_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_result}
-                onChange={(e) => {
-                  set_tmy_result(e.target.value);
-                  clearError("tmy_result");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_result")}
-                placeholder={tmy_spec ? `${tmyUnit}` : ""}
-                aria-invalid={!!errors.tmy_result}
-              />
-              <div className="py-1 px-2 text-center">{tmyUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            {!isDeviceSpecification && (
-            <div
-              id="f-tmy_spec"
-              className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
-            >
-              <FieldErrorBadge name="tmy_spec" errors={errors} />
-              <ResolveOverlay field="tmy_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tmy_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TMY specification"
-                  aria-label="Add correction for TMY specification"
-                />
-              )}
-
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tmy_spec") && errors.tmy_spec
-                      ? "border-red-500 ring-1 ring-red-500"
-                      : "border-black/70"
-                  } ${
-                    hasCorrection("tmy_spec")
-                      ? "ring-2 ring-rose-500 animate-pulse"
-                      : ""
-                  }`}
-                  value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
-                  onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
-                  disabled={lock("tmy_spec")}
-                  aria-invalid={!!errors.tmy_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
-
-                {!lock("tmy_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tmy_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </div>
-            )}
-          </div>
-          </div>
-        </div>
-
         <div className="p-2 font-bold">
-          PATHOGEN SCREENING (Please check the organism to be tested)
+          ORGANISMS (Please check the organism to be tested)
         </div>
 
-        {/* Pathogen screening */}
-        {/* Pathogen screening */}
         <div
-          id="f-pathogens"
-          // onClick ={() => {
-          //   if (!selectingCorrections) return;
-          //   setAddForField("pathogens");
-          //   setAddMessage("");
-          // }}
-          className={`mt-3 relative border ${
-            pathogensTableError
-              ? "border-red-500 ring-1 ring-red-500"
+          id="f-organisms"
+          onClick={() => {
+            if (!selectingCorrections) return;
+            setAddForField("organisms");
+            setAddMessage("");
+          }}
+          className={`mt-2 relative border ${
+            errors.organisms
+              ? "border-red-500 ring-2 ring-red-500 bg-red-50"
               : "border-black"
-          } `}
-          aria-invalid={!!errors.pathogens}
+          } ${dashClass("organisms")}`}
         >
-          {/* floating badge; doesn't affect layout */}
-          {/* <FieldErrorBadge name="pathogens" errors={errors} /> */}
-          {/* <ResolveOverlay field="pathogens" /> */}
+          <FieldErrorBadge name="organisms" errors={errors} />
+          <ResolveOverlay field="organisms" />
 
-          {/* Header */}
-          <div className="grid grid-cols-[25%_55%_20%] text-[12px] text-center font-semibold border-b border-black">
-            <div className="p-2 border-r border-black"></div>
-            <div className="p-2 border-r border-black">RESULT</div>
-            <div className="p-2">SPECIFICATION</div>
-          </div>
-
-          {pathogensTableError && (
-            <div className="px-2 py-1 text-[11px] text-red-600">
-              {pathogensTableError}
+          {errors.organisms && (
+            <div className="px-3 py-1 text-[11px] font-semibold text-red-600 border-b border-red-500 bg-red-50">
+              Please select at least one organism.
             </div>
           )}
 
-          {/* Rows */}
-
-          {pathogens.map((p, idx) => {
-            const rowErr = pathogenRowErrors[idx]?.result;
-            return (
-              <div
-                key={p.key}
-                className={`grid grid-cols-[25%_55%_20%] text-[11px] leading-tight border-b last:border-b-0 border-black ${
-                  rowErr ? "ring-1 ring-red-500" : ""
-                } `}
+          <div className="grid grid-cols-2 text-[12px]">
+            {organisms.map((org, idx) => (
+              <label
+                key={org.key}
+                className={`flex items-center gap-2 border-b px-3 py-2 ${
+                  errors.organisms ? "border-red-300 bg-red-50" : "border-black"
+                } ${idx % 2 === 0 ? "border-r" : ""} ${
+                  errors.organisms
+                    ? "border-r-red-300"
+                    : idx % 2 === 0
+                      ? "border-r-black"
+                      : ""
+                }`}
               >
-                <div
-                  id={`f-pathogens-${p.key}-checked`}
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:checked`);
-                    setAddMessage("");
-                  }}
-                  className={`relative py-[2px] px-2 border-r border-black flex items-center gap-2 ${dashClass(
-                    `pathogens:${p.key}:checked`,
-                  )}`}
-                >
-                  <ResolveOverlay field={`pathogens:${p.key}:checked`} />
-                  <input
-                    type="checkbox"
-                    className="thick-box"
-                    checked={!!p.checked}
-                    onChange={(e) => setPathogenChecked(idx, e.target.checked)}
-                    // disabled={organismDisabled()}
-                    disabled={
-                      lockCorrectionField(
-                        `pathogens:${p.key}:checked`,
-                        "pathogens",
-                      ) || role !== "CLIENT"
-                    }
-                  />
-                  <span className="font-bold">{p.label}</span>
-
-                  {p.key === "OTHER" && (
-                    <input
-                      className="input-editable leading-tight border px-1 text-[8px]"
-                      placeholder="(specify)"
-                      value={p.label === "Other" ? "" : p.label}
-                      onChange={(e) =>
-                        setPathogenLabel(idx, e.target.value || "Other")
-                      }
-                      disabled={
-                        lockCorrectionField(
-                          `pathogens:${p.key}:checked`,
-                          "pathogens",
-                        ) || role !== "CLIENT"
-                      }
-                    />
-                  )}
-                </div>
-
-                {/* Second column: Result + per-row error */}
-                <div
-                  id={`f-pathogens-${p.key}-result`}
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:result`);
-                    setAddMessage("");
-                  }}
-                  className={`relative py-[2px] px-2 border-r border-black flex items-center gap-2 whitespace-nowrap ${dashClass(
-                    `pathogens:${p.key}:result`,
-                  )}`}
-                >
-                  <ResolveOverlay field={`pathogens:${p.key}:result`} />
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="thick-box"
-                      checked={p.result === "Absent"}
-                      onChange={() => setPathogenResult(idx, "Absent")}
-                      onDoubleClick={() => clearPathogenResult(idx)}
-                      title="Click to set Absent. Double-click to clear."
-                      disabled={resultDisabled(p)}
-                      // disabled={
-                      //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
-                      //   role === "QA" || role === "SYSTEMADMIN"
-                      // }
-                    />
-                    Absent
-                  </label>
-
-                  <span className="mx-1">/</span>
-
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      className="thick-box"
-                      checked={p.result === "Present"}
-                      onChange={() => setPathogenResult(idx, "Present")}
-                      onDoubleClick={() => clearPathogenResult(idx)}
-                      disabled={resultDisabled(p)}
-                      title={
-                        resultDisabled(p)
-                          ? "Check the organism first"
-                          : "Click to set Present. Double-click to clear."
-                      }
-                      // disabled={
-                      //   role === "ADMIN" || role === "FRONTDESK" || role === "CLIENT" ||
-                      //   role === "QA" || role === "SYSTEMADMIN"
-                      // }
-                    />
-                    Present
-                  </label>
-
-                  {/* inline note, no huge gap */}
-                  {/* <span className="ml-2">in 11g of sample</span> */}
-                  {/* <span className="ml-2">in {gramsFor(p)} of sample</span> */}
-                  {p.key === "OTHER" ? (
-                    <span className="ml-2 flex items-center gap-1">
-                      in
-                      <input
-                        className="w-7 border px-1 text-[11px]"
-                        placeholder="__g"
-                        value={p.grams}
-                        onChange={(e) => setPathogenGrams(idx, e.target.value)}
-                        onBlur={(e) =>
-                          setPathogenGrams(idx, normalizeGrams(e.target.value))
-                        }
-                        disabled={
-                          lockCorrectionField(
-                            `pathogens:${p.key}:checked`,
-                            "pathogens",
-                          ) || role !== "CLIENT"
-                        }
-                      />
-                      of sample
-                    </span>
-                  ) : (
-                    <span className="ml-2">in {gramsFor(p)} of sample</span>
-                  )}
-
-                  {/* optional row error */}
-                  {pathogenRowErrors[idx]?.result && (
-                    <span className="ml-2 text-[11px] text-red-600">
-                      {pathogenRowErrors[idx].result}
-                    </span>
-                  )}
-                </div>
-
-                {/* Third column (spec) */}
-                {/* Third column (spec) */}
-                {/* Third column (spec) */}
-                <div
-                  id={`f-pathogens-${p.key}-spec`}
-                  onClick={() => {
-                    if (!selectingCorrections) return;
-                    setAddForField(`pathogens:${p.key}:spec`);
-                    setAddMessage("");
-                  }}
-                  className={`relative py-[2px] px-2 text-center ${dashClass(
-                    `pathogens:${p.key}:spec`,
-                  )}`}
-                >
-                  <ResolveOverlay field={`pathogens:${p.key}:spec`} />
-                  <select
-                    className={`input-editable border text-[11px] px-1 py-[1px] ${
-                      pathogenRowErrors[idx]?.spec
-                        ? "border-red-500"
-                        : "border-black/70"
-                    }`}
-                    value={p.spec}
-                    onChange={(e) =>
-                      setPathogenSpec(idx, e.target.value as PathogenSpec)
-                    }
-                    disabled={
-                      !p.checked ||
-                      lockCorrectionField(
-                        `pathogens:${p.key}:spec`,
-                        "pathogens",
-                      ) ||
-                      role !== "CLIENT"
-                    }
-                    aria-invalid={!!pathogenRowErrors[idx]?.spec}
-                  >
-                    <option value="">{/* placeholder */}-- Select --</option>
-                    <option value="Absent">Absent</option>
-                    <option value="Present">Present</option>
-                  </select>
-                  {pathogenRowErrors[idx]?.spec && (
-                    <div className="mt-1 text-[11px] text-red-600">
-                      {pathogenRowErrors[idx]?.spec}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                <input
+                  type="checkbox"
+                  className="thick-box"
+                  checked={!!org.checked}
+                  onChange={(e) => setOrganismChecked(idx, e.target.checked)}
+                  disabled={lock("organisms") || role !== "CLIENT"}
+                />
+                <span className="font-bold">{org.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* Legends / Comments */}
-        <div className="mt-2 text-[11px]">
+        {/* <div className="mt-2 text-[11px]">
           <div
             className=" font-bold border-black p-2"
             style={{ textDecoration: "underline" }}
@@ -3599,7 +2469,7 @@ export default function MicroMixReportForm({
             Bacilli / GM.(+)C Gram (+) Cocci / GM.NEG Gram Negative / NT (Not
             Tested) / TNTC (Too Numerous To Count)
           </div>
-        </div>
+        </div> */}
 
         {/* Comments + Signatures */}
         {/* Comments + Signatures */}
@@ -3668,6 +2538,21 @@ export default function MicroMixReportForm({
                   TESTED BY:
                   <FieldErrorBadge name="testedBy" errors={errors} />
                   <ResolveOverlay field="testedBy" />
+                  {showTestedBySignButton ? (
+                    <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
+                      <button
+                        type="button"
+                        className="no-print inline-flex items-center rounded-md border border-blue-700 bg-blue-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isBusy || fieldSignatureSubmitting}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openFieldSignature("TESTED_BY");
+                        }}
+                      >
+                        Sign
+                      </button>
+                    </div>
+                  ) : (
                   <input
                     className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                       errors.testedBy ? "border-b-red-500" : "border-b-black/70"
@@ -3686,6 +2571,7 @@ export default function MicroMixReportForm({
                     placeholder="Name"
                     aria-invalid={!!errors.testedBy}
                   />
+                  )}
                 </div>
 
                 <div
@@ -3740,6 +2626,21 @@ export default function MicroMixReportForm({
                   REVIEWED BY:
                   <FieldErrorBadge name="reviewedBy" errors={errors} />
                   <ResolveOverlay field="reviewedBy" />
+                  {showReviewedBySignButton ? (
+                    <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
+                      <button
+                        type="button"
+                        className="no-print inline-flex items-center rounded-md border border-indigo-700 bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isBusy || fieldSignatureSubmitting}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openFieldSignature("REVIEWED_BY");
+                        }}
+                      >
+                        Sign
+                      </button>
+                    </div>
+                  ) : (
                   <input
                     className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                       errors.reviewedBy
@@ -3760,6 +2661,7 @@ export default function MicroMixReportForm({
                     placeholder="Name"
                     aria-invalid={!!errors.reviewedBy}
                   />
+                  )}
                 </div>
 
                 <div
@@ -3802,7 +2704,6 @@ export default function MicroMixReportForm({
             </>
           )}
         </div>
-
         {showJJLCreatedBy && (
           <div className="mt-1 text-right text-[12px] leading-tight">
             <span className="font-semibold">Created by:</span>{" "}
@@ -3830,24 +2731,18 @@ export default function MicroMixReportForm({
                 </button>
               )}
               {!showAssignReportNumberButton &&
-                STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
+                APE_STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
                   (targetStatus: ReportStatus) => {
                     const isNeedsCorrectionStatus =
                       targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                      targetStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
-                      targetStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-                      targetStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-                      targetStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-                      targetStatus === "ADMIN_NEEDS_CORRECTION" ||
-                      targetStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-                      targetStatus === "CLIENT_NEEDS_FINAL_CORRECTION";
+                      targetStatus === "ADMIN_NEEDS_CORRECTION";
 
                     if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
                       return null;
                     }
 
                     if (
-                      STATUS_TRANSITIONS[
+                      APE_STATUS_TRANSITIONS[
                         status as ReportStatus
                       ].canSet.includes(role!) &&
                       statusButtons[targetStatus]
@@ -3892,6 +2787,232 @@ export default function MicroMixReportForm({
             </div>
           </div>
         )}
+      {canShowFloatingUi && showFieldESign && fieldSignatureMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Field electronic signature"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
+            <div
+              className="mb-4 flex items-start gap-3 cursor-move select-none"
+              onMouseDown={startESignDrag}
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                🔐
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {fieldSignatureMode === "TESTED_BY"
+                    ? "Electronic Tested By Signature"
+                    : "Electronic Reviewed By Signature"}
+                </h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  21 CFR Part 11 Electronic Signature Authorization
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Authorization Summary
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Current Status</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {formatStatusText(status)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Action</span>
+                  <span className="text-right font-semibold text-blue-700">
+                    {fieldSignatureMode === "TESTED_BY"
+                      ? "TESTED BY SIGNATURE"
+                      : "REVIEWED BY SIGNATURE"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Report No.</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {reportNumber || "Not assigned"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Signing By</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {user?.name || user?.email}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This action records the signer name and date only. The report
+              status will not change until the separate Approve button is
+              clicked.
+            </p>
+
+            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={fieldSignatureConfirmed}
+                onChange={(e) => setFieldSignatureConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm that this electronic signature represents my legally
+                binding authorization for this action.
+              </span>
+            </label>
+
+            <input
+              type="text"
+              placeholder="Reason for signature"
+              value={fieldSignatureReason}
+              onChange={(e) => setFieldSignatureReason(e.target.value)}
+              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <div className="relative">
+              <input
+                type={showFieldESignPassword ? "text" : "password"}
+                value={fieldSignaturePassword}
+                onChange={(e) => setFieldSignaturePassword(e.target.value)}
+                className="w-full rounded border px-3 py-2 pr-10"
+                placeholder="Enter e-sign password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowFieldESignPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
+                aria-label="Show or hide e-sign password"
+              >
+                {showFieldESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {fieldSignatureError && (
+              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {fieldSignatureError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                disabled={fieldSignatureSubmitting}
+                onClick={() => closeFieldSignatureModal(true)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                disabled={
+                  fieldSignatureSubmitting ||
+                  !fieldSignatureReason.trim() ||
+                  !fieldSignaturePassword.trim() ||
+                  !fieldSignatureConfirmed
+                }
+                onClick={async () => {
+                  if (!reportId || !fieldSignatureMode) return;
+
+                  const reason = fieldSignatureReason.trim();
+                  const pwd = fieldSignaturePassword.trim();
+                  const signerName = user?.name || user?.email || "";
+                  const signedDate = todayISO();
+                  const signaturePayload =
+                    fieldSignatureMode === "TESTED_BY"
+                      ? { testedBy: signerName, testedDate: signedDate }
+                      : { reviewedBy: signerName, reviewedDate: signedDate };
+
+                  setFieldSignatureSubmitting(true);
+                  setFieldSignatureError(null);
+
+                  try {
+                    const updated = await api<any>(`/reports/${reportId}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({
+                        ...signaturePayload,
+                        reason,
+                        eSignPassword: pwd,
+                        expectedVersion: reportVersion,
+                      }),
+                    });
+
+                    const nextVersion =
+                      typeof updated?.version === "number"
+                        ? updated.version
+                        : reportVersion + 1;
+                    setReportVersion(nextVersion);
+
+                    const approvalTarget: ReportStatus =
+                      fieldSignatureMode === "TESTED_BY"
+                        ? "UNDER_QA_REVIEW"
+                        : "UNDER_CLIENT_REVIEW";
+
+                    if (fieldSignatureMode === "TESTED_BY") {
+                      setTestedBy(updated?.testedBy || signerName);
+                      setTestedDate(
+                        formatDateForInput(updated?.testedDate) || signedDate,
+                      );
+                    } else {
+                      setReviewedBy(updated?.reviewedBy || signerName);
+                      setReviewedDate(
+                        formatDateForInput(updated?.reviewedDate) || signedDate,
+                      );
+                    }
+
+                    pendingApprovalESignRef.current = {
+                      target: approvalTarget,
+                      reason: `Electronic signature authorization for status transition from ${formatStatusText(status)} to ${formatStatusText(approvalTarget)}.`,
+                      password: pwd,
+                    };
+
+                    setIsDirty(false);
+                    onSaved?.({
+                      ...report,
+                      ...updated,
+                      id: updated?.id ?? reportId,
+                    });
+
+                    closeFieldSignatureModal(false);
+                    alert("✅ Signature saved. Click Approve when you are ready to change the status.");
+                  } catch (e: any) {
+                    const msg =
+                      e?.message ||
+                      e?.response?.message ||
+                      e?.response?.data?.message ||
+                      "";
+
+                    if (
+                      msg.toLowerCase().includes("password") ||
+                      msg.toLowerCase().includes("invalid") ||
+                      msg.toLowerCase().includes("incorrect")
+                    ) {
+                      setFieldSignatureError("❌ Incorrect e-signature password.");
+                    } else {
+                      setFieldSignatureError(msg || "❌ E-signature failed.");
+                    }
+                  } finally {
+                    setFieldSignatureSubmitting(false);
+                  }
+                }}
+              >
+                {fieldSignatureSubmitting && <Spinner />}
+                {fieldSignatureSubmitting ? "Signing..." : "Verify & Sign"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -3899,10 +3020,18 @@ export default function MicroMixReportForm({
           aria-modal="true"
           aria-label="E-signature"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
+            <div
+              className="mb-3 cursor-move select-none"
+              onMouseDown={startESignDrag}
+            >
+              <h2 className="text-lg font-semibold mb-2">
               Confirm Status Change
             </h2>
+            </div>
             <p className="text-sm text-slate-600 mb-3">
               Change status to{" "}
               <span className="font-medium">{pendingStatus}</span>. Provide a
@@ -4036,22 +3165,6 @@ export default function MicroMixReportForm({
                   setPendingStatus(null);
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "MICRO") {
-                  //   backToDashboard();
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
                   backToDashboard();
                 })
               }
@@ -4306,45 +3419,6 @@ export default function MicroMixReportForm({
                 )}
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {canShowFloatingUi && showAddSpec && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-base font-semibold mb-2">Add specification</h3>
-            <p className="text-xs mb-3 text-slate-600">
-              Add a new value to the dropdown.
-            </p>
-
-            <input
-              autoFocus
-              value={newSpecValue}
-              onChange={(e) => setNewSpecValue(e.target.value)}
-              placeholder='Example: "<500 "'
-              className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded-lg border px-3 py-1.5 text-sm"
-                onClick={() => {
-                  setShowAddSpec(false);
-                  setSpecTarget(null);
-                  setNewSpecValue("");
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={!newSpecValue.trim()}
-                onClick={saveCustomSpec}
-              >
-                Add
-              </button>
-            </div>
           </div>
         </div>
       )}

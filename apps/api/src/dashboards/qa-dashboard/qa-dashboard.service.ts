@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
+import { CHEMISTRY_ALLOWED_STATUSES, MICRO_ALLOWED_STATUSES, STERILITY_APE_ALLOWED_STATUSES } from '../utils/dashboardStatuses';
 
 type QaDashboardQuery = {
   form?: string;
@@ -121,6 +122,9 @@ function getFormTypesFromQuery(form?: string): FormType[] {
     case 'STERILITY':
       return ['STERILITY'];
 
+    case 'APE':
+      return ['APE'];
+
     case 'CHEMISTRY':
     case 'CHEMISTRY_MIX':
       return ['CHEMISTRY_MIX'];
@@ -134,6 +138,7 @@ function getFormTypesFromQuery(form?: string): FormType[] {
         'MICRO_MIX',
         'MICRO_MIX_WATER',
         'STERILITY',
+        'APE',
         'CHEMISTRY_MIX',
         'COA',
       ];
@@ -146,6 +151,26 @@ function mapDashboardRow(r: any) {
     id: r.sourceId,
     dashboardId: r.id,
   };
+}
+
+function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
+  const set = new Set<string>();
+
+  for (const ft of formTypes) {
+    if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
+      MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+
+    if (ft === 'STERILITY' || ft === 'APE') {
+      STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+
+    if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
+      CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
+    }
+  }
+
+  return Array.from(set);
 }
 
 @Injectable()
@@ -185,10 +210,15 @@ export class QaDashboardService {
         in: formTypes,
       },
     };
+const allowedStatuses = getAllowedStatusesForFormTypes(formTypes);
 
-    if (status !== 'ALL') {
-      where.status = status;
-    }
+if (status !== 'ALL' && allowedStatuses.includes(status)) {
+  where.status = status;
+} else {
+  where.status = {
+    in: allowedStatuses,
+  } as any;
+}
 
     const and: Prisma.DashboardReportWhereInput[] = [];
 

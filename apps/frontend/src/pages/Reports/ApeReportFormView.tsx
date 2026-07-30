@@ -6,21 +6,20 @@ import ilacmra from "../../assets/ilacmra.png";
 import {
   getCorrections,
   type CorrectionItem,
-} from "../../utils/sterilityReportValidation";
+} from "../../utils/apeReportValidation";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
-type SterilityReportFormViewProps = {
+type ApeReportFormViewProps = {
   report: any;
   onClose: () => void;
-  pane?: Pane; // if provided, component becomes controlled
-  onPaneChange?: (p: Pane) => void; // optional callback
-  showSwitcher?: boolean; // default true; hide internal switcher when false
+  pane?: Pane;
+  onPaneChange?: (p: Pane) => void;
+  showSwitcher?: boolean;
   isBulkPrint?: boolean;
   isSingleBulk?: boolean;
 };
 
-// ---------------- Attachments panel (web-only; hidden on print) ----------------
 type AttachmentItem = {
   id: string;
   filename: string;
@@ -28,7 +27,23 @@ type AttachmentItem = {
   createdAt: string;
 };
 
-const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
+type ApeOrganismRow = {
+  key: string;
+  label: string;
+  checked: boolean;
+};
+
+const APE_ORGANISM_DEFAULTS: ApeOrganismRow[] = [
+  { key: "E_COLI", label: "E.coli", checked: false },
+  { key: "P_AERUGINOSA", label: "p.aeruginosa", checked: false },
+  { key: "S_AUREUS", label: "s.aureus", checked: false },
+  { key: "C_ALBICANS", label: "c.albicans", checked: false },
+  { key: "A_NIGER", label: "A.niger", checked: false },
+  { key: "B_CEPACIA", label: "B.cepacia", checked: false },
+];
+
+// APE uses the generic reports endpoint in ApeReportForm.
+const attBase = (id: string) => `/reports/${id}/attachments`;
 
 const authHeaders = (): HeadersInit => {
   const t = getToken();
@@ -44,6 +59,7 @@ function useAttachments(reportId?: string) {
       setItems([]);
       return;
     }
+
     setLoading(true);
     (async () => {
       try {
@@ -61,99 +77,6 @@ function useAttachments(reportId?: string) {
   return { items, loading };
 }
 
-function AttachmentGallery({ reportId }: { reportId?: string }) {
-  const { items, loading } = useAttachments(reportId);
-  const [openId, setOpenId] = useState<string | null>(null);
-
-  if (loading)
-    return (
-      <div className="no-print mt-4 text-sm text-slate-500">
-        Loading attachments…
-      </div>
-    );
-  if (!items.length)
-    return (
-      <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>
-    );
-
-  return (
-    <div className="no-print mt-4">
-      <div className="mb-2 text-sm font-semibold">Attachments</div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {items.map((a) => {
-          const filePath = `${attBase(reportId ?? "")}/${a.id}/file`;
-          const ext = a.filename.split(".").pop()?.toLowerCase() || "";
-          const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
-          const isPdf = ext === "pdf";
-
-          return (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() =>
-                isImage || isPdf
-                  ? setOpenId(a.id)
-                  : window.open(filePath, "_blank")
-              }
-              className="group text-left border rounded-lg p-3 hover:shadow-sm transition bg-white"
-              title="Click to preview"
-            >
-              <div className="h-28 w-full border rounded flex items-center justify-center overflow-hidden bg-slate-50">
-                {isImage ? (
-                  <Thumb path={filePath} alt={a.filename} />
-                ) : isPdf ? (
-                  <div className="text-xs text-slate-600">
-                    PDF • click to preview
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-600 uppercase">
-                    {ext || "file"}
-                  </div>
-                )}
-              </div>
-              <div
-                className="mt-2 text-sm font-medium truncate"
-                title={a.filename}
-              >
-                {a.filename}
-              </div>
-              <div className="text-xs text-slate-500">
-                {a.kind} • {new Date(a.createdAt).toLocaleString()}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* modal */}
-      {openId && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-          onClick={() => setOpenId(null)}
-        >
-          <div
-            className="bg-white rounded-lg shadow max-w-5xl w-full h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-2 border-b">
-              <div className="text-sm font-semibold">Preview</div>
-              <button
-                className="px-2 py-1 text-sm border rounded hover:bg-slate-50"
-                onClick={() => setOpenId(null)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="w-full h-full">
-              <AttachmentPreview reportId={reportId!} attId={openId} />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 async function apiBlob(path: string): Promise<Blob> {
   const res = await fetch(`${API_URL}${path}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Blob fetch failed ${res.status}`);
@@ -162,8 +85,10 @@ async function apiBlob(path: string): Promise<Blob> {
 
 function Thumb({ path, alt }: { path: string; alt: string }) {
   const [url, setUrl] = useState<string | null>(null);
+
   useEffect(() => {
     let revoke: string | null = null;
+
     (async () => {
       try {
         const b = await apiBlob(path);
@@ -174,10 +99,12 @@ function Thumb({ path, alt }: { path: string; alt: string }) {
         setUrl(null);
       }
     })();
+
     return () => {
       if (revoke) URL.revokeObjectURL(revoke);
     };
   }, [path]);
+
   return url ? (
     <img src={url} alt={alt} className="max-h-full max-w-full object-contain" />
   ) : (
@@ -198,12 +125,12 @@ function AttachmentPreview({
 
   useEffect(() => {
     let revoke: string | null = null;
+
     (async () => {
       try {
-        const metaResp = await api<AttachmentItem>(
-          `${attBase(reportId)}/${attId}`,
-        );
+        const metaResp = await api<AttachmentItem>(`${attBase(reportId)}/${attId}`);
         setMeta(metaResp);
+
         const blob = await apiBlob(`${attBase(reportId)}/${attId}/file`);
         const url = URL.createObjectURL(blob);
         revoke = url;
@@ -219,28 +146,24 @@ function AttachmentPreview({
   }, [reportId, attId]);
 
   if (!meta) return <div className="p-4 text-sm text-slate-500">Loading…</div>;
-  if (error)
-    return (
-      <div className="p-4 text-sm text-rose-600">Preview failed: {error}</div>
-    );
-  if (!objectUrl)
+  if (error) {
+    return <div className="p-4 text-sm text-rose-600">Preview failed: {error}</div>;
+  }
+  if (!objectUrl) {
     return <div className="p-4 text-sm text-slate-500">Loading file…</div>;
+  }
 
   const ext = meta.filename.split(".").pop()?.toLowerCase() || "";
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
   const isPdf = ext === "pdf";
 
   return isImage ? (
-    <img
-      src={objectUrl}
-      alt={meta.filename}
-      className="w-full h-full object-contain"
-    />
+    <img src={objectUrl} alt={meta.filename} className="h-full w-full object-contain" />
   ) : isPdf ? (
-    <iframe src={objectUrl} title={meta.filename} className="w-full h-full" />
+    <iframe src={objectUrl} title={meta.filename} className="h-full w-full" />
   ) : (
-    <div className="h-full w-full flex items-center justify-center p-6 text-sm">
-      Preview not available.{" "}
+    <div className="flex h-full w-full items-center justify-center p-6 text-sm">
+      Preview not available.
       <a className="ml-2 underline" href={objectUrl} download={meta.filename}>
         Download
       </a>
@@ -248,7 +171,90 @@ function AttachmentPreview({
   );
 }
 
-// ---------------- Print / blur styles ----------------
+function AttachmentGallery({ reportId }: { reportId?: string }) {
+  const { items, loading } = useAttachments(reportId);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  if (loading) {
+    return <div className="no-print mt-4 text-sm text-slate-500">Loading attachments…</div>;
+  }
+
+  if (!items.length) {
+    return <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>;
+  }
+
+  return (
+    <div className="no-print mt-4">
+      <div className="mb-2 text-sm font-semibold">Attachments</div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((a) => {
+          const filePath = `${attBase(reportId ?? "")}/${a.id}/file`;
+          const ext = a.filename.split(".").pop()?.toLowerCase() || "";
+          const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
+          const isPdf = ext === "pdf";
+
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() =>
+                isImage || isPdf
+                  ? setOpenId(a.id)
+                  : window.open(`${API_URL}${filePath}`, "_blank")
+              }
+              className="group rounded-lg border bg-white p-3 text-left transition hover:shadow-sm"
+              title="Click to preview"
+            >
+              <div className="flex h-28 w-full items-center justify-center overflow-hidden rounded border bg-slate-50">
+                {isImage ? (
+                  <Thumb path={filePath} alt={a.filename} />
+                ) : isPdf ? (
+                  <div className="text-xs text-slate-600">PDF • click to preview</div>
+                ) : (
+                  <div className="text-xs uppercase text-slate-600">{ext || "file"}</div>
+                )}
+              </div>
+
+              <div className="mt-2 truncate text-sm font-medium" title={a.filename}>
+                {a.filename}
+              </div>
+              <div className="text-xs text-slate-500">
+                {a.kind} • {new Date(a.createdAt).toLocaleString()}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {openId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setOpenId(null)}
+        >
+          <div
+            className="h-[80vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white shadow"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b p-2">
+              <div className="text-sm font-semibold">Preview</div>
+              <button
+                className="rounded border px-2 py-1 text-sm hover:bg-slate-50"
+                onClick={() => setOpenId(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="h-full w-full">
+              <AttachmentPreview reportId={reportId!} attId={openId} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 const JJL_CREATED_BY_STATUSES = new Set([
@@ -379,12 +385,6 @@ const BlurStyles = () => (
   `}</style>
 );
 
-function formatDateForInput(value: string | null | undefined) {
-  if (!value) return "";
-  if (value === "NA") return "NA";
-  return new Date(value).toISOString().split("T")[0];
-}
-
 const DashStyles = () => (
   <style>{`
     .dash { position: relative; z-index: 0; }
@@ -396,13 +396,11 @@ const DashStyles = () => (
       border-radius: 6px;
       pointer-events: none;
       z-index: 10;
-
       background:
         linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /16px 2px repeat-x,
         linear-gradient(90deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 100% /16px 2px repeat-x,
         linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 0 0 /2px 16px repeat-y,
         linear-gradient(0deg, var(--dash-color) 0 8px, transparent 8px 16px) 100% 0 /2px 16px repeat-y;
-
       opacity: 1;
       animation: dash-move 1.05s linear infinite;
     }
@@ -419,15 +417,38 @@ const DashStyles = () => (
       }
     }
 
-    @media print {
-      .dash::after { display: none; }
-    }
+    @media print { .dash::after { display: none; } }
   `}</style>
 );
 
-export default function SterilityReportFormView(
-  props: SterilityReportFormViewProps,
-) {
+function formatDateForInput(value: string | null | undefined) {
+  if (!value) return "";
+  if (value === "NA") return "NA";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+
+  return d.toISOString().split("T")[0];
+}
+
+function normalizeOrganisms(value: any): ApeOrganismRow[] {
+  if (!Array.isArray(value)) return APE_ORGANISM_DEFAULTS;
+
+  const existing = new Map<string, ApeOrganismRow>();
+
+  for (const item of value) {
+    if (!item?.key) continue;
+    existing.set(String(item.key), {
+      key: String(item.key),
+      label: String(item.label ?? item.key),
+      checked: !!item.checked,
+    });
+  }
+
+  return APE_ORGANISM_DEFAULTS.map((d) => existing.get(d.key) ?? d);
+}
+
+export default function ApeReportFormView(props: ApeReportFormViewProps) {
   const {
     report,
     onClose,
@@ -440,14 +461,12 @@ export default function SterilityReportFormView(
 
   const isBulk = isBulkPrint === true;
 
-  const qrValue = report?.id
-    ? JSON.stringify({ t: "report", id: report.id })
-    : "";
-
+  const qrValue = report?.id ? JSON.stringify({ t: "report", id: report.id }) : "";
   const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
+
     if (!qrValue) {
       setQrSvg("");
       return;
@@ -469,6 +488,7 @@ export default function SterilityReportFormView(
 
   useEffect(() => {
     if (isBulkPrint) return;
+
     const onAfterPrint = () => onClose?.();
     window.addEventListener("afterprint", onAfterPrint);
     return () => window.removeEventListener("afterprint", onAfterPrint);
@@ -489,8 +509,6 @@ export default function SterilityReportFormView(
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  // const FOOTER_NOTE = "Rev-01 [Date Effective : 03/10/2026]";
-
   const footerRevNo = report?.footerRevNo || "Rev-01";
   const footerDateEffective = report?.footerDateEffective
     ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
@@ -500,11 +518,13 @@ export default function SterilityReportFormView(
 
   const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
-  // ✅ Keep these simple. Update if you want stricter/looser blur.
   const BLUR_SIGNATURE_STATUSES = new Set([
     "DRAFT",
+    "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
     "CLIENT_NEEDS_CORRECTION",
+    "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    "CLIENT_NEEDS_FINAL_CORRECTION",
     "FRONTDESK_NEEDS_CORRECTION",
     "TESTING_NEEDS_CORRECTION",
     "QA_NEEDS_CORRECTION",
@@ -515,10 +535,35 @@ export default function SterilityReportFormView(
 
   const shouldBlurSignatures = BLUR_SIGNATURE_STATUSES.has(report?.status);
 
-  const HIDE_SIGNATURES_FOR = new Set(["DRAFT", "SUBMITTED_BY_CLIENT"]);
-  const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status);
+  const HIDE_SIGNATURES_FOR = new Set([
+    "DRAFT",
+    "UNDER_DRAFT_REVIEW",
+    "SUBMITTED_BY_CLIENT",
+  ]);
 
-  const obs = (v: any) => (v === "Growth" || v === "No Growth" ? v : "");
+  const isSubmissionFormPane = activePane === "FORM";
+  const isReportPane = isBulk || activePane === "REPORT";
+  const isFormPane = activePane === "FORM";
+
+  const createdByName = useCreatedByName(
+    report,
+    report?.id ? `/reports/${report?.id}` : "",
+  );
+
+  const showJJLCreatedBy =
+    isSubmissionFormPane &&
+    getJJLClientCode(report) === "JJL" &&
+    JJL_CREATED_BY_STATUSES.has(String(report?.status || "")) &&
+    createdByName.trim().length > 0;
+
+  const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status) && !isSubmissionFormPane;
+
+  const blankIfForm = (value: any) => {
+    if (isSubmissionFormPane) return "";
+    return value ?? "";
+  };
+
+  const organisms = useMemo(() => normalizeOrganisms(report?.organisms), [report?.organisms]);
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const [showCorrTray, setShowCorrTray] = useState(false);
@@ -538,78 +583,24 @@ export default function SterilityReportFormView(
 
   const hasOpenCorrection = (keyOrPrefix: string) =>
     openCorrections.some(
-      (c) =>
-        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
+      (c) => c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
     );
 
   const dashClass = (keyOrPrefix: string) =>
     hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
 
-    const isSubmissionFormPane = activePane === "FORM";
-  const blankIfForm = (value: any) => {
-    if (isSubmissionFormPane) return "";
-    return value ?? "";
-  };
-  const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
-
-  const createdByName = useCreatedByName(
-    report,
-    report?.id ? `/reports/${report?.id}` : "",
-  );
-
-  const showJJLCreatedBy =
-    isSubmissionFormPane &&
-    getJJLClientCode(report) === "JJL" &&
-    JJL_CREATED_BY_STATUSES.has(String(report?.status || "")) &&
-    createdByName.trim().length > 0;
-
   return (
     <div
       className={
         isBulk
-          ? "sheet bg-white text-black p-0 m-0"
-          : "sheet relative mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4"
+          ? "sheet m-0 bg-white p-0 text-black"
+          : "sheet relative mx-auto max-w-[800px] border border-black bg-white p-4 text-black shadow print:shadow-none"
       }
     >
       {!isBulk && <PrintStyles />}
       {!isBulk && <BlurStyles />}
       {!isBulk && <DashStyles />}
 
-      {/* Switcher */}
-      {/* {!isBulk && showSwitcher !== false && (
-        <div className="no-print sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur border-b">
-          <div className="flex items-center gap-2 py-2">
-            <button
-              type="button"
-              onClick={() => setActivePane("FORM")}
-              className={`px-3 py-1 rounded-full text-sm transition ${
-                activePane === "FORM"
-                  ? "bg-blue-600 text-white"
-                  : "hover:bg-slate-100 text-slate-700"
-              }`}
-              aria-pressed={activePane === "FORM"}
-            >
-              Main form
-            </button>
-            <button
-              type="button"
-              onClick={() => setActivePane("ATTACHMENTS")}
-              className={`px-3 py-1 rounded-full text-sm transition ${
-                activePane === "ATTACHMENTS"
-                  ? "bg-blue-600 text-white"
-                  : "hover:bg-slate-100 text-slate-700"
-              }`}
-              aria-pressed={activePane === "ATTACHMENTS"}
-            >
-              Attachments
-            </button>
-          </div>
-        </div>
-      )} */}
-
-
-      
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2 py-2">
@@ -618,27 +609,25 @@ export default function SterilityReportFormView(
                 key={p}
                 type="button"
                 onClick={() => setActivePane(p)}
-                className={`px-3 py-1 rounded-full text-sm transition ${
+                className={`rounded-full px-3 py-1 text-sm transition ${
                   activePane === p
                     ? "bg-blue-600 text-white"
-                    : "hover:bg-slate-100 text-slate-700"
+                    : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
-                {p === "ATTACHMENTS"
-                  ? "Attachment"
-                  : p[0] + p.slice(1).toLowerCase()}
+                {p === "ATTACHMENTS" ? "Attachment" : p[0] + p.slice(1).toLowerCase()}
               </button>
             ))}
           </div>
         </div>
       )}
 
-       {isReportPane || isSubmissionFormPane ? (
+      {isReportPane || isSubmissionFormPane ? (
         <>
           {/* Letterhead */}
-          <div className="mb-2 text-center">
+          <div className="letterhead mb-2 text-center">
             <div
-              className="font-bold tracking-wide text-[22px]"
+              className="text-[22px] font-bold tracking-wide"
               style={{ color: "blue" }}
             >
               OMEGA / BIOCHEM LABORATORIES, INC.
@@ -660,14 +649,7 @@ export default function SterilityReportFormView(
               </div>
 
               <div className="text-center text-[18px] font-bold underline">
-                {/* {report?.status === "DRAFT" ||
-                report?.status === "SUBMITTED_BY_CLIENT"
-                  ? "STERILITY SUBMISSION FORM"
-                  : "STERILITY REPORT"} */}
-
-                    {isSubmissionFormPane
-                  ? "STERILITY SUBMISSION FORM"
-                  : "STERILITY REPORT"}
+                {isSubmissionFormPane ? "APE SUBMISSION FORM" : "APE REPORT"}
               </div>
 
               <div className="text-right text-[12px] font-bold">
@@ -680,22 +662,23 @@ export default function SterilityReportFormView(
           <div className="w-full border border-black text-[15px]">
             <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
               <div
-                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("client")}`}
+                className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("client")}`}
               >
                 <div className="whitespace-nowrap font-medium">CLIENT:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.client || ""}
                   readOnly
                   disabled
                 />
               </div>
+
               <div
-                className={`px-2 flex items-center gap-1 relative ${dashClass("dateSent")}`}
+                className={`relative flex items-center gap-1 px-2 ${dashClass("dateSent")}`}
               >
                 <div className="whitespace-nowrap font-medium">DATE SENT:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={formatDateForInput(report?.dateSent) || ""}
                   readOnly
                   disabled
@@ -705,37 +688,35 @@ export default function SterilityReportFormView(
 
             <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
               <div
-                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("typeOfTest")}`}
+                className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("typeOfTest")}`}
               >
-                <div className="font-medium whitespace-nowrap">
-                  TYPE OF TEST:
-                </div>
+                <div className="whitespace-nowrap font-medium">TYPE OF TEST:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.typeOfTest || ""}
                   readOnly
                   disabled
                 />
               </div>
+
               <div
-                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("sampleType")}`}
+                className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("sampleType")}`}
               >
-                <div className="font-medium whitespace-nowrap">
-                  SAMPLE TYPE:
-                </div>
+                <div className="whitespace-nowrap font-medium">SAMPLE TYPE:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.sampleType || ""}
                   readOnly
                   disabled
                 />
               </div>
+
               <div
-                className={`px-2 flex items-center gap-1 relative ${dashClass("formulaNo")}`}
+                className={`relative flex items-center gap-1 px-2 ${dashClass("formulaNo")}`}
               >
-                <div className="font-medium whitespace-nowrap">FORMULA #:</div>
+                <div className="whitespace-nowrap font-medium">FORMULA #:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.formulaNo || ""}
                   readOnly
                   disabled
@@ -744,11 +725,11 @@ export default function SterilityReportFormView(
             </div>
 
             <div
-              className={`border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass("description")}`}
+              className={`relative flex items-center gap-2 border-b border-black px-2 text-[12px] leading-snug ${dashClass("description")}`}
             >
               <div className="w-28 font-medium">DESCRIPTION:</div>
               <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                 value={report?.description || ""}
                 readOnly
                 disabled
@@ -757,24 +738,23 @@ export default function SterilityReportFormView(
 
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
               <div
-                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("lotNo")}`}
+                className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("lotNo")}`}
               >
-                <div className="font-medium whitespace-nowrap">LOT #:</div>
+                <div className="whitespace-nowrap font-medium">LOT #:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.lotNo || ""}
                   readOnly
                   disabled
                 />
               </div>
+
               <div
-                className={`px-2 flex items-center gap-1 relative ${dashClass("manufactureDate")}`}
+                className={`relative flex items-center gap-1 px-2 ${dashClass("manufactureDate")}`}
               >
-                <div className="font-medium whitespace-nowrap">
-                  MANUFACTURE DATE:
-                </div>
+                <div className="whitespace-nowrap font-medium">MANUFACTURE DATE:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={formatDateForInput(report?.manufactureDate) || ""}
                   readOnly
                   disabled
@@ -784,24 +764,23 @@ export default function SterilityReportFormView(
 
             <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
               <div
-                className={`px-2 border-r border-black flex items-center gap-1 relative ${dashClass("testSopNo")}`}
+                className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("testSopNo")}`}
               >
-                <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
+                <div className="whitespace-nowrap font-medium">TEST SOP #:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={ blankIfForm(report?.testSopNo) || ""}
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
+                  value={blankIfForm(report?.testSopNo) || ""}
                   readOnly
                   disabled
                 />
               </div>
+
               <div
-                className={`px-2 flex items-center gap-1 relative ${dashClass("dateTested")}`}
+                className={`relative flex items-center gap-1 px-2 ${dashClass("dateTested")}`}
               >
-                <div className="font-medium whitespace-nowrap">
-                  DATE TESTED:
-                </div>
+                <div className="whitespace-nowrap font-medium">DATE TESTED:</div>
                 <input
-                  className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                  className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={blankIfForm(formatDateForInput(report?.dateTested)) || ""}
                   readOnly
                   disabled
@@ -810,13 +789,11 @@ export default function SterilityReportFormView(
             </div>
 
             <div
-              className={`flex items-center gap-2 px-2 text-[12px] leading-snug relative ${dashClass("dateCompleted")}`}
+              className={`relative flex items-center gap-2 px-2 text-[12px] leading-snug ${dashClass("dateCompleted")}`}
             >
-              <div className="font-medium whitespace-nowrap">
-                DATE COMPLETED:
-              </div>
+              <div className="whitespace-nowrap font-medium">DATE COMPLETED:</div>
               <input
-                className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
+                className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                 value={blankIfForm(formatDateForInput(report?.dateCompleted)) || ""}
                 readOnly
                 disabled
@@ -824,176 +801,53 @@ export default function SterilityReportFormView(
             </div>
           </div>
 
-          {/* ✅ Sterility table (matches your new form) */}
-          <div className="mt-12 border border-black">
-            <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px] text-center items-center font-semibold border-b border-black">
-              <div className="p-2 border-r border-black">MEDIA</div>
-              <div className="p-2 border-r border-black">TURBIDITY</div>
-              <div className="p-2 border-r border-black">OBSERVATION</div>
-              <div className="p-2 border-r border-black">RESULT</div>
-            </div>
-
-            {/* FTM */}
-            <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px] border-b border-black">
-              <div className="py-1 px-2 font-bold border-r border-black">
-                Fluid Thioglycollate Medium (FTM)
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("ftm_turbidity")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(report?.ftm_turbidity) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("ftm_observation")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(obs(report?.ftm_observation)) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("ftm_result")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(report?.ftm_result) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-            </div>
-
-            {/* SCDB */}
-            <div className="grid grid-cols-[35%_15%_30%_20%] text-[12px]">
-              <div className="py-1 px-2 font-bold border-r border-black">
-                Soybean Casein Digest Broth (SCDB)
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("scdb_turbidity")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(report?.scdb_turbidity) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("scdb_observation")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(obs(report?.scdb_observation)) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black relative ${dashClass("scdb_result")}`}
-              >
-                <input
-                  className="w-full input-editable px-1"
-                  value={blankIfForm(report?.scdb_result) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-            </div>
+          <div className="p-2 font-bold">
+            ORGANISMS (Please check the organism to be tested)
           </div>
 
-          {/* ----- Volume of sample table + notes (from image) ----- */}
-          <div className="mt-10 text-[12px] leading-snug">
-            <div className="mb-2 font-semibold text-[13px]">
-              Volume of sample used during the test is defined in the table
-              based on the volume of final product.
-            </div>
-
-            <div className="border border-black">
-              <div className="grid grid-cols-2 border-b border-black font-semibold">
-                <div className="px-2 py-1 border-r border-black font-bold items-center text-center">
-                  Volume of Final Product
-                </div>
-                <div className="px-2 py-1 font-bold items-center text-center">
-                  Volume used for Each Sample
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 border-b border-black items-center text-center">
-                <div className="px-2 py-1 border-r border-black">&lt; 1 ml</div>
-                <div className="px-2 py-1">Entire Unit</div>
-              </div>
-
-              <div className="grid grid-cols-2 border-b border-black items-center text-center">
-                <div className="px-2 py-1 border-r border-black">1-40 ml</div>
-                <div className="px-2 py-1">50% of Volume but NLT 1 ml</div>
-              </div>
-
-              <div className="grid grid-cols-2 border-b border-black items-center text-center">
-                <div className="px-2 py-1 border-r border-black">41-100 ml</div>
-                <div className="px-2 py-1">20 ml</div>
-              </div>
-
-              <div className="grid grid-cols-2 items-center text-center">
-                <div className="px-2 py-1 border-r border-black">
-                  &gt; 100 ml
-                </div>
-                <div className="px-2 py-1">
-                  10% of volume but at least 20 ml
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-2">
-              <div>
-                The Fluid Thioglycollate Medium (FTM) tests for Anaerobic
-                Bacteria, but will also grow Aerobic Bacteria is incubated for
-                14 days at 32.5 ± 2.5°C.
-              </div>
-
-              <div>
-                The Soybean Casein Digest Medium (SCDM) tests for Aerobic
-                Bacteria and Fungi is incubated for 14 days at 22.5
-              </div>
-
-              <div>
-                No Growth was observed in the Negative Control. Growth was
-                observed in the Positive Control.
-              </div>
-
-              <div className="font-semibold">
-                Abbreviations (+) <span className="underline">Growth</span> (-)
-                No Growth (P) Pass F (Fail) NI (Not Interpreted)
-              </div>
+          <div
+            className={`relative mt-2 border border-black ${dashClass("organisms")}`}
+          >
+            <div className="grid grid-cols-2 text-[12px]">
+              {organisms.map((org, idx) => (
+                <label
+                  key={org.key}
+                  className={`flex items-center gap-2 border-b border-black px-3 py-2 ${
+                    idx % 2 === 0 ? "border-r border-black" : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="thick-box"
+                    checked={!!org.checked}
+                    readOnly
+                    disabled
+                  />
+                  <span className="font-bold">{org.label}</span>
+                </label>
+              ))}
             </div>
           </div>
 
           {/* Legends */}
-          <div className="mt-4 text-[11px]">
+          {/* <div className="mt-2 text-[11px]">
             <div
-              className="font-bold border-black"
+              className="border-black p-2 font-bold"
               style={{ textDecoration: "underline" }}
             >
-              DENOTES: NA (Not Applicable) / N.G. (No Growth) / NT (Not Tested)
+              DENOTES: NA (Not Applicable) / N.G. (No Growth) / GM.(+)B Gram (+)
+              Bacilli / GM.(+)C Gram (+) Cocci / GM.NEG Gram Negative / NT (Not
+              Tested) / TNTC (Too Numerous To Count)
             </div>
-          </div>
+          </div> */}
 
           {/* Comments + Signatures */}
           <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-            <div className={`col-span-2 relative ${dashClass("comments")}`}>
+            <div className={`relative col-span-2 ${dashClass("comments")}`}>
               <div className="flex items-start gap-2">
-                <div className="font-medium pt-[2px] whitespace-nowrap">
-                  Comments :
-                </div>
+                <div className="whitespace-nowrap pt-[2px] font-medium">Comments :</div>
 
-                <div className="relative flex-1 h-[48px]">
-                  {/* printable lines */}
+                <div className="relative h-[48px] flex-1">
                   <div className="pointer-events-none absolute inset-0">
                     <div className="absolute left-0 right-0 top-[23px] border-b border-black/70" />
                     <div className="absolute left-0 right-0 top-[47px] border-b border-black/70" />
@@ -1001,7 +855,7 @@ export default function SterilityReportFormView(
 
                   <textarea
                     rows={2}
-                    className="relative z-10 w-full h-[48px] resize-none bg-transparent text-[12px] leading-[24px] border-0 outline-none focus:ring-0 pl-2 pt-0 pb-0 overflow-hidden"
+                    className="relative z-10 h-[48px] w-full resize-none overflow-hidden border-0 bg-transparent pl-2 pt-0 pb-0 text-[12px] leading-[24px] outline-none focus:ring-0"
                     value={report?.comments || ""}
                     readOnly
                   />
@@ -1009,15 +863,15 @@ export default function SterilityReportFormView(
               </div>
             </div>
 
-            {showSignatures && !isSubmissionFormPane && (
+            {showSignatures && (
               <>
                 <div className="p-2">
                   <div
-                    className={`font-medium mb-2 flex items-center gap-2 relative ${dashClass("testedBy")}`}
+                    className={`relative mb-2 flex items-center gap-2 font-medium ${dashClass("testedBy")}`}
                   >
                     TESTED BY:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
                       value={report?.testedBy || ""}
@@ -1025,12 +879,13 @@ export default function SterilityReportFormView(
                       disabled
                     />
                   </div>
+
                   <div
-                    className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass("testedDate")}`}
+                    className={`relative mt-2 flex items-center gap-2 font-medium ${dashClass("testedDate")}`}
                   >
                     DATE:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
                       value={formatDateForInput(report?.testedDate) || ""}
@@ -1042,11 +897,11 @@ export default function SterilityReportFormView(
 
                 <div className="p-2">
                   <div
-                    className={`font-medium mb-2 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}
+                    className={`relative mb-2 flex items-center gap-2 font-medium ${dashClass("reviewedBy")}`}
                   >
                     REVIEWED BY:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
                       value={report?.reviewedBy || ""}
@@ -1054,12 +909,13 @@ export default function SterilityReportFormView(
                       disabled
                     />
                   </div>
+
                   <div
-                    className={`font-medium mt-2 flex items-center gap-2 relative ${dashClass("reviewedDate")}`}
+                    className={`relative mt-2 flex items-center gap-2 font-medium ${dashClass("reviewedDate")}`}
                   >
                     DATE:
                     <input
-                      className={`flex-1 border-0 border-b border-black/70 focus:border-blue-500 focus:ring-0 text-[12px] outline-none ${
+                      className={`flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                         shouldBlurSignatures ? "blur-field" : ""
                       }`}
                       value={formatDateForInput(report?.reviewedDate) || ""}
@@ -1074,7 +930,7 @@ export default function SterilityReportFormView(
 
           {/* Footer */}
           <div
-            className="mt-2 flex items-end justify-between print-footer"
+            className="print-footer mt-2 flex items-end justify-between"
             style={
               !isBulk
                 ? { pageBreakInside: "avoid", breakInside: "avoid" }
@@ -1090,12 +946,12 @@ export default function SterilityReportFormView(
                     key={idx}
                     src={img.src}
                     alt={img.alt}
-                    className="w-[64px] h-[64px] object-contain border border-black/10 rounded bg-white"
+                    className="h-[64px] w-[64px] rounded border border-black/10 bg-white object-contain"
                   />
                 ))}
               </div>
 
-              <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+              <div className="w-[136px] text-center text-[8px] font-bold leading-tight text-slate-700">
                 Accreditation No: <span className="font-bold">109344</span>
               </div>
 
@@ -1117,18 +973,18 @@ export default function SterilityReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-              { !isFormPane && report?.reportNumber && (
-                  <div className="text-[11px]">
-                    Report # {report.reportNumber}
-                  </div>
+
+                {!isFormPane && report?.reportNumber && (
+                  <div className="text-[11px]">Report # {report.reportNumber}</div>
                 )}
+
                 <div className="mt-1 text-[10px] text-slate-600">
                   Scan to open in LIMS
                 </div>
               </div>
 
               {qrSvg ? (
-                <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+                <div className="shrink-0 bg-white p-1" aria-label="Report QR">
                   <div
                     style={{ width: "36mm", height: "36mm" }}
                     dangerouslySetInnerHTML={{ __html: qrSvg }}
@@ -1150,9 +1006,11 @@ export default function SterilityReportFormView(
           <AttachmentGallery reportId={report?.id} />
         </div>
       )}
+
       {!isBulk && openCorrections.length > 0 && (
         <div className="no-print fixed bottom-20 right-6 z-40">
           <button
+            type="button"
             onClick={() => setShowCorrTray((s) => !s)}
             className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
           >
@@ -1169,6 +1027,7 @@ export default function SterilityReportFormView(
           <div className="flex items-center justify-between border-b px-3 py-2">
             <div className="text-sm font-semibold">Open corrections</div>
             <button
+              type="button"
               className="rounded px-2 py-1 text-xs hover:bg-slate-100"
               onClick={() => setShowCorrTray(false)}
             >
@@ -1176,7 +1035,7 @@ export default function SterilityReportFormView(
             </button>
           </div>
 
-          <div className="max-h-72 overflow-auto divide-y">
+          <div className="max-h-72 divide-y overflow-auto">
             {openCorrections.map((c) => (
               <div key={c.id} className="p-3 text-sm">
                 <div className="text-[11px] font-medium text-slate-500">
@@ -1189,9 +1048,7 @@ export default function SterilityReportFormView(
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}
                     <span className="break-words">
-                      {typeof c.oldValue === "string"
-                        ? c.oldValue
-                        : JSON.stringify(c.oldValue)}
+                      {typeof c.oldValue === "string" ? c.oldValue : JSON.stringify(c.oldValue)}
                     </span>
                   </div>
                 )}

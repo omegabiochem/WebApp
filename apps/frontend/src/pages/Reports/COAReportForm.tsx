@@ -22,6 +22,7 @@ import {
   type Role,
 } from "../../utils/COAReportFormWorkflow";
 import { todayISO } from "../../utils/microMixReportFormWorkflow";
+import { Eye, EyeOff } from "lucide-react";
 
 // ---------- tiny hook to warn on unsaved ----------
 function useConfirmOnLeave(isDirty: boolean) {
@@ -125,61 +126,40 @@ type COAReportFormProps = {
   isWorkspaceActive?: boolean;
 };
 
-const statusButtons: Record<string, { label: string; color: string }> = {
-  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
-  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
+const statusButtons: Partial<
+  Record<COAReportStatus, { label: string; color: string }>
+> = {
+    DRAFT: { label: "Draft", color: "bg-slate-500" },
+    LOCKED: { label: "Locked", color: "bg-neutral-500" },
+    VOID: { label: "Void", color: "bg-gray-500" },
+    UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
+    SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
+    UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
 
-  CLIENT_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
+    RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
+    FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
 
-  RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
-  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FRONTDESK_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-red-600",
-  },
-  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  RESUBMISSION_BY_TESTING: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  RESUBMISSION_BY_CLIENT: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
+    UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+    TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
 
-  UNDER_RESUBMISSION_QA_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
+    UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
 
-  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-500" },
-  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
-  ADMIN_NEEDS_CORRECTION: { label: "Needs Correction", color: "bg-yellow-600" },
-  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-  APPROVED: { label: "Approve", color: "bg-green-700" },
+    UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
 
-  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-200" },
-  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-200" },
-  UNDER_CORRECTION_UPDATE: {
-    label: "Approve",
-    color: "bg-green-800",
-  },
-};
+    ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
+    APPROVED: { label: "Approve", color: "bg-green-700" },
+
+    CHANGE_REQUESTED: { label: "Request Change", color: "bg-cyan-700" },
+    UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
+    CORRECTION_REQUESTED: {
+      label: "Raise Correction",
+      color: "bg-yellow-700",
+    },
+    UNDER_CORRECTION_UPDATE: {
+      label: "Approve",
+      color: "bg-green-800",
+    },
+  };
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
 function canEdit(
@@ -220,6 +200,46 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
+function eSignActionTitle(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("FINAL_APPROVED") || s.includes("APPROVED")) {
+    return "Electronic Approval";
+  }
+
+  if (s.includes("QA") || s.includes("REVIEW")) {
+    return "Electronic Review Authorization";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Electronic Lock Authorization";
+  }
+
+  if (s.includes("CORRECTION")) {
+    return "Electronic Correction Authorization";
+  }
+
+  return "Electronic Signature Verification";
+}
+
+function eSignButtonText(status?: string | null) {
+  const s = String(status || "");
+
+  if (s.includes("APPROVED") || s.includes("FINAL_APPROVED")) {
+    return "Verify & Approve";
+  }
+
+  if (s.includes("REVIEW")) {
+    return "Verify & Continue";
+  }
+
+  if (s.includes("LOCKED")) {
+    return "Verify & Lock";
+  }
+
+  return "Verify Signature";
+}
+
 export default function COAReportForm({
   report,
   onClose,
@@ -238,18 +258,30 @@ export default function COAReportForm({
   const { user } = useAuth();
 
   const role = user?.role as Role | undefined;
+
+  const currentUserDisplayName = String(
+    (user as any)?.name ||
+      (user as any)?.fullName ||
+      (user as any)?.email ||
+      (user as any)?.userId ||
+      "",
+  ).trim();
+
+  const currentUserIdCandidates = [
+    (user as any)?.id,
+    (user as any)?.userId,
+    (user as any)?.sub,
+    (user as any)?.uid,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  const currentUserIdentityKey = currentUserIdCandidates.join("|");
   const navigate = useNavigate();
 
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
-
-  // const isSubmissionForm =
-  //   status === "DRAFT" ||
-  //   status === "UNDER_DRAFT_REVIEW" || // ✅
-  //   status === "SUBMITTED_BY_CLIENT";
-
-  // const isReportView = !isSubmissionForm;
 
   type TestType = "COA_VERIFICATION";
   const [_testTypes, setTestTypes] = useState<TestType[]>(
@@ -274,6 +306,23 @@ export default function COAReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  const [createdByName, setCreatedByName] = useState<string>(() => {
+    const explicitName = String(
+      report?.createdByName ||
+        report?.creatorName ||
+        report?.createdByUser?.name ||
+        "",
+    ).trim();
+
+    if (explicitName) return explicitName;
+    if (!report?.id) return currentUserDisplayName;
+
+    const creatorId = String(report?.createdBy || "").trim();
+    return creatorId && currentUserIdCandidates.includes(creatorId)
+      ? currentUserDisplayName
+      : "";
+  });
+
 useEffect(() => {
   if (!report?.id) return;
 
@@ -289,6 +338,98 @@ useEffect(() => {
     setReportVersion(report.version);
   }
 }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCreatedByName() {
+      const suppliedName = String(
+        report?.createdByName ||
+          report?.creatorName ||
+          report?.createdByUser?.name ||
+          "",
+      ).trim();
+
+      if (suppliedName) {
+        if (!cancelled) setCreatedByName(suppliedName);
+        return;
+      }
+
+      if (!reportId) {
+        if (!cancelled) setCreatedByName(currentUserDisplayName);
+        return;
+      }
+
+      let creatorId = String(report?.createdBy || "").trim();
+      let creatorName = "";
+
+      if (!creatorId) {
+        try {
+          const fullReport = await api<any>(`/chemistry-reports/${reportId}`, {
+            method: "GET",
+          });
+
+          creatorName = String(
+            fullReport?.createdByName ||
+              fullReport?.creatorName ||
+              fullReport?.createdByUser?.name ||
+              "",
+          ).trim();
+
+          creatorId = String(fullReport?.createdBy || "").trim();
+        } catch {
+          // Keep the form available even if creator lookup is unavailable.
+        }
+      }
+
+      if (creatorName) {
+        if (!cancelled) setCreatedByName(creatorName);
+        return;
+      }
+
+      if (
+        creatorId &&
+        currentUserDisplayName &&
+        currentUserIdCandidates.includes(creatorId)
+      ) {
+        if (!cancelled) setCreatedByName(currentUserDisplayName);
+        return;
+      }
+
+      if (!creatorId) {
+        if (!cancelled) setCreatedByName("");
+        return;
+      }
+
+      try {
+        const qs = new URLSearchParams({ ids: creatorId });
+        const creators = await api<
+          { id: string; name: string | null; email: string }[]
+        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+
+        const creator = creators.find((item) => item.id === creatorId);
+        const resolvedName =
+          creator?.name?.trim() || creator?.email?.trim() || "";
+
+        if (!cancelled) setCreatedByName(resolvedName);
+      } catch {
+        if (!cancelled) setCreatedByName("");
+      }
+    }
+
+    loadCreatedByName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    reportId,
+    report?.createdBy,
+    report?.createdByName,
+    report?.creatorName,
+    currentUserDisplayName,
+    currentUserIdentityKey,
+  ]);
 
   // ---- header fields (same as micro) ----
   const [client, setClient] = useState(
@@ -325,13 +466,6 @@ useEffect(() => {
   const [sampleSize, setSampleSize] = useState(report?.sampleSize || "");
 
   const [dateReceived, setDateReceived] = useState(report?.dateReceived || "");
-
-  // const toggleTestType = (key: TestType) => {
-  //   setTestTypes((prev) =>
-  //     prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-  //   );
-  //   markDirty();
-  // };
 
   // ---- comments / signatures ----
   const [comments, setComments] = useState(report?.comments || "");
@@ -380,22 +514,12 @@ useEffect(() => {
 
     return navigate("/", { replace: true });
   };
-  // const backToDashboard = () => {
-  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  //   else navigate("/clientDashboard", { replace: true });
-  // };
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
     () => corrections.filter((c) => c.status === "OPEN"),
     [corrections],
   );
-
-  // const corrByField = useMemo(() => {
-  //   const m: Record<string, CorrectionItem[]> = {};
-  //   for (const c of openCorrections) (m[c.fieldKey] ||= []).push(c);
-  //   return m;
-  // }, [openCorrections]);
 
   const hasCorrection = (keyOrPrefix: string) =>
     hasOpenCorrectionKey(keyOrPrefix);
@@ -408,12 +532,36 @@ useEffect(() => {
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
 
+  const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
+
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
 
   const isTemplateMode = routeMode === "template";
   const isTemplateViewMode = routeMode === "templateView";
   const isAnyTemplateMode = isTemplateMode || isTemplateViewMode;
+
+  const JJL_CREATED_BY_STATUSES = new Set<COAReportStatus>([
+    "DRAFT",
+    "UNDER_DRAFT_REVIEW",
+    "SUBMITTED_BY_CLIENT",
+  ]);
+
+  const createdByClientCode = String(
+    report?.clientCode ||
+      (role === "CLIENT" ? user?.clientCode : "") ||
+      String(report?.formNumber || "").split("-")[0] ||
+      client ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  const showJJLCreatedBy =
+    !isAnyTemplateMode &&
+    createdByClientCode === "JJL" &&
+    JJL_CREATED_BY_STATUSES.has(status as COAReportStatus) &&
+    createdByName.trim().length > 0;
 
   const forceReadOnly =
     forcePageReadOnly || isTemplateViewMode || pageMode === "VIEW";
@@ -596,6 +744,78 @@ useEffect(() => {
   const [showESign, setShowESign] = useState(false);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
+  const [showFieldESign, setShowFieldESign] = useState(false);
+  const [fieldSignatureMode, setFieldSignatureMode] = useState<
+    "TESTED_BY" | "REVIEWED_BY" | null
+  >(null);
+  const [fieldSignaturePassword, setFieldSignaturePassword] = useState("");
+  const [showFieldESignPassword, setShowFieldESignPassword] = useState(false);
+  const [fieldSignatureReason, setFieldSignatureReason] = useState("");
+  const [fieldSignatureConfirmed, setFieldSignatureConfirmed] = useState(false);
+  const [fieldSignatureSubmitting, setFieldSignatureSubmitting] =
+    useState(false);
+  const [fieldSignatureError, setFieldSignatureError] = useState<string | null>(
+    null,
+  );
+  const [fieldSignatureSnapshot, setFieldSignatureSnapshot] = useState<{
+    testedBy?: string;
+    testedDate?: string;
+    reviewedBy?: string;
+    reviewedDate?: string;
+    wasDirty: boolean;
+  } | null>(null);
+
+  const pendingApprovalESignRef = useRef<{
+    target: COAReportStatus;
+    reason: string;
+    password: string;
+  } | null>(null);
+
+
+  const [showESignPassword, setShowESignPassword] = useState(false);
+  const [autoFillSnapshot, setAutoFillSnapshot] = useState<{
+    testedBy?: string;
+    testedDate?: string;
+    reviewedBy?: string;
+    reviewedDate?: string;
+    wasDirty: boolean;
+  } | null>(null);
+
+  const [eSignSubmitting, setESignSubmitting] = useState(false);
+  const [eSignError, setESignError] = useState<string | null>(null);
+
+  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+  });
+
+  function startESignDrag(e: React.MouseEvent) {
+    dragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: eSignPos.x,
+      origY: eSignPos.y,
+    };
+
+    window.onmousemove = (ev) => {
+      if (!dragRef.current.dragging) return;
+      setESignPos({
+        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+      });
+    };
+
+    window.onmouseup = () => {
+      dragRef.current.dragging = false;
+      window.onmousemove = null;
+      window.onmouseup = null;
+    };
+  }
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
@@ -695,12 +915,102 @@ useEffect(() => {
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
-  const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" ||
-      role === "SYSTEMADMIN" ||
-      role === "FRONTDESK" ||
-      role === "QA") &&
-    (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
+  const uiNeedsESign = (target: string) =>
+    (target === "UNDER_QA_REVIEW" ||
+      target === "UNDER_CLIENT_REVIEW" ||
+      target === "LOCKED" ||
+      target === "VOID") &&
+    (role === "CHEMISTRY" ||
+      role === "MC" ||
+      role === "QA" ||
+      role === "ADMIN" ||
+      role === "SYSTEMADMIN");
+
+
+  function closeFieldSignatureModal(restorePreview: boolean) {
+    if (restorePreview && fieldSignatureSnapshot) {
+      if ("testedBy" in fieldSignatureSnapshot) {
+        setTestedBy(fieldSignatureSnapshot.testedBy || "");
+        setTestedDate(fieldSignatureSnapshot.testedDate || "");
+      }
+      if ("reviewedBy" in fieldSignatureSnapshot) {
+        setReviewedBy(fieldSignatureSnapshot.reviewedBy || "");
+        setReviewedDate(fieldSignatureSnapshot.reviewedDate || "");
+      }
+      setIsDirty(fieldSignatureSnapshot.wasDirty);
+    }
+
+    setShowFieldESign(false);
+    setFieldSignatureMode(null);
+    setFieldSignatureSnapshot(null);
+    setFieldSignaturePassword("");
+    setShowFieldESignPassword(false);
+    setFieldSignatureReason("");
+    setFieldSignatureConfirmed(false);
+    setFieldSignatureError(null);
+  }
+
+  function openFieldSignature(mode: "TESTED_BY" | "REVIEWED_BY") {
+    if (!reportId) {
+      alert("⚠️ Please SAVE the report first before signing.");
+      return;
+    }
+    if (isDirty) {
+      alert("⚠️ You have unsaved changes. Please UPDATE the report before signing.");
+      return;
+    }
+
+    const isTestingSignature = mode === "TESTED_BY";
+    const allowed = isTestingSignature
+      ? status === "UNDER_TESTING_REVIEW" && (role === "CHEMISTRY" || role === "MC")
+      : status === "UNDER_ADMIN_REVIEW" && (role === "ADMIN" || role === "SYSTEMADMIN");
+
+    if (!allowed) {
+      alert("⚠️ You are not allowed to sign this field in the current status.");
+      return;
+    }
+
+    const signerName = user?.name || user?.email || "";
+    const signedDate = todayISO();
+    const values = makeValues();
+    const validationValues = {
+      ...values,
+      ...(isTestingSignature
+        ? { testedBy: signerName, testedDate: signedDate }
+        : { reviewedBy: signerName, reviewedDate: signedDate }),
+    };
+
+    const okFields = validateAndSetErrors(validationValues);
+    if (!(okFields)) {
+      alert("⚠️ Please fill all required fields before e-signature.");
+      return;
+    }
+
+    if (shouldBlockStatusChangeForUnresolvedCorrections()) return;
+
+    if (isTestingSignature) {
+      setFieldSignatureSnapshot({ testedBy, testedDate, wasDirty: isDirty });
+      setTestedBy(signerName);
+      setTestedDate(signedDate);
+      clearError("testedBy");
+      clearError("testedDate");
+      setFieldSignatureReason("Electronic signature authorization for Tested By.");
+    } else {
+      setFieldSignatureSnapshot({ reviewedBy, reviewedDate, wasDirty: isDirty });
+      setReviewedBy(signerName);
+      setReviewedDate(signedDate);
+      clearError("reviewedBy");
+      clearError("reviewedDate");
+      setFieldSignatureReason("Electronic signature authorization for Reviewed By.");
+    }
+
+    setFieldSignatureMode(mode);
+    setFieldSignaturePassword("");
+    setShowFieldESignPassword(false);
+    setFieldSignatureConfirmed(false);
+    setFieldSignatureError(null);
+    setShowFieldESign(true);
+  }
 
   function requestStatusChange(target: COAReportStatus) {
     if (!reportId) {
@@ -715,25 +1025,168 @@ useEffect(() => {
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "TESTING_NEEDS_CORRECTION" ||
-      target === "QA_NEEDS_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CLIENT_NEEDS_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
+    // const isNeeds =
+    //   target === "FRONTDESK_NEEDS_CORRECTION" ||
+    //   target === "TESTING_NEEDS_CORRECTION" ||
+    //   target === "QA_NEEDS_CORRECTION" ||
+    //   target === "ADMIN_NEEDS_CORRECTION" ||
+    //   target === "CLIENT_NEEDS_CORRECTION" ||
+    //   target === "CHANGE_REQUESTED" ||
+    //   target === "CORRECTION_REQUESTED";
 
-    if (isNeeds) {
+    // if (isNeeds) {
+    //   setSelectingCorrections(true);
+    //   setPendingCorrections([]);
+    //   setPendingStatus(target);
+    //   return;
+    // }
+
+    //     const OLD_NEEDS_CORRECTION_STATUSES = new Set<ReportStatus>([
+    //   "FRONTDESK_NEEDS_CORRECTION",
+    //   "PRELIMINARY_TESTING_NEEDS_CORRECTION",
+    //   "FINAL_TESTING_NEEDS_CORRECTION",
+    //   "QA_NEEDS_PRELIMINARY_CORRECTION",
+    //   "QA_NEEDS_FINAL_CORRECTION",
+    //   "ADMIN_NEEDS_CORRECTION",
+    //   "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+    //   "CLIENT_NEEDS_FINAL_CORRECTION",
+    // ]);
+
+    const isCorrectionAction =
+      // OLD_NEEDS_CORRECTION_STATUSES.has(target) ||
+      target === "CHANGE_REQUESTED" || target === "CORRECTION_REQUESTED";
+
+    if (isCorrectionAction) {
       setSelectingCorrections(true);
       setPendingCorrections([]);
-      setPendingStatus(target);
+
+      // ✅ old Needs Correction button now uses centralized status
+      const centralizedTarget =
+        target === "CHANGE_REQUESTED"
+          ? "CHANGE_REQUESTED"
+          : "CORRECTION_REQUESTED";
+
+      setPendingStatus(centralizedTarget as COAReportStatus);
       return;
     }
 
     // existing path (incl. e-sign if required)
+    const signatureRequirement =
+      target === "UNDER_QA_REVIEW"
+        ? "TESTED_BY"
+        : target === "UNDER_CLIENT_REVIEW"
+          ? "REVIEWED_BY"
+          : null;
+
+    if (signatureRequirement === "TESTED_BY" && !testedBy.trim()) {
+      alert("⚠️ Please click Sign under TESTED BY before approving.");
+      return;
+    }
+    if (signatureRequirement === "REVIEWED_BY" && !reviewedBy.trim()) {
+      alert("⚠️ Please click Sign under REVIEWED BY before approving.");
+      return;
+    }
+
+    const pendingApprovalESign = pendingApprovalESignRef.current;
+    if (pendingApprovalESign?.target === target) {
+      handleStatusChange(target, {
+        reason: pendingApprovalESign.reason,
+        eSignPassword: pendingApprovalESign.password,
+      });
+      return;
+    }
+
     if (uiNeedsESign(target)) {
+      const shouldAutoFillTestingSignature =
+        status === "UNDER_TESTING_REVIEW" &&
+        target === "UNDER_QA_REVIEW" &&
+        (role === "CHEMISTRY" || role === "MC");
+
+      const shouldAutoFillReviewSignature =
+        status === "UNDER_ADMIN_REVIEW" &&
+        target === "UNDER_CLIENT_REVIEW" &&
+        (role === "ADMIN" || role === "SYSTEMADMIN");
+
+      const values = makeValues();
+
+      const validationValues = {
+        ...values,
+
+        ...(shouldAutoFillTestingSignature
+          ? {
+              testedBy: values.testedBy || user?.name || user?.email || "",
+              testedDate: values.testedDate || todayISO(),
+            }
+          : {}),
+
+        ...(shouldAutoFillReviewSignature
+          ? {
+              reviewedBy: values.reviewedBy || user?.name || user?.email || "",
+              reviewedDate: values.reviewedDate || todayISO(),
+            }
+          : {}),
+      };
+      if (shouldAutoFillTestingSignature) {
+        // const autoName = user?.name || user?.email || "";
+        // const autoDate = todayISO();
+
+        setAutoFillSnapshot({
+          testedBy,
+          testedDate,
+          wasDirty: isDirty,
+        });
+
+        // if (!testedBy.trim()) {
+        //   setTestedBy(autoName);
+        // }
+
+        // if (!testedDate) {
+        //   setTestedDate(autoDate);
+        // }
+      }
+      if (shouldAutoFillReviewSignature) {
+        // const autoName = user?.name || user?.email || "";
+        // const autoDate = todayISO();
+
+        setAutoFillSnapshot({
+          reviewedBy,
+          reviewedDate,
+          wasDirty: isDirty,
+        } as any);
+
+        // if (!reviewedBy.trim()) {
+        //   setReviewedBy(autoName);
+        // }
+
+        // if (!reviewedDate) {
+        //   setReviewedDate(autoDate);
+        // }
+      }
+
+      const okFields = validateAndSetErrors(validationValues);
+      // const okRows = validatePathogenRows(values.pathogens, role, phase);
+
+      if (!okFields) {
+        alert("⚠️ Please fill all required fields before e-signature.");
+        return;
+      }
+
+      // if (!okRows) {
+      //   alert(
+      //     "⚠️ Please fix the highlighted pathogen rows before e-signature.",
+      //   );
+      //   return;
+      // }
+
+      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+        return;
+      }
+
+      setESignError(null);
+      setESignPassword("");
+      setChangeReason(getDefaultESignReason(status, target));
       setPendingStatus(target);
+      setESignConfirmed(false);
       setShowESign(true);
     } else {
       handleStatusChange(target);
@@ -1067,19 +1520,19 @@ useEffect(() => {
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
+        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        newStatus === "RESUBMISSION_BY_CLIENT" ||
+        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        newStatus === "QA_NEEDS_CORRECTION" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
+        // newStatus === "QA_NEEDS_CORRECTION" ||
+        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        newStatus === "CLIENT_NEEDS_CORRECTION" ||
+        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        newStatus === "TESTING_NEEDS_CORRECTION" ||
+        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
+        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "CHANGE_REQUESTED" ||
         newStatus === "CORRECTION_REQUESTED" ||
         newStatus === "UNDER_CHANGE_UPDATE" ||
@@ -1089,7 +1542,7 @@ useEffect(() => {
       ) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
+          return false;
         }
         // if (!okRows) {
         //   alert("⚠️ Please fix the highlighted rows before changing status.");
@@ -1103,7 +1556,7 @@ useEffect(() => {
       // }
 
       if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return;
+        return false;
       }
 
       // 3) Ensure latest edits are saved
@@ -1152,10 +1605,18 @@ useEffect(() => {
         // else if (role === "QA") navigate("/qaDashboard");
         // else if (role === "ADMIN") navigate("/adminDashboard");
         // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        if (embedded) return true;
         backToDashboard();
+        return true;
       } catch (err: any) {
         console.error(err);
-        alert("❌ Error changing status: " + err.message);
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.message ||
+          err?.message ||
+          "Status update failed.";
+
+        throw new Error(msg);
       }
     });
   }
@@ -1275,42 +1736,6 @@ useEffect(() => {
     }
   }
 
-  const [hasAttachment, setHasAttachment] = useState(false);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
-
-  async function refreshHasAttachment(id: string) {
-    setAttachmentsLoading(true);
-    try {
-      // ✅ Use the endpoint you already have for listing attachments.
-      // Examples (pick the one your API actually supports):
-      //   GET /reports/:id/attachments
-      //   GET /reports/:id/attachments/meta
-      //   GET /reports/:id/attachments/list
-      const list = await api<any[]>(`/chemistry-reports/${id}/attachments`, {
-        method: "GET",
-      });
-      setHasAttachment(Array.isArray(list) && list.length > 0);
-    } catch {
-      // fail closed (treat as no attachment)
-      setHasAttachment(false);
-    } finally {
-      setAttachmentsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!reportId) return;
-    refreshHasAttachment(reportId);
-  }, [reportId]);
-
-  const APPROVE_REQUIRES_ATTACHMENT = new Set<COAReportStatus>([
-    "UNDER_CLIENT_REVIEW",
-  ]);
-
-  function isApproveAction(targetStatus: COAReportStatus) {
-    return APPROVE_REQUIRES_ATTACHMENT.has(targetStatus);
-  }
-
   const HIDE_SIGNATURES_FOR = new Set<COAReportStatus>([
     "DRAFT",
     "UNDER_DRAFT_REVIEW",
@@ -1378,6 +1803,8 @@ useEffect(() => {
     embedded &&
     (role === "CHEMISTRY" || role === "MC") &&
     status === "SUBMITTED_BY_CLIENT";
+
+  const hideNeedCorrectionButtons = embedded && effectiveCorrectionLaunch;
 
   function getCentralizedCorrectionStatus(
     kinds: CorrectionLaunchKind[] = [],
@@ -1475,6 +1902,54 @@ useEffect(() => {
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
+
+  const [eSignConfirmed, setESignConfirmed] = useState(false);
+
+  function getDefaultESignReason(fromStatus: string, toStatus?: string | null) {
+    const from = formatStatusText(fromStatus);
+    const to = formatStatusText(String(toStatus || ""));
+
+    return `Electronic signature authorization for status transition from ${from} to ${to}.`;
+  }
+
+  const previewTestingSignature =
+    showESign &&
+    status === "UNDER_TESTING_REVIEW" &&
+    pendingStatus === "UNDER_QA_REVIEW" &&
+    (role === "CHEMISTRY" || role === "MC");
+
+  const previewReviewSignature =
+    showESign &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    pendingStatus === "UNDER_CLIENT_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
+
+  const displayTestedBy = previewTestingSignature
+    ? user?.name || user?.email || ""
+    : testedBy;
+
+  const displayTestedDate = previewTestingSignature ? todayISO() : testedDate;
+
+  const displayReviewedBy = previewReviewSignature
+    ? user?.name || user?.email || ""
+    : reviewedBy;
+
+  const displayReviewedDate = previewReviewSignature
+    ? todayISO()
+    : reviewedDate;
+
+  const showTestedBySignButton =
+    !forceReadOnly &&
+    !testedBy.trim() &&
+    status === "UNDER_TESTING_REVIEW" &&
+    (role === "CHEMISTRY" || role === "MC");
+
+  const showReviewedBySignButton =
+    !forceReadOnly &&
+    !reviewedBy.trim() &&
+    status === "UNDER_ADMIN_REVIEW" &&
+    (role === "ADMIN" || role === "SYSTEMADMIN");
+
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2326,12 +2801,27 @@ useEffect(() => {
                     </span>
 
                     <FieldErrorBadge name="testedBy" errors={errors} />
+                    {showTestedBySignButton ? (
+                      <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
+                        <button
+                          type="button"
+                          className="no-print inline-flex items-center rounded-md border border-blue-700 bg-blue-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isBusy || fieldSignatureSubmitting}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFieldSignature("TESTED_BY");
+                          }}
+                        >
+                          Sign
+                        </button>
+                      </div>
+                    ) : (
                     <input
                       className={inputClass(
                         "testedBy",
-                        "flex-1 border-0 border-b border-black/60 outline-none",
+                        "flex-1 border-0 border-b border-black/60 outline-none font-medium",
                       )}
-                      value={testedBy}
+                      value={displayTestedBy.toUpperCase()}
                       onChange={(e) => {
                         if (selectingCorrections) return;
                         setTestedBy(e.target.value.toUpperCase());
@@ -2342,6 +2832,7 @@ useEffect(() => {
                       readOnly={lock("testedBy")}
                       placeholder="Name"
                     />
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span
@@ -2362,11 +2853,11 @@ useEffect(() => {
                     <input
                       className={inputClass(
                         "testedDate",
-                        "flex-1 border-0 border-b border-black/60 outline-none",
+                        "flex-1 border-0 border-b border-black/60 outline-none font-medium",
                       )}
                       type="date"
                       min={todayISO()}
-                      value={formatDateForInput(testedDate)}
+                      value={formatDateForInput(displayTestedDate)}
                       onChange={(e) => {
                         if (selectingCorrections) return;
                         setTestedDate(e.target.value);
@@ -2398,12 +2889,27 @@ useEffect(() => {
                     </span>
 
                     <FieldErrorBadge name="reviewedBy" errors={errors} />
+                    {showReviewedBySignButton ? (
+                      <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
+                        <button
+                          type="button"
+                          className="no-print inline-flex items-center rounded-md border border-indigo-700 bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isBusy || fieldSignatureSubmitting}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFieldSignature("REVIEWED_BY");
+                          }}
+                        >
+                          Sign
+                        </button>
+                      </div>
+                    ) : (
                     <input
                       className={inputClass(
                         "reviewedBy",
-                        "flex-1 border-0 border-b border-black/60 outline-none",
+                        "flex-1 border-0 border-b border-black/60 outline-none font-medium",
                       )}
-                      value={reviewedBy}
+                      value={displayReviewedBy.toUpperCase()}
                       onChange={(e) => {
                         if (selectingCorrections) return;
                         setReviewedBy(e.target.value.toUpperCase());
@@ -2414,6 +2920,7 @@ useEffect(() => {
                       readOnly={lock("reviewedBy")}
                       placeholder="Name"
                     />
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span
@@ -2435,11 +2942,11 @@ useEffect(() => {
                     <input
                       className={inputClass(
                         "reviewedDate",
-                        "flex-1 border-0 border-b border-black/60 outline-none",
+                        "flex-1 border-0 border-b border-black/60 outline-none font-medium",
                       )}
                       type="date"
                       min={todayISO()}
-                      value={formatDateForInput(reviewedDate)}
+                      value={formatDateForInput(displayReviewedDate)}
                       onChange={(e) => {
                         if (selectingCorrections) return;
                         setReviewedDate(e.target.value);
@@ -2456,6 +2963,12 @@ useEffect(() => {
             </>
           )}
         </div>
+        {showJJLCreatedBy && (
+          <div className="mt-1 text-right text-[12px] leading-tight">
+            <span className="font-semibold">Created by:</span>{" "}
+            <span>{createdByName}</span>
+          </div>
+        )}
       </div>
       {/* Actions row: submit/reject on left, close on right */}
       {!hideBottomActions &&
@@ -2476,98 +2989,494 @@ useEffect(() => {
                 </button>
               )}
               {!showAssignReportNumberButton &&
-                STATUS_TRANSITIONS[status as COAReportStatus]?.next.map(
-                  (targetStatus: COAReportStatus) => {
-                    if (
-                      STATUS_TRANSITIONS[
-                        status as COAReportStatus
-                      ].canSet.includes(role!) &&
-                      statusButtons[targetStatus]
-                    ) {
-                      const { label, color } = statusButtons[targetStatus];
+                (() => {
+                  const nextStatuses =
+                    STATUS_TRANSITIONS[status as COAReportStatus]?.next ?? [];
 
-                      const approveNeedsAttachment =
-                        isApproveAction(targetStatus);
-                      const disableApproveForNoAttachment =
-                        approveNeedsAttachment && !hasAttachment;
+                  const correctionStatuses = nextStatuses.filter(
+                    (s) =>
+                      !hideNeedCorrectionButtons &&
+                      (s === "CHANGE_REQUESTED" ||
+                        s === "CORRECTION_REQUESTED"),
+                  );
 
-                      const disabled =
-                        isBusy ||
-                        attachmentsLoading ||
-                        disableApproveForNoAttachment;
+                  const normalStatuses = nextStatuses.filter(
+                    (s) =>
+                      s !== "CHANGE_REQUESTED" && s !== "CORRECTION_REQUESTED",
+                  );
 
-                      return (
-                        <div key={targetStatus} className="relative group">
-                          <button
-                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                            onClick={() => requestStatusChange(targetStatus)}
-                            disabled={disabled}
-                            title={
-                              disableApproveForNoAttachment
-                                ? "Upload at least 1 attachment to enable Approve"
-                                : formatStatusText(targetStatus)
-                            }
-                          >
-                            {busy === "STATUS" && <Spinner />}
-                            {attachmentsLoading && label === "Approve"
-                              ? "Checking..."
-                              : label}
-                          </button>
+                  return (
+                    <>
+                      {correctionStatuses.length > 0 &&
+                        STATUS_TRANSITIONS[
+                          status as COAReportStatus
+                        ].canSet.includes(role!) && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setCorrectionActionOpen((v) => !v)}
+                              className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                              disabled={isBusy}
+                            >
+                              {busy === "STATUS" && <Spinner />}
+                              Corrections ▾
+                            </button>
 
-                          {/* 🔥 Custom tooltip */}
-                          {!disableApproveForNoAttachment && (
-                            <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                              {label} → {formatStatusText(targetStatus)}
+                            {correctionActionOpen && (
+                              <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
+                                {correctionStatuses.includes(
+                                  "CHANGE_REQUESTED",
+                                ) && (
+                                  <button
+                                    type="button"
+                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                    onClick={() => {
+                                      setCorrectionActionOpen(false);
+                                      requestStatusChange("CHANGE_REQUESTED");
+                                    }}
+                                  >
+                                    Request Change
+                                  </button>
+                                )}
+
+                                {correctionStatuses.includes(
+                                  "CORRECTION_REQUESTED",
+                                ) && (
+                                  <button
+                                    type="button"
+                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                    onClick={() => {
+                                      setCorrectionActionOpen(false);
+                                      requestStatusChange(
+                                        "CORRECTION_REQUESTED",
+                                      );
+                                    }}
+                                  >
+                                    Raise Correction
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      {normalStatuses.map((targetStatus: COAReportStatus) => {
+                        const buttonConfig = statusButtons[targetStatus];
+
+                        if (
+                          STATUS_TRANSITIONS[
+                            status as COAReportStatus
+                          ].canSet.includes(role!) &&
+                          buttonConfig
+                        ) {
+                          const { label, color } = buttonConfig;
+
+                          return (
+                            <div key={targetStatus} className="relative group">
+                              <button
+                                className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                                onClick={() =>
+                                  requestStatusChange(targetStatus)
+                                }
+                                title={formatStatusText(targetStatus)}
+                              >
+                                {busy === "STATUS" && <Spinner />}
+                                {label === "Approve" ? "Approve" : label}
+                              </button>
+
+                              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                                {label} → {formatStatusText(targetStatus)}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    }
-                    return null;
-                  },
-                )}
+                          );
+                        }
+
+                        return null;
+                      })}
+                    </>
+                  );
+                })()}
             </div>
           </div>
         )}
-      {showESign && (
+      {canShowFloatingUi && showFieldESign && fieldSignatureMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Field electronic signature"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
+            <div
+              className="mb-4 flex items-start gap-3 cursor-move select-none"
+              onMouseDown={startESignDrag}
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                🔐
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {fieldSignatureMode === "TESTED_BY"
+                    ? "Electronic Tested By Signature"
+                    : "Electronic Reviewed By Signature"}
+                </h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  21 CFR Part 11 Electronic Signature Authorization
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Authorization Summary
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Current Status</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {formatStatusText(status)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Action</span>
+                  <span className="text-right font-semibold text-blue-700">
+                    {fieldSignatureMode === "TESTED_BY"
+                      ? "TESTED BY SIGNATURE"
+                      : "REVIEWED BY SIGNATURE"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Report No.</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {reportNumber || "Not assigned"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Signing By</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {user?.name || user?.email}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This action records the signer name and date only. The report
+              status will not change until the separate Approve button is
+              clicked.
+            </p>
+
+            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={fieldSignatureConfirmed}
+                onChange={(e) => setFieldSignatureConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm that this electronic signature represents my legally
+                binding authorization for this action.
+              </span>
+            </label>
+
+            <input
+              type="text"
+              placeholder="Reason for signature"
+              value={fieldSignatureReason}
+              onChange={(e) => setFieldSignatureReason(e.target.value)}
+              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
+
+            <div className="relative">
+              <input
+                type={showFieldESignPassword ? "text" : "password"}
+                value={fieldSignaturePassword}
+                onChange={(e) => setFieldSignaturePassword(e.target.value)}
+                className="w-full rounded border px-3 py-2 pr-10"
+                placeholder="Enter e-sign password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowFieldESignPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
+                aria-label="Show or hide e-sign password"
+              >
+                {showFieldESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {fieldSignatureError && (
+              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {fieldSignatureError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+                disabled={fieldSignatureSubmitting}
+                onClick={() => closeFieldSignatureModal(true)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                disabled={
+                  fieldSignatureSubmitting ||
+                  !fieldSignatureReason.trim() ||
+                  !fieldSignaturePassword.trim() ||
+                  !fieldSignatureConfirmed
+                }
+                onClick={async () => {
+                  if (!reportId || !fieldSignatureMode) return;
+
+                  const reason = fieldSignatureReason.trim();
+                  const pwd = fieldSignaturePassword.trim();
+                  const signerName = user?.name || user?.email || "";
+                  const signedDate = todayISO();
+                  const signaturePayload =
+                    fieldSignatureMode === "TESTED_BY"
+                      ? { testedBy: signerName, testedDate: signedDate }
+                      : { reviewedBy: signerName, reviewedDate: signedDate };
+
+                  setFieldSignatureSubmitting(true);
+                  setFieldSignatureError(null);
+
+                  try {
+                    const updated = await api<any>(`/chemistry-reports/${reportId}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({
+                        ...signaturePayload,
+                        reason,
+                        eSignPassword: pwd,
+                        expectedVersion: reportVersion,
+                      }),
+                    });
+
+                    const nextVersion =
+                      typeof updated?.version === "number"
+                        ? updated.version
+                        : reportVersion + 1;
+                    setReportVersion(nextVersion);
+
+                    const approvalTarget: COAReportStatus =
+                      fieldSignatureMode === "TESTED_BY"
+                        ? "UNDER_QA_REVIEW"
+                        : "UNDER_CLIENT_REVIEW";
+
+                    if (fieldSignatureMode === "TESTED_BY") {
+                      setTestedBy(updated?.testedBy || signerName);
+                      setTestedDate(
+                        formatDateForInput(updated?.testedDate) || signedDate,
+                      );
+                    } else {
+                      setReviewedBy(updated?.reviewedBy || signerName);
+                      setReviewedDate(
+                        formatDateForInput(updated?.reviewedDate) || signedDate,
+                      );
+                    }
+
+                    pendingApprovalESignRef.current = {
+                      target: approvalTarget,
+                      reason: `Electronic signature authorization for status transition from ${formatStatusText(status)} to ${formatStatusText(approvalTarget)}.`,
+                      password: pwd,
+                    };
+
+                    setIsDirty(false);
+                    onSaved?.({
+                      ...report,
+                      ...updated,
+                      id: updated?.id ?? reportId,
+                    });
+
+                    closeFieldSignatureModal(false);
+                    alert("✅ Signature saved. Click Approve when you are ready to change the status.");
+                  } catch (e: any) {
+                    const msg =
+                      e?.message ||
+                      e?.response?.message ||
+                      e?.response?.data?.message ||
+                      "";
+
+                    if (
+                      msg.toLowerCase().includes("password") ||
+                      msg.toLowerCase().includes("invalid") ||
+                      msg.toLowerCase().includes("incorrect")
+                    ) {
+                      setFieldSignatureError("❌ Incorrect e-signature password.");
+                    } else {
+                      setFieldSignatureError(msg || "❌ E-signature failed.");
+                    }
+                  } finally {
+                    setFieldSignatureSubmitting(false);
+                  }
+                }}
+              >
+                {fieldSignatureSubmitting && <Spinner />}
+                {fieldSignatureSubmitting ? "Signing..." : "Verify & Sign"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
           aria-label="E-signature"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">
-              Confirm Status Change
-            </h2>
-            <p className="text-sm text-slate-600 mb-3">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
+          >
+            <div
+              className="mb-4 flex items-start gap-3 cursor-move select-none"
+              onMouseDown={startESignDrag}
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                🔐
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {eSignActionTitle(pendingStatus)}
+                </h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  21 CFR Part 11 Electronic Signature Authorization
+                </p>
+              </div>
+            </div>
+
+            {/* <p className="text-sm text-slate-600 mb-3">
               Change status to{" "}
               <span className="font-medium">{pendingStatus}</span>. Provide a
               reason and your e-signature password.
+            </p> */}
+
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Authorization Summary
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Current Status</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {formatStatusText(status)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">New Status</span>
+                  <span className="text-right font-semibold text-blue-700">
+                    {formatStatusText(String(pendingStatus || ""))}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Report No.</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {reportNumber || "Not assigned"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Signing By</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {user?.name || user?.email}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This electronic signature will be recorded in the audit trail with
+              user, timestamp, reason, and status transition.
             </p>
+
+            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={eSignConfirmed}
+                onChange={(e) => setESignConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm that this electronic signature represents my legally
+                binding authorization for this action.
+              </span>
+            </label>
 
             <input
               type="text"
               placeholder="Reason for change"
               value={changeReason}
               onChange={(e) => setChangeReason(e.target.value)}
-              className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
 
-            <input
-              type="password"
-              placeholder="E-signature password"
-              value={eSignPassword}
-              onChange={(e) => setESignPassword(e.target.value)}
-              className="mb-4 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type={showESignPassword ? "text" : "password"}
+                value={eSignPassword}
+                onChange={(e) => setESignPassword(e.target.value)}
+                className="w-full rounded border px-3 py-2 pr-10"
+                placeholder="Enter e-sign password"
+              />
 
-            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowESignPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
+              >
+                {showESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {eSignError && (
+              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {eSignError}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-                onClick={() => {
+                onClick={async () => {
+                  if (autoFillSnapshot) {
+                    if ("testedBy" in autoFillSnapshot) {
+                      setTestedBy(autoFillSnapshot.testedBy || "");
+                    }
+
+                    if ("testedDate" in autoFillSnapshot) {
+                      setTestedDate(autoFillSnapshot.testedDate || "");
+                    }
+
+                    if ("reviewedBy" in autoFillSnapshot) {
+                      setReviewedBy(autoFillSnapshot.reviewedBy || "");
+                    }
+
+                    if ("reviewedDate" in autoFillSnapshot) {
+                      setReviewedDate(autoFillSnapshot.reviewedDate || "");
+                    }
+
+                    setIsDirty(autoFillSnapshot.wasDirty);
+                    setAutoFillSnapshot(null);
+                  }
+
                   setShowESign(false);
                   setPendingStatus(null);
+                  setShowESignPassword(false);
+                  setESignPassword("");
+                  setChangeReason("");
+                  setESignError(null);
                 }}
               >
                 Cancel
@@ -2575,24 +3484,105 @@ useEffect(() => {
               <button
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
-                  isBusy ||
+                  eSignSubmitting ||
                   !pendingStatus ||
                   !changeReason.trim() ||
-                  !eSignPassword.trim()
+                  !eSignPassword.trim() ||
+                  !eSignConfirmed
                 }
-                onClick={() => {
+                onClick={async () => {
                   if (!pendingStatus) return;
+
+                  const reason = changeReason.trim();
+                  const pwd = eSignPassword.trim();
+
+                  if (!reason) {
+                    setESignError("Reason is required.");
+                    return;
+                  }
+
+                  if (!pwd) {
+                    setESignError("E-sign password is required.");
+                    return;
+                  }
+
                   const statusToApply = pendingStatus;
-                  setShowESign(false);
-                  setPendingStatus(null);
-                  handleStatusChange(statusToApply, {
-                    reason: changeReason.trim(),
-                    eSignPassword,
-                  });
+
+                  setESignSubmitting(true);
+                  setESignError(null);
+
+                  try {
+                    const success = await handleStatusChange(statusToApply, {
+                      reason,
+                      eSignPassword: pwd,
+                    });
+
+                    if (!success) return;
+
+                    if (previewTestingSignature) {
+                      setTestedBy(user?.name || user?.email || "");
+                      setTestedDate(todayISO());
+                    }
+
+                    if (previewReviewSignature) {
+                      setReviewedBy(user?.name || user?.email || "");
+                      setReviewedDate(todayISO());
+                    }
+
+                    setShowESign(false);
+                    setPendingStatus(null);
+                    setAutoFillSnapshot(null);
+                    setShowESignPassword(false);
+                    setESignPassword("");
+                    setChangeReason("");
+                    setESignError(null);
+                  } catch (e: any) {
+                    if (autoFillSnapshot) {
+                      if ("testedBy" in autoFillSnapshot) {
+                        setTestedBy(autoFillSnapshot.testedBy || "");
+                      }
+
+                      if ("testedDate" in autoFillSnapshot) {
+                        setTestedDate(autoFillSnapshot.testedDate || "");
+                      }
+
+                      if ("reviewedBy" in autoFillSnapshot) {
+                        setReviewedBy(autoFillSnapshot.reviewedBy || "");
+                      }
+
+                      if ("reviewedDate" in autoFillSnapshot) {
+                        setReviewedDate(autoFillSnapshot.reviewedDate || "");
+                      }
+
+                      setIsDirty(autoFillSnapshot.wasDirty);
+                      setAutoFillSnapshot(null);
+                    }
+
+                    const msg =
+                      e?.message ||
+                      e?.response?.message ||
+                      e?.response?.data?.message ||
+                      "";
+
+                    if (
+                      msg.toLowerCase().includes("password") ||
+                      msg.toLowerCase().includes("invalid") ||
+                      msg.toLowerCase().includes("incorrect")
+                    ) {
+                      setESignError("❌ Incorrect e-signature password.");
+                    } else {
+                      setESignError(msg || "❌ E-signature failed.");
+                    }
+                    setShowESign(true);
+                  } finally {
+                    setESignSubmitting(false);
+                  }
                 }}
               >
-                {busy === "STATUS" && <Spinner />}
-                Confirm
+                {eSignSubmitting && <Spinner />}
+                {eSignSubmitting
+                  ? "Verifying..."
+                  : eSignButtonText(pendingStatus)}
               </button>
             </div>
           </div>
