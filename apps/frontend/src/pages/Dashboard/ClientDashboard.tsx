@@ -72,6 +72,10 @@ type Report = {
   reportNumber: string;
   version: number;
 
+  createdBy?: string | null;
+  createdByName?: string | null;
+  clientCode?: string | null;
+
   // ✅ optional extra columns (if backend returns them)
   typeOfTest?: string | null;
   sampleType?: string | null;
@@ -229,6 +233,60 @@ const formTypeToSlug: Record<string, string> = {
   COA: "coa",
   // CHEMISTRY_* can be added when you wire those forms
 };
+
+type CreatorUserMini = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
+const JJL_CREATED_BY_STATUSES = new Set([
+  "DRAFT",
+  "UNDER_DRAFT_REVIEW",
+  "SUBMITTED_BY_CLIENT",
+]);
+
+const JJL_CREATED_BY_FORM_TYPES = new Set([
+  "MICRO_MIX",
+  "MICRO_MIX_WATER",
+  "STERILITY",
+  "APE",
+  "CHEMISTRY_MIX",
+  "COA",
+]);
+
+function isJJLSubmissionForm(report: Report) {
+  const clientCode =
+    String(report.clientCode || "").trim().toUpperCase() ||
+    getFormPrefix(report.formNumber) ||
+    String(report.client || "").trim().toUpperCase();
+
+  return (
+    JJL_CREATED_BY_FORM_TYPES.has(String(report.formType)) &&
+    clientCode === "JJL" &&
+    JJL_CREATED_BY_STATUSES.has(String(report.status))
+  );
+}
+
+function getReportDetailsEndpoint(report: Report) {
+  return report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
+    ? `/chemistry-reports/${report.id}`
+    : `/reports/${report.id}`;
+}
+
+function JJLCreatedByLine({ report }: { report: Report }) {
+  if (!isJJLSubmissionForm(report)) return null;
+
+  const creatorName = String(report.createdByName || "").trim();
+  if (!creatorName) return null;
+
+  return (
+    <div className="mx-auto mt-0 max-w-[800px] px-4 pb-1 text-right text-[12px] leading-tight text-black">
+      <span className="font-semibold">Created by:</span>{" "}
+      <span>{creatorName}</span>
+    </div>
+  );
+}
 
 // const isMicro = (ft?: string) =>
 //   typeof ft === "string" && ft.startsWith("MICRO");
@@ -479,6 +537,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "MICRO_MIX_WATER") {
@@ -492,6 +551,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "STERILITY") {
@@ -505,6 +565,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "APE") {
@@ -518,6 +579,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "CHEMISTRY_MIX") {
@@ -531,6 +593,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else if (r.formType === "COA") {
@@ -544,6 +607,7 @@ function BulkPrintArea({
                 isSingleBulk={isSingle}
                 pane={paneToPrint}
               />
+              <JJLCreatedByLine report={r} />
             </div>
           );
         } else {
@@ -661,6 +725,135 @@ export default function ClientDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, token } = useAuth();
+
+  const creatorNameByUserIdRef = React.useRef<Record<string, string>>({});
+  const creatorIdByReportIdRef = React.useRef<Record<string, string>>({});
+
+  const currentUserDisplayName = String(
+    (user as any)?.name ||
+      (user as any)?.fullName ||
+      (user as any)?.email ||
+      (user as any)?.userId ||
+      "",
+  ).trim();
+
+  const currentUserIdCandidates = [
+    (user as any)?.id,
+    (user as any)?.userId,
+    (user as any)?.sub,
+    (user as any)?.uid,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  async function enrichJJLCreatedByNames(rows: Report[]): Promise<Report[]> {
+    const targets = rows.filter(isJJLSubmissionForm);
+    if (!targets.length) return rows;
+
+    const creatorIdByReport = new Map<string, string>();
+    const explicitNameByReport = new Map<string, string>();
+
+    await Promise.all(
+      targets.map(async (row) => {
+        const existingName = String(row.createdByName || "").trim();
+        if (existingName) {
+          explicitNameByReport.set(row.id, existingName);
+          return;
+        }
+
+        let creatorId =
+          String(row.createdBy || "").trim() ||
+          creatorIdByReportIdRef.current[row.id] ||
+          "";
+
+        if (!creatorId) {
+          try {
+            const fullReport = await api<any>(getReportDetailsEndpoint(row), {
+              method: "GET",
+            });
+
+            const fullName = String(
+              fullReport?.createdByName ||
+                fullReport?.creatorName ||
+                fullReport?.createdByUser?.name ||
+                "",
+            ).trim();
+
+            if (fullName) {
+              explicitNameByReport.set(row.id, fullName);
+            }
+
+            creatorId = String(fullReport?.createdBy || "").trim();
+          } catch {
+            // Keep the dashboard usable even if creator lookup fails.
+          }
+        }
+
+        if (creatorId) {
+          creatorIdByReportIdRef.current[row.id] = creatorId;
+          creatorIdByReport.set(row.id, creatorId);
+        }
+      }),
+    );
+
+    const missingCreatorIds = Array.from(
+      new Set(
+        Array.from(creatorIdByReport.values()).filter(
+          (id) => !creatorNameByUserIdRef.current[id],
+        ),
+      ),
+    );
+
+    if (missingCreatorIds.length) {
+      try {
+        const qs = new URLSearchParams({
+          ids: missingCreatorIds.join(","),
+        });
+
+        const users = await api<CreatorUserMini[]>(
+          `/users/lookup?${qs.toString()}`,
+          { method: "GET" },
+        );
+
+        for (const creator of users) {
+          creatorNameByUserIdRef.current[creator.id] =
+            creator.name?.trim() || creator.email?.trim() || creator.id;
+        }
+      } catch {
+        for (const creatorId of missingCreatorIds) {
+          if (
+            currentUserDisplayName &&
+            currentUserIdCandidates.includes(creatorId)
+          ) {
+            creatorNameByUserIdRef.current[creatorId] =
+              currentUserDisplayName;
+          }
+        }
+      }
+    }
+
+    return rows.map((row) => {
+      if (!isJJLSubmissionForm(row)) return row;
+
+      const creatorId =
+        String(row.createdBy || "").trim() ||
+        creatorIdByReport.get(row.id) ||
+        creatorIdByReportIdRef.current[row.id] ||
+        "";
+
+      const creatorName =
+        String(row.createdByName || "").trim() ||
+        explicitNameByReport.get(row.id) ||
+        (creatorId ? creatorNameByUserIdRef.current[creatorId] : "") ||
+        "";
+
+      return {
+        ...row,
+        createdBy: creatorId || row.createdBy || null,
+        createdByName: creatorName || row.createdByName || null,
+      };
+    });
+  }
 
   const userKey =
     (user as any)?.id ||
@@ -1121,13 +1314,18 @@ export default function ClientDashboard() {
     if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
     if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
 
-    return api<{
+    const result = await api<{
       rows: Report[];
       total: number;
       page: number;
       perPage: number;
       totalPages: number;
     }>(`/client-dashboard/reports?${params.toString()}`);
+
+    return {
+      ...result,
+      rows: await enrichJJLCreatedByNames(result.rows),
+    };
   };
 
   useEffect(() => {
@@ -4522,43 +4720,74 @@ export default function ClientDashboard() {
               shouldShowReportNotGenerated(String(selectedReport.status)) ? (
                 <ReportNotGeneratedMessage report={selectedReport} />
               ) : selectedReport?.formType === "MICRO_MIX" ? (
-                <MicroMixReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  // pane={paneFor(String(selectedReport.status))}
-                  pane={selectedViewPane}
-                />
+                <>
+                  <MicroMixReportFormView
+                    report={selectedReport}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    // pane={paneFor(String(selectedReport.status))}
+                    pane={selectedViewPane}
+                  />
+                  {selectedViewPane === "FORM" && (
+                    <JJLCreatedByLine report={selectedReport} />
+                  )}
+                </>
               ) : selectedReport?.formType === "MICRO_MIX_WATER" ? (
-                <MicroMixWaterReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={selectedViewPane}
-                />
+                <>
+                  <MicroMixWaterReportFormView
+                    report={selectedReport}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    pane={selectedViewPane}
+                  />
+                  {selectedViewPane === "FORM" && (
+                    <JJLCreatedByLine report={selectedReport} />
+                  )}
+                </>
               ) : selectedReport?.formType === "STERILITY" ? (
-                <SterilityReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={selectedViewPane}
-                />
+                <>
+                  <SterilityReportFormView
+                    report={selectedReport}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    pane={selectedViewPane}
+                  />
+                  {selectedViewPane === "FORM" && (
+                    <JJLCreatedByLine report={selectedReport} />
+                  )}
+                </>
               ) : selectedReport?.formType === "APE" ? (
-                renderSelectedApeBody(selectedReport)
+                <>
+                  {renderSelectedApeBody(selectedReport)}
+                  {selectedViewPane === "FORM" &&
+                    selectedModalMode === "VIEW" && (
+                      <JJLCreatedByLine report={selectedReport} />
+                    )}
+                </>
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
-                <ChemistryMixReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={selectedViewPane}
-                />
+                <>
+                  <ChemistryMixReportFormView
+                    report={selectedReport}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    pane={selectedViewPane}
+                  />
+                  {selectedViewPane === "FORM" && (
+                    <JJLCreatedByLine report={selectedReport} />
+                  )}
+                </>
               ) : selectedReport?.formType === "COA" ? (
-                <COAReportFormView
-                  report={selectedReport}
-                  onClose={() => setSelectedReport(null)}
-                  showSwitcher={false}
-                  pane={selectedViewPane}
-                />
+                <>
+                  <COAReportFormView
+                    report={selectedReport}
+                    onClose={() => setSelectedReport(null)}
+                    showSwitcher={false}
+                    pane={selectedViewPane}
+                  />
+                  {selectedViewPane === "FORM" && (
+                    <JJLCreatedByLine report={selectedReport} />
+                  )}
+                </>
               ) : (
                 <div className="text-sm text-slate-600">
                   This form type ({selectedReport?.formType}) doesn’t have a

@@ -352,6 +352,25 @@ export default function MicroMixReportForm({
   const { user } = useAuth();
   const role = user?.role as Role | undefined;
 
+  const currentUserDisplayName = String(
+    (user as any)?.name ||
+      (user as any)?.fullName ||
+      (user as any)?.email ||
+      (user as any)?.userId ||
+      "",
+  ).trim();
+
+  const currentUserIdCandidates = [
+    (user as any)?.id,
+    (user as any)?.userId,
+    (user as any)?.sub,
+    (user as any)?.uid,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  const currentUserIdentityKey = currentUserIdCandidates.join("|");
+
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -369,6 +388,23 @@ export default function MicroMixReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  const [createdByName, setCreatedByName] = useState<string>(() => {
+    const explicitName = String(
+      report?.createdByName ||
+        report?.creatorName ||
+        report?.createdByUser?.name ||
+        "",
+    ).trim();
+
+    if (explicitName) return explicitName;
+    if (!report?.id) return currentUserDisplayName;
+
+    const creatorId = String(report?.createdBy || "").trim();
+    return creatorId && currentUserIdCandidates.includes(creatorId)
+      ? currentUserDisplayName
+      : "";
+  });
+
   useEffect(() => {
     if (!report?.id) return;
 
@@ -384,6 +420,100 @@ export default function MicroMixReportForm({
       setReportVersion(report.version);
     }
   }, [report?.id, report?.status, report?.reportNumber, report?.version]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCreatedByName() {
+      const suppliedName = String(
+        report?.createdByName ||
+          report?.creatorName ||
+          report?.createdByUser?.name ||
+          "",
+      ).trim();
+
+      if (suppliedName) {
+        if (!cancelled) setCreatedByName(suppliedName);
+        return;
+      }
+
+      if (!reportId) {
+        if (!cancelled) setCreatedByName(currentUserDisplayName);
+        return;
+      }
+
+      let creatorId = String(report?.createdBy || "").trim();
+      let creatorName = "";
+
+      if (!creatorId) {
+        try {
+          const fullReport = await api<any>(`/reports/${reportId}`, {
+            method: "GET",
+          });
+
+          creatorName = String(
+            fullReport?.createdByName ||
+              fullReport?.creatorName ||
+              fullReport?.createdByUser?.name ||
+              "",
+          ).trim();
+
+          creatorId = String(fullReport?.createdBy || "").trim();
+        } catch {
+          // The form can still render even when creator lookup is unavailable.
+        }
+      }
+
+      if (creatorName) {
+        if (!cancelled) setCreatedByName(creatorName);
+        return;
+      }
+
+      if (
+        creatorId &&
+        currentUserDisplayName &&
+        currentUserIdCandidates.includes(creatorId)
+      ) {
+        if (!cancelled) setCreatedByName(currentUserDisplayName);
+        return;
+      }
+
+      if (!creatorId) {
+        if (!cancelled) setCreatedByName("");
+        return;
+      }
+
+      try {
+        const qs = new URLSearchParams({ ids: creatorId });
+        const creators = await api<
+          { id: string; name: string | null; email: string }[]
+        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+
+        const creator = creators.find((item) => item.id === creatorId);
+        const resolvedName =
+          creator?.name?.trim() ||
+          creator?.email?.trim() ||
+          "";
+
+        if (!cancelled) setCreatedByName(resolvedName);
+      } catch {
+        if (!cancelled) setCreatedByName("");
+      }
+    }
+
+    loadCreatedByName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    reportId,
+    report?.createdBy,
+    report?.createdByName,
+    report?.creatorName,
+    currentUserDisplayName,
+    currentUserIdentityKey,
+  ]);
 
   // //To set clientCode automatically when creating a new report
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
@@ -1535,9 +1665,15 @@ export default function MicroMixReportForm({
           );
 
           setIsDirty(false);
+          setCreatedByName((previous) => previous || currentUserDisplayName);
           onSaved?.({
             ...report,
             ...saved,
+            createdByName:
+              saved?.createdByName ||
+              createdByName ||
+              currentUserDisplayName ||
+              null,
             id: saved.id ?? reportId,
           });
           alert("✅ Report saved as '" + saved.status + "'");
@@ -1894,6 +2030,18 @@ export default function MicroMixReportForm({
 
   // ✅ JJL-only dropdown behavior
   const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
+
+  const JJL_CREATED_BY_STATUSES = new Set<ReportStatus>([
+    "DRAFT",
+    "UNDER_DRAFT_REVIEW",
+    "SUBMITTED_BY_CLIENT",
+  ]);
+
+  const showJJLCreatedBy =
+    !isAnyTemplateMode &&
+    isJJL &&
+    JJL_CREATED_BY_STATUSES.has(status as ReportStatus) &&
+    createdByName.trim().length > 0;
 
   const HIDE_SIGNATURES_FOR = new Set<ReportStatus>([
     "DRAFT",
@@ -3601,6 +3749,13 @@ export default function MicroMixReportForm({
             </>
           )}
         </div>
+
+        {showJJLCreatedBy && (
+          <div className="mt-1 text-right text-[12px] leading-tight">
+            <span className="font-semibold">Created by:</span>{" "}
+            <span>{createdByName}</span>
+          </div>
+        )}
       </div>
 
       {/* Actions row: submit/reject on left, close on right */}

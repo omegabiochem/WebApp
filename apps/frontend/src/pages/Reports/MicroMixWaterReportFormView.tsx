@@ -263,6 +263,106 @@ function AttachmentPreview({
   );
 }
 
+
+const JJL_CREATED_BY_STATUSES = new Set([
+  "DRAFT",
+  "UNDER_DRAFT_REVIEW",
+  "SUBMITTED_BY_CLIENT",
+]);
+
+function getJJLClientCode(report: any) {
+  const explicitCode = String(report?.clientCode || "")
+    .trim()
+    .toUpperCase();
+  if (explicitCode) return explicitCode;
+
+  const formNumber = String(report?.formNumber || "").trim();
+  const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
+  if (prefix) return prefix;
+
+  return String(report?.client || "").trim().toUpperCase();
+}
+
+function getSuppliedCreatedByName(report: any) {
+  return String(
+    report?.createdByName ||
+      report?.creatorName ||
+      report?.createdByUser?.name ||
+      "",
+  ).trim();
+}
+
+function useCreatedByName(report: any, detailsPath: string) {
+  const [createdByName, setCreatedByName] = useState<string>(() =>
+    getSuppliedCreatedByName(report),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCreatedByName() {
+      const suppliedName = getSuppliedCreatedByName(report);
+      if (suppliedName) {
+        if (!cancelled) setCreatedByName(suppliedName);
+        return;
+      }
+
+      let creatorId = String(report?.createdBy || "").trim();
+      let creatorName = "";
+
+      if (!creatorId && report?.id && detailsPath) {
+        try {
+          const fullReport = await api<any>(detailsPath, { method: "GET" });
+
+          creatorName = getSuppliedCreatedByName(fullReport);
+          creatorId = String(fullReport?.createdBy || "").trim();
+        } catch {
+          // Keep the form usable if creator lookup is unavailable.
+        }
+      }
+
+      if (creatorName) {
+        if (!cancelled) setCreatedByName(creatorName);
+        return;
+      }
+
+      if (!creatorId) {
+        if (!cancelled) setCreatedByName("");
+        return;
+      }
+
+      try {
+        const qs = new URLSearchParams({ ids: creatorId });
+        const users = await api<
+          { id: string; name: string | null; email: string | null }[]
+        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+
+        const creator = users.find((item) => item.id === creatorId);
+        const resolvedName =
+          creator?.name?.trim() || creator?.email?.trim() || creatorId;
+
+        if (!cancelled) setCreatedByName(resolvedName);
+      } catch {
+        if (!cancelled) setCreatedByName(creatorId);
+      }
+    }
+
+    loadCreatedByName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    report?.id,
+    report?.createdBy,
+    report?.createdByName,
+    report?.creatorName,
+    detailsPath,
+  ]);
+
+  return createdByName;
+}
+
 const PrintStyles = () => (
   <style>{`
     @media print {
@@ -590,6 +690,17 @@ export default function MicroMixWaterReportFormView(
   };
   const isReportPane = isBulk || activePane === "REPORT";
   const isFormPane = pane === "FORM";
+
+  const createdByName = useCreatedByName(
+    report,
+    report?.id ? `/reports/${report?.id}` : "",
+  );
+
+  const showJJLCreatedBy =
+    isSubmissionFormPane &&
+    getJJLClientCode(report) === "JJL" &&
+    JJL_CREATED_BY_STATUSES.has(String(report?.status || "")) &&
+    createdByName.trim().length > 0;
 
   return (
     <div
@@ -1218,6 +1329,13 @@ export default function MicroMixWaterReportFormView(
               </div>
 
               <div className="text-[10px] text-slate-600">{FOOTER_NOTE}</div>
+
+              {showJJLCreatedBy && (
+                <div className="text-left text-[10px] text-black">
+                  <span className="font-semibold">Created by:</span>{" "}
+                  <span>{createdByName}</span>
+                </div>
+              )}
             </div>
 
             {/* RIGHT: Report ID + QR */}
