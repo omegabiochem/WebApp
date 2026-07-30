@@ -391,6 +391,7 @@ const PrintStyles = () => (
 
       /* Optional: slightly smaller line-height for dense tables */
       .tight-row { line-height: 1.1 !important; }
+      .device-spec-table { break-inside: avoid; page-break-inside: avoid; }
 
        img, svg { 
     -webkit-print-color-adjust: exact;
@@ -701,6 +702,33 @@ export default function MicroMixWaterReportFormView(
     getJJLClientCode(report) === "JJL" &&
     JJL_CREATED_BY_STATUSES.has(String(report?.status || "")) &&
     createdByName.trim().length > 0;
+
+  const getSpecValue = (v: any) =>
+    String(v ?? "")
+      .replace(/\s*CFU.*$/i, "")
+      .trim();
+
+  const getSpecUnit = (v: any) => {
+    const s = String(v ?? "").trim();
+
+    if (!s) return "CFU/mL";
+    if (/CFU\s*\/?\s*device/i.test(s)) return "CFU / device";
+    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+
+    return "CFU/mL";
+  };
+
+  const rawTbcUnit = getSpecUnit(report?.tbc_spec);
+  const rawTmyUnit = getSpecUnit(report?.tmy_spec);
+  const isDeviceSpecification =
+    rawTbcUnit === "CFU / device" || rawTmyUnit === "CFU / device";
+
+  const tbcUnit = isDeviceSpecification ? "CFU / device" : rawTbcUnit;
+  const tmyUnit = isDeviceSpecification ? "CFU / device" : rawTmyUnit;
+
+  const sharedDeviceSpecValue =
+    getSpecValue(report?.tbc_spec) || getSpecValue(report?.tmy_spec);
 
   return (
     <div
@@ -1023,92 +1051,162 @@ export default function MicroMixWaterReportFormView(
               <div className="p-2 border-r border-black">RESULT</div>
               <div className="p-2">SPECIFICATION</div>
             </div>
-            {/* Row 1: Total Bacterial Count */}
-            <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
-              <div className=" py-1 px-2 font-bold border-r border-black">
-                Total Bacterial Count:
-              </div>
-              <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^0</div>
-                {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tbc_dilution}
-              onChange={(e) => set_tbc_dilution(e.target.value)}
-              readOnly={lock("tbc_dilution")}
-            /> */}
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_gram")}`}
-              >
-                <input
-                  className="w-full input-editable  px-1"
-                  value={blankIfForm(report?.tbc_gram)}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_result")}`}
-              >
-                <input
-                  className="w-1/2 input-editable  px-1"
-                  value={blankIfForm(report?.tbc_result) || ""}
-                  readOnly
-                  disabled
-                />
-                <div className="py-1 px-2 text-center">CFU/mL</div>
-              </div>
-              <div
-                className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tbc_spec")}`}
-              >
-                <div className="whitespace-nowrap">
-                  {report?.tbc_spec || ""} CFU/ mL
+            {isDeviceSpecification ? (
+              <div className="device-spec-table grid grid-cols-[27%_10%_17%_18%_28%] grid-rows-[28px_28px] text-[11px] leading-none">
+                {/* Row 1: Total Bacterial Count */}
+                <div className="contents">
+                  <div className="px-1 py-0 font-bold leading-tight border-r border-b border-black flex items-center">
+                    Total Bacterial Count:
+                  </div>
+                  <div className="px-1 py-0 border-r border-b border-black flex items-center justify-center">
+                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^0</div>
+                  </div>
+                  <div
+                    className={`px-1 py-0 border-r border-b border-black flex items-center relative ${dashClass("tbc_gram")}`}
+                  >
+                    <input
+                      className="h-5 w-full min-w-0 input-editable px-1 text-[11px] leading-none"
+                      value={blankIfForm(report?.tbc_gram) || ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div
+                    className={`px-1 py-0 border-r border-b border-black flex items-center gap-1 relative ${dashClass("tbc_result")}`}
+                  >
+                    <input
+                      className="h-5 w-[42%] min-w-0 input-editable px-1 text-[11px] leading-none"
+                      value={blankIfForm(report?.tbc_result) || ""}
+                      readOnly
+                      disabled
+                    />
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tbcUnit}</div>
+                  </div>
+
+                  <div
+                    className={`row-span-2 min-h-0 px-1 py-0 flex items-center justify-center whitespace-nowrap text-center text-[10px] leading-none relative ${
+                      hasOpenCorrection("tbc_spec") ||
+                      hasOpenCorrection("tmy_spec")
+                        ? "dash dash-red"
+                        : ""
+                    }`}
+                  >
+                    <div className="whitespace-nowrap leading-none">
+                      {sharedDeviceSpecValue} CFU / device
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Total Mold & Yeast Count */}
+                <div className="contents">
+                  <div className="px-1 py-0 font-bold leading-tight border-r border-black flex items-center">
+                    Total Mold & Yeast Count:
+                  </div>
+                  <div className="px-1 py-0 border-r border-black flex items-center justify-center">
+                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^0</div>
+                  </div>
+                  <div
+                    className={`px-1 py-0 border-r border-black flex items-center relative ${dashClass("tmy_gram")}`}
+                  >
+                    <input
+                      className="h-5 w-full min-w-0 input-editable px-1 text-[11px] leading-none"
+                      value={blankIfForm(report?.tmy_gram) || ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div
+                    className={`px-1 py-0 border-r border-black flex items-center gap-1 relative ${dashClass("tmy_result")}`}
+                  >
+                    <input
+                      className="h-5 w-[42%] min-w-0 input-editable px-1 text-[11px] leading-none"
+                      value={blankIfForm(report?.tmy_result) || ""}
+                      readOnly
+                      disabled
+                    />
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tmyUnit}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            {/* Row 2: Total Mold & Yeast Count */}
-            <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-              <div className="py-1 px-2 font-bold border-r border-black">
-                Total Mold & Yeast Count:
-              </div>
-              <div className="py-1 px-2 border-r border-black">
-                <div className="py-1 px-2 text-center"> x 10^0</div>
-                {/* <input
-              className="w-full border border-black/70 px-1"
-              value={tmy_dilution}
-              onChange={(e) => set_tmy_dilution(e.target.value)}
-              readOnly={lock("tmy_dilution")}
-            /> */}
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_gram")}`}
-              >
-                <input
-                  className="w-full input-editable  px-1 "
-                  value={blankIfForm(report?.tmy_gram) || ""}
-                  readOnly
-                  disabled
-                />
-              </div>
-              <div
-                className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_result")}`}
-              >
-                <input
-                  className="w-1/2 input-editable  px-1"
-                  value={blankIfForm(report?.tmy_result) || ""}
-                  readOnly
-                  disabled
-                />
-                <div className="py-1 px-2 text-center">CFU/ml</div>
-              </div>
-              <div
-                className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tmy_spec")}`}
-              >
-                <div className="whitespace-nowrap">
-                  {report?.tmy_spec || ""} CFU/mL
+            ) : (
+              <>
+                {/* Row 1: Total Bacterial Count */}
+                <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
+                  <div className="py-1 px-2 font-bold border-r border-black">
+                    Total Bacterial Count:
+                  </div>
+                  <div className="py-1 px-2 border-r border-black">
+                    <div className="py-1 px-2 text-center">x 10^0</div>
+                  </div>
+                  <div
+                    className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_gram")}`}
+                  >
+                    <input
+                      className="w-full input-editable px-1"
+                      value={blankIfForm(report?.tbc_gram) || ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div
+                    className={`py-1 px-2 border-r border-black flex relative ${dashClass("tbc_result")}`}
+                  >
+                    <input
+                      className="w-1/2 input-editable px-1"
+                      value={blankIfForm(report?.tbc_result) || ""}
+                      readOnly
+                      disabled
+                    />
+                    <div className="py-1 px-2 text-center">{tbcUnit}</div>
+                  </div>
+                  <div
+                    className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tbc_spec")}`}
+                  >
+                    <div className="whitespace-nowrap">
+                      {getSpecValue(report?.tbc_spec)} {tbcUnit}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+
+                {/* Row 2: Total Mold & Yeast Count */}
+                <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+                  <div className="py-1 px-2 font-bold border-r border-black">
+                    Total Mold & Yeast Count:
+                  </div>
+                  <div className="py-1 px-2 border-r border-black">
+                    <div className="py-1 px-2 text-center">x 10^0</div>
+                  </div>
+                  <div
+                    className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_gram")}`}
+                  >
+                    <input
+                      className="w-full input-editable px-1"
+                      value={blankIfForm(report?.tmy_gram) || ""}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                  <div
+                    className={`py-1 px-2 border-r border-black flex relative ${dashClass("tmy_result")}`}
+                  >
+                    <input
+                      className="w-1/2 input-editable px-1"
+                      value={blankIfForm(report?.tmy_result) || ""}
+                      readOnly
+                      disabled
+                    />
+                    <div className="py-1 px-2 text-center">{tmyUnit}</div>
+                  </div>
+                  <div
+                    className={`py-1 px-2 flex items-center justify-center text-center relative ${dashClass("tmy_spec")}`}
+                  >
+                    <div className="whitespace-nowrap">
+                      {getSpecValue(report?.tmy_spec)} {tmyUnit}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="p-2 font-bold">

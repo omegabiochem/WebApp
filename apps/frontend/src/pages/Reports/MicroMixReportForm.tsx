@@ -553,7 +553,7 @@ export default function MicroMixReportForm({
     report?.dateCompleted || "",
   );
 
-  type Unit = "CFU/mL" | "CFU/g" | "CFU/mL/g";
+  type Unit = "CFU/mL" | "CFU/g" | "CFU/mL/g" | "CFU / device";
 
   const normalizeSpec = (v: any) => {
     const s = String(v ?? "").trim();
@@ -589,6 +589,7 @@ export default function MicroMixReportForm({
 
     if (!s) return "CFU/mL/g";
 
+    if (/CFU\s*\/?\s*device/i.test(s)) return "CFU / device";
     if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
     if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
 
@@ -603,7 +604,7 @@ export default function MicroMixReportForm({
   );
 
   // Spec dropdown presets
-  const UNIT_OPTIONS = ["CFU/mL", "CFU/g"] as const;
+  const UNIT_OPTIONS: Unit[] = ["CFU/mL", "CFU/g", "CFU / device"];
   const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
 
   // const extractUnit = (v: any): "CFU/mL" | "CFU/g" => {
@@ -618,11 +619,28 @@ export default function MicroMixReportForm({
   const formatSpec = (v: string, unit: Unit) => (v ? `${v} ${unit}` : "");
 
   useEffect(() => {
-    set_tbc_spec(normalizeSpec(report?.tbc_spec));
-    set_tmy_spec(normalizeSpec(report?.tmy_spec));
-    setTbcUnit(extractUnit(report?.tbc_spec));
-    setTmyUnit(extractUnit(report?.tmy_spec));
+    const loadedTbcSpec = normalizeSpec(report?.tbc_spec);
+    const loadedTmySpec = normalizeSpec(report?.tmy_spec);
+    const loadedTbcUnit = extractUnit(report?.tbc_spec);
+    const loadedTmyUnit = extractUnit(report?.tmy_spec);
+
+    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
+      const sharedSpec = loadedTbcSpec || loadedTmySpec;
+      set_tbc_spec(sharedSpec);
+      set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
+      return;
+    }
+
+    set_tbc_spec(loadedTbcSpec);
+    set_tmy_spec(loadedTmySpec);
+    setTbcUnit(loadedTbcUnit);
+    setTmyUnit(loadedTmyUnit);
   }, [report?.id]);
+
+  const isDeviceSpecification =
+    tbcUnit === "CFU / device" || tmyUnit === "CFU / device";
 
   // Allow user-added custom spec values (shared by both TBC + TMY)
   const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
@@ -1348,13 +1366,26 @@ export default function MicroMixReportForm({
 
     set_tbc_gram(data?.tbc_gram ?? "");
     set_tbc_result(data?.tbc_result ?? "");
-    set_tbc_spec(normalizeSpec(data?.tbc_spec ?? ""));
-    setTbcUnit(extractUnit(data?.tbc_spec));
+    const loadedTbcSpec = normalizeSpec(data?.tbc_spec ?? "");
+    const loadedTmySpec = normalizeSpec(data?.tmy_spec ?? "");
+    const loadedTbcUnit = extractUnit(data?.tbc_spec);
+    const loadedTmyUnit = extractUnit(data?.tmy_spec);
+
+    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
+      const sharedSpec = loadedTbcSpec || loadedTmySpec;
+      set_tbc_spec(sharedSpec);
+      set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
+    } else {
+      set_tbc_spec(loadedTbcSpec);
+      set_tmy_spec(loadedTmySpec);
+      setTbcUnit(loadedTbcUnit);
+      setTmyUnit(loadedTmyUnit);
+    }
 
     set_tmy_gram(data?.tmy_gram ?? "");
     set_tmy_result(data?.tmy_result ?? "");
-    set_tmy_spec(normalizeSpec(data?.tmy_spec ?? ""));
-    setTmyUnit(extractUnit(data?.tmy_spec));
 
     setPathogens(data?.pathogens ?? pathogenDefaults);
 
@@ -1991,23 +2022,30 @@ export default function MicroMixReportForm({
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    // const [specValue, unitValue] = value.split("|") as [
-    //   string,
-    //   "CFU/mL" | "CFU/g",
-    // ];
+    const [specValue, parsedUnit] = value.split("|") as [string, Unit | undefined];
+    const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
+    const unitValue = parsedUnit || currentUnit;
 
-    const [specValue, unitValue] = value.split("|") as [string, Unit];
+    if (unitValue === "CFU / device") {
+      set_tbc_spec(specValue);
+      set_tmy_spec(specValue);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
+      clearError("tbc_spec");
+      clearError("tmy_spec");
+      markDirty();
+      return;
+    }
 
     if (target === "tbc_spec") {
       set_tbc_spec(specValue);
-      if (unitValue) setTbcUnit(unitValue);
+      setTbcUnit(unitValue);
       clearError("tbc_spec");
     } else {
       set_tmy_spec(specValue);
-      if (unitValue) setTmyUnit(unitValue);
+      setTmyUnit(unitValue);
       clearError("tmy_spec");
     }
-
     markDirty();
   }
 
@@ -2998,14 +3036,15 @@ export default function MicroMixReportForm({
             <div className="p-2">SPECIFICATION</div>
           </div>
 
+                    <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
           {/* Row 1: Total Bacterial Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
-            <div className="py-1 px-2 font-bold border-r border-black">
+          <div className="contents">
+            <div className="py-1 px-2 font-bold border-r border-b border-black">
               Total Bacterial Count:
             </div>
 
             {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
+            <div className="py-1 px-2 border-r border-b border-black">
               <div className="py-1 px-2 text-center"> x 10^1</div>
             </div>
 
@@ -3017,7 +3056,7 @@ export default function MicroMixReportForm({
                 setAddForField("tbc_gram");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
                 "tbc_gram",
               )}`}
             >
@@ -3052,7 +3091,7 @@ export default function MicroMixReportForm({
                 setAddForField("tbc_result");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
                 "tbc_result",
               )}`}
             >
@@ -3084,9 +3123,20 @@ export default function MicroMixReportForm({
             {/* SPECIFICATION */}
             <div
               id="f-tbc_spec"
-              className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
+              className={`py-1 px-2 flex relative ${
+                isDeviceSpecification
+                  ? "row-span-2 items-center"
+                  : "border-b border-black"
+              } ${dashClass("tbc_spec")} ${
+                isDeviceSpecification && hasCorrection("tmy_spec")
+                  ? "dash dash-red"
+                  : ""
+              }`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
+              {isDeviceSpecification && (
+                <FieldErrorBadge name="tmy_spec" errors={errors} />
+              )}
               <ResolveOverlay field="tbc_spec" />
 
               {selectingCorrections && (
@@ -3152,7 +3202,7 @@ export default function MicroMixReportForm({
           </div>
 
           {/* Row 2: Total Mold & Yeast Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+          <div className="contents">
             <div className="py-1 px-2 font-bold border-r border-black">
               Total Mold & Yeast Count:
             </div>
@@ -3235,6 +3285,7 @@ export default function MicroMixReportForm({
             </div>
 
             {/* SPECIFICATION */}
+            {!isDeviceSpecification && (
             <div
               id="f-tmy_spec"
               className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
@@ -3302,6 +3353,8 @@ export default function MicroMixReportForm({
                 )}
               </div>
             </div>
+            )}
+          </div>
           </div>
         </div>
 

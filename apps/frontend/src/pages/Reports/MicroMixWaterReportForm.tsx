@@ -547,41 +547,57 @@ useEffect(() => {
     report?.dateCompleted || "",
   );
 
+  type Unit = "CFU/mL" | "CFU/g" | "CFU/mL/g" | "CFU / device";
+
   const normalizeSpec = (v: any) => {
     const s = String(v ?? "").trim();
     if (!s) return "";
-
-    // remove any trailing unit text variations
     return s
       .replace(/\s*CFU\s*\/?\s*mL\s*\/?\s*g\s*$/i, "")
       .replace(/\s*CFU\s*\/?\s*ml\s*\/?\s*g\s*$/i, "")
-      .replace(/\s*CFU.*$/i, "") // fallback: remove anything starting from CFU
+      .replace(/\s*CFU.*$/i, "")
       .trim();
   };
-  // TBC/TFC blocks
-  //   const [tbc_dilution, set_tbc_dilution] = useState("x 10^1");
+
+  const extractUnit = (v: any): Unit => {
+    const s = String(v ?? "").trim();
+    if (!s) return "CFU/mL";
+    if (/CFU\s*\/?\s*device/i.test(s)) return "CFU / device";
+    if (/CFU\s*\/\s*g/i.test(s)) return "CFU/g";
+    if (/CFU\s*\/\s*mL/i.test(s)) return "CFU/mL";
+    return "CFU/mL";
+  };
+
   const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
   const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
-  const [tbc_spec, set_tbc_spec] = useState(() =>
-    normalizeSpec(report?.tbc_spec),
-  );
+  const [tbc_spec, set_tbc_spec] = useState(() => normalizeSpec(report?.tbc_spec));
+  const [tbcUnit, setTbcUnit] = useState<Unit>(() => extractUnit(report?.tbc_spec));
 
-  //   const [tmy_dilution, set_tmy_dilution] = useState("x 10^1"); // Total Mold & Yeast
   const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
   const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
-  const [tmy_spec, set_tmy_spec] = useState(() =>
-    normalizeSpec(report?.tmy_spec),
-  );
+  const [tmy_spec, set_tmy_spec] = useState(() => normalizeSpec(report?.tmy_spec));
+  const [tmyUnit, setTmyUnit] = useState<Unit>(() => extractUnit(report?.tmy_spec));
 
-  // Spec dropdown presets
+  const UNIT_OPTIONS: Unit[] = ["CFU/mL", "CFU/g", "CFU / device"];
   const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
-
-  const formatSpec = (v: string) => (v ? `${v} CFU / mL` : "");
+  const formatSpec = (v: string, unit: Unit) => (v ? `${v} ${unit}` : "");
 
   useEffect(() => {
-    set_tbc_spec(normalizeSpec(report?.tbc_spec));
-    set_tmy_spec(normalizeSpec(report?.tmy_spec));
+    const loadedTbcSpec = normalizeSpec(report?.tbc_spec);
+    const loadedTmySpec = normalizeSpec(report?.tmy_spec);
+    const loadedTbcUnit = extractUnit(report?.tbc_spec);
+    const loadedTmyUnit = extractUnit(report?.tmy_spec);
+    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
+      const sharedSpec = loadedTbcSpec || loadedTmySpec;
+      set_tbc_spec(sharedSpec); set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
+      return;
+    }
+    set_tbc_spec(loadedTbcSpec); set_tmy_spec(loadedTmySpec);
+    setTbcUnit(loadedTbcUnit); setTmyUnit(loadedTmyUnit);
   }, [report?.id]);
+
+  const isDeviceSpecification = tbcUnit === "CFU / device" || tmyUnit === "CFU / device";
 
   // Allow user-added custom spec values (shared by both TBC + TMY)
   const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
@@ -972,7 +988,7 @@ useEffect(() => {
         return tbc_result;
 
       case "tbc_spec":
-        return tbc_spec;
+        return tbc_spec ? `${tbc_spec} ${tbcUnit}` : "";
 
       case "tmy_gram":
         return tmy_gram;
@@ -981,7 +997,7 @@ useEffect(() => {
         return tmy_result;
 
       case "tmy_spec":
-        return tmy_spec;
+        return tmy_spec ? `${tmy_spec} ${tmyUnit}` : "";
 
       case "comments":
         return comments;
@@ -1615,11 +1631,20 @@ useEffect(() => {
 
     set_tbc_gram(data?.tbc_gram ?? "");
     set_tbc_result(data?.tbc_result ?? "");
-    set_tbc_spec(normalizeSpec(data?.tbc_spec ?? ""));
-
+    const loadedTbcSpec = normalizeSpec(data?.tbc_spec ?? "");
+    const loadedTmySpec = normalizeSpec(data?.tmy_spec ?? "");
+    const loadedTbcUnit = extractUnit(data?.tbc_spec);
+    const loadedTmyUnit = extractUnit(data?.tmy_spec);
+    if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
+      const sharedSpec = loadedTbcSpec || loadedTmySpec;
+      set_tbc_spec(sharedSpec); set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
+    } else {
+      set_tbc_spec(loadedTbcSpec); set_tmy_spec(loadedTmySpec);
+      setTbcUnit(loadedTbcUnit); setTmyUnit(loadedTmyUnit);
+    }
     set_tmy_gram(data?.tmy_gram ?? "");
     set_tmy_result(data?.tmy_result ?? "");
-    set_tmy_spec(normalizeSpec(data?.tmy_spec ?? ""));
 
     setPathogens(data?.pathogens ?? pathogenDefaults);
 
@@ -1723,10 +1748,10 @@ useEffect(() => {
           dateCompleted,
           tbc_gram,
           tbc_result,
-          tbc_spec,
+          tbc_spec: tbc_spec ? `${tbc_spec} ${tbcUnit}` : "",
           tmy_gram,
           tmy_result,
-          tmy_spec,
+          tmy_spec: tmy_spec ? `${tmy_spec} ${tmyUnit}` : "",
           pathogens,
           comments,
           testedBy,
@@ -2259,13 +2284,16 @@ useEffect(() => {
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    if (target === "tbc_spec") {
-      set_tbc_spec(value);
-      clearError("tbc_spec");
-    } else {
-      set_tmy_spec(value);
-      clearError("tmy_spec");
+    const [specValue, parsedUnit] = value.split("|") as [string, Unit | undefined];
+    const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
+    const unitValue = parsedUnit || currentUnit;
+    if (unitValue === "CFU / device") {
+      set_tbc_spec(specValue); set_tmy_spec(specValue);
+      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
+      clearError("tbc_spec"); clearError("tmy_spec"); markDirty(); return;
     }
+    if (target === "tbc_spec") { set_tbc_spec(specValue); setTbcUnit(unitValue); clearError("tbc_spec"); }
+    else { set_tmy_spec(specValue); setTmyUnit(unitValue); clearError("tmy_spec"); }
     markDirty();
   }
 
@@ -3329,14 +3357,15 @@ useEffect(() => {
             <div className="p-2">SPECIFICATION</div>
           </div>
 
+                    <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
           {/* Row 1: Total Bacterial Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px] border-b border-black">
-            <div className="py-1 px-2 font-bold border-r border-black">
+          <div className="contents">
+            <div className="py-1 px-2 font-bold border-r border-b border-black">
               Total Bacterial Count:
             </div>
 
             {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
+            <div className="py-1 px-2 border-r border-b border-black">
               <div className="py-1 px-2 text-center"> x 10^0</div>
             </div>
 
@@ -3348,7 +3377,7 @@ useEffect(() => {
                 setAddForField("tbc_gram");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
                 "tbc_gram",
               )}`}
             >
@@ -3383,7 +3412,7 @@ useEffect(() => {
                 setAddForField("tbc_result");
                 setAddMessage("");
               }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
                 "tbc_result",
               )}`}
             >
@@ -3406,19 +3435,30 @@ useEffect(() => {
                   markDirty();
                 }}
                 readOnly={lock("tbc_result")}
-                placeholder="CFU/ml"
+                placeholder={tbc_spec ? tbcUnit : ""}
                 aria-invalid={!!errors.tbc_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml</div>
+              <div className="py-1 px-2 text-center">{tbcUnit}</div>
             </div>
 
             {/* SPECIFICATION */}
             {/* SPECIFICATION */}
             <div
               id="f-tbc_spec"
-              className={`py-1 px-2 flex relative ${dashClass("tbc_spec")}`}
+              className={`py-1 px-2 flex relative ${
+                isDeviceSpecification
+                  ? "row-span-2 items-center"
+                  : "border-b border-black"
+              } ${dashClass("tbc_spec")} ${
+                isDeviceSpecification && hasCorrection("tmy_spec")
+                  ? "dash dash-red"
+                  : ""
+              }`}
             >
               <FieldErrorBadge name="tbc_spec" errors={errors} />
+              {isDeviceSpecification && (
+                <FieldErrorBadge name="tmy_spec" errors={errors} />
+              )}
               <ResolveOverlay field="tbc_spec" />
 
               {selectingCorrections && (
@@ -3451,17 +3491,19 @@ useEffect(() => {
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   }`}
-                  value={tbc_spec}
+                  value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
                   onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
                   disabled={lock("tbc_spec")}
                   aria-invalid={!!errors.tbc_spec}
                 >
                   <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
+                  {specOptions.flatMap((opt) =>
+                    UNIT_OPTIONS.map((unit) => (
+                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                        {formatSpec(opt, unit)}
+                      </option>
+                    )),
+                  )}
                 </select>
 
                 {!lock("tbc_spec") && (
@@ -3482,7 +3524,7 @@ useEffect(() => {
           </div>
 
           {/* Row 2: Total Mold & Yeast Count */}
-          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+          <div className="contents">
             <div className="py-1 px-2 font-bold border-r border-black">
               Total Mold & Yeast Count:
             </div>
@@ -3558,14 +3600,15 @@ useEffect(() => {
                   markDirty();
                 }}
                 readOnly={lock("tmy_result")}
-                placeholder="CFU/ml"
+                placeholder={tmy_spec ? tmyUnit : ""}
                 aria-invalid={!!errors.tmy_result}
               />
-              <div className="py-1 px-2 text-center">CFU/ml</div>
+              <div className="py-1 px-2 text-center">{tmyUnit}</div>
             </div>
 
             {/* SPECIFICATION */}
             {/* SPECIFICATION */}
+            {!isDeviceSpecification && (
             <div
               id="f-tmy_spec"
               className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
@@ -3603,17 +3646,19 @@ useEffect(() => {
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
                   }`}
-                  value={tmy_spec}
+                  value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
                   onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
                   disabled={lock("tmy_spec")}
                   aria-invalid={!!errors.tmy_spec}
                 >
                   <option value="">-- Select --</option>
-                  {specOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {formatSpec(opt)}
-                    </option>
-                  ))}
+                  {specOptions.flatMap((opt) =>
+                    UNIT_OPTIONS.map((unit) => (
+                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                        {formatSpec(opt, unit)}
+                      </option>
+                    )),
+                  )}
                 </select>
 
                 {!lock("tmy_spec") && (
@@ -3631,6 +3676,8 @@ useEffect(() => {
                 )}
               </div>
             </div>
+            )}
+          </div>
           </div>
         </div>
 
