@@ -18,7 +18,6 @@ import {
 } from "../../utils/sterilityReportValidation";
 import { api } from "../../lib/api";
 import { todayISO } from "../../utils/microMixReportFormWorkflow";
-import { Eye, EyeOff } from "lucide-react";
 
 // Hook for confirming navigation
 function useConfirmOnLeave(isDirty: boolean) {
@@ -248,45 +247,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-function eSignActionTitle(status?: string | null) {
-  const s = String(status || "");
-
-  if (s.includes("FINAL_APPROVED") || s.includes("APPROVED")) {
-    return "Electronic Approval";
-  }
-
-  if (s.includes("QA") || s.includes("REVIEW")) {
-    return "Electronic Review Authorization";
-  }
-
-  if (s.includes("LOCKED")) {
-    return "Electronic Lock Authorization";
-  }
-
-  if (s.includes("CORRECTION")) {
-    return "Electronic Correction Authorization";
-  }
-
-  return "Electronic Signature Verification";
-}
-
-function eSignButtonText(status?: string | null) {
-  const s = String(status || "");
-
-  if (s.includes("APPROVED") || s.includes("FINAL_APPROVED")) {
-    return "Verify & Approve";
-  }
-
-  if (s.includes("REVIEW")) {
-    return "Verify & Continue";
-  }
-
-  if (s.includes("LOCKED")) {
-    return "Verify & Lock";
-  }
-
-  return "Verify Signature";
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -532,17 +492,7 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-  const [showESignPassword, setShowESignPassword] = useState(false);
-  const [autoFillSnapshot, setAutoFillSnapshot] = useState<{
-    testedBy?: string;
-    testedDate?: string;
-    reviewedBy?: string;
-    reviewedDate?: string;
-    wasDirty: boolean;
-  } | null>(null);
 
-  const [eSignSubmitting, setESignSubmitting] = useState(false);
-  const [eSignError, setESignError] = useState<string | null>(null);
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
@@ -553,38 +503,7 @@ useEffect(() => {
       .catch(() => {});
   }, [reportId]);
 
-  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
-  const dragRef = useRef({
-    dragging: false,
-    startX: 0,
-    startY: 0,
-    origX: 0,
-    origY: 0,
-  });
 
-  function startESignDrag(e: React.MouseEvent) {
-    dragRef.current = {
-      dragging: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: eSignPos.x,
-      origY: eSignPos.y,
-    };
-
-    window.onmousemove = (ev) => {
-      if (!dragRef.current.dragging) return;
-      setESignPos({
-        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
-        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
-      });
-    };
-
-    window.onmouseup = () => {
-      dragRef.current.dragging = false;
-      window.onmousemove = null;
-      window.onmouseup = null;
-    };
-  }
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -751,12 +670,8 @@ useEffect(() => {
 
   // UI policy: only when server will enforce
   const uiNeedsESign = (s: string) =>
-    (role === "ADMIN" ||
-      role === "SYSTEMADMIN" ||
-      role === "FRONTDESK" ||
-      role === "MICRO" ||
-      role === "MC") &&
-    (s === "UNDER_CLIENT_REVIEW" || s === "UNDER_QA_REVIEW" || s === "LOCKED");
+    (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
+    (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
 
   function requestStatusChange(target: SterilityReportStatus) {
     if (!reportId) {
@@ -806,96 +721,7 @@ useEffect(() => {
     }
 
     if (uiNeedsESign(target)) {
-      const shouldAutoFillTestingSignature =
-        status === "UNDER_TESTING_REVIEW" &&
-        target === "UNDER_QA_REVIEW" &&
-        (role === "MICRO" || role === "MC");
-
-      const shouldAutoFillReviewSignature =
-        status === "UNDER_ADMIN_REVIEW" &&
-        target === "UNDER_CLIENT_REVIEW" &&
-        (role === "ADMIN" || role === "SYSTEMADMIN");
-
-      const values = makeValues();
-
-      const validationValues = {
-        ...values,
-
-        ...(shouldAutoFillTestingSignature
-          ? {
-              testedBy: values.testedBy || user?.name || user?.email || "",
-              testedDate: values.testedDate || todayISO(),
-            }
-          : {}),
-
-        ...(shouldAutoFillReviewSignature
-          ? {
-              reviewedBy: values.reviewedBy || user?.name || user?.email || "",
-              reviewedDate: values.reviewedDate || todayISO(),
-            }
-          : {}),
-      };
-      if (shouldAutoFillTestingSignature) {
-        // const autoName = user?.name || user?.email || "";
-        // const autoDate = todayISO();
-
-        setAutoFillSnapshot({
-          testedBy,
-          testedDate,
-          wasDirty: isDirty,
-        });
-
-        // if (!testedBy.trim()) {
-        //   setTestedBy(autoName);
-        // }
-
-        // if (!testedDate) {
-        //   setTestedDate(autoDate);
-        // }
-      }
-      if (shouldAutoFillReviewSignature) {
-        // const autoName = user?.name || user?.email || "";
-        // const autoDate = todayISO();
-
-        setAutoFillSnapshot({
-          reviewedBy,
-          reviewedDate,
-          wasDirty: isDirty,
-        } as any);
-
-        // if (!reviewedBy.trim()) {
-        //   setReviewedBy(autoName);
-        // }
-
-        // if (!reviewedDate) {
-        //   setReviewedDate(autoDate);
-        // }
-      }
-
-      const okFields = validateAndSetErrors(validationValues);
-      // const okRows = validatePathogenRows(values.pathogens, role, phase);
-
-      if (!okFields) {
-        alert("⚠️ Please fill all required fields before e-signature.");
-        return;
-      }
-
-      // if (!okRows) {
-      //   alert(
-      //     "⚠️ Please fix the highlighted pathogen rows before e-signature.",
-      //   );
-      //   return;
-      // }
-
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return;
-      }
-
-      setESignError(null);
-      setESignPassword("");
-      setChangeReason(getDefaultESignReason(status, target));
       setPendingStatus(target);
-      setESignConfirmed(false);
       setShowESign(true);
     } else {
       handleStatusChange(target);
@@ -1229,8 +1055,6 @@ useEffect(() => {
             "scdb_observation",
             "scdb_result",
             "comments",
-            "testedBy",
-            "testedDate",
           ],
           MC: [
             "testSopNo",
@@ -1243,8 +1067,6 @@ useEffect(() => {
             "scdb_observation",
             "scdb_result",
             "comments",
-            "testedBy",
-            "testedDate",
           ],
           QA: ["comments"],
           CLIENT: [
@@ -1846,40 +1668,7 @@ useEffect(() => {
     return status.replaceAll("_", " ");
   }
 
-  const [eSignConfirmed, setESignConfirmed] = useState(false);
 
-  function getDefaultESignReason(fromStatus: string, toStatus?: string | null) {
-    const from = formatStatusText(fromStatus);
-    const to = formatStatusText(String(toStatus || ""));
-
-    return `Electronic signature authorization for status transition from ${from} to ${to}.`;
-  }
-
-  const previewTestingSignature =
-    showESign &&
-    status === "UNDER_TESTING_REVIEW" &&
-    pendingStatus === "UNDER_QA_REVIEW" &&
-    (role === "MICRO" || role === "MC");
-
-  const previewReviewSignature =
-    showESign &&
-    status === "UNDER_ADMIN_REVIEW" &&
-    pendingStatus === "UNDER_CLIENT_REVIEW" &&
-    (role === "ADMIN" || role === "SYSTEMADMIN");
-
-  const displayTestedBy = previewTestingSignature
-    ? user?.name || user?.email || ""
-    : testedBy;
-
-  const displayTestedDate = previewTestingSignature ? todayISO() : testedDate;
-
-  const displayReviewedBy = previewReviewSignature
-    ? user?.name || user?.email || ""
-    : reviewedBy;
-
-  const displayReviewedDate = previewReviewSignature
-    ? todayISO()
-    : reviewedDate;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2870,7 +2659,7 @@ useEffect(() => {
                         ? "ring-2 ring-rose-500 animate-pulse"
                         : ""
                     }`}
-                    value={displayTestedBy.toUpperCase()}
+                    value={testedBy.toUpperCase()}
                     onChange={(e) => {
                       setTestedBy(e.target.value);
                       clearError("testedBy");
@@ -2908,7 +2697,7 @@ useEffect(() => {
                     }`}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(displayTestedDate)}
+                    value={formatDateForInput(testedDate)}
                     onChange={(e) => {
                       setTestedDate(e.target.value);
                       clearError("testedDate");
@@ -2944,7 +2733,7 @@ useEffect(() => {
                         ? "ring-2 ring-rose-500 animate-pulse"
                         : ""
                     }`}
-                    value={displayReviewedBy.toUpperCase()}
+                    value={reviewedBy.toUpperCase()}
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
                       clearError("reviewedBy");
@@ -2982,7 +2771,7 @@ useEffect(() => {
                     }`}
                     type="date"
                     min={todayISO()}
-                    value={formatDateForInput(displayReviewedDate)}
+                    value={formatDateForInput(reviewedDate)}
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
                       clearError("reviewedDate");
@@ -3148,151 +2937,38 @@ useEffect(() => {
           aria-modal="true"
           aria-label="E-signature"
         >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
-          >
-            <div
-              className="mb-4 flex items-start gap-3 cursor-move select-none"
-              onMouseDown={startESignDrag}
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
-                🔐
-              </div>
-
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {eSignActionTitle(pendingStatus)}
-                </h2>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  21 CFR Part 11 Electronic Signature Authorization
-                </p>
-              </div>
-            </div>
-
-            {/* <p className="text-sm text-slate-600 mb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-2">
+              Confirm Status Change
+            </h2>
+            <p className="text-sm text-slate-600 mb-3">
               Change status to{" "}
               <span className="font-medium">{pendingStatus}</span>. Provide a
               reason and your e-signature password.
-            </p> */}
-
-            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Authorization Summary
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Current Status</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {formatStatusText(status)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">New Status</span>
-                  <span className="text-right font-semibold text-blue-700">
-                    {formatStatusText(String(pendingStatus || ""))}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Report No.</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {reportNumber || "Not assigned"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Signing By</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {user?.name || user?.email}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              This electronic signature will be recorded in the audit trail with
-              user, timestamp, reason, and status transition.
             </p>
-
-            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={eSignConfirmed}
-                onChange={(e) => setESignConfirmed(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                I confirm that this electronic signature represents my legally
-                binding authorization for this action.
-              </span>
-            </label>
 
             <input
               type="text"
               placeholder="Reason for change"
               value={changeReason}
               onChange={(e) => setChangeReason(e.target.value)}
-              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
 
-            <div className="relative">
-              <input
-                type={showESignPassword ? "text" : "password"}
-                value={eSignPassword}
-                onChange={(e) => setESignPassword(e.target.value)}
-                className="w-full rounded border px-3 py-2 pr-10"
-                placeholder="Enter e-sign password"
-              />
+            <input
+              type="password"
+              placeholder="E-signature password"
+              value={eSignPassword}
+              onChange={(e) => setESignPassword(e.target.value)}
+              className="mb-4 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
+            />
 
-              <button
-                type="button"
-                onClick={() => setShowESignPassword((v) => !v)}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
-              >
-                {showESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {eSignError && (
-              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {eSignError}
-              </div>
-            )}
-
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-                onClick={async () => {
-                  if (autoFillSnapshot) {
-                    if ("testedBy" in autoFillSnapshot) {
-                      setTestedBy(autoFillSnapshot.testedBy || "");
-                    }
-
-                    if ("testedDate" in autoFillSnapshot) {
-                      setTestedDate(autoFillSnapshot.testedDate || "");
-                    }
-
-                    if ("reviewedBy" in autoFillSnapshot) {
-                      setReviewedBy(autoFillSnapshot.reviewedBy || "");
-                    }
-
-                    if ("reviewedDate" in autoFillSnapshot) {
-                      setReviewedDate(autoFillSnapshot.reviewedDate || "");
-                    }
-
-                    setIsDirty(autoFillSnapshot.wasDirty);
-                    setAutoFillSnapshot(null);
-                  }
-
+                onClick={() => {
                   setShowESign(false);
                   setPendingStatus(null);
-                  setShowESignPassword(false);
-                  setESignPassword("");
-                  setChangeReason("");
-                  setESignError(null);
                 }}
               >
                 Cancel
@@ -3300,105 +2976,24 @@ useEffect(() => {
               <button
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 disabled={
-                  eSignSubmitting ||
+                  isBusy ||
                   !pendingStatus ||
                   !changeReason.trim() ||
-                  !eSignPassword.trim() ||
-                  !eSignConfirmed
+                  !eSignPassword.trim()
                 }
-                onClick={async () => {
+                onClick={() => {
                   if (!pendingStatus) return;
-
-                  const reason = changeReason.trim();
-                  const pwd = eSignPassword.trim();
-
-                  if (!reason) {
-                    setESignError("Reason is required.");
-                    return;
-                  }
-
-                  if (!pwd) {
-                    setESignError("E-sign password is required.");
-                    return;
-                  }
-
                   const statusToApply = pendingStatus;
-
-                  setESignSubmitting(true);
-                  setESignError(null);
-
-                  try {
-                    const success = await handleStatusChange(statusToApply, {
-                      reason,
-                      eSignPassword: pwd,
-                    });
-
-                    if (!success) return;
-
-                    if (previewTestingSignature) {
-                      setTestedBy(user?.name || user?.email || "");
-                      setTestedDate(todayISO());
-                    }
-
-                    if (previewReviewSignature) {
-                      setReviewedBy(user?.name || user?.email || "");
-                      setReviewedDate(todayISO());
-                    }
-
-                    setShowESign(false);
-                    setPendingStatus(null);
-                    setAutoFillSnapshot(null);
-                    setShowESignPassword(false);
-                    setESignPassword("");
-                    setChangeReason("");
-                    setESignError(null);
-                  } catch (e: any) {
-                    if (autoFillSnapshot) {
-                      if ("testedBy" in autoFillSnapshot) {
-                        setTestedBy(autoFillSnapshot.testedBy || "");
-                      }
-
-                      if ("testedDate" in autoFillSnapshot) {
-                        setTestedDate(autoFillSnapshot.testedDate || "");
-                      }
-
-                      if ("reviewedBy" in autoFillSnapshot) {
-                        setReviewedBy(autoFillSnapshot.reviewedBy || "");
-                      }
-
-                      if ("reviewedDate" in autoFillSnapshot) {
-                        setReviewedDate(autoFillSnapshot.reviewedDate || "");
-                      }
-
-                      setIsDirty(autoFillSnapshot.wasDirty);
-                      setAutoFillSnapshot(null);
-                    }
-
-                    const msg =
-                      e?.message ||
-                      e?.response?.message ||
-                      e?.response?.data?.message ||
-                      "";
-
-                    if (
-                      msg.toLowerCase().includes("password") ||
-                      msg.toLowerCase().includes("invalid") ||
-                      msg.toLowerCase().includes("incorrect")
-                    ) {
-                      setESignError("❌ Incorrect e-signature password.");
-                    } else {
-                      setESignError(msg || "❌ E-signature failed.");
-                    }
-                    setShowESign(true);
-                  } finally {
-                    setESignSubmitting(false);
-                  }
+                  setShowESign(false);
+                  setPendingStatus(null);
+                  handleStatusChange(statusToApply, {
+                    reason: changeReason.trim(),
+                    eSignPassword,
+                  });
                 }}
               >
-                {eSignSubmitting && <Spinner />}
-                {eSignSubmitting
-                  ? "Verifying..."
-                  : eSignButtonText(pendingStatus)}
+                {busy === "STATUS" && <Spinner />}
+                Confirm
               </button>
             </div>
           </div>
