@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useBlocker, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
-import { Eye, EyeOff } from "lucide-react";
 import {
   createCorrections,
   FieldErrorBadge,
@@ -511,65 +510,6 @@ export default function ApeReportForm({
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
-  const [showFieldESign, setShowFieldESign] = useState(false);
-  const [fieldSignatureMode, setFieldSignatureMode] = useState<
-    "TESTED_BY" | "REVIEWED_BY" | null
-  >(null);
-  const [fieldSignaturePassword, setFieldSignaturePassword] = useState("");
-  const [showFieldESignPassword, setShowFieldESignPassword] = useState(false);
-  const [fieldSignatureReason, setFieldSignatureReason] = useState("");
-  const [fieldSignatureConfirmed, setFieldSignatureConfirmed] = useState(false);
-  const [fieldSignatureSubmitting, setFieldSignatureSubmitting] =
-    useState(false);
-  const [fieldSignatureError, setFieldSignatureError] = useState<string | null>(
-    null,
-  );
-  const [fieldSignatureSnapshot, setFieldSignatureSnapshot] = useState<{
-    testedBy?: string;
-    testedDate?: string;
-    reviewedBy?: string;
-    reviewedDate?: string;
-    wasDirty: boolean;
-  } | null>(null);
-
-  const pendingApprovalESignRef = useRef<{
-    target: ReportStatus;
-    reason: string;
-    password: string;
-  } | null>(null);
-
-  const [eSignPos, setESignPos] = useState({ x: 0, y: 0 });
-  const dragRef = useRef({
-    dragging: false,
-    startX: 0,
-    startY: 0,
-    origX: 0,
-    origY: 0,
-  });
-
-  function startESignDrag(e: React.MouseEvent) {
-    dragRef.current = {
-      dragging: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: eSignPos.x,
-      origY: eSignPos.y,
-    };
-
-    window.onmousemove = (ev) => {
-      if (!dragRef.current.dragging) return;
-      setESignPos({
-        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
-        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
-      });
-    };
-
-    window.onmouseup = () => {
-      dragRef.current.dragging = false;
-      window.onmousemove = null;
-      window.onmouseup = null;
-    };
-  }
 
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
@@ -600,6 +540,8 @@ export default function ApeReportForm({
   const [pendingCorrections, setPendingCorrections] = useState<
     { fieldKey: string; message: string; oldValue?: string | null }[]
   >([]);
+
+  const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
 
   const location = useLocation();
   const { search, state } = location;
@@ -754,95 +696,20 @@ export default function ApeReportForm({
   const [addMessage, setAddMessage] = useState("");
 
   // UI policy: only when server will enforce
+
+  function isCorrectionTargetStatus(target: string) {
+    return (
+      target === "CHANGE_REQUESTED" ||
+      target === "CORRECTION_REQUESTED" ||
+      target.endsWith("_NEEDS_CORRECTION")
+    );
+  }
+
+
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
 
-
-  function closeFieldSignatureModal(restorePreview: boolean) {
-    if (restorePreview && fieldSignatureSnapshot) {
-      if ("testedBy" in fieldSignatureSnapshot) {
-        setTestedBy(fieldSignatureSnapshot.testedBy || "");
-        setTestedDate(fieldSignatureSnapshot.testedDate || "");
-      }
-      if ("reviewedBy" in fieldSignatureSnapshot) {
-        setReviewedBy(fieldSignatureSnapshot.reviewedBy || "");
-        setReviewedDate(fieldSignatureSnapshot.reviewedDate || "");
-      }
-      setIsDirty(fieldSignatureSnapshot.wasDirty);
-    }
-
-    setShowFieldESign(false);
-    setFieldSignatureMode(null);
-    setFieldSignatureSnapshot(null);
-    setFieldSignaturePassword("");
-    setShowFieldESignPassword(false);
-    setFieldSignatureReason("");
-    setFieldSignatureConfirmed(false);
-    setFieldSignatureError(null);
-  }
-
-  function openFieldSignature(mode: "TESTED_BY" | "REVIEWED_BY") {
-    if (!reportId) {
-      alert("⚠️ Please SAVE the report first before signing.");
-      return;
-    }
-    if (isDirty) {
-      alert("⚠️ You have unsaved changes. Please UPDATE the report before signing.");
-      return;
-    }
-
-    const isTestingSignature = mode === "TESTED_BY";
-    const allowed = isTestingSignature
-      ? status === "UNDER_TESTING_REVIEW" && (role === "MICRO" || role === "MC")
-      : status === "UNDER_ADMIN_REVIEW" && (role === "ADMIN" || role === "SYSTEMADMIN");
-
-    if (!allowed) {
-      alert("⚠️ You are not allowed to sign this field in the current status.");
-      return;
-    }
-
-    const signerName = user?.name || user?.email || "";
-    const signedDate = todayISO();
-    const values = makeValues();
-    const validationValues = {
-      ...values,
-      ...(isTestingSignature
-        ? { testedBy: signerName, testedDate: signedDate }
-        : { reviewedBy: signerName, reviewedDate: signedDate }),
-    };
-
-    const okFields = validateAndSetErrors(validationValues);
-    if (!(okFields)) {
-      alert("⚠️ Please fill all required fields before e-signature.");
-      return;
-    }
-
-    if (shouldBlockStatusChangeForUnresolvedCorrections()) return;
-
-    if (isTestingSignature) {
-      setFieldSignatureSnapshot({ testedBy, testedDate, wasDirty: isDirty });
-      setTestedBy(signerName);
-      setTestedDate(signedDate);
-      clearError("testedBy");
-      clearError("testedDate");
-      setFieldSignatureReason("Electronic signature authorization for Tested By.");
-    } else {
-      setFieldSignatureSnapshot({ reviewedBy, reviewedDate, wasDirty: isDirty });
-      setReviewedBy(signerName);
-      setReviewedDate(signedDate);
-      clearError("reviewedBy");
-      clearError("reviewedDate");
-      setFieldSignatureReason("Electronic signature authorization for Reviewed By.");
-    }
-
-    setFieldSignatureMode(mode);
-    setFieldSignaturePassword("");
-    setShowFieldESignPassword(false);
-    setFieldSignatureConfirmed(false);
-    setFieldSignatureError(null);
-    setShowFieldESign(true);
-  }
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -857,11 +724,7 @@ export default function ApeReportForm({
       );
       return;
     }
-    const isNeeds =
-      target === "FRONTDESK_NEEDS_CORRECTION" ||
-      target === "ADMIN_NEEDS_CORRECTION" ||
-      target === "CHANGE_REQUESTED" ||
-      target === "CORRECTION_REQUESTED";
+    const isNeeds = isCorrectionTargetStatus(target);
 
     if (isNeeds) {
       setSelectingCorrections(true);
@@ -869,32 +732,6 @@ export default function ApeReportForm({
       setPendingStatus(target);
       return;
     }
-    // existing path (incl. e-sign if required)
-    const signatureRequirement =
-      target === "UNDER_QA_REVIEW"
-        ? "TESTED_BY"
-        : target === "UNDER_CLIENT_REVIEW"
-          ? "REVIEWED_BY"
-          : null;
-
-    if (signatureRequirement === "TESTED_BY" && !testedBy.trim()) {
-      alert("⚠️ Please click Sign under TESTED BY before approving.");
-      return;
-    }
-    if (signatureRequirement === "REVIEWED_BY" && !reviewedBy.trim()) {
-      alert("⚠️ Please click Sign under REVIEWED BY before approving.");
-      return;
-    }
-
-    const pendingApprovalESign = pendingApprovalESignRef.current;
-    if (pendingApprovalESign?.target === target) {
-      handleStatusChange(target, {
-        reason: pendingApprovalESign.reason,
-        eSignPassword: pendingApprovalESign.password,
-      });
-      return;
-    }
-
     if (uiNeedsESign(target)) {
       setPendingStatus(target);
       setShowESign(true);
@@ -1745,17 +1582,7 @@ export default function ApeReportForm({
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-  const showTestedBySignButton =
-    !forceReadOnly &&
-    !testedBy.trim() &&
-    status === "UNDER_TESTING_REVIEW" &&
-    (role === "MICRO" || role === "MC");
 
-  const showReviewedBySignButton =
-    !forceReadOnly &&
-    !reviewedBy.trim() &&
-    status === "UNDER_ADMIN_REVIEW" &&
-    (role === "ADMIN" || role === "SYSTEMADMIN");
 
   return (
     <>
@@ -2538,21 +2365,6 @@ export default function ApeReportForm({
                   TESTED BY:
                   <FieldErrorBadge name="testedBy" errors={errors} />
                   <ResolveOverlay field="testedBy" />
-                  {showTestedBySignButton ? (
-                    <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
-                      <button
-                        type="button"
-                        className="no-print inline-flex items-center rounded-md border border-blue-700 bg-blue-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isBusy || fieldSignatureSubmitting}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openFieldSignature("TESTED_BY");
-                        }}
-                      >
-                        Sign
-                      </button>
-                    </div>
-                  ) : (
                   <input
                     className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                       errors.testedBy ? "border-b-red-500" : "border-b-black/70"
@@ -2571,7 +2383,6 @@ export default function ApeReportForm({
                     placeholder="Name"
                     aria-invalid={!!errors.testedBy}
                   />
-                  )}
                 </div>
 
                 <div
@@ -2626,21 +2437,6 @@ export default function ApeReportForm({
                   REVIEWED BY:
                   <FieldErrorBadge name="reviewedBy" errors={errors} />
                   <ResolveOverlay field="reviewedBy" />
-                  {showReviewedBySignButton ? (
-                    <div className="flex-1 min-h-[26px] border-b border-black/70 flex items-center">
-                      <button
-                        type="button"
-                        className="no-print inline-flex items-center rounded-md border border-indigo-700 bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isBusy || fieldSignatureSubmitting}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openFieldSignature("REVIEWED_BY");
-                        }}
-                      >
-                        Sign
-                      </button>
-                    </div>
-                  ) : (
                   <input
                     className={`flex-1 border-0 border-b text-[12px] outline-none focus:border-blue-500 focus:ring-0 ${
                       errors.reviewedBy
@@ -2661,7 +2457,6 @@ export default function ApeReportForm({
                     placeholder="Name"
                     aria-invalid={!!errors.reviewedBy}
                   />
-                  )}
                 </div>
 
                 <div
@@ -2731,288 +2526,108 @@ export default function ApeReportForm({
                 </button>
               )}
               {!showAssignReportNumberButton &&
-                APE_STATUS_TRANSITIONS[status as ReportStatus]?.next.map(
-                  (targetStatus: ReportStatus) => {
-                    const isNeedsCorrectionStatus =
-                      targetStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-                      targetStatus === "ADMIN_NEEDS_CORRECTION";
+                (() => {
+                  const nextStatuses =
+                    APE_STATUS_TRANSITIONS[status as ReportStatus]?.next ?? [];
 
-                    if (hideNeedCorrectionButtons && isNeedsCorrectionStatus) {
-                      return null;
-                    }
+                  const hasCorrectionAction =
+                    !hideNeedCorrectionButtons &&
+                    nextStatuses.some((targetStatus) =>
+                      isCorrectionTargetStatus(String(targetStatus)),
+                    );
 
-                    if (
-                      APE_STATUS_TRANSITIONS[
-                        status as ReportStatus
-                      ].canSet.includes(role!) &&
-                      statusButtons[targetStatus]
-                    ) {
-                      const { label, color } = statusButtons[targetStatus];
+                  const normalStatuses = nextStatuses.filter(
+                    (targetStatus) =>
+                      !isCorrectionTargetStatus(String(targetStatus)),
+                  );
 
-                      const approveNeedsAttachment =
-                        isApproveAction(targetStatus);
-                      const disableApproveForNoAttachment =
-                        approveNeedsAttachment && !hasAttachment;
+                  const canSetCurrentStatus =
+                    APE_STATUS_TRANSITIONS[
+                      status as ReportStatus
+                    ]?.canSet.includes(role!);
 
-                      const disabled =
-                        isBusy ||
-                        attachmentsLoading ||
-                        disableApproveForNoAttachment;
-
-                      return (
-                        <div key={targetStatus} className="relative group">
+                  return (
+                    <>
+                      {hasCorrectionAction && canSetCurrentStatus && (
+                        <div className="relative">
                           <button
-                            className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                            onClick={() => requestStatusChange(targetStatus)}
-                            disabled={disabled}
-                            title={formatStatusText(targetStatus)} // browser tooltip
+                            type="button"
+                            onClick={() => setCorrectionActionOpen((open) => !open)}
+                            className="px-4 py-2 rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                            disabled={isBusy}
                           >
                             {busy === "STATUS" && <Spinner />}
-                            {attachmentsLoading && label === "Approve"
-                              ? "Checking..."
-                              : label}
+                            Needs Correction ▾
                           </button>
 
-                          {/* custom hover tooltip */}
-                          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                            {label} → {formatStatusText(targetStatus)}
-                          </div>
-                        </div>
-                      );
-                    }
+                          {correctionActionOpen && (
+                            <div className="absolute left-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-lg border bg-white shadow-lg">
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CHANGE_REQUESTED");
+                                }}
+                              >
+                                Request Change
+                              </button>
 
-                    return null;
-                  },
-                )}
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CORRECTION_REQUESTED");
+                                }}
+                              >
+                                Raise Correction
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {normalStatuses.map((targetStatus: ReportStatus) => {
+                        const buttonConfig = statusButtons[targetStatus];
+                        if (!canSetCurrentStatus || !buttonConfig) return null;
+
+                        const { label, color } = buttonConfig;
+                        const approveNeedsAttachment =
+                          isApproveAction(targetStatus);
+                        const disableApproveForNoAttachment =
+                          approveNeedsAttachment && !hasAttachment;
+                        const disabled =
+                          isBusy ||
+                          attachmentsLoading ||
+                          disableApproveForNoAttachment;
+
+                        return (
+                          <div key={targetStatus} className="relative group">
+                            <button
+                              className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
+                              onClick={() => requestStatusChange(targetStatus)}
+                              disabled={disabled}
+                              title={formatStatusText(targetStatus)}
+                            >
+                              {busy === "STATUS" && <Spinner />}
+                              {attachmentsLoading && label === "Approve"
+                                ? "Checking..."
+                                : label}
+                            </button>
+
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                              {label} → {formatStatusText(targetStatus)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
             </div>
           </div>
         )}
-      {canShowFloatingUi && showFieldESign && fieldSignatureMode && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Field electronic signature"
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
-          >
-            <div
-              className="mb-4 flex items-start gap-3 cursor-move select-none"
-              onMouseDown={startESignDrag}
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
-                🔐
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {fieldSignatureMode === "TESTED_BY"
-                    ? "Electronic Tested By Signature"
-                    : "Electronic Reviewed By Signature"}
-                </h2>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  21 CFR Part 11 Electronic Signature Authorization
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Authorization Summary
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Current Status</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {formatStatusText(status)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Action</span>
-                  <span className="text-right font-semibold text-blue-700">
-                    {fieldSignatureMode === "TESTED_BY"
-                      ? "TESTED BY SIGNATURE"
-                      : "REVIEWED BY SIGNATURE"}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Report No.</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {reportNumber || "Not assigned"}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Signing By</span>
-                  <span className="text-right font-semibold text-slate-800">
-                    {user?.name || user?.email}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              This action records the signer name and date only. The report
-              status will not change until the separate Approve button is
-              clicked.
-            </p>
-
-            <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={fieldSignatureConfirmed}
-                onChange={(e) => setFieldSignatureConfirmed(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                I confirm that this electronic signature represents my legally
-                binding authorization for this action.
-              </span>
-            </label>
-
-            <input
-              type="text"
-              placeholder="Reason for signature"
-              value={fieldSignatureReason}
-              onChange={(e) => setFieldSignatureReason(e.target.value)}
-              className="mt-3 mb-3 w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
-            />
-
-            <div className="relative">
-              <input
-                type={showFieldESignPassword ? "text" : "password"}
-                value={fieldSignaturePassword}
-                onChange={(e) => setFieldSignaturePassword(e.target.value)}
-                className="w-full rounded border px-3 py-2 pr-10"
-                placeholder="Enter e-sign password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowFieldESignPassword((v) => !v)}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 transition"
-                aria-label="Show or hide e-sign password"
-              >
-                {showFieldESignPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {fieldSignatureError && (
-              <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {fieldSignatureError}
-              </div>
-            )}
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-                disabled={fieldSignatureSubmitting}
-                onClick={() => closeFieldSignatureModal(true)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                disabled={
-                  fieldSignatureSubmitting ||
-                  !fieldSignatureReason.trim() ||
-                  !fieldSignaturePassword.trim() ||
-                  !fieldSignatureConfirmed
-                }
-                onClick={async () => {
-                  if (!reportId || !fieldSignatureMode) return;
-
-                  const reason = fieldSignatureReason.trim();
-                  const pwd = fieldSignaturePassword.trim();
-                  const signerName = user?.name || user?.email || "";
-                  const signedDate = todayISO();
-                  const signaturePayload =
-                    fieldSignatureMode === "TESTED_BY"
-                      ? { testedBy: signerName, testedDate: signedDate }
-                      : { reviewedBy: signerName, reviewedDate: signedDate };
-
-                  setFieldSignatureSubmitting(true);
-                  setFieldSignatureError(null);
-
-                  try {
-                    const updated = await api<any>(`/reports/${reportId}`, {
-                      method: "PATCH",
-                      body: JSON.stringify({
-                        ...signaturePayload,
-                        reason,
-                        eSignPassword: pwd,
-                        expectedVersion: reportVersion,
-                      }),
-                    });
-
-                    const nextVersion =
-                      typeof updated?.version === "number"
-                        ? updated.version
-                        : reportVersion + 1;
-                    setReportVersion(nextVersion);
-
-                    const approvalTarget: ReportStatus =
-                      fieldSignatureMode === "TESTED_BY"
-                        ? "UNDER_QA_REVIEW"
-                        : "UNDER_CLIENT_REVIEW";
-
-                    if (fieldSignatureMode === "TESTED_BY") {
-                      setTestedBy(updated?.testedBy || signerName);
-                      setTestedDate(
-                        formatDateForInput(updated?.testedDate) || signedDate,
-                      );
-                    } else {
-                      setReviewedBy(updated?.reviewedBy || signerName);
-                      setReviewedDate(
-                        formatDateForInput(updated?.reviewedDate) || signedDate,
-                      );
-                    }
-
-                    pendingApprovalESignRef.current = {
-                      target: approvalTarget,
-                      reason: `Electronic signature authorization for status transition from ${formatStatusText(status)} to ${formatStatusText(approvalTarget)}.`,
-                      password: pwd,
-                    };
-
-                    setIsDirty(false);
-                    onSaved?.({
-                      ...report,
-                      ...updated,
-                      id: updated?.id ?? reportId,
-                    });
-
-                    closeFieldSignatureModal(false);
-                    alert("✅ Signature saved. Click Approve when you are ready to change the status.");
-                  } catch (e: any) {
-                    const msg =
-                      e?.message ||
-                      e?.response?.message ||
-                      e?.response?.data?.message ||
-                      "";
-
-                    if (
-                      msg.toLowerCase().includes("password") ||
-                      msg.toLowerCase().includes("invalid") ||
-                      msg.toLowerCase().includes("incorrect")
-                    ) {
-                      setFieldSignatureError("❌ Incorrect e-signature password.");
-                    } else {
-                      setFieldSignatureError(msg || "❌ E-signature failed.");
-                    }
-                  } finally {
-                    setFieldSignatureSubmitting(false);
-                  }
-                }}
-              >
-                {fieldSignatureSubmitting && <Spinner />}
-                {fieldSignatureSubmitting ? "Signing..." : "Verify & Sign"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {canShowFloatingUi && showESign && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -3020,18 +2635,10 @@ export default function ApeReportForm({
           aria-modal="true"
           aria-label="E-signature"
         >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            style={{ transform: `translate(${eSignPos.x}px, ${eSignPos.y}px)` }}
-          >
-            <div
-              className="mb-3 cursor-move select-none"
-              onMouseDown={startESignDrag}
-            >
-              <h2 className="text-lg font-semibold mb-2">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-2">
               Confirm Status Change
             </h2>
-            </div>
             <p className="text-sm text-slate-600 mb-3">
               Change status to{" "}
               <span className="font-medium">{pendingStatus}</span>. Provide a
