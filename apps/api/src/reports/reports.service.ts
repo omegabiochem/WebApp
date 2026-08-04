@@ -801,10 +801,7 @@ type LabReportType = Extract<
   'APE_VALIDATION_REPORT' | 'APE_REPORT'
 >;
 
-
-const APE_CHILD_EDIT_FIELDS: Partial<
-  Record<UserRole, readonly string[]>
-> = {
+const APE_CHILD_EDIT_FIELDS: Partial<Record<UserRole, readonly string[]>> = {
   SYSTEMADMIN: ['*'],
   ADMIN: ['*'],
   MICRO: [
@@ -837,9 +834,7 @@ function assertApeChildFieldPermissions(
 
   if (allowed.includes('*')) return;
 
-  const denied = Object.keys(patch).filter(
-    (field) => !allowed.includes(field),
-  );
+  const denied = Object.keys(patch).filter((field) => !allowed.includes(field));
 
   if (denied.length > 0) {
     throw new ForbiddenException(
@@ -2328,6 +2323,7 @@ export class ReportsService {
       'CLIENT',
       'MICRO',
       'FRONTDESK',
+      'MC',
       'ADMIN',
       'QA',
       'SYSTEMADMIN',
@@ -2477,9 +2473,6 @@ export class ReportsService {
     return this.attachments.listForReport(id);
   }
 }
-
-
-
 
 // import {
 //   Injectable,
