@@ -48,6 +48,8 @@ type SessionContext = {
   actingAsName?: string | null;
 };
 
+type LogoutReason = 'MANUAL' | 'IDLE_TIMEOUT';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -1081,29 +1083,47 @@ export class AuthService {
     },
     jti?: string | null,
     res?: any,
+    reason: LogoutReason = 'MANUAL',
   ) {
     const ip = this.getIp(req);
     const ua = this.getUA(req);
+    const automatic = reason === 'IDLE_TIMEOUT';
 
-    await this.logAuthEvent({
-      action: 'LOGOUT',
-      userId: user.id,
-      role: (user.role as any) ?? null,
-      clientCode: user.clientCode ?? null,
-      ip,
-      entityId: user.userId ?? user.id,
-      details: 'User logged out',
-      meta: { userAgent: ua, jti: jti ?? null },
-    });
+    try {
+      await this.logAuthEvent({
+        action: 'LOGOUT',
+        userId: user.id,
+        role: (user.role as any) ?? null,
+        clientCode: user.clientCode ?? null,
+        ip,
+        entityId: user.userId ?? user.id,
+        details: automatic
+          ? 'User automatically logged out after 15 minutes of inactivity'
+          : 'User logged out manually',
+        meta: {
+          userAgent: ua,
+          jti: jti ?? null,
+          reason,
+          automatic,
+        },
+      });
+    } finally {
+      // Always revoke the refresh session, even if audit insertion fails.
+      if (res) {
+        this.clearRefreshCookie(res);
+      }
 
-    if (res) this.clearRefreshCookie(res);
-
-    await this.prisma.user
-      .update({
-        where: { id: user.id },
-        data: { refreshTokenHash: null, refreshTokenExpAt: null } as any,
-      })
-      .catch(() => {});
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: {
+            refreshTokenHash: null,
+            refreshTokenExpAt: null,
+            refreshTokenRotatedAt: null,
+          },
+        })
+        .catch(() => {});
+    }
 
     return { ok: true };
   }
@@ -1504,6 +1524,35 @@ export class AuthService {
     const lastActivityTime = user.lastActivityAt?.getTime() ?? 0;
 
     if (!lastActivityTime || now - lastActivityTime >= IDLE_TIMEOUT_MS) {
+      /*
+       * The access token may expire at the same time as the idle timeout.
+       * When /auth/logout cannot pass JwtAuthGuard, api.ts calls /auth/refresh.
+       * Record the automatic logout audit here before revoking the session.
+       */
+      await this.logAuthEvent({
+        action: 'LOGOUT',
+        userId: user.id,
+        role: (payload.role ?? user.role) as any,
+        clientCode: payload.clientCode ?? user.clientCode ?? null,
+        ip: this.getIp(req),
+        entityId: payload.uid ?? user.userId ?? user.id,
+        details:
+          'User automatically logged out after 15 minutes of inactivity',
+        meta: {
+          userAgent: this.getUA(req),
+          reason: 'IDLE_TIMEOUT',
+          automatic: true,
+          lastActivityAt: user.lastActivityAt?.toISOString() ?? null,
+          authMode: payload.authMode === 'COMMON' ? 'COMMON' : 'NORMAL',
+          commonAccountId: payload.commonAccountId ?? null,
+          commonAccountUserId: payload.commonAccountUserId ?? null,
+          actingAsUserId: payload.actingAsUserId ?? null,
+          actingAsName: payload.actingAsName ?? null,
+        },
+      }).catch(() => {
+        // Session revocation must continue even if audit insertion fails.
+      });
+
       await this.prisma.user
         .update({
           where: { id: user.id },

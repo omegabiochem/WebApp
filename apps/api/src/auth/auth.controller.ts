@@ -19,6 +19,8 @@ import * as bcrypt from 'bcryptjs';
 import type { Response } from 'express';
 import { IdleTimeoutGuard } from 'src/common/idle-timeout.guard';
 
+type LogoutReason = 'MANUAL' | 'IDLE_TIMEOUT';
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -27,7 +29,6 @@ export class AuthController {
     private readonly prisma: PrismaService,
   ) {}
 
-  // ✅ Login with userId + password (pass req so we can capture IP/UA for audit)
   @Public()
   @Post('login')
   login(
@@ -41,8 +42,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Get('me')
   async getMe(@Req() req: any) {
-    const dbId = req.user?.sub as string; // JWT subject = DB user id
-    if (!dbId) throw new BadRequestException('Unauthenticated');
+    const dbId = req.user?.sub as string;
+
+    if (!dbId) {
+      throw new BadRequestException('Unauthenticated');
+    }
 
     const dbUser = await this.prisma.user.findUnique({
       where: { id: dbId },
@@ -81,7 +85,6 @@ export class AuthController {
     };
   }
 
-  // ✅ First login: set userId + new password by invite token
   @Public()
   @Post('first-set-credentials')
   firstSetCredentials(
@@ -90,37 +93,48 @@ export class AuthController {
     return this.auth.firstSetCredentials(body);
   }
 
-  // ✅ Regular authenticated password change (pass req so we can audit)
-@UseGuards(JwtAuthGuard, IdleTimeoutGuard)
-@Post('change-password')
-async changePassword(
-  @Req() req: any,
-  @Res({ passthrough: true }) res: Response,
-  @Body() body: {
-    currentPassword: string;
-    newPassword: string;
-  },
-) {
-  const userDbId = req.user?.sub as string;
+  @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
+  @Post('change-password')
+  async changePassword(
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response,
+    @Body()
+    body: {
+      currentPassword: string;
+      newPassword: string;
+    },
+  ) {
+    const userDbId = req.user?.sub as string;
 
-  if (!userDbId) {
-    throw new BadRequestException('Unauthenticated');
+    if (!userDbId) {
+      throw new BadRequestException('Unauthenticated');
+    }
+
+    return this.auth.changeOwnPassword(
+      userDbId,
+      body.currentPassword,
+      body.newPassword,
+      req,
+      res,
+    );
   }
 
-  return this.auth.changeOwnPassword(
-    userDbId,
-    body.currentPassword,
-    body.newPassword,
-    req,
-    res,
-  );
-}
-
-  // ✅ NEW: Logout endpoint (audited)
+  /*
+   * Do not add IdleTimeoutGuard here. An expired/idle user must still be
+   * allowed to reach logout when the access token itself remains valid.
+   */
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+  logout(
+    @Req() req: any,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { reason?: LogoutReason },
+  ) {
     const { sub, role, uid, jti, clientCode } = req.user ?? {};
+
+    // Accept only the known automatic reason. All other values are manual.
+    const reason: LogoutReason =
+      body?.reason === 'IDLE_TIMEOUT' ? 'IDLE_TIMEOUT' : 'MANUAL';
 
     return this.auth.logout(
       req,
@@ -132,6 +146,7 @@ async changePassword(
       },
       jti,
       res,
+      reason,
     );
   }
 
@@ -141,49 +156,49 @@ async changePassword(
     const mc = await this.prisma.machineClient.findUnique({
       where: { clientId: body.clientId },
     });
-    if (!mc || !mc.isActive) throw new UnauthorizedException();
+
+    if (!mc || !mc.isActive) {
+      throw new UnauthorizedException();
+    }
 
     const ok = await bcrypt.compare(body.clientSecret, mc.secretHash);
-    if (!ok) throw new UnauthorizedException();
+
+    if (!ok) {
+      throw new UnauthorizedException();
+    }
 
     const payload = {
       sub: `m2m:${mc.clientId}`,
       typ: 'm2m',
-      role: 'SYSTEMADMIN', // quick: pass your existing role guards
-
-      scopes: mc.scopes, // keep scopes for later tightening
+      role: 'SYSTEMADMIN',
+      scopes: mc.scopes,
     };
 
     const access_token = await this.jwtService.signAsync(payload, {
       expiresIn: '12h',
     });
+
     await this.prisma.machineClient.update({
       where: { clientId: mc.clientId },
       data: { lastUsedAt: new Date() },
     });
 
-    return { access_token, token_type: 'Bearer', expires_in: 12 * 60 * 60 };
+    return {
+      access_token,
+      token_type: 'Bearer',
+      expires_in: 12 * 60 * 60,
+    };
   }
 
-  // auth.controller.ts
   @Public()
   @Get('db-branch')
   async dbBranch() {
     const rows = await this.prisma.$queryRaw<any[]>`
       select current_database() as db, current_setting('neon.branch', true) as branch
     `;
+
     return rows?.[0] ?? {};
   }
-
-  // @Public()
-  // @Post('verify-2fa')
-  // verify2fa(
-  //   @Req() req: any,
-  //   @Res({ passthrough: true }) res: Response,
-  //   @Body() body: { userId: string; code: string },
-  // ) {
-  //   return this.auth.verifyTwoFactor(body, req, res);
-  // }
 
   @Public()
   @Post('verify-2fa')
@@ -194,12 +209,6 @@ async changePassword(
   ) {
     return this.auth.verifyTwoFactor(body, req, res);
   }
-
-  // @Public()
-  // @Post('resend-2fa')
-  // resend2fa(@Req() req: any, @Body() body: { userId: string }) {
-  //   return this.auth.resendTwoFactor(body, req);
-  // }
 
   @Public()
   @Post('resend-2fa')
@@ -225,8 +234,6 @@ async changePassword(
     return this.auth.selectCommonIdentity(body, req);
   }
 
-  // auth.controller.ts
-
   @UseGuards(JwtAuthGuard, IdleTimeoutGuard)
   @Post('activity')
   async activity(@Req() req: any) {
@@ -237,12 +244,8 @@ async changePassword(
     }
 
     await this.prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        lastActivityAt: new Date(),
-      },
+      where: { id: userId },
+      data: { lastActivityAt: new Date() },
     });
 
     return { ok: true };
