@@ -123,7 +123,15 @@ export class UsersController {
     const role = authUser?.role as UserRole | undefined;
 
     // ✅ only staff can use lookup (recommended)
-    const allowed: UserRole[] = ['SYSTEMADMIN', 'ADMIN', 'QA', 'FRONTDESK'];
+    const allowed: UserRole[] = [
+      'SYSTEMADMIN',
+      'ADMIN',
+      'QA',
+      'FRONTDESK',
+      'MICRO',
+      'MC',
+      'CHEMISTRY',
+    ];
     if (!role || !allowed.includes(role)) {
       throw new ForbiddenException('Not allowed');
     }
