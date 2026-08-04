@@ -8,23 +8,9 @@ import {
   useRef,
   useCallback,
 } from "react";
-import {
-  setToken as storeToken,
-  clearToken,
-  getToken,
-  api,
-} from "../lib/api";
+import { setToken as storeToken, clearToken, getToken, api } from "../lib/api";
 import type { Role } from "../utils/roles";
 import { socket } from "../lib/socket";
-
-// type User = {
-//   id: string;
-//   email: string;
-//   role: Role;
-//   name?: string;
-//   mustChangePassword?: boolean;
-//   clientCode?: string;
-// } | null;
 
 type User = {
   id?: string;
@@ -44,6 +30,8 @@ type User = {
   actingAsName?: string | null;
 } | null;
 
+type LogoutReason = "MANUAL" | "IDLE_TIMEOUT";
+
 type AuthContextType = {
   user: User;
   token: string | null;
@@ -60,80 +48,93 @@ const Ctx = createContext<AuthContextType>({
 
 function connectSocketWithToken(t: string) {
   if (!t) return;
+
   socket.auth = { token: t };
-  if (socket.connected) socket.disconnect();
+
+  if (socket.connected) {
+    socket.disconnect();
+  }
+
   socket.connect();
 }
 
 const IDLE_MS = 15 * 60 * 1000;
-
-// const IDLE_MS = 60 * 1000;
 const LAST_ACTIVITY_KEY = "omega_last_activity";
 
 function getLastActivity(): number {
   const value = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
-
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
-
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [token, setTokenState] = useState<string | null>(null);
 
-  // timers
   const idleTimerRef = useRef<number | null>(null);
-
-  // prevent double logout calls
   const loggingOutRef = useRef(false);
-
   const lastRecordedActivityRef = useRef(0);
+  const lastActivityPingRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     if (idleTimerRef.current !== null) {
       window.clearTimeout(idleTimerRef.current);
     }
+
     idleTimerRef.current = null;
   }, []);
 
- const hardLogout = useCallback(() => {
-  if (socket.connected) socket.disconnect();
-
-  clearToken();
-  localStorage.removeItem("user");
-  localStorage.removeItem(LAST_ACTIVITY_KEY);
-
-  setTokenState(null);
-  setUser(null);
-
-  clearTimers();
-}, [clearTimers]);
-
-  const logout = useCallback(async () => {
-    if (loggingOutRef.current) return;
-    loggingOutRef.current = true;
-
-    try {
-      // Best-effort server audit + clear refresh cookie
-      await api("/auth/logout", { method: "POST" });
-    } catch {
-      // ignore
-    } finally {
-      hardLogout();
-      loggingOutRef.current = false;
+  const hardLogout = useCallback(() => {
+    if (socket.connected) {
+      socket.disconnect();
     }
-  }, [hardLogout]);
 
+    clearToken();
+    localStorage.removeItem("user");
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
 
+    setTokenState(null);
+    setUser(null);
 
-  const lastActivityPingRef = useRef(0);
+    clearTimers();
+  }, [clearTimers]);
+
+  const performLogout = useCallback(
+    async (reason: LogoutReason) => {
+      if (loggingOutRef.current) return;
+
+      loggingOutRef.current = true;
+
+      try {
+        await api("/auth/logout", {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        });
+      } catch {
+        /*
+         * At the 15-minute boundary, the access token may already be
+         * expired. api.ts will try /auth/refresh, and the backend refresh
+         * method records the IDLE_TIMEOUT audit as a fallback.
+         */
+      } finally {
+        hardLogout();
+        loggingOutRef.current = false;
+      }
+    },
+    [hardLogout],
+  );
+
+  // Keep the public logout function argument-free so existing
+  // onClick={logout} buttons do not pass a click event as the reason.
+  const logout = useCallback(() => {
+    void performLogout("MANUAL");
+  }, [performLogout]);
 
   const pingActivity = useCallback(async () => {
     if (!getToken()) return;
 
     const now = Date.now();
 
-    // do not call API every mouse move
+    // Do not call the API for every mouse movement.
     if (now - lastActivityPingRef.current < 60_000) return;
 
     lastActivityPingRef.current = now;
@@ -141,270 +142,234 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api("/auth/activity", { method: "POST" });
     } catch {
-      // ignore
+      // A failed activity ping must not crash the application.
     }
   }, []);
 
+  const isAuthenticated = Boolean(token);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
- const isAuthenticated = Boolean(token);
+    let disposed = false;
 
-useEffect(() => {
-  if (!isAuthenticated) return;
+    const armIdleTimer = () => {
+      if (disposed || !getToken()) return;
 
-  let disposed = false;
+      clearTimers();
 
-  const armIdleTimer = () => {
-    if (disposed || !getToken()) return;
+      let lastActivity = getLastActivity();
 
-    clearTimers();
+      // Support users whose session began before this key existed.
+      if (!lastActivity) {
+        lastActivity = Date.now();
+        localStorage.setItem(LAST_ACTIVITY_KEY, String(lastActivity));
+      }
 
-    let lastActivity = getLastActivity();
+      const inactiveTime = Date.now() - lastActivity;
+      const remainingTime = IDLE_MS - inactiveTime;
 
-    // This supports users logged in before this update.
-    if (!lastActivity) {
-      lastActivity = Date.now();
-      localStorage.setItem(
-        LAST_ACTIVITY_KEY,
-        String(lastActivity),
-      );
-    }
+      if (remainingTime <= 0) {
+        void performLogout("IDLE_TIMEOUT");
+        return;
+      }
 
-    const inactiveTime = Date.now() - lastActivity;
-    const remainingTime = IDLE_MS - inactiveTime;
+      idleTimerRef.current = window.setTimeout(() => {
+        if (disposed) return;
 
-    if (remainingTime <= 0) {
-      void logout();
-      return;
-    }
+        const latestActivity = getLastActivity();
+        const inactiveFor = Date.now() - latestActivity;
 
-    idleTimerRef.current = window.setTimeout(() => {
-      if (disposed) return;
+        if (!latestActivity || inactiveFor >= IDLE_MS) {
+          void performLogout("IDLE_TIMEOUT");
+        } else {
+          // Activity may have occurred in another browser tab.
+          armIdleTimer();
+        }
+      }, remainingTime);
+    };
 
-      const latestActivity = getLastActivity();
-      const inactiveFor = Date.now() - latestActivity;
+    const onActivity = () => {
+      if (loggingOutRef.current || !getToken()) return;
 
-      if (!latestActivity || inactiveFor >= IDLE_MS) {
-        void logout();
-      } else {
-        // Activity may have occurred in another browser tab.
+      const now = Date.now();
+      const previousActivity = getLastActivity();
+
+      /*
+       * When the browser suspended timers and the user returns after the
+       * timeout, log out instead of allowing the new event to revive the
+       * session.
+       */
+      if (previousActivity && now - previousActivity >= IDLE_MS) {
+        void performLogout("IDLE_TIMEOUT");
+        return;
+      }
+
+      // Prevent excessive localStorage writes from mouse movement.
+      if (now - lastRecordedActivityRef.current < 1000) {
+        return;
+      }
+
+      lastRecordedActivityRef.current = now;
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+
+      armIdleTimer();
+      void pingActivity();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
         armIdleTimer();
       }
-    }, remainingTime);
-  };
+    };
 
- const onActivity = () => {
-  if (loggingOutRef.current || !getToken()) return;
-
-  const now = Date.now();
-  const previousActivity = getLastActivity();
-
-  if (
-    previousActivity &&
-    now - previousActivity >= IDLE_MS
-  ) {
-    void logout();
-    return;
-  }
-
-  // Prevent excessive localStorage writes from mouse movement.
-  if (now - lastRecordedActivityRef.current < 1000) {
-    return;
-  }
-
-  lastRecordedActivityRef.current = now;
-
-  localStorage.setItem(
-    LAST_ACTIVITY_KEY,
-    String(now),
-  );
-
-  armIdleTimer();
-  void pingActivity();
-};
-
-  const onVisibilityChange = () => {
-    if (document.visibilityState === "visible") {
+    const onFocus = () => {
       armIdleTimer();
-    }
-  };
+    };
 
-  const onFocus = () => {
+    const onStorageChange = (event: StorageEvent) => {
+      if (event.key === LAST_ACTIVITY_KEY) {
+        armIdleTimer();
+      }
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "mousedown",
+      "click",
+      "keydown",
+      "scroll",
+      "wheel",
+      "touchstart",
+    ];
+
     armIdleTimer();
-  };
-
-  const onStorageChange = (event: StorageEvent) => {
-    if (event.key === LAST_ACTIVITY_KEY) {
-      armIdleTimer();
-    }
-  };
-
-  const activityEvents: Array<keyof WindowEventMap> = [
-    "mousemove",
-    "mousedown",
-    "click",
-    "keydown",
-    "scroll",
-    "wheel",
-    "touchstart",
-  ];
-
-  armIdleTimer();
-
-  activityEvents.forEach((eventName) => {
-    window.addEventListener(eventName, onActivity, {
-      passive: true,
-    });
-  });
-
-  document.addEventListener(
-    "visibilitychange",
-    onVisibilityChange,
-  );
-
-  window.addEventListener("focus", onFocus);
-  window.addEventListener("storage", onStorageChange);
-
-  return () => {
-    disposed = true;
-    clearTimers();
 
     activityEvents.forEach((eventName) => {
-      window.removeEventListener(eventName, onActivity);
+      window.addEventListener(eventName, onActivity, {
+        passive: true,
+      });
     });
 
-    document.removeEventListener(
-      "visibilitychange",
-      onVisibilityChange,
-    );
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorageChange);
 
-    window.removeEventListener("focus", onFocus);
-    window.removeEventListener(
-      "storage",
-      onStorageChange,
-    );
-  };
-}, [
-  isAuthenticated,
-  logout,
-  pingActivity,
-  clearTimers,
-]);
+    return () => {
+      disposed = true;
+      clearTimers();
 
-  // init session on load
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, onActivity);
+      });
+
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorageChange);
+    };
+  }, [isAuthenticated, performLogout, pingActivity, clearTimers]);
+
+  // Initialize the session on application load.
   useEffect(() => {
     const init = async () => {
-    const t = getToken();
+      const currentToken = getToken();
 
-if (!t) {
-  localStorage.removeItem("user");
-  localStorage.removeItem(LAST_ACTIVITY_KEY);
-  return;
-}
+      if (!currentToken) {
+        localStorage.removeItem("user");
+        localStorage.removeItem(LAST_ACTIVITY_KEY);
+        return;
+      }
 
-const lastActivity = getLastActivity();
+      const lastActivity = getLastActivity();
 
-if (
-  lastActivity &&
-  Date.now() - lastActivity >= IDLE_MS
-) {
-  hardLogout();
-  return;
-}
+      if (lastActivity && Date.now() - lastActivity >= IDLE_MS) {
+        await performLogout("IDLE_TIMEOUT");
+        return;
+      }
 
-// Support sessions created before adding LAST_ACTIVITY_KEY.
-if (!lastActivity) {
-  localStorage.setItem(
-    LAST_ACTIVITY_KEY,
-    String(Date.now()),
-  );
-}
+      // Support sessions created before LAST_ACTIVITY_KEY was added.
+      if (!lastActivity) {
+        localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+      }
 
       try {
-        // api.ts will auto-refresh if needed (via /auth/refresh)
+        // api.ts automatically attempts /auth/refresh when needed.
         const me = await api<User>("/auth/me");
 
-        // set state from current token value (may have been refreshed)
+        // The token may have been refreshed while loading /auth/me.
         const latestToken = getToken();
-        if (latestToken) {
-          setTokenState(latestToken);
-          connectSocketWithToken(latestToken);
-        } else {
-          // if token vanished, treat as logged out
+
+        if (!latestToken) {
           hardLogout();
           return;
         }
 
+        setTokenState(latestToken);
+        connectSocketWithToken(latestToken);
+
         setUser(me);
         localStorage.setItem("user", JSON.stringify(me));
-
-       
       } catch {
         hardLogout();
       }
     };
 
-    init();
-  }, [hardLogout]);
+    void init();
+  }, [hardLogout, performLogout]);
 
-const login = useCallback(
-  (t: string, u: User) => {
-    storeToken(t);
-    setTokenState(t);
+  const login = useCallback(
+    (newToken: string, newUser: User) => {
+      storeToken(newToken);
+      setTokenState(newToken);
 
-    // Login counts as the beginning of an active session.
-    localStorage.setItem(
-      LAST_ACTIVITY_KEY,
-      String(Date.now()),
-    );
+      // Login starts a new active session.
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
 
-    connectSocketWithToken(t);
+      connectSocketWithToken(newToken);
 
-    if (u) {
-      setUser(u);
-      localStorage.setItem("user", JSON.stringify(u));
-    } else {
+      if (newUser) {
+        setUser(newUser);
+        localStorage.setItem("user", JSON.stringify(newUser));
+        return;
+      }
+
       api<User>("/auth/me")
         .then((me) => {
           setUser(me);
-          localStorage.setItem(
-            "user",
-            JSON.stringify(me),
-          );
+          localStorage.setItem("user", JSON.stringify(me));
         })
         .catch(() => {
           hardLogout();
         });
-    }
-  },
-  [hardLogout],
-);
+    },
+    [hardLogout],
+  );
 
-  // If token removed (e.g. refresh failed and api.ts cleared it), reflect it in state
-useEffect(() => {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== "token") return;
+  // Reflect token changes made by another browser tab.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "token") return;
 
-    const newToken = event.newValue;
+      const newToken = event.newValue;
 
-    // Another browser tab logged out.
-    if (!newToken) {
-      hardLogout();
-      return;
-    }
+      // Another browser tab logged out.
+      if (!newToken) {
+        hardLogout();
+        return;
+      }
 
-    // Another tab refreshed or changed the token.
-    storeToken(newToken);
-    setTokenState(newToken);
-    connectSocketWithToken(newToken);
-  };
+      // Another tab refreshed or changed the token.
+      storeToken(newToken);
+      setTokenState(newToken);
+      connectSocketWithToken(newToken);
+    };
 
-  window.addEventListener("storage", onStorage);
+    window.addEventListener("storage", onStorage);
 
-  return () => {
-    window.removeEventListener("storage", onStorage);
-  };
-}, [hardLogout]);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [hardLogout]);
 
   return (
     <Ctx.Provider value={{ user, token, login, logout }}>
