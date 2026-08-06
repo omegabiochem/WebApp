@@ -132,6 +132,26 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   };
 }
 
+function subjectMarkerForTone(tone: DigestHighlight['badgeTone']): string {
+  switch (tone) {
+    case 'RED':
+      return '🔴';
+
+    case 'ORANGE':
+      return '🟠';
+
+    case 'BLUE':
+      return '🔵';
+
+    case 'GREEN':
+      return '🟢';
+
+    case 'GRAY':
+    default:
+      return '⚪';
+  }
+}
+
 function digestBucketForStatus(status: string): string {
   const s = String(status);
 
@@ -166,7 +186,7 @@ export class NotificationsDigestService {
   ) {}
 
   // every 30 minutes
-  @Cron('*/30 * * * *')
+  @Cron('*/1 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
     const now = new Date();
@@ -210,6 +230,8 @@ export class NotificationsDigestService {
         compact.map((x) => String(x.newStatus)),
       );
 
+      const subjectMarker = subjectMarkerForTone(hi.badgeTone);
+
       const title =
         first.scope === 'CLIENT'
           ? `${hi.badgeText}: Summary updates (${first.clientCode ?? 'Client'})`
@@ -217,8 +239,18 @@ export class NotificationsDigestService {
 
       const subject =
         first.scope === 'CLIENT'
-          ? `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
-          : `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
+          ? `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
+          : `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
+
+      // const title =
+      //   first.scope === 'CLIENT'
+      //     ? `${hi.badgeText}: Summary updates (${first.clientCode ?? 'Client'})`
+      //     : `${hi.badgeText}: Lab summary updates (${first.dept ?? 'LAB'})`;
+
+      // const subject =
+      //   first.scope === 'CLIENT'
+      //     ? `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
+      //     : `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
 
       const lines = compact.slice(0, 80).map((x) => {
         // keep clean; if you want URL per line, append it

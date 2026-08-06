@@ -18,6 +18,25 @@ type NotifyArgs = {
   actorUserId?: string | null;
 };
 
+type WorkflowRequestKind = 'CHANGE' | 'CORRECTION';
+
+type DeliveryOptions = {
+  forceImmediate?: boolean;
+
+  roles?: UserRole[];
+  emailRoles?: UserRole[];
+
+  extraMeta?: Record<string, any>;
+
+  // Optional wording overrides for correction/change approvals.
+  subject?: string;
+  badgeText?: string;
+  badgeTone?: NotificationTone;
+  priorityLine?: string;
+};
+
+const APPROVAL_ROLES: UserRole[] = ['ADMIN', 'SYSTEMADMIN', 'QA'];
+
 function nice(s: string) {
   return String(s).replace(/_/g, ' ');
 }
@@ -25,7 +44,10 @@ function nice(s: string) {
 function normalizeEmails(emails: string[]) {
   return [
     ...new Set(
-      (emails ?? []).map((e) => (e ?? '').trim().toLowerCase()).filter(Boolean),
+      (emails ?? [])
+        .flatMap((email) => String(email ?? '').split(/[;,]/))
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email.includes('@')),
     ),
   ].sort();
 }
@@ -37,7 +59,9 @@ function isUrgentChemStatus(s: ChemistryReportStatus) {
   if (
     str.includes('NEEDS_CORRECTION') ||
     str === 'CORRECTION_REQUESTED' ||
-    str === 'CHANGE_REQUESTED'
+    str === 'CHANGE_REQUESTED' ||
+    str === 'UNDER_CORRECTION_UPDATE' ||
+    str === 'UNDER_CHANGE_UPDATE'
   ) {
     return true;
   }
@@ -104,6 +128,39 @@ function highlightForStatus(status: string) {
   };
 }
 
+type NotificationTone = 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
+
+function subjectMarkerForTone(tone: NotificationTone): string {
+  switch (tone) {
+    case 'RED':
+      return '🔴';
+
+    case 'ORANGE':
+      return '🟠';
+
+    case 'BLUE':
+      return '🔵';
+
+    case 'GREEN':
+      return '🟢';
+
+    case 'GRAY':
+    default:
+      return '⚪';
+  }
+}
+
+function buildNotificationSubject(args: {
+  badgeText: string;
+  badgeTone: NotificationTone;
+  title: string;
+  formNumber: string;
+}) {
+  const marker = subjectMarkerForTone(args.badgeTone);
+
+  return `${marker} ${args.badgeText} — Omega LIMS — ${args.title} (${args.formNumber})`;
+}
+
 function formLabel(formType: FormType) {
   return formType === 'COA' ? 'COA' : 'Chemistry';
 }
@@ -116,7 +173,8 @@ function rolesForLabByFormType(formType: FormType): UserRole[] {
   if (
     formType === 'MICRO_MIX' ||
     formType === 'MICRO_MIX_WATER' ||
-    formType === 'STERILITY'
+    formType === 'STERILITY' ||
+    formType === 'APE'
   ) {
     return uniqueRoles(['ADMIN', 'QA', 'SYSTEMADMIN', 'MC', 'MICRO']);
   }
@@ -126,6 +184,23 @@ function rolesForLabByFormType(formType: FormType): UserRole[] {
   }
 
   return uniqueRoles(['ADMIN', 'QA', 'SYSTEMADMIN', 'MC']);
+}
+
+function rolesForWorkingLabByFormType(formType: FormType): UserRole[] {
+  if (formType === 'CHEMISTRY_MIX' || formType === 'COA') {
+    return uniqueRoles(['CHEMISTRY', 'MC']);
+  }
+
+  if (
+    formType === 'MICRO_MIX' ||
+    formType === 'MICRO_MIX_WATER' ||
+    formType === 'STERILITY' ||
+    formType === 'APE'
+  ) {
+    return uniqueRoles(['MICRO', 'MC']);
+  }
+
+  return uniqueRoles(['MC']);
 }
 
 function rolesForQaRelated(): UserRole[] {
@@ -201,6 +276,14 @@ export class ChemistryReportNotificationsService {
     return process.env.CHEMISTRY_NOTIFY_TO || this.labTo();
   }
 
+  private qaTo() {
+    return process.env.QA_NOTIFY_TO || this.labTo();
+  }
+
+  private adminTo() {
+    return process.env.ADMIN_NOTIFY_TO || this.labTo();
+  }
+
   async onStatusChanged(args: NotifyArgs) {
     const newStatus = args.newStatus as ChemistryReportStatus;
 
@@ -223,15 +306,53 @@ export class ChemistryReportNotificationsService {
       return args.clientEmail;
     };
 
-    const notifyLab = async (title: string, tag: string) => {
-      const to = labRecipient();
-      const urgent = isUrgentChemStatus(newStatus);
-      const hi = highlightForStatus(String(newStatus));
+    const notifyLab = async (
+      title: string,
+      tag: string,
+      options: DeliveryOptions = {},
+    ) => {
+      const emailRoles = uniqueRoles(options.emailRoles ?? []);
+      const roleEmailRecipients = emailRoles.length
+        ? normalizeEmails(
+            await this.recipients.getRoleNotificationEmails(emailRoles),
+          )
+        : [];
 
-      if (urgent) {
+      const fallbackEmailRecipients = normalizeEmails([labRecipient()]);
+      const emailRecipients =
+        roleEmailRecipients.length > 0
+          ? roleEmailRecipients
+          : fallbackEmailRecipients;
+
+      if (emailRoles.length > 0 && roleEmailRecipients.length === 0) {
+        this.log.warn(
+          `No active email users found for roles=${emailRoles.join(',')}; ` +
+            `using chemistry department fallback for ${args.formNumber}`,
+        );
+      }
+
+      const immediate = options.forceImmediate || isUrgentChemStatus(newStatus);
+      const defaultHighlight = highlightForStatus(String(newStatus));
+
+      const hi = {
+        badgeText: options.badgeText ?? defaultHighlight.badgeText,
+        badgeTone: options.badgeTone ?? defaultHighlight.badgeTone,
+        priorityLine: options.priorityLine ?? defaultHighlight.priorityLine,
+      };
+      const roles = options.roles ?? rolesForLabByFormType(args.formType);
+      const extraMeta = options.extraMeta ?? {};
+
+      if (immediate && emailRecipients.length > 0) {
         await this.mail.sendStatusNotificationEmail({
-          to,
-          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
+          to: emailRecipients,
+          subject:
+            options.subject ??
+            buildNotificationSubject({
+              badgeText: hi.badgeText,
+              badgeTone: hi.badgeTone,
+              title,
+              formNumber: args.formNumber,
+            }),
           title,
           badgeText: hi.badgeText,
           badgeTone: hi.badgeTone,
@@ -250,55 +371,32 @@ export class ChemistryReportNotificationsService {
             formNumber: args.formNumber,
             formType: args.formType,
             status: args.newStatus,
+            clientCode: args.clientCode ?? '',
             highlightKind: hi.badgeText,
+            ...extraMeta,
           },
         });
 
         this.log.log(
-          `Email sent IMMEDIATE (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+          `Email sent IMMEDIATE (TO CHEMISTRY LAB): ${newStatus} → ${emailRecipients.join(', ')} (${args.formNumber})`,
         );
-
-        await this.inAppNotifications.createForRoles({
-          roles: rolesForLabByFormType(args.formType),
-          kind: hi.badgeText.toUpperCase().replace(/\s+/g, '_'),
-          severity:
-            hi.badgeTone === 'RED'
-              ? 'ERROR'
-              : hi.badgeTone === 'GREEN'
-                ? 'SUCCESS'
-                : 'INFO',
-          title,
-          body:
-            hi.priorityLine ?? `${nice(args.newStatus)} for ${args.formNumber}`,
-          entityType: 'REPORT',
-          entityId: args.reportId,
-          formType: args.formType,
-          formNumber: args.formNumber,
-          reportUrl: args.reportUrl,
-          status: args.newStatus,
-          meta: {
-            oldStatus: args.oldStatus,
-            newStatus: args.newStatus,
-            clientName: args.clientName,
-            clientCode: args.clientCode ?? null,
-          },
-        });
-        return;
       }
 
       await this.inAppNotifications.createForRoles({
-        roles: rolesForLabByFormType(args.formType),
+        roles,
         kind: hi.badgeText.toUpperCase().replace(/\s+/g, '_'),
         severity:
           hi.badgeTone === 'RED'
             ? 'ERROR'
             : hi.badgeTone === 'GREEN'
               ? 'SUCCESS'
-              : 'INFO',
+              : hi.badgeTone === 'ORANGE'
+                ? 'WARNING'
+                : 'INFO',
         title,
         body:
           hi.priorityLine ?? `${nice(args.newStatus)} for ${args.formNumber}`,
-        entityType: 'REPORT',
+        entityType: 'CHEMISTRY_REPORT',
         entityId: args.reportId,
         formType: args.formType,
         formNumber: args.formNumber,
@@ -309,19 +407,20 @@ export class ChemistryReportNotificationsService {
           newStatus: args.newStatus,
           clientName: args.clientName,
           clientCode: args.clientCode ?? null,
+          ...extraMeta,
         },
       });
 
-      // ✅ queue digest
+      if (immediate) return;
+
       await this.prisma.notificationOutbox.create({
         data: {
           scope: 'LAB',
           dept: 'CHEMISTRY',
           clientCode: args.clientCode ?? null,
-          recipientsKey: JSON.stringify(normalizeEmails([to])),
+          recipientsKey: JSON.stringify(emailRecipients),
           tag,
-
-          reportId: args.reportId, // chemistryReport.id stored here
+          reportId: args.reportId,
           formType: args.formType,
           formNumber: args.formNumber,
           clientName: args.clientName,
@@ -333,11 +432,15 @@ export class ChemistryReportNotificationsService {
       });
 
       this.log.log(
-        `Queued DIGEST (CLIENT → LAB): ${newStatus} → ${to} (${args.formNumber})`,
+        `Queued DIGEST (TO CHEMISTRY LAB): ${newStatus} → ${emailRecipients.join(', ')} (${args.formNumber})`,
       );
     };
 
-    const notifyClient = async (title: string, tag: string) => {
+    const notifyClient = async (
+      title: string,
+      tag: string,
+      options: DeliveryOptions = {},
+    ) => {
       const clientCode = args.clientCode?.trim();
       if (!clientCode) {
         this.log.warn(
@@ -349,21 +452,40 @@ export class ChemistryReportNotificationsService {
       const emailsRaw =
         await this.recipients.getClientNotificationEmails(clientCode);
       const emails = normalizeEmails(emailsRaw);
+      this.log.warn(
+        `[CLIENT EMAIL DEBUG] ` +
+          `form=${args.formNumber} ` +
+          `status=${newStatus} ` +
+          `clientCode=${clientCode} ` +
+          `emails=${emails.length ? emails.join(',') : 'NONE'}`,
+      );
+      const immediate = options.forceImmediate || isUrgentChemStatus(newStatus);
+      const defaultHighlight = highlightForStatus(String(newStatus));
+
+      const hi = {
+        badgeText: options.badgeText ?? defaultHighlight.badgeText,
+        badgeTone: options.badgeTone ?? defaultHighlight.badgeTone,
+        priorityLine: options.priorityLine ?? defaultHighlight.priorityLine,
+      };
+      const extraMeta = options.extraMeta ?? {};
 
       if (emails.length === 0) {
         this.log.warn(
           `No active client emails for clientCode=${clientCode} (${args.formNumber})`,
         );
-        return;
       }
 
-      const urgent = isUrgentChemStatus(newStatus);
-      const hi = highlightForStatus(String(newStatus));
-
-      if (urgent) {
+      if (immediate && emails.length > 0) {
         await this.mail.sendStatusNotificationEmail({
           to: emails,
-          subject: `[${hi.badgeText}] Omega LIMS — ${title} (${args.formNumber})`,
+          subject:
+            options.subject ??
+            buildNotificationSubject({
+              badgeText: hi.badgeText,
+              badgeTone: hi.badgeTone,
+              title,
+              formNumber: args.formNumber,
+            }),
           title,
           badgeText: hi.badgeText,
           badgeTone: hi.badgeTone,
@@ -384,39 +506,13 @@ export class ChemistryReportNotificationsService {
             status: args.newStatus,
             clientCode,
             highlightKind: hi.badgeText,
+            ...extraMeta,
           },
         });
 
         this.log.log(
-          `Email sent IMMEDIATE (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+          `Email sent IMMEDIATE (TO CLIENT): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
         );
-
-        await this.inAppNotifications.createForClientCode({
-          clientCode,
-          kind: hi.badgeText.toUpperCase().replace(/\s+/g, '_'),
-          severity:
-            hi.badgeTone === 'RED'
-              ? 'ERROR'
-              : hi.badgeTone === 'GREEN'
-                ? 'SUCCESS'
-                : 'INFO',
-          title,
-          body:
-            hi.priorityLine ?? `${nice(args.newStatus)} for ${args.formNumber}`,
-          entityType: 'CHEMISTRY_REPORT',
-          entityId: args.reportId,
-          formType: args.formType,
-          formNumber: args.formNumber,
-          reportUrl: args.reportUrl,
-          status: args.newStatus,
-          meta: {
-            oldStatus: args.oldStatus,
-            newStatus: args.newStatus,
-            clientName: args.clientName,
-            clientCode,
-          },
-        });
-        return;
       }
 
       await this.inAppNotifications.createForClientCode({
@@ -427,7 +523,9 @@ export class ChemistryReportNotificationsService {
             ? 'ERROR'
             : hi.badgeTone === 'GREEN'
               ? 'SUCCESS'
-              : 'INFO',
+              : hi.badgeTone === 'ORANGE'
+                ? 'WARNING'
+                : 'INFO',
         title,
         body:
           hi.priorityLine ?? `${nice(args.newStatus)} for ${args.formNumber}`,
@@ -442,10 +540,12 @@ export class ChemistryReportNotificationsService {
           newStatus: args.newStatus,
           clientName: args.clientName,
           clientCode,
+          ...extraMeta,
         },
       });
 
-      // ✅ queue digest
+      if (immediate || emails.length === 0) return;
+
       await this.prisma.notificationOutbox.create({
         data: {
           scope: 'CLIENT',
@@ -453,8 +553,7 @@ export class ChemistryReportNotificationsService {
           clientCode,
           recipientsKey: JSON.stringify(emails),
           tag,
-
-          reportId: args.reportId, // chemistryReport.id stored here
+          reportId: args.reportId,
           formType: args.formType,
           formNumber: args.formNumber,
           clientName: args.clientName,
@@ -466,7 +565,94 @@ export class ChemistryReportNotificationsService {
       });
 
       this.log.log(
-        `Queued DIGEST (LAB → CLIENT GROUP): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+        `Queued DIGEST (TO CLIENT): ${newStatus} → ${emails.join(', ')} (${args.formNumber})`,
+      );
+    };
+
+    const notifyApprovalTeam = async (args2: {
+      requestKind: WorkflowRequestKind;
+      requestedByRole: UserRole | null;
+      workflowReturnStatus?: string | null;
+    }) => {
+      const title = `${formLabelText}: ${args2.requestKind === 'CHANGE' ? 'Change' : 'Correction'} Request Awaiting Approval`;
+      const badgeText = 'Approval Required';
+      const badgeTone: NotificationTone = 'RED';
+      const priorityLine =
+        'Action required: ADMIN, SYSTEMADMIN, or QA must review and approve this request.';
+
+      const configuredEmails =
+        await this.recipients.getRoleNotificationEmails(APPROVAL_ROLES);
+      const fallbackEmails = normalizeEmails([
+        this.adminTo(),
+        this.qaTo(),
+        process.env.SYSTEMADMIN_NOTIFY_TO ?? '',
+      ]);
+      const to =
+        configuredEmails.length > 0 ? configuredEmails : fallbackEmails;
+
+      if (to.length > 0) {
+        await this.mail.sendStatusNotificationEmail({
+          to,
+          subject: buildNotificationSubject({
+            badgeText,
+            badgeTone,
+            title,
+            formNumber: args.formNumber,
+          }),
+          title,
+          badgeText,
+          badgeTone,
+          priorityLine,
+          lines: [
+            `Form #: ${args.formNumber}`,
+            `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+            `Form Type: ${args.formType}`,
+            `Request Type: ${args2.requestKind}`,
+            `Requested By Role: ${args2.requestedByRole ?? 'UNKNOWN'}`,
+            `Return Status: ${args2.workflowReturnStatus ?? args.oldStatus}`,
+            `Current Status: ${nice(args.newStatus)}`,
+          ],
+          actionUrl: args.reportUrl,
+          actionLabel: 'Review request',
+          tag: `${args2.requestKind.toLowerCase()}-request-approval`,
+          metadata: {
+            chemistryId: args.reportId,
+            formNumber: args.formNumber,
+            formType: args.formType,
+            status: args.newStatus,
+            clientCode: args.clientCode ?? '',
+            requestKind: args2.requestKind,
+            requestedByRole: args2.requestedByRole ?? 'UNKNOWN',
+            workflowReturnStatus: args2.workflowReturnStatus ?? '',
+          },
+        });
+      }
+
+      await this.inAppNotifications.createForRoles({
+        roles: APPROVAL_ROLES,
+        kind: `${args2.requestKind}_APPROVAL_REQUIRED`,
+        severity: 'ERROR',
+        title,
+        body: `${args2.requestKind} request from ${args2.requestedByRole ?? 'unknown role'} requires approval for ${args.formNumber}.`,
+        entityType: 'CHEMISTRY_REPORT',
+        entityId: args.reportId,
+        formType: args.formType,
+        formNumber: args.formNumber,
+        reportUrl: args.reportUrl,
+        status: args.newStatus,
+        meta: {
+          oldStatus: args.oldStatus,
+          newStatus: args.newStatus,
+          clientName: args.clientName,
+          clientCode: args.clientCode ?? null,
+          requestKind: args2.requestKind,
+          requestedByRole: args2.requestedByRole,
+          workflowReturnStatus: args2.workflowReturnStatus ?? null,
+        },
+      });
+
+      this.log.log(
+        `Chemistry approval notification sent: ${args2.requestKind} → ${APPROVAL_ROLES.join(',')} (${args.formNumber})`,
       );
     };
 
@@ -510,37 +696,204 @@ export class ChemistryReportNotificationsService {
     // CHEMISTRY && COA STATUS ROUTING
     // =========================
 
+    // const actorUser = args.actorUserId
+    //   ? await this.prisma.user.findUnique({
+    //       where: { id: args.actorUserId },
+    //       select: { id: true, role: true, clientCode: true },
+    //     })
+    //   : null;
+
     const actorUser = args.actorUserId
-      ? await this.prisma.user.findUnique({
-          where: { id: args.actorUserId },
-          select: { id: true, role: true, clientCode: true },
+      ? await this.prisma.user.findFirst({
+          where: {
+            OR: [{ id: args.actorUserId }, { userId: args.actorUserId }],
+          },
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            clientCode: true,
+          },
         })
       : null;
 
-    const actorRole = actorUser?.role ?? null;
-    const actorIsClient = actorRole === 'CLIENT';
-    const actorKnown = !!actorRole;
+    const workflow = await this.prisma.chemistryReport.findUnique({
+      where: { id: args.reportId },
+      select: {
+        workflowRequestKind: true,
+        workflowRequestedByRole: true,
+        workflowReturnStatus: true,
+        workflowRequestedAt: true,
+      },
+    });
 
-    const notifyOppositeSideForChangeFlow = async (
-      titleFromClientToLab: string,
-      titleFromLabToClient: string,
-      tagClientToLab: string,
-      tagLabToClient: string,
-    ) => {
-      if (!actorKnown) {
-        this.log.warn(
-          `[CHEM NOTIFY] actor role not found for actorUserId=${args.actorUserId}; defaulting to LAB notification for ${args.formNumber}`,
-        );
-        await notifyLab(titleFromClientToLab, tagClientToLab);
+    this.log.warn(
+      `[WORKFLOW DEBUG] ` +
+        `form=${args.formNumber} ` +
+        `oldStatus=${args.oldStatus} ` +
+        `newStatus=${args.newStatus} ` +
+        `clientCode=${args.clientCode ?? 'NULL'} ` +
+        `requestKind=${workflow?.workflowRequestKind ?? 'NULL'} ` +
+        `requestedByRole=${workflow?.workflowRequestedByRole ?? 'NULL'} ` +
+        `returnStatus=${workflow?.workflowReturnStatus ?? 'NULL'} ` +
+        `actorId=${args.actorUserId ?? 'NULL'} ` +
+        `actorRole=${actorUser?.role ?? 'NULL'}`,
+    );
+    const inferRequestKind = (): WorkflowRequestKind | null => {
+      if (
+        workflow?.workflowRequestKind === 'CHANGE' ||
+        workflow?.workflowRequestKind === 'CORRECTION'
+      ) {
+        return workflow.workflowRequestKind;
+      }
+
+      if (
+        newStatus === ChemistryReportStatus.CHANGE_REQUESTED ||
+        newStatus === ChemistryReportStatus.UNDER_CHANGE_UPDATE ||
+        args.oldStatus === ChemistryReportStatus.CHANGE_REQUESTED
+      ) {
+        return 'CHANGE';
+      }
+
+      if (
+        newStatus === ChemistryReportStatus.CORRECTION_REQUESTED ||
+        newStatus === ChemistryReportStatus.UNDER_CORRECTION_UPDATE ||
+        args.oldStatus === ChemistryReportStatus.CORRECTION_REQUESTED
+      ) {
+        return 'CORRECTION';
+      }
+
+      return null;
+    };
+
+    const resolveOriginalRequesterRole = async (
+      requestKind: WorkflowRequestKind,
+    ): Promise<UserRole | null> => {
+      if (workflow?.workflowRequestedByRole) {
+        return workflow.workflowRequestedByRole;
+      }
+
+      if (
+        newStatus === ChemistryReportStatus.CHANGE_REQUESTED ||
+        newStatus === ChemistryReportStatus.CORRECTION_REQUESTED
+      ) {
+        return actorUser?.role ?? null;
+      }
+
+      const requestStatus: ChemistryReportStatus =
+        requestKind === 'CHANGE'
+          ? ChemistryReportStatus.CHANGE_REQUESTED
+          : ChemistryReportStatus.CORRECTION_REQUESTED;
+
+      const history = await this.prisma.chemistryReportStatusHistory.findFirst({
+        where: {
+          chemistryId: args.reportId,
+          to: requestStatus,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { role: true },
+      });
+
+      return history?.role ?? null;
+    };
+
+    const routeApprovedRequest = async (args2: {
+      requestKind: WorkflowRequestKind;
+      requestedByRole: UserRole;
+    }) => {
+      const requestedByClient = args2.requestedByRole === 'CLIENT';
+      const workingLabRoles = rolesForWorkingLabByFormType(args.formType);
+
+      const recipientSide =
+        args2.requestKind === 'CHANGE'
+          ? requestedByClient
+            ? 'CLIENT'
+            : 'LAB'
+          : requestedByClient
+            ? 'LAB'
+            : 'CLIENT';
+
+      this.log.log(
+        `Routing approved ${args2.requestKind} request for ${args.formNumber}: ` +
+          `requestedBy=${args2.requestedByRole}, ` +
+          `approvedBy=${actorUser?.role ?? 'UNKNOWN'}, ` +
+          `recipientSide=${recipientSide}`,
+      );
+
+      const extraMeta = {
+        requestKind: args2.requestKind,
+        requestedByRole: args2.requestedByRole,
+        workflowReturnStatus: workflow?.workflowReturnStatus ?? null,
+        approvedByRole: actorUser?.role ?? null,
+      };
+
+      /*
+       * CHANGE:
+       * Client raised change -> client performs the change.
+       * Lab raised change -> lab performs the change.
+       */
+      if (args2.requestKind === 'CHANGE') {
+        const title = 'Change Request Approved';
+        const subject = `🟠 Change Request Approved — Omega LIMS — ${args.formNumber}`;
+
+        if (requestedByClient) {
+          await notifyClient(title, 'approved-change-to-client', {
+            forceImmediate: true,
+            subject,
+            badgeText: 'CHANGE REQUEST APPROVED',
+            badgeTone: 'ORANGE',
+            priorityLine:
+              'Your change request was approved. Please make the requested changes and resubmit the report.',
+            extraMeta,
+          });
+        } else {
+          await notifyLab(title, 'approved-change-to-lab', {
+            forceImmediate: true,
+            roles: workingLabRoles,
+            emailRoles: workingLabRoles,
+            subject,
+            badgeText: 'CHANGE REQUEST APPROVED',
+            badgeTone: 'ORANGE',
+            priorityLine:
+              'The change request was approved. Please make the requested changes to the report.',
+            extraMeta,
+          });
+        }
+
         return;
       }
 
-      if (actorIsClient) {
-        await notifyLab(titleFromClientToLab, tagClientToLab);
-        return;
-      }
+      /*
+       * CORRECTION:
+       * Client raised correction -> lab corrects the report.
+       * Lab raised correction -> client corrects the report.
+       */
+      const title = 'Correction Required';
+      const subject = `🔴 Correction Required — Omega LIMS — ${args.formNumber}`;
 
-      await notifyClient(titleFromLabToClient, tagLabToClient);
+      if (requestedByClient) {
+        await notifyLab(title, 'approved-correction-to-lab', {
+          forceImmediate: true,
+          roles: workingLabRoles,
+          emailRoles: workingLabRoles,
+          subject,
+          badgeText: 'CORRECTION REQUIRED',
+          badgeTone: 'RED',
+          priorityLine:
+            'Action required: The correction request was approved. Please correct the report and resubmit it.',
+          extraMeta,
+        });
+      } else {
+        await notifyClient(title, 'approved-correction-to-client', {
+          forceImmediate: true,
+          subject,
+          badgeText: 'CORRECTION REQUIRED',
+          badgeTone: 'RED',
+          priorityLine:
+            'Action required: The correction request was approved. Please correct the report and resubmit it.',
+          extraMeta,
+        });
+      }
     };
 
     // ✅ SUBMITTED_BY_CLIENT (client -> lab)
@@ -605,68 +958,68 @@ export class ChemistryReportNotificationsService {
     }
 
     if (newStatus === ChemistryReportStatus.APPROVED) {
-      await notifyClient(
-        `${formLabelText} Report Approved`,
+      await notifyLab(
+        `${formLabelText} Report Approved by Client`,
         formLabelText === 'COA'
-          ? 'coa-lab-to-client-approved'
-          : 'chem-lab-to-client-approved',
+          ? 'coa-client-to-lab-approved'
+          : 'chem-client-to-lab-approved',
       );
       return;
     }
 
-    if (newStatus === ChemistryReportStatus.CHANGE_REQUESTED) {
-      await notifyOppositeSideForChangeFlow(
-        `${formLabelText}: Change Requested by Client`,
-        `${formLabelText}: Change Requested by Lab`,
-        formLabelText === 'COA'
-          ? 'coa-client-to-lab-change-requested'
-          : 'chem-client-to-lab-change-requested',
-        formLabelText === 'COA'
-          ? 'coa-lab-to-client-change-requested'
-          : 'chem-lab-to-client-change-requested',
-      );
+    if (
+      newStatus === ChemistryReportStatus.CHANGE_REQUESTED ||
+      newStatus === ChemistryReportStatus.CORRECTION_REQUESTED
+    ) {
+      const requestKind = inferRequestKind();
+      if (!requestKind) {
+        this.log.error(
+          `Unable to determine chemistry request kind for ${args.formNumber}`,
+        );
+        return;
+      }
+
+      const requestedByRole = await resolveOriginalRequesterRole(requestKind);
+
+      await notifyApprovalTeam({
+        requestKind,
+        requestedByRole,
+        workflowReturnStatus: workflow?.workflowReturnStatus ?? args.oldStatus,
+      });
       return;
     }
 
-    if (newStatus === ChemistryReportStatus.CORRECTION_REQUESTED) {
-      await notifyOppositeSideForChangeFlow(
-        `${formLabelText}: Correction Requested by Client`,
-        `${formLabelText}: Correction Requested by Lab`,
-        formLabelText === 'COA'
-          ? 'coa-client-to-lab-correction-requested'
-          : 'chem-client-to-lab-correction-requested',
-        formLabelText === 'COA'
-          ? 'coa-lab-to-client-correction-requested'
-          : 'chem-lab-to-client-correction-requested',
-      );
-      return;
-    }
+    if (
+      newStatus === ChemistryReportStatus.UNDER_CHANGE_UPDATE ||
+      newStatus === ChemistryReportStatus.UNDER_CORRECTION_UPDATE
+    ) {
+      const requestKind = inferRequestKind();
+      if (!requestKind) {
+        this.log.error(
+          `Unable to determine approved chemistry request kind for ${args.formNumber}`,
+        );
+        return;
+      }
 
-    if (newStatus === ChemistryReportStatus.UNDER_CHANGE_UPDATE) {
-      await notifyOppositeSideForChangeFlow(
-        `${formLabelText}: Change Update in Progress`,
-        `${formLabelText}: Change Update in Progress`,
-        formLabelText === 'COA'
-          ? 'coa-client-to-lab-under-change-update'
-          : 'chem-client-to-lab-under-change-update',
-        formLabelText === 'COA'
-          ? 'coa-lab-to-client-under-change-update'
-          : 'chem-lab-to-client-under-change-update',
-      );
-      return;
-    }
+      const requestedByRole = await resolveOriginalRequesterRole(requestKind);
 
-    if (newStatus === ChemistryReportStatus.UNDER_CORRECTION_UPDATE) {
-      await notifyOppositeSideForChangeFlow(
-        `${formLabelText}: Correction Update in Progress`,
-        `${formLabelText}: Correction Update in Progress`,
-        formLabelText === 'COA'
-          ? 'coa-client-to-lab-under-correction-update'
-          : 'chem-client-to-lab-under-correction-update',
-        formLabelText === 'COA'
-          ? 'coa-lab-to-client-under-correction-update'
-          : 'chem-lab-to-client-under-correction-update',
-      );
+      if (!requestedByRole) {
+        this.log.error(
+          `Missing original requester role for chemistry ${requestKind} request on ${args.formNumber}`,
+        );
+
+        await notifyApprovalTeam({
+          requestKind,
+          requestedByRole: null,
+          workflowReturnStatus: workflow?.workflowReturnStatus ?? null,
+        });
+        return;
+      }
+
+      await routeApprovedRequest({
+        requestKind,
+        requestedByRole,
+      });
       return;
     }
 

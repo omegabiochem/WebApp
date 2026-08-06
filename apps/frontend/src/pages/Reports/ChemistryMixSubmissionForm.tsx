@@ -1399,8 +1399,6 @@ useEffect(() => {
               (err.message || "Unknown error"),
           );
           return false;
-
-          return false;
         }
       })) ?? false
     );
@@ -1418,41 +1416,40 @@ useEffect(() => {
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      const values = makeValues();
+      const currentStatus = status as ChemistryReportStatus;
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
 
-      const okFields = validateAndSetErrors(values);
-      const okRows = validateActiveRows(values.actives || [], role);
+      let okFields = true;
+      let okRows = true;
 
-      if (
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+        okRows = validateActiveRows(values.actives || [], role);
+      }
+
+      const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        // newStatus === "QA_NEEDS_CORRECTION" ||
-        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "CHANGE_REQUESTED" ||
         newStatus === "CORRECTION_REQUESTED" ||
-        newStatus === "UNDER_CHANGE_UPDATE" ||
-        newStatus === "UNDER_CORRECTION_UPDATE" ||
         newStatus === "LOCKED" ||
-        newStatus === "APPROVED"
-      ) {
+        newStatus === "APPROVED";
+
+      if (!centralApproval && requiresFullValidation) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
-          return false;
-        }
-        if (shouldBlockStatusChangeForUnresolvedCorrections()) {
           return false;
         }
 
@@ -1463,22 +1460,81 @@ useEffect(() => {
           !okRows
         ) {
           alert("⚠️ Please fix the highlighted rows before changing status.");
-          return;
+          return false;
         }
       }
 
-      // if (newStatus === "SUBMITTED_BY_CLIENT") {
-      //     const sent = todayISO();
-      //     setDateSent(sent);
-      //     markDirty(); // ✅ IMPORTANT so handleSave runs
-      //   }
-
-      // 3) Ensure latest edits are saved
-      if (!reportId || isDirty) {
-        const saved = await handleSave(); // <-- your chemistry save (POST/PATCH /reports)
-        if (!saved) return;
+      // Approval happens before the assigned user fixes the requested fields.
+      if (
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
+      ) {
+        return false;
       }
-      // 4) PATCH status (THIS is where your 400 reason/header issue matters)
+
+      // A save increments the version. Track it so we can reload the version
+      // before immediately performing the status transition.
+      let savedBeforeStatusChange = false;
+
+      if (!reportId || isDirty) {
+        const saved = await handleSave();
+        if (!saved) return false;
+        savedBeforeStatusChange = true;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Central approval may be opened from a stale dashboard/workspace copy.
+      // A just-completed save also increments the version asynchronously.
+      if ((centralApproval || savedBeforeStatusChange) && reportId) {
+        try {
+          const latestReport = await api<any>(`/chemistry-reports/${reportId}`, {
+            method: "GET",
+          });
+
+          const latestStatus = latestReport?.status as ChemistryReportStatus | undefined;
+          const latestVersion =
+            typeof latestReport?.version === "number"
+              ? latestReport.version
+              : reportVersion;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(latestStatus)}. ` +
+                "The latest version has been loaded.",
+            );
+            return false;
+          }
+
+          expectedVersionForRequest = latestVersion;
+          setReportVersion(latestVersion);
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before status change:",
+            refreshError,
+          );
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
+          return false;
+        }
+      }
+
       try {
         const updated = await api<UpdatedReport>(
           `/chemistry-reports/${reportId}/status`,
@@ -1486,51 +1542,109 @@ useEffect(() => {
             method: "PATCH",
             body: JSON.stringify({
               status: newStatus,
-              reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
+              reason:
+                opts?.reason ??
+              (centralApproval
+                ? newStatus === "UNDER_CHANGE_UPDATE"
+                  ? "Change request approved"
+                  : "Correction request approved"
+                : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
-              expectedVersion: reportVersion,
+              expectedVersion: expectedVersionForRequest,
             }),
-            // If your API supports header alternative:
-            // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
           },
         );
 
-        setStatus(updated.status ?? newStatus);
+        const nextStatus = updated.status ?? newStatus;
+        const nextVersion =
+          typeof updated.version === "number"
+            ? updated.version
+            : expectedVersionForRequest + 1;
+
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
-        setReportVersion((prev) =>
-          typeof updated.version === "number" ? updated.version : prev + 1,
-        );
-        setIsDirty(false);
-        onStatusChanged?.({
-  ...report,
-  ...updated,
-  id: reportId,
-  status: updated.status ?? newStatus,
-});
-        alert(`✅ Status changed to ${newStatus}`);
 
-        // // navigate per role (same as micro)
-        // if (role === "CLIENT") backToDashboard();
-        // else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
-        // else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
-        // else if (role === "MC") navigate("/mcDashboard");
-        // else if (role === "QA") navigate("/qaDashboard");
-        // else if (role === "ADMIN") navigate("/adminDashboard");
-        // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        setIsDirty(false);
+
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: nextStatus,
+          version: nextVersion,
+        });
+
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
+
         if (embedded) return true;
         backToDashboard();
         return true;
       } catch (err: any) {
         console.error(err);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(`/chemistry-reports/${reportId}`, {
+              method: "GET",
+            });
+
+            const latestStatus =
+              (latestReport?.status as ChemistryReportStatus) || currentStatus;
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+          return false;
+        }
+
         const msg =
-          err?.response?.data?.message ||
-          err?.response?.message ||
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
           err?.message ||
           "Status update failed.";
 
-        throw new Error(msg);
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1849,6 +1963,18 @@ useEffect(() => {
   function isFieldRequestedForCorrection(fieldKey: string) {
     return openCorrections.some(
       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+  }
+
+  function isCentralApprovalTransition(
+    currentStatus: ChemistryReportStatus,
+    targetStatus: ChemistryReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
     );
   }
 
@@ -3522,10 +3648,12 @@ useEffect(() => {
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -3539,31 +3667,42 @@ useEffect(() => {
                     },
                   );
 
+                  // Creating the request changes the report status and increments
+                  // the optimistic-lock version. Reload both before continuing.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/chemistry-reports/${reportId!}`, { method: "GET" }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as ChemistryReportStatus) || targetStatus;
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "CHEMISTRY") {
-                  //   navigate("/chemistryDashboard");
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
                   backToDashboard();
                 })
               }

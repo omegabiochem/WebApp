@@ -285,6 +285,41 @@ If you did not expect this email, contact support at ${supportEmail}.
     );
   }
 
+  private buildPostmarkMetadata(
+    metadata?: Record<string, unknown>,
+  ): Record<string, string> {
+    if (!metadata) return {};
+
+    const preferredKeys = [
+      'reportId',
+      'chemistryId',
+      'formNumber',
+      'formType',
+      'status',
+      'clientCode',
+      'requestKind',
+      'requestedByRole',
+      'workflowReturnStatus',
+      'approvedByRole',
+    ];
+
+    const entries = Object.entries(metadata).filter(
+      ([, value]) => value !== null && value !== undefined,
+    );
+
+    const orderedEntries = [
+      ...preferredKeys
+        .map((key) => entries.find(([entryKey]) => entryKey === key))
+        .filter((entry): entry is [string, unknown] => entry !== undefined),
+
+      ...entries.filter(([key]) => !preferredKeys.includes(key)),
+    ];
+
+    return Object.fromEntries(
+      orderedEntries.slice(0, 10).map(([key, value]) => [key, String(value)]),
+    );
+  }
+
   async sendStatusNotificationEmail(args: {
     to: string | string[];
     subject: string;
@@ -372,6 +407,43 @@ If you did not expect this email, contact support at ${supportEmail}.
 `
       : '';
 
+    const titleHtml =
+      args.badgeText && args.title.startsWith(args.badgeText)
+        ? `
+      <h2 style="
+        margin:0 0 12px 0;
+        font-family:Arial, Helvetica, sans-serif;
+        font-size:16px;
+        line-height:1.5;
+        color:#111827;
+      ">
+        <span style="
+          display:inline-block;
+          padding:2px 7px;
+          margin-right:3px;
+          border-radius:6px;
+          border:1px solid ${badgeBorder[tone]};
+          background:${badgeBg[tone]};
+          color:${badgeFg[tone]};
+          font-weight:900;
+        ">
+          ${escapeHtml(args.badgeText)}
+        </span>${escapeHtml(args.title.slice(args.badgeText.length))}
+      </h2>
+    `
+        : `
+      <h2 style="
+        margin:0 0 12px 0;
+        font-family:Arial, Helvetica, sans-serif;
+        font-size:16px;
+        line-height:1.5;
+        color:${badgeFg[tone]};
+        font-weight:900;
+      ">
+        ${escapeHtml(args.title)}
+      </h2>
+    `;
+
     const listHtml = args.lines
       .filter(Boolean)
       .map((l) => `<li style="margin:6px 0;">${escapeHtml(String(l))}</li>`)
@@ -390,38 +462,38 @@ If you did not expect this email, contact support at ${supportEmail}.
       : '';
 
     const htmlBody = `
-<!doctype html>
-<html>
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-<body style="margin:0; padding:0; background:#f3f6fb;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb; padding:24px 0;">
-    <tr>
-      <td align="center" style="padding:0 12px;">
-        <table role="presentation" width="640" cellpadding="0" cellspacing="0"
-               style="width:640px; max-width:640px; background:#fff; border:1px solid #e6eaf2;
-                      border-radius:14px; overflow:hidden;">
-          <tr>
-            <td style="background:#0b3a83; padding:18px 22px;">
-              <div style="font-family:Arial; color:#fff; font-size:18px; font-weight:800;">${escapeHtml(brandName)}</div>
-              <div style="font-family:Arial; color:#dbe8ff; font-size:13px; font-weight:600; margin-top:4px;">${escapeHtml(brandSubtitle)}</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:22px; font-family:Arial; color:#111827; font-size:14px; line-height:1.6;">
-     <h2 style="margin:0 0 10px 0; font-size:16px;">${escapeHtml(args.title)}</h2>
-${badgeHtml}
-${priorityHtml}
-<ul style="margin:0; padding-left:18px;">${listHtml}</ul>
-              ${actionHtml}
-              <p style="margin:16px 0 0 0; color:#6b7280; font-size:12px;">This message was sent automatically. Please do not reply.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+                    <!doctype html>
+                    <html>
+                    <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+                    <body style="margin:0; padding:0; background:#f3f6fb;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb; padding:24px 0;">
+                        <tr>
+                          <td align="center" style="padding:0 12px;">
+                            <table role="presentation" width="640" cellpadding="0" cellspacing="0"
+                                  style="width:640px; max-width:640px; background:#fff; border:1px solid #e6eaf2;
+                                          border-radius:14px; overflow:hidden;">
+                              <tr>
+                                <td style="background:#0b3a83; padding:18px 22px;">
+                                  <div style="font-family:Arial; color:#fff; font-size:18px; font-weight:800;">${escapeHtml(brandName)}</div>
+                                  <div style="font-family:Arial; color:#dbe8ff; font-size:13px; font-weight:600; margin-top:4px;">${escapeHtml(brandSubtitle)}</div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style="padding:22px; font-family:Arial; color:#111827; font-size:14px; line-height:1.6;">
+                                      ${titleHtml}
+                                      ${badgeHtml}
+                                      ${priorityHtml}
+                    <ul style="margin:0; padding-left:18px;">${listHtml}</ul>
+                                  ${actionHtml}
+                                  <p style="margin:16px 0 0 0; color:#6b7280; font-size:12px;">This message was sent automatically. Please do not reply.</p>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </body>
+                    </html>`;
 
     const textBody =
       `${args.badgeText ? `[${args.badgeText}] ` : ''}${args.title}\n\n` +
@@ -433,22 +505,101 @@ ${priorityHtml}
     const toList = Array.isArray(args.to) ? args.to : [args.to];
     if (toList.length === 0) return;
 
-    await this.client.sendEmail({
-      From: from,
-      To: toList.join(','),
-      Subject: args.subject,
-      HtmlBody: htmlBody,
-      TextBody: textBody,
-      ReplyTo: replyTo,
-      MessageStream: 'outbound',
-      Tag: args.tag,
-      TrackOpens: true,
-      TrackLinks: 'HtmlOnly' as any,
-      Metadata: Object.fromEntries(
-        Object.entries(args.metadata).map(([k, v]) => [k, String(v)]),
-      ),
-      Headers: [{ Name: 'X-PM-Sender', Value: techSender }],
-    });
+    // await this.client.sendEmail({
+    //   From: from,
+    //   To: toList.join(','),
+    //   Subject: args.subject,
+    //   HtmlBody: htmlBody,
+    //   TextBody: textBody,
+    //   ReplyTo: replyTo,
+    //   MessageStream: 'outbound',
+    //   Tag: args.tag,
+    //   TrackOpens: true,
+    //   TrackLinks: 'HtmlOnly' as any,
+    //   Metadata: Object.fromEntries(
+    //     Object.entries(args.metadata).map(([k, v]) => [k, String(v)]),
+    //   ),
+    //   Headers: [{ Name: 'X-PM-Sender', Value: techSender }],
+    // });
+
+    // try {
+    //   const response = await this.client.sendEmail({
+    //     From: from,
+    //     To: toList.join(','),
+    //     Subject: args.subject,
+    //     HtmlBody: htmlBody,
+    //     TextBody: textBody,
+    //     ReplyTo: replyTo,
+    //     MessageStream: 'outbound',
+    //     Tag: args.tag,
+    //     TrackOpens: true,
+    //     TrackLinks: 'HtmlOnly' as any,
+    //     // Metadata: Object.fromEntries(
+    //     //   Object.entries(args.metadata).map(([key, value]) => [
+    //     //     key,
+    //     //     String(value),
+    //     //   ]),
+    //     // ),
+    //     Metadata: this.buildPostmarkMetadata(args.metadata),
+    //     Headers: [{ Name: 'X-PM-Sender', Value: techSender }],
+    //   });
+
+    //   this.log.log(
+    //     `[POSTMARK SENT] to=${toList.join(',')} ` +
+    //       `messageId=${response.MessageID} ` +
+    //       `errorCode=${response.ErrorCode} ` +
+    //       `message=${response.Message}`,
+    //   );
+    // } catch (error) {
+    //   this.log.error(
+    //     `[POSTMARK FAILED] to=${toList.join(',')} subject=${args.subject}`,
+    //     error instanceof Error ? error.stack : String(error),
+    //   );
+
+    //   throw error;
+    // }
+
+    try {
+      const metadata = this.buildPostmarkMetadata(args.metadata);
+
+      const response = await this.client.sendEmail({
+        From: from,
+        To: toList.join(','),
+        Subject: args.subject,
+        HtmlBody: htmlBody,
+        TextBody: textBody,
+        ReplyTo: replyTo,
+        MessageStream: 'outbound',
+        Tag: args.tag,
+        TrackOpens: true,
+        TrackLinks: 'HtmlOnly' as any,
+        Metadata: metadata,
+        Headers: [
+          {
+            Name: 'X-PM-Sender',
+            Value: techSender,
+          },
+        ],
+      });
+
+      this.log.log(
+        `[POSTMARK SENT] ` +
+          `to=${toList.join(',')} ` +
+          `messageId=${response.MessageID} ` +
+          `errorCode=${response.ErrorCode} ` +
+          `message=${response.Message} ` +
+          `metadataFields=${Object.keys(metadata).length}`,
+      );
+    } catch (error) {
+      this.log.error(
+        `[POSTMARK FAILED] ` +
+          `to=${toList.join(',')} ` +
+          `subject=${args.subject}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
+      throw error;
+    }
   }
 
   async sendTwoFactorOtpEmail(args: {

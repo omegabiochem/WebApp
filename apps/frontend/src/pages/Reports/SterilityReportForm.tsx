@@ -1203,8 +1203,6 @@ useEffect(() => {
           }
           alert("❌ Error saving  report: " + (err.message || "Unknown error"));
           return false;
-
-          return false;
         }
       })) ?? false
     );
@@ -1221,116 +1219,219 @@ useEffect(() => {
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      // const token = localStorage.getItem("token");
-      // const API_BASE = "http://localhost:3000";
+      const currentStatus = status as SterilityReportStatus;
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
 
-      const values = makeValues();
-      const okFields = validateAndSetErrors(values);
+      let okFields = true;
 
-      if (
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+      }
+
+      const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        // newStatus === "QA_NEEDS_CORRECTION" ||
-        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "LOCKED" ||
-        newStatus === "APPROVED"
+        newStatus === "APPROVED";
+
+      if (!centralApproval && requiresFullValidation && !okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
+        return false;
+      }
+
+      // Approval happens before the assigned user fixes the requested fields.
+      if (
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
       ) {
-        if (!okFields) {
-          alert("⚠️ Please fix the highlighted fields before changing status.");
+        return false;
+      }
+
+      // A save increments the version. Track it so we can reload the version
+      // before immediately performing the status transition.
+      let savedBeforeStatusChange = false;
+
+      if (!reportId || isDirty) {
+        const saved = await handleSave();
+        if (!saved) return false;
+        savedBeforeStatusChange = true;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Central approval may be opened from a stale dashboard/workspace copy.
+      // A just-completed save also increments the version asynchronously.
+      if ((centralApproval || savedBeforeStatusChange) && reportId) {
+        try {
+          const latestReport = await api<any>(`/reports/${reportId}`, {
+            method: "GET",
+          });
+
+          const latestStatus = latestReport?.status as SterilityReportStatus | undefined;
+          const latestVersion =
+            typeof latestReport?.version === "number"
+              ? latestReport.version
+              : reportVersion;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(latestStatus)}. ` +
+                "The latest version has been loaded.",
+            );
+            return false;
+          }
+
+          expectedVersionForRequest = latestVersion;
+          setReportVersion(latestVersion);
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before status change:",
+            refreshError,
+          );
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
           return false;
         }
       }
 
-      //  if (newStatus === "SUBMITTED_BY_CLIENT") {
-      //   const sent = todayISO();
-      //   setDateSent(sent);
-      //   markDirty(); // ✅ IMPORTANT so handleSave runs
-      // }
-
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return false;
-      }
-
-      // ensure latest edits are saved
-      if (!reportId || isDirty) {
-        const saved = await handleSave();
-        if (!saved) return;
-      }
-
       try {
-        let updated: UpdatedReport;
-        updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
-          method: "PATCH",
-          // Server expects: status (always), reason (required for critical fields incl. status),
-          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
-          body: JSON.stringify({
-            status: newStatus,
-            reason: opts?.reason ?? "Changing Status",
-            eSignPassword: opts?.eSignPassword ?? undefined,
-            expectedVersion: reportVersion,
-          }),
-        });
+        const updated = await api<UpdatedReport>(
+          `/reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: newStatus,
+              reason:
+                opts?.reason ??
+              (centralApproval
+                ? newStatus === "UNDER_CHANGE_UPDATE"
+                  ? "Change request approved"
+                  : "Correction request approved"
+                : "Changing Status"),
+              eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: expectedVersionForRequest,
+            }),
+          },
+        );
 
-        // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-        // const updated: { status?: ReportStatus; reportNumber?: string } =
-        //   await res.json();
+        const nextStatus = updated.status ?? newStatus;
+        const nextVersion =
+          typeof updated.version === "number"
+            ? updated.version
+            : expectedVersionForRequest + 1;
 
-        setStatus(updated.status ?? newStatus);
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
-        setReportVersion((prev) =>
-          typeof updated.version === "number" ? updated.version : prev + 1,
-        );
+
         setIsDirty(false);
-        onStatusChanged?.(updated);
-        alert(`✅ Status changed to ${newStatus}`);
 
-        // if (returnTo) {
-        //   backToDashboard();
-        //   return;
-        // }
-        // if (role === "CLIENT") {
-        //   backToDashboard();
-        // } else if (role === "FRONTDESK") {
-        //   navigate("/frontdeskDashboard");
-        // } else if (role === "MICRO") {
-        //   navigate("/microDashboard");
-        // } else if (role === "MC") {
-        //   navigate("/mcDashboard");
-        // } else if (role === "QA") {
-        //   navigate("/qaDashboard");
-        // } else if (role === "ADMIN") {
-        //   navigate("/adminDashboard");
-        // } else if (role === "SYSTEMADMIN") {
-        //   navigate("/systemAdminDashboard");
-        // }
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: nextStatus,
+          version: nextVersion,
+        });
 
-        if (embedded) return true; // stay on page if embedded
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
+
+        if (embedded) return true;
         backToDashboard();
         return true;
       } catch (err: any) {
         console.error(err);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(`/reports/${reportId}`, {
+              method: "GET",
+            });
+
+            const latestStatus =
+              (latestReport?.status as SterilityReportStatus) || currentStatus;
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+          return false;
+        }
+
         const msg =
-          err?.response?.data?.message ||
-          err?.response?.message ||
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
           err?.message ||
           "Status update failed.";
 
-        throw new Error(msg);
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1641,6 +1742,18 @@ useEffect(() => {
   function isFieldRequestedForCorrection(fieldKey: string) {
     return openCorrections.some(
       (c) => c.fieldKey === fieldKey || c.fieldKey.startsWith(`${fieldKey}:`),
+    );
+  }
+
+  function isCentralApprovalTransition(
+    currentStatus: SterilityReportStatus,
+    targetStatus: SterilityReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
     );
   }
 
@@ -3048,10 +3161,12 @@ useEffect(() => {
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -3065,32 +3180,42 @@ useEffect(() => {
                     },
                   );
 
+                  // Creating the request changes the report status and increments
+                  // the optimistic-lock version. Reload both before continuing.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/reports/${reportId!}`, { method: "GET" }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as SterilityReportStatus) || targetStatus;
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "MICRO") {
-                  //   navigate("/microDashboard");
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
-
                   backToDashboard();
                 })
               }

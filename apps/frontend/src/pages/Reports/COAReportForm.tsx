@@ -128,37 +128,37 @@ type COAReportFormProps = {
 const statusButtons: Partial<
   Record<COAReportStatus, { label: string; color: string }>
 > = {
-    DRAFT: { label: "Draft", color: "bg-slate-500" },
-    LOCKED: { label: "Locked", color: "bg-neutral-500" },
-    VOID: { label: "Void", color: "bg-gray-500" },
-    UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
-    SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-    UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
+  DRAFT: { label: "Draft", color: "bg-slate-500" },
+  LOCKED: { label: "Locked", color: "bg-neutral-500" },
+  VOID: { label: "Void", color: "bg-gray-500" },
+  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
+  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
+  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
 
-    RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
-    FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  RECEIVED_BY_FRONTDESK: { label: "Approve", color: "bg-green-600" },
+  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
 
-    UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-    TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
+  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
+  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
 
-    UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
+  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
 
-    UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
+  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
 
-    ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-    APPROVED: { label: "Approve", color: "bg-green-700" },
+  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
+  APPROVED: { label: "Approve", color: "bg-green-700" },
 
-    CHANGE_REQUESTED: { label: "Request Change", color: "bg-cyan-700" },
-    UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-    CORRECTION_REQUESTED: {
-      label: "Raise Correction",
-      color: "bg-yellow-700",
-    },
-    UNDER_CORRECTION_UPDATE: {
-      label: "Approve",
-      color: "bg-green-800",
-    },
-  };
+  CHANGE_REQUESTED: { label: "Request Change", color: "bg-cyan-700" },
+  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
+  CORRECTION_REQUESTED: {
+    label: "Raise Correction",
+    color: "bg-yellow-700",
+  },
+  UNDER_CORRECTION_UPDATE: {
+    label: "Approve",
+    color: "bg-green-800",
+  },
+};
 
 // A small helper to lock fields per role (frontend hint; backend is the source of truth)
 function canEdit(
@@ -180,10 +180,7 @@ function canEdit(
     return false;
   }
 
-  if (
-    role === "QA" &&
-    (field === "reviewedBy" || field === "reviewedDate")
-  ) {
+  if (role === "QA" && (field === "reviewedBy" || field === "reviewedDate")) {
     return false;
   }
 
@@ -213,7 +210,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
     />
   );
 }
-
 
 export default function COAReportForm({
   report,
@@ -298,21 +294,21 @@ export default function COAReportForm({
       : "";
   });
 
-useEffect(() => {
-  if (!report?.id) return;
+  useEffect(() => {
+    if (!report?.id) return;
 
-  setReportId(report.id);
+    setReportId(report.id);
 
-  if (report.status) {
-    setStatus(report.status);
-  }
+    if (report.status) {
+      setStatus(report.status);
+    }
 
-  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
 
-  if (typeof report.version === "number") {
-    setReportVersion(report.version);
-  }
-}, [report?.id, report?.status, report?.reportNumber, report?.version]);
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -720,7 +716,6 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -819,7 +814,6 @@ useEffect(() => {
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
-
   function isCorrectionTargetStatus(target: string) {
     return (
       target === "CHANGE_REQUESTED" ||
@@ -828,11 +822,9 @@ useEffect(() => {
     );
   }
 
-
   const uiNeedsESign = (target: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (target === "UNDER_CLIENT_REVIEW" || target === "LOCKED");
-
 
   function requestStatusChange(target: COAReportStatus) {
     if (!reportId) {
@@ -1036,11 +1028,7 @@ useEffect(() => {
           ADMIN: ["*"],
           SYSTEMADMIN: ["*"],
           FRONTDESK: [],
-          CHEMISTRY: [
-            "dateReceived",
-            "comments",
-            "coaRows",
-          ],
+          CHEMISTRY: ["dateReceived", "comments", "coaRows"],
           MC: ["dateReceived", "comments", "testedBy", "testedDate", "coaRows"],
           QA: ["dateCompleted", "comments"],
           CLIENT: [
@@ -1188,8 +1176,6 @@ useEffect(() => {
             "❌ Error saving coa report: " + (err.message || "Unknown error"),
           );
           return false;
-
-          return false;
         }
       })) ?? false
     );
@@ -1207,61 +1193,123 @@ useEffect(() => {
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      const values = makeValues();
+      const currentStatus = status as COAReportStatus;
 
-      const okFields = validateAndSetErrors(values);
-      // const okRows = validateActiveRows(values.actives || [], role);
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
 
-      if (
+      let okFields = true;
+
+      // Approval of a requested change/correction is an authorization step.
+      // It must not require unfinished COA test fields.
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+      }
+
+      const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        // newStatus === "QA_NEEDS_CORRECTION" ||
-        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "CHANGE_REQUESTED" ||
         newStatus === "CORRECTION_REQUESTED" ||
-        newStatus === "UNDER_CHANGE_UPDATE" ||
-        newStatus === "UNDER_CORRECTION_UPDATE" ||
         newStatus === "LOCKED" ||
-        newStatus === "APPROVED"
-      ) {
-        if (!okFields) {
-          alert("⚠️ Please fix the highlighted fields before changing status.");
-          return false;
-        }
-        // if (!okRows) {
-        //   alert("⚠️ Please fix the highlighted rows before changing status.");
-        //   return;
-        // }
-      }
-      //  if (newStatus === "SUBMITTED_BY_CLIENT") {
-      //   const sent = todayISO();
-      //   setDateSent(sent);
-      //   markDirty(); // ✅ IMPORTANT so handleSave runs
-      // }
+        newStatus === "APPROVED";
 
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+      if (!centralApproval && requiresFullValidation && !okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
         return false;
       }
 
-      // 3) Ensure latest edits are saved
-      if (!reportId || isDirty) {
-        const saved = await handleSave(); // <-- your COA save (POST/PATCH /reports)
-        if (!saved) return;
+      // Do not block approval because corrections are intentionally still open.
+      if (
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
+      ) {
+        return false;
       }
-      // 4) PATCH status (THIS is where your 400 reason/header issue matters)
+
+      // Save only when there are actual unsaved form edits.
+      // Save only when there are actual unsaved form edits.
+      if (!reportId || isDirty) {
+        const saved = await handleSave();
+        if (!saved) return false;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Approval is a status-only action. Reload the current database version
+      // before submitting so an older workspace copy does not cause a false 409.
+      if (centralApproval && reportId) {
+        try {
+          const latestReport = await api<any>(
+            `/chemistry-reports/${reportId}`,
+            {
+              method: "GET",
+            },
+          );
+
+          const latestStatus = latestReport?.status as
+            | COAReportStatus
+            | undefined;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(
+                latestStatus,
+              )}. The window has been refreshed with the latest status.`,
+            );
+
+            return false;
+          }
+
+          if (typeof latestReport?.version === "number") {
+            expectedVersionForRequest = latestReport.version;
+            setReportVersion(latestReport.version);
+          }
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before approval:",
+            refreshError,
+          );
+
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
+
+          return false;
+        }
+      }
+
       try {
         const updated = await api<UpdatedReport>(
           `/chemistry-reports/${reportId}/status`,
@@ -1269,51 +1317,111 @@ useEffect(() => {
             method: "PATCH",
             body: JSON.stringify({
               status: newStatus,
-              reason: opts?.reason ?? "Changing Status", // ✅ required by 21 CFR Part 11 rule
+              reason:
+                opts?.reason ??
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
-              expectedVersion: reportVersion,
+              expectedVersion: expectedVersionForRequest,
             }),
-            // If your API supports header alternative:
-            // headers: { "X-Change-Reason": opts?.reason ?? "Changing Status" }
           },
         );
 
         setStatus(updated.status ?? newStatus);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
+
         setReportVersion((prev) =>
           typeof updated.version === "number" ? updated.version : prev + 1,
         );
+
         setIsDirty(false);
+
         onStatusChanged?.({
           ...report,
           ...updated,
           id: reportId,
           status: updated.status ?? newStatus,
         });
-        alert(`✅ Status changed to ${newStatus}`);
 
-        // navigate per role (same as micro)
-        // if (role === "CLIENT") backToDashboard();
-        // else if (role === "FRONTDESK") navigate("/frontdeskDashboard");
-        // else if (role === "CHEMISTRY") navigate("/chemistryDashboard");
-        // else if (role === "MC") navigate("/mcDashboard");
-        // else if (role === "QA") navigate("/qaDashboard");
-        // else if (role === "ADMIN") navigate("/adminDashboard");
-        // else if (role === "SYSTEMADMIN") navigate("/systemAdminDashboard");
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
+
         if (embedded) return true;
+
         backToDashboard();
         return true;
       } catch (err: any) {
         console.error(err);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(
+              `/chemistry-reports/${reportId}`,
+              {
+                method: "GET",
+              },
+            );
+
+            const latestStatus =
+              (latestReport?.status as COAReportStatus) || currentStatus;
+
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+
+          return false;
+        }
+
         const msg =
-          err?.response?.data?.message ||
-          err?.response?.message ||
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
           err?.message ||
           "Status update failed.";
 
-        throw new Error(msg);
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1531,6 +1639,18 @@ useEffect(() => {
     return s === "UNDER_CORRECTION_UPDATE" || s === "UNDER_CHANGE_UPDATE";
   }
 
+  function isCentralApprovalTransition(
+    currentStatus: COAReportStatus,
+    targetStatus: COAReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
+    );
+  }
+
   function normalizeForCompare(v: any): string {
     if (v === null || v === undefined) return "";
 
@@ -1599,8 +1719,6 @@ useEffect(() => {
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
-
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2779,7 +2897,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
@@ -2828,10 +2945,12 @@ useEffect(() => {
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -2845,31 +2964,48 @@ useEffect(() => {
                     },
                   );
 
+                  // The backend status update increments the report version.
+                  // Reload the report so this form and the parent workspace receive
+                  // the new status and optimistic-lock version.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/chemistry-reports/${reportId!}`, {
+                      method: "GET",
+                    }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as COAReportStatus) || targetStatus;
+
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  // Update ReportWorkspaceModal and AdminDashboard with the new version.
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
 
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "CHEMISTRY") {
-                  //   navigate("/chemistryDashboard");
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
                   backToDashboard();
                 })
               }
