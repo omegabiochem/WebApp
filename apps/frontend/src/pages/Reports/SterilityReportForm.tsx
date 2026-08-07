@@ -247,7 +247,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -280,17 +279,6 @@ export default function SterilityReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -308,6 +296,12 @@ export default function SterilityReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -316,30 +310,32 @@ export default function SterilityReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
-useEffect(() => {
-  if (!report?.id) return;
+  useEffect(() => {
+    if (!report?.id) return;
 
-  setReportId(report.id);
+    setReportId(report.id);
 
-  if (report.status) {
-    setStatus(report.status);
-  }
+    if (report.status) {
+      setStatus(report.status);
+    }
 
-  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
 
-  if (typeof report.version === "number") {
-    setReportVersion(report.version);
-  }
-}, [report?.id, report?.status, report?.reportNumber, report?.version]);
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,70 +348,45 @@ useEffect(() => {
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve report creator:", error);
+      }
+
+      // Never expose the UUID as a display name.
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -430,7 +401,6 @@ useEffect(() => {
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -492,8 +462,6 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
-
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -502,8 +470,6 @@ useEffect(() => {
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
-
-
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1186,11 +1152,11 @@ useEffect(() => {
           );
 
           setIsDirty(false);
-      onSaved?.({
-  ...report,
-  ...saved,
-  id: saved.id ?? reportId,
-});
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1279,7 +1245,9 @@ useEffect(() => {
             method: "GET",
           });
 
-          const latestStatus = latestReport?.status as SterilityReportStatus | undefined;
+          const latestStatus = latestReport?.status as
+            | SterilityReportStatus
+            | undefined;
           const latestVersion =
             typeof latestReport?.version === "number"
               ? latestReport.version
@@ -1331,11 +1299,11 @@ useEffect(() => {
               status: newStatus,
               reason:
                 opts?.reason ??
-              (centralApproval
-                ? newStatus === "UNDER_CHANGE_UPDATE"
-                  ? "Change request approved"
-                  : "Correction request approved"
-                : "Changing Status"),
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
               expectedVersion: expectedVersionForRequest,
             }),
@@ -1780,8 +1748,6 @@ useEffect(() => {
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
-
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3188,7 +3154,8 @@ useEffect(() => {
                   ]);
 
                   const latestStatus =
-                    (latestReport?.status as SterilityReportStatus) || targetStatus;
+                    (latestReport?.status as SterilityReportStatus) ||
+                    targetStatus;
                   const latestVersion =
                     typeof latestReport?.version === "number"
                       ? latestReport.version

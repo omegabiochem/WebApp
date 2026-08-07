@@ -326,16 +326,7 @@ export default function MicroMixWaterReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
 
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
 
   const navigate = useNavigate();
 
@@ -354,22 +345,30 @@ export default function MicroMixWaterReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim(),
+  );
+}
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
-    const explicitName = String(
-      report?.createdByName ||
-        report?.creatorName ||
-        report?.createdByUser?.name ||
-        "",
-    ).trim();
+  const explicitName = String(
+    report?.createdByName ||
+      report?.creatorName ||
+      report?.createdByUser?.name ||
+      "",
+  ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+  if (explicitName && !looksLikeUuid(explicitName)) {
+    return explicitName;
+  }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
-  });
+  if (!report?.id) {
+    return currentUserDisplayName;
+  }
+
+  return "";
+});
 
 useEffect(() => {
   if (!report?.id) return;
@@ -387,97 +386,70 @@ useEffect(() => {
   }
 }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
-  useEffect(() => {
-    let cancelled = false;
+ useEffect(() => {
+  let cancelled = false;
 
-    async function loadCreatedByName() {
-      const suppliedName = String(
-        report?.createdByName ||
-          report?.creatorName ||
-          report?.createdByUser?.name ||
+  async function loadCreatedByName() {
+    const suppliedName = String(
+      report?.createdByName ||
+        report?.creatorName ||
+        report?.createdByUser?.name ||
+        "",
+    ).trim();
+
+    if (suppliedName && !looksLikeUuid(suppliedName)) {
+      if (!cancelled) {
+        setCreatedByName(suppliedName);
+      }
+      return;
+    }
+
+    if (!reportId) {
+      if (!cancelled) {
+        setCreatedByName(currentUserDisplayName);
+      }
+      return;
+    }
+
+    try {
+      const fullReport = await api<any>(`/reports/${reportId}`, {
+        method: "GET",
+      });
+
+      const creatorName = String(
+        fullReport?.createdByName ||
+          fullReport?.creatorName ||
+          fullReport?.createdByUser?.name ||
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
-        return;
-      }
-
-      if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+      if (creatorName && !looksLikeUuid(creatorName)) {
+        if (!cancelled) {
+          setCreatedByName(creatorName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
         return;
       }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
-        return;
-      }
-
-      try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
-
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
-
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
-      }
+    } catch (error) {
+      console.error("Failed to resolve report creator:", error);
     }
 
-    loadCreatedByName();
+    if (!cancelled) {
+      setCreatedByName("");
+    }
+  }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    reportId,
-    report?.createdBy,
-    report?.createdByName,
-    report?.creatorName,
-    currentUserDisplayName,
-    currentUserIdentityKey,
-  ]);
+  loadCreatedByName();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  reportId,
+  report?.createdBy,
+  report?.createdByName,
+  report?.creatorName,
+  currentUserDisplayName,
+]);
 
   // //To set clientCode automatically when creating a new report
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");

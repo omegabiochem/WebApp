@@ -234,11 +234,6 @@ const formTypeToSlug: Record<string, string> = {
   // CHEMISTRY_* can be added when you wire those forms
 };
 
-type CreatorUserMini = {
-  id: string;
-  name: string | null;
-  email: string;
-};
 
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
@@ -272,6 +267,27 @@ function getReportDetailsEndpoint(report: Report) {
   return report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
     ? `/chemistry-reports/${report.id}`
     : `/reports/${report.id}`;
+}
+
+function looksLikeUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim(),
+  );
+}
+
+function getSuppliedCreatedByName(report: any) {
+  const value = String(
+    report?.createdByName ||
+      report?.creatorName ||
+      report?.createdByUser?.name ||
+      "",
+  ).trim();
+
+  if (!value || looksLikeUuid(value)) {
+    return "";
+  }
+
+  return value;
 }
 
 
@@ -707,133 +723,52 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
 
-  const creatorNameByUserIdRef = React.useRef<Record<string, string>>({});
-  const creatorIdByReportIdRef = React.useRef<Record<string, string>>({});
-
-  const currentUserDisplayName = String(
-    (user as any)?.name ||
-      (user as any)?.fullName ||
-      (user as any)?.email ||
-      (user as any)?.userId ||
-      "",
-  ).trim();
-
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
   async function enrichJJLCreatedByNames(rows: Report[]): Promise<Report[]> {
-    const targets = rows.filter(isJJLSubmissionForm);
-    if (!targets.length) return rows;
-
-    const creatorIdByReport = new Map<string, string>();
-    const explicitNameByReport = new Map<string, string>();
-
-    await Promise.all(
-      targets.map(async (row) => {
-        const existingName = String(row.createdByName || "").trim();
-        if (existingName) {
-          explicitNameByReport.set(row.id, existingName);
-          return;
+    const enrichedRows = await Promise.all(
+      rows.map(async (row) => {
+        if (!isJJLSubmissionForm(row)) {
+          return row;
         }
 
-        let creatorId =
-          String(row.createdBy || "").trim() ||
-          creatorIdByReportIdRef.current[row.id] ||
-          "";
+        const suppliedName = getSuppliedCreatedByName(row);
 
-        if (!creatorId) {
-          try {
-            const fullReport = await api<any>(getReportDetailsEndpoint(row), {
-              method: "GET",
-            });
-
-            const fullName = String(
-              fullReport?.createdByName ||
-                fullReport?.creatorName ||
-                fullReport?.createdByUser?.name ||
-                "",
-            ).trim();
-
-            if (fullName) {
-              explicitNameByReport.set(row.id, fullName);
-            }
-
-            creatorId = String(fullReport?.createdBy || "").trim();
-          } catch {
-            // Keep the dashboard usable even if creator lookup fails.
-          }
+        if (suppliedName) {
+          return {
+            ...row,
+            createdByName: suppliedName,
+          };
         }
 
-        if (creatorId) {
-          creatorIdByReportIdRef.current[row.id] = creatorId;
-          creatorIdByReport.set(row.id, creatorId);
+        try {
+          const fullReport = await api<any>(getReportDetailsEndpoint(row), {
+            method: "GET",
+          });
+
+          const resolvedName = getSuppliedCreatedByName(fullReport);
+
+          return {
+            ...row,
+            createdBy:
+              String(fullReport?.createdBy || "").trim() ||
+              row.createdBy ||
+              null,
+            createdByName: resolvedName || null,
+          };
+        } catch (error) {
+          console.error(
+            `Failed to resolve creator for report ${row.id}:`,
+            error,
+          );
+
+          return {
+            ...row,
+            createdByName: null,
+          };
         }
       }),
     );
 
-    const missingCreatorIds = Array.from(
-      new Set(
-        Array.from(creatorIdByReport.values()).filter(
-          (id) => !creatorNameByUserIdRef.current[id],
-        ),
-      ),
-    );
-
-    if (missingCreatorIds.length) {
-      try {
-        const qs = new URLSearchParams({
-          ids: missingCreatorIds.join(","),
-        });
-
-        const users = await api<CreatorUserMini[]>(
-          `/users/lookup?${qs.toString()}`,
-          { method: "GET" },
-        );
-
-        for (const creator of users) {
-          creatorNameByUserIdRef.current[creator.id] =
-            creator.name?.trim() || creator.email?.trim() || creator.id;
-        }
-      } catch {
-        for (const creatorId of missingCreatorIds) {
-          if (
-            currentUserDisplayName &&
-            currentUserIdCandidates.includes(creatorId)
-          ) {
-            creatorNameByUserIdRef.current[creatorId] =
-              currentUserDisplayName;
-          }
-        }
-      }
-    }
-
-    return rows.map((row) => {
-      if (!isJJLSubmissionForm(row)) return row;
-
-      const creatorId =
-        String(row.createdBy || "").trim() ||
-        creatorIdByReport.get(row.id) ||
-        creatorIdByReportIdRef.current[row.id] ||
-        "";
-
-      const creatorName =
-        String(row.createdByName || "").trim() ||
-        explicitNameByReport.get(row.id) ||
-        (creatorId ? creatorNameByUserIdRef.current[creatorId] : "") ||
-        "";
-
-      return {
-        ...row,
-        createdBy: creatorId || row.createdBy || null,
-        createdByName: creatorName || row.createdByName || null,
-      };
-    });
+    return enrichedRows;
   }
 
   const userKey =

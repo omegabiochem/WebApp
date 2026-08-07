@@ -360,17 +360,6 @@ export default function MicroMixReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -388,6 +377,12 @@ export default function MicroMixReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -396,30 +391,16 @@ export default function MicroMixReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
-
-  useEffect(() => {
-    if (!report?.id) return;
-
-    setReportId(report.id);
-
-    if (report.status) {
-      setStatus(report.status);
-    }
-
-    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
-
-    if (typeof report.version === "number") {
-      setReportVersion(report.version);
-    }
-  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -432,72 +413,44 @@ export default function MicroMixReportForm({
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // The form can still render even when creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() ||
-          creator?.email?.trim() ||
-          "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve report creator:", error);
+      }
+
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -512,7 +465,6 @@ export default function MicroMixReportForm({
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -1877,11 +1829,11 @@ export default function MicroMixReportForm({
               status: newStatus,
               reason:
                 opts?.reason ??
-              (centralApproval
-                ? newStatus === "UNDER_CHANGE_UPDATE"
-                  ? "Change request approved"
-                  : "Correction request approved"
-                : "Changing Status"),
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
               expectedVersion: expectedVersionForRequest,
             }),
@@ -2148,7 +2100,10 @@ export default function MicroMixReportForm({
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    const [specValue, parsedUnit] = value.split("|") as [string, Unit | undefined];
+    const [specValue, parsedUnit] = value.split("|") as [
+      string,
+      Unit | undefined,
+    ];
     const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
     const unitValue = parsedUnit || currentUnit;
 
@@ -2296,8 +2251,6 @@ export default function MicroMixReportForm({
     // safe default
     return "CORRECTION_REQUESTED";
   }
-
-
 
   function getCorrectionTargetStatus(
     _current: ReportStatus,
@@ -3189,325 +3142,330 @@ export default function MicroMixReportForm({
             <div className="p-2">SPECIFICATION</div>
           </div>
 
-                    <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-          {/* Row 1: Total Bacterial Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-b border-black">
-              Total Bacterial Count:
-            </div>
+          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+            {/* Row 1: Total Bacterial Count */}
+            <div className="contents">
+              <div className="py-1 px-2 font-bold border-r border-b border-black">
+                Total Bacterial Count:
+              </div>
 
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-b border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
+              {/* DILUTION (static) */}
+              <div className="py-1 px-2 border-r border-b border-black">
+                <div className="py-1 px-2 text-center"> x 10^1</div>
+              </div>
 
-            {/* GRAM STAIN */}
-            <div
-              id="f-tbc_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_gram" errors={errors} />
-              <ResolveOverlay field="tbc_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tbc_gram") && errors.tbc_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                } focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_gram}
-                onChange={(e) => {
-                  set_tbc_gram(e.target.value);
-                  clearError("tbc_gram");
-                  markDirty();
+              {/* GRAM STAIN */}
+              <div
+                id="f-tbc_gram"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tbc_gram");
+                  setAddMessage("");
                 }}
-                readOnly={lock("tbc_gram")}
-                aria-invalid={!!errors.tbc_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tbc_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_result" errors={errors} />
-              <ResolveOverlay field="tbc_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tbc_result") && errors.tbc_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_result}
-                onChange={(e) => {
-                  set_tbc_result(e.target.value);
-                  clearError("tbc_result");
-                  markDirty();
-                }}
-                readOnly={lock("tbc_result")}
-                placeholder={tbc_spec ? `${tbcUnit}` : ""}
-                aria-invalid={!!errors.tbc_result}
-              />
-              <div className="py-1 px-2 text-center">{tbcUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            <div
-              id="f-tbc_spec"
-              className={`py-1 px-2 flex relative ${
-                isDeviceSpecification
-                  ? "row-span-2 items-center"
-                  : "border-b border-black"
-              } ${dashClass("tbc_spec")} ${
-                isDeviceSpecification && hasCorrection("tmy_spec")
-                  ? "dash dash-red"
-                  : ""
-              }`}
-            >
-              <FieldErrorBadge name="tbc_spec" errors={errors} />
-              {isDeviceSpecification && (
-                <FieldErrorBadge name="tmy_spec" errors={errors} />
-              )}
-              <ResolveOverlay field="tbc_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tbc_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TBC specification"
-                  aria-label="Add correction for TBC specification"
-                />
-              )}
-
-              <div className="flex w-full items-center gap-2">
-                <select
+                className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
+                  "tbc_gram",
+                )}`}
+              >
+                <FieldErrorBadge name="tbc_gram" errors={errors} />
+                <ResolveOverlay field="tbc_gram" />
+                <input
                   className={`w-full input-editable px-1 border ${
-                    !lock("tbc_spec") && errors.tbc_spec
+                    !lock("tbc_gram") && errors.tbc_gram
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("tbc_spec")
+                    hasCorrection("tbc_gram")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
-                  }`}
-                  value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
-                  onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
-                  disabled={lock("tbc_spec")}
-                  aria-invalid={!!errors.tbc_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
-
-                {!lock("tbc_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tbc_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Total Mold & Yeast Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-black">
-              Total Mold & Yeast Count:
-            </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^1</div>
-            </div>
-
-            {/* GRAM STAIN */}
-            <div
-              id="f-tmy_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_gram" errors={errors} />
-              <ResolveOverlay field="tmy_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tmy_gram") && errors.tmy_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_gram}
-                onChange={(e) => {
-                  set_tmy_gram(e.target.value);
-                  clearError("tmy_gram");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_gram")}
-                aria-invalid={!!errors.tmy_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tmy_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_result" errors={errors} />
-              <ResolveOverlay field="tmy_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tmy_result") && errors.tmy_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_result}
-                onChange={(e) => {
-                  set_tmy_result(e.target.value);
-                  clearError("tmy_result");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_result")}
-                placeholder={tmy_spec ? `${tmyUnit}` : ""}
-                aria-invalid={!!errors.tmy_result}
-              />
-              <div className="py-1 px-2 text-center">{tmyUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            {!isDeviceSpecification && (
-            <div
-              id="f-tmy_spec"
-              className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
-            >
-              <FieldErrorBadge name="tmy_spec" errors={errors} />
-              <ResolveOverlay field="tmy_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  } focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tbc_gram}
+                  onChange={(e) => {
+                    set_tbc_gram(e.target.value);
+                    clearError("tbc_gram");
+                    markDirty();
                   }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tmy_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TMY specification"
-                  aria-label="Add correction for TMY specification"
+                  readOnly={lock("tbc_gram")}
+                  aria-invalid={!!errors.tbc_gram}
                 />
-              )}
+              </div>
 
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tmy_spec") && errors.tmy_spec
+              {/* RESULT */}
+              <div
+                id="f-tbc_result"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tbc_result");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
+                  "tbc_result",
+                )}`}
+              >
+                <FieldErrorBadge name="tbc_result" errors={errors} />
+                <ResolveOverlay field="tbc_result" />
+                <input
+                  className={`w-1/2 input-editable px-1 border ${
+                    !lock("tbc_result") && errors.tbc_result
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("tmy_spec")
+                    hasCorrection("tbc_result")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
-                  }`}
-                  value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
-                  onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
-                  disabled={lock("tmy_spec")}
-                  aria-invalid={!!errors.tmy_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tbc_result}
+                  onChange={(e) => {
+                    set_tbc_result(e.target.value);
+                    clearError("tbc_result");
+                    markDirty();
+                  }}
+                  readOnly={lock("tbc_result")}
+                  placeholder={tbc_spec ? `${tbcUnit}` : ""}
+                  aria-invalid={!!errors.tbc_result}
+                />
+                <div className="py-1 px-2 text-center">{tbcUnit}</div>
+              </div>
 
-                {!lock("tmy_spec") && (
+              {/* SPECIFICATION */}
+              <div
+                id="f-tbc_spec"
+                className={`py-1 px-2 flex relative ${
+                  isDeviceSpecification
+                    ? "row-span-2 items-center"
+                    : "border-b border-black"
+                } ${dashClass("tbc_spec")} ${
+                  isDeviceSpecification && hasCorrection("tmy_spec")
+                    ? "dash dash-red"
+                    : ""
+                }`}
+              >
+                <FieldErrorBadge name="tbc_spec" errors={errors} />
+                {isDeviceSpecification && (
+                  <FieldErrorBadge name="tmy_spec" errors={errors} />
+                )}
+                <ResolveOverlay field="tbc_spec" />
+
+                {selectingCorrections && (
                   <button
                     type="button"
-                    onClick={(e) => {
+                    className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
-                      openAddSpec("tmy_spec");
                     }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAddForField("tbc_spec");
+                      setAddMessage("");
+                    }}
+                    title="Click to add correction for TBC specification"
+                    aria-label="Add correction for TBC specification"
+                  />
                 )}
+
+                <div className="flex w-full items-center gap-2">
+                  <select
+                    className={`w-full input-editable px-1 border ${
+                      !lock("tbc_spec") && errors.tbc_spec
+                        ? "border-red-500 ring-1 ring-red-500"
+                        : "border-black/70"
+                    } ${
+                      hasCorrection("tbc_spec")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
+                    onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
+                    disabled={lock("tbc_spec")}
+                    aria-invalid={!!errors.tbc_spec}
+                  >
+                    <option value="">-- Select --</option>
+                    {specOptions.flatMap((opt) =>
+                      UNIT_OPTIONS.map((unit) => (
+                        <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                          {formatSpec(opt, unit)}
+                        </option>
+                      )),
+                    )}
+                  </select>
+
+                  {!lock("tbc_spec") && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAddSpec("tbc_spec");
+                      }}
+                      className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                      title="Add new specification"
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-            )}
-          </div>
+
+            {/* Row 2: Total Mold & Yeast Count */}
+            <div className="contents">
+              <div className="py-1 px-2 font-bold border-r border-black">
+                Total Mold & Yeast Count:
+              </div>
+
+              {/* DILUTION (static) */}
+              <div className="py-1 px-2 border-r border-black">
+                <div className="py-1 px-2 text-center"> x 10^1</div>
+              </div>
+
+              {/* GRAM STAIN */}
+              <div
+                id="f-tmy_gram"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tmy_gram");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+                  "tmy_gram",
+                )}`}
+              >
+                <FieldErrorBadge name="tmy_gram" errors={errors} />
+                <ResolveOverlay field="tmy_gram" />
+                <input
+                  className={`w-full input-editable px-1 border ${
+                    !lock("tmy_gram") && errors.tmy_gram
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tmy_gram")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tmy_gram}
+                  onChange={(e) => {
+                    set_tmy_gram(e.target.value);
+                    clearError("tmy_gram");
+                    markDirty();
+                  }}
+                  readOnly={lock("tmy_gram")}
+                  aria-invalid={!!errors.tmy_gram}
+                />
+              </div>
+
+              {/* RESULT */}
+              <div
+                id="f-tmy_result"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tmy_result");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+                  "tmy_result",
+                )}`}
+              >
+                <FieldErrorBadge name="tmy_result" errors={errors} />
+                <ResolveOverlay field="tmy_result" />
+                <input
+                  className={`w-1/2 input-editable px-1 border ${
+                    !lock("tmy_result") && errors.tmy_result
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tmy_result")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tmy_result}
+                  onChange={(e) => {
+                    set_tmy_result(e.target.value);
+                    clearError("tmy_result");
+                    markDirty();
+                  }}
+                  readOnly={lock("tmy_result")}
+                  placeholder={tmy_spec ? `${tmyUnit}` : ""}
+                  aria-invalid={!!errors.tmy_result}
+                />
+                <div className="py-1 px-2 text-center">{tmyUnit}</div>
+              </div>
+
+              {/* SPECIFICATION */}
+              {!isDeviceSpecification && (
+                <div
+                  id="f-tmy_spec"
+                  className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
+                >
+                  <FieldErrorBadge name="tmy_spec" errors={errors} />
+                  <ResolveOverlay field="tmy_spec" />
+
+                  {selectingCorrections && (
+                    <button
+                      type="button"
+                      className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setAddForField("tmy_spec");
+                        setAddMessage("");
+                      }}
+                      title="Click to add correction for TMY specification"
+                      aria-label="Add correction for TMY specification"
+                    />
+                  )}
+
+                  <div className="flex w-full items-center gap-2">
+                    <select
+                      className={`w-full input-editable px-1 border ${
+                        !lock("tmy_spec") && errors.tmy_spec
+                          ? "border-red-500 ring-1 ring-red-500"
+                          : "border-black/70"
+                      } ${
+                        hasCorrection("tmy_spec")
+                          ? "ring-2 ring-rose-500 animate-pulse"
+                          : ""
+                      }`}
+                      value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
+                      onChange={(e) =>
+                        applySpecValue("tmy_spec", e.target.value)
+                      }
+                      disabled={lock("tmy_spec")}
+                      aria-invalid={!!errors.tmy_spec}
+                    >
+                      <option value="">-- Select --</option>
+                      {specOptions.flatMap((opt) =>
+                        UNIT_OPTIONS.map((unit) => (
+                          <option
+                            key={`${opt}-${unit}`}
+                            value={`${opt}|${unit}`}
+                          >
+                            {formatSpec(opt, unit)}
+                          </option>
+                        )),
+                      )}
+                    </select>
+
+                    {!lock("tmy_spec") && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAddSpec("tmy_spec");
+                        }}
+                        className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                        title="Add new specification"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -3998,10 +3956,9 @@ export default function MicroMixReportForm({
                       !isCorrectionTargetStatus(String(targetStatus)),
                   );
 
-                  const canSetCurrentStatus =
-                    STATUS_TRANSITIONS[
-                      status as ReportStatus
-                    ]?.canSet.includes(role!);
+                  const canSetCurrentStatus = STATUS_TRANSITIONS[
+                    status as ReportStatus
+                  ]?.canSet.includes(role!);
 
                   return (
                     <>

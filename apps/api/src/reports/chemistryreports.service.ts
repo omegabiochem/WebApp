@@ -447,8 +447,6 @@ function updateDetailsByType(
   }
 }
 
-
-
 function allowedForRole(role: UserRole, fields: string[]) {
   if (EDIT_MAP[role]?.includes('*')) return [];
   const disallowed = fields.filter((f) => !EDIT_MAP[role]?.includes(f));
@@ -597,6 +595,37 @@ export class ChemistryReportsService {
     });
   }
 
+  private async addCreatorName(report: any) {
+    if (!report) return report;
+
+    const createdBy = String(report.createdBy || '').trim();
+
+    if (!createdBy) {
+      return {
+        ...report,
+        createdByName: null,
+      };
+    }
+
+    const creator = await this.prisma.user.findUnique({
+      where: { id: createdBy },
+      select: {
+        name: true,
+        userId: true,
+        email: true,
+      },
+    });
+
+    return {
+      ...report,
+      createdByName:
+        creator?.name?.trim() ||
+        creator?.userId?.trim() ||
+        creator?.email?.trim() ||
+        null,
+    };
+  }
+
   // 👇 add this inside the class
   private _getCorrectionsArray(r: any): CorrectionItem[] {
     const raw = r?.corrections;
@@ -712,8 +741,11 @@ export class ChemistryReportsService {
     await this.dashboardSync.syncChemistryReport(created.id);
 
     const flat = flattenReport(created);
-    this.reportsGateway.notifyReportCreated(flat);
-    return flat;
+    const response = await this.addCreatorName(flat);
+
+    this.reportsGateway.notifyReportCreated(response);
+
+    return response;
   }
 
   async get(id: string) {
@@ -724,8 +756,14 @@ export class ChemistryReportsService {
         coa: true,
       },
     });
-    if (!r) throw new NotFoundException('Report not found');
-    return flattenReport(r);
+
+    if (!r) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const flat = flattenReport(r);
+
+    return this.addCreatorName(flat);
   }
 
   private _coerce(obj: any) {
@@ -1190,8 +1228,7 @@ export class ChemistryReportsService {
     await this.dashboardSync.syncChemistryReportAndVerify(id);
 
     if (patchIn.status && String(current.status) !== String(patchIn.status)) {
-      const slug =
-        current.formType === 'COA' ? 'coa' : 'chemistry-mix';
+      const slug = current.formType === 'COA' ? 'coa' : 'chemistry-mix';
 
       const clientCode = current.clientCode ?? null;
       const clientName = pickDetails(current)?.client ?? '-';
@@ -1218,7 +1255,9 @@ export class ChemistryReportsService {
       }
     }
 
-    return flattenReport(updated);
+    const flat = flattenReport(updated);
+
+    return this.addCreatorName(flat);
   }
 
   // async updateStatus(
@@ -1438,10 +1477,7 @@ export class ChemistryReportsService {
     const patch: any = { status: target };
 
     // Preserve the original requester and request type for approval routing.
-    if (
-      target === 'CHANGE_REQUESTED' ||
-      target === 'CORRECTION_REQUESTED'
-    ) {
+    if (target === 'CHANGE_REQUESTED' || target === 'CORRECTION_REQUESTED') {
       patch.workflowReturnStatus = current.status;
       patch.workflowRequestKind =
         target === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
@@ -1605,7 +1641,9 @@ export class ChemistryReportsService {
       }
     }
 
-    return flattenReport(updated);
+    const flat = flattenReport(updated);
+
+    return this.addCreatorName(flat);
   }
 
   async addAttachment(

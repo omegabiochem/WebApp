@@ -285,17 +285,6 @@ export default function ApeReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -313,6 +302,12 @@ export default function ApeReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -321,13 +316,15 @@ export default function ApeReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
   useEffect(() => {
@@ -357,70 +354,44 @@ export default function ApeReportForm({
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve APE creator:", error);
+      }
+
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -435,7 +406,6 @@ export default function ApeReportForm({
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -510,7 +480,6 @@ export default function ApeReportForm({
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
-
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
@@ -705,11 +674,9 @@ export default function ApeReportForm({
     );
   }
 
-
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
-
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -1256,11 +1223,11 @@ export default function ApeReportForm({
               status: newStatus,
               reason:
                 opts?.reason ??
-              (centralApproval
-                ? newStatus === "UNDER_CHANGE_UPDATE"
-                  ? "Change request approved"
-                  : "Correction request approved"
-                : "Changing Status"),
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
               expectedVersion: expectedVersionForRequest,
             }),
@@ -1715,9 +1682,6 @@ export default function ApeReportForm({
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
 
   return (
     <>
@@ -2676,10 +2640,9 @@ export default function ApeReportForm({
                       !isCorrectionTargetStatus(String(targetStatus)),
                   );
 
-                  const canSetCurrentStatus =
-                    APE_STATUS_TRANSITIONS[
-                      status as ReportStatus
-                    ]?.canSet.includes(role!);
+                  const canSetCurrentStatus = APE_STATUS_TRANSITIONS[
+                    status as ReportStatus
+                  ]?.canSet.includes(role!);
 
                   return (
                     <>
@@ -2687,7 +2650,9 @@ export default function ApeReportForm({
                         <div className="relative">
                           <button
                             type="button"
-                            onClick={() => setCorrectionActionOpen((open) => !open)}
+                            onClick={() =>
+                              setCorrectionActionOpen((open) => !open)
+                            }
                             className="px-4 py-2 rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                             disabled={isBusy}
                           >

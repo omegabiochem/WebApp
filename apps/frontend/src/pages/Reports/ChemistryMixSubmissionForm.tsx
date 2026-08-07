@@ -184,10 +184,7 @@ function canEdit(
     return false;
   }
 
-  if (
-    role === "QA" &&
-    (field === "reviewedBy" || field === "reviewedDate")
-  ) {
+  if (role === "QA" && (field === "reviewedBy" || field === "reviewedDate")) {
     return false;
   }
 
@@ -218,7 +215,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-
 export default function ChemistryMixSubmissionForm({
   report,
   onClose,
@@ -247,16 +243,6 @@ export default function ChemistryMixSubmissionForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
   const navigate = useNavigate();
 
   const [isDirty, setIsDirty] = useState(false);
@@ -282,6 +268,12 @@ export default function ChemistryMixSubmissionForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -290,30 +282,32 @@ export default function ChemistryMixSubmissionForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
-useEffect(() => {
-  if (!report?.id) return;
+  useEffect(() => {
+    if (!report?.id) return;
 
-  setReportId(report.id);
+    setReportId(report.id);
 
-  if (report.status) {
-    setStatus(report.status);
-  }
+    if (report.status) {
+      setStatus(report.status);
+    }
 
-  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
 
-  if (typeof report.version === "number") {
-    setReportVersion(report.version);
-  }
-}, [report?.id, report?.status, report?.reportNumber, report?.version]);
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -326,70 +320,44 @@ useEffect(() => {
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/chemistry-reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/chemistry-reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve Chemistry creator:", error);
+      }
+
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -404,7 +372,6 @@ useEffect(() => {
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // ---- header fields (same as micro) ----
@@ -924,7 +891,6 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -999,7 +965,6 @@ useEffect(() => {
   const [addForField, setAddForField] = useState<string | null>(null);
   const [addMessage, setAddMessage] = useState("");
 
-
   function isCorrectionTargetStatus(target: string) {
     return (
       target === "CHANGE_REQUESTED" ||
@@ -1008,11 +973,9 @@ useEffect(() => {
     );
   }
 
-
   const uiNeedsESign = (target: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (target === "UNDER_CLIENT_REVIEW" || target === "LOCKED");
-
 
   function requestStatusChange(target: ChemistryReportStatus) {
     if (!reportId) {
@@ -1379,11 +1342,11 @@ useEffect(() => {
           );
 
           setIsDirty(false);
-      onSaved?.({
-  ...report,
-  ...saved,
-  id: saved.id ?? reportId,
-});
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1488,11 +1451,16 @@ useEffect(() => {
       // A just-completed save also increments the version asynchronously.
       if ((centralApproval || savedBeforeStatusChange) && reportId) {
         try {
-          const latestReport = await api<any>(`/chemistry-reports/${reportId}`, {
-            method: "GET",
-          });
+          const latestReport = await api<any>(
+            `/chemistry-reports/${reportId}`,
+            {
+              method: "GET",
+            },
+          );
 
-          const latestStatus = latestReport?.status as ChemistryReportStatus | undefined;
+          const latestStatus = latestReport?.status as
+            | ChemistryReportStatus
+            | undefined;
           const latestVersion =
             typeof latestReport?.version === "number"
               ? latestReport.version
@@ -1544,11 +1512,11 @@ useEffect(() => {
               status: newStatus,
               reason:
                 opts?.reason ??
-              (centralApproval
-                ? newStatus === "UNDER_CHANGE_UPDATE"
-                  ? "Change request approved"
-                  : "Correction request approved"
-                : "Changing Status"),
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
               eSignPassword: opts?.eSignPassword ?? undefined,
               expectedVersion: expectedVersionForRequest,
             }),
@@ -1594,9 +1562,12 @@ useEffect(() => {
 
         if (err?.status === 409) {
           try {
-            const latestReport = await api<any>(`/chemistry-reports/${reportId}`, {
-              method: "GET",
-            });
+            const latestReport = await api<any>(
+              `/chemistry-reports/${reportId}`,
+              {
+                method: "GET",
+              },
+            );
 
             const latestStatus =
               (latestReport?.status as ChemistryReportStatus) || currentStatus;
@@ -1997,8 +1968,6 @@ useEffect(() => {
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
-
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3599,7 +3568,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
       {canShowFloatingUi && !isTemplateViewMode && selectingCorrections && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border bg-white/95 p-3 shadow-xl">
           <div className="text-sm font-medium">Corrections picker</div>
@@ -3671,11 +3639,14 @@ useEffect(() => {
                   // the optimistic-lock version. Reload both before continuing.
                   const [freshCorrections, latestReport] = await Promise.all([
                     getCorrections(reportId!),
-                    api<any>(`/chemistry-reports/${reportId!}`, { method: "GET" }),
+                    api<any>(`/chemistry-reports/${reportId!}`, {
+                      method: "GET",
+                    }),
                   ]);
 
                   const latestStatus =
-                    (latestReport?.status as ChemistryReportStatus) || targetStatus;
+                    (latestReport?.status as ChemistryReportStatus) ||
+                    targetStatus;
                   const latestVersion =
                     typeof latestReport?.version === "number"
                       ? latestReport.version

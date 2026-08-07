@@ -51,8 +51,7 @@ export class MailService {
 
     // Branding / support line
     const brandName = process.env.MAIL_BRAND_NAME || 'Omega Biochem';
-    const brandSubtitle =
-      process.env.MAIL_BRAND_SUBTITLE || 'Account credentials';
+    const brandSubtitle = 'Account Setup';
     const supportEmail =
       process.env.SUPPORT_EMAIL || 'tech@omegabiochemlab.com';
 
@@ -75,7 +74,8 @@ export class MailService {
 
     const displayName = name?.trim() ? name.trim() : 'there';
 
-    const subject = 'Omega LIMS — Your Account Login Credentials';
+    const subject =
+      '🟡 Account Created — Omega LIMS — Your Account Login Credentials';
 
     // NOTE:
     // Most email clients block JavaScript. We implement:
@@ -95,11 +95,11 @@ export class MailService {
       display:inline-block;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
       font-weight:700;
-      background:#eef2ff;
-      border:1px solid #dbeafe;
+      background:#fef3c7;
+      border:1px solid #fcd34d;
+      color:#92400e;
       padding:4px 8px;
       border-radius:8px;
-      color:#111827;
       user-select: all;
       -webkit-user-select: all;
       -ms-user-select: all;
@@ -173,13 +173,17 @@ export class MailService {
                   Hello <strong>${escapeHtml(displayName)}</strong>,
                 </p>
 
+               <p style="margin:0 0 8px 0; font-size:17px; font-weight:800; color:#92400e;">
+                  Welcome to Omega LIMS
+                </p>
+
                 <p style="margin:0 0 16px 0;">
-                  An account has been created for you. Use the credentials below to sign in.
+                  Your Omega LIMS account is ready. Use the temporary credentials below to sign in for the first time.
                 </p>
 
                 <!-- Credential box -->
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-                  style="background:#f6f8fc; border:1px solid #e6eaf2; border-radius:12px; padding:14px;">
+                  style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:14px;">
                   <tr>
                     <td style="font-family: Arial, Helvetica, sans-serif; font-size:14px; color:#111827; line-height:1.7;">
 
@@ -253,7 +257,9 @@ export class MailService {
 
     const textBody = `Hello ${displayName},
 
-An account has been created for you. Use the credentials below to sign in.
+Welcome to Omega LIMS.
+
+Your Omega LIMS account is ready. Use the temporary credentials below to sign in for the first time.
 
 Login URL: ${loginUrl}
 User ID: ${userId}

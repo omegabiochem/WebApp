@@ -1153,6 +1153,37 @@ export class ReportsService {
     return row ? flattenReport(row) : null;
   }
 
+  private async addCreatorName(report: any) {
+    if (!report) return report;
+
+    const createdBy = String(report.createdBy || '').trim();
+
+    if (!createdBy) {
+      return {
+        ...report,
+        createdByName: null,
+      };
+    }
+
+    const creator = await this.prisma.user.findUnique({
+      where: { id: createdBy },
+      select: {
+        name: true,
+        userId: true,
+        email: true,
+      },
+    });
+
+    return {
+      ...report,
+      createdByName:
+        creator?.name?.trim() ||
+        creator?.userId?.trim() ||
+        creator?.email?.trim() ||
+        null,
+    };
+  }
+
   async createLabReportDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
@@ -1280,8 +1311,11 @@ export class ReportsService {
     });
 
     const flat = flattenReport(created);
-    this.reportsGateway.notifyReportCreated(flat);
-    return flat;
+    const response = await this.addCreatorName(flat);
+
+    this.reportsGateway.notifyReportCreated(response);
+
+    return response;
   }
 
   async createDraft(
@@ -1412,9 +1446,30 @@ export class ReportsService {
     await this.dashboardSync.syncMicroReport(created.id);
 
     const flat = flattenReport(created);
-    this.reportsGateway.notifyReportCreated(flat);
-    return flat;
+    const response = await this.addCreatorName(flat);
+
+    this.reportsGateway.notifyReportCreated(response);
+
+    return response;
   }
+
+  // async get(id: string) {
+  //   const r = await this.prisma.report.findUnique({
+  //     where: { id },
+  //     include: {
+  //       microMix: true,
+  //       microMixWater: true,
+  //       sterility: true,
+  //       ape: true,
+  //       apeValidationReport: true,
+  //       apeReport: true,
+  //       attachments: true,
+  //       statusHistory: true,
+  //     },
+  //   });
+  //   if (!r) throw new NotFoundException('Report not found');
+  //   return flattenReport(r);
+  // }
 
   async get(id: string) {
     const r = await this.prisma.report.findUnique({
@@ -1430,8 +1485,14 @@ export class ReportsService {
         statusHistory: true,
       },
     });
-    if (!r) throw new NotFoundException('Report not found');
-    return flattenReport(r);
+
+    if (!r) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const flat = flattenReport(r);
+
+    return this.addCreatorName(flat);
   }
 
   async updateLabReportDraft(
@@ -1508,9 +1569,11 @@ export class ReportsService {
     if (!updated) throw new NotFoundException('Report not found after update');
 
     const flat = flattenReport(updated);
-    this.reportsGateway.notifyReportUpdate(flat);
+    const response = await this.addCreatorName(flat);
 
-    return flat;
+    this.reportsGateway.notifyReportUpdate(response);
+
+    return response;
   }
 
   async update(
@@ -1927,7 +1990,8 @@ export class ReportsService {
       }
     }
 
-    return flattenReport(updated);
+    const flat = flattenReport(updated);
+    return this.addCreatorName(flat);
   }
   private async logStatusChange(args: {
     reportId: string;
@@ -2299,7 +2363,8 @@ export class ReportsService {
       }
     }
 
-    return flattenReport(updated);
+    const flat = flattenReport(updated);
+    return this.addCreatorName(flat);
   }
 
   async findAll() {
