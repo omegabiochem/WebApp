@@ -189,7 +189,7 @@ export class NotificationsDigestService {
   ) {}
 
   // every 30 minutes
-  @Cron('*/1 * * * *')
+  @Cron('*/30 * * * *')
   async flush() {
     const worker = process.env.HOSTNAME || `pid-${process.pid}`;
     const now = new Date();
@@ -227,7 +227,12 @@ export class NotificationsDigestService {
       // compress: last update per reportId
       const latestByReport = new Map<string, (typeof items)[number]>();
       for (const it of items) latestByReport.set(it.reportId, it);
-      const compact = [...latestByReport.values()];
+      const compact = [...latestByReport.values()].sort((a, b) =>
+        String(a.formNumber).localeCompare(String(b.formNumber), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      );
 
       const hi = digestHighlightForStatuses(
         compact.map((x) => String(x.newStatus)),
