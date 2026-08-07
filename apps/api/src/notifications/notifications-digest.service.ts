@@ -18,7 +18,7 @@ function parseRecipientsKey(key: string): string[] {
 
 type DigestHighlight = {
   badgeText: string;
-  badgeTone: 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
+  badgeTone: 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN' | 'DARK_GREEN';
   priorityLine?: string;
 };
 
@@ -86,7 +86,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasPreliminaryResultsReady) {
     return {
       badgeText: 'Preliminary Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Preliminary results are ready. Please review and approve or request corrections.',
     };
@@ -97,7 +97,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasFinalResultsReady) {
     return {
       badgeText: 'Final Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Final results are ready. Please review and approve or request corrections.',
     };
@@ -108,7 +108,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasResultsReady) {
     return {
       badgeText: 'Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Results are ready. Please review and approve or request corrections.',
     };
@@ -144,6 +144,9 @@ function subjectMarkerForTone(tone: DigestHighlight['badgeTone']): string {
       return '🔵';
 
     case 'GREEN':
+      return '🟢';
+
+    case 'DARK_GREEN':
       return '🟢';
 
     case 'GRAY':
@@ -234,23 +237,13 @@ export class NotificationsDigestService {
 
       const title =
         first.scope === 'CLIENT'
-          ? `${hi.badgeText}: Summary updates (${first.clientCode ?? 'Client'})`
-          : `${hi.badgeText}: Lab summary updates (${first.dept ?? 'LAB'})`;
+          ? `Report Update Summary (${first.clientCode ?? 'Client'})`
+          : `Lab Report Update Summary (${first.dept ?? 'LAB'})`;
 
       const subject =
         first.scope === 'CLIENT'
           ? `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
           : `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
-
-      // const title =
-      //   first.scope === 'CLIENT'
-      //     ? `${hi.badgeText}: Summary updates (${first.clientCode ?? 'Client'})`
-      //     : `${hi.badgeText}: Lab summary updates (${first.dept ?? 'LAB'})`;
-
-      // const subject =
-      //   first.scope === 'CLIENT'
-      //     ? `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
-      //     : `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
 
       const lines = compact.slice(0, 80).map((x) => {
         // keep clean; if you want URL per line, append it

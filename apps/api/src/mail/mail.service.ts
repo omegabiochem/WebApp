@@ -12,8 +12,15 @@ function escapeHtml(input: string) {
 
 type ClientNotifyKind = 'REPORT_UPDATES' | 'MESSAGES';
 
-type BadgeTone = 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
-
+type BadgeTone =
+  | 'RED'
+  | 'ORANGE'
+  | 'BLUE'
+  | 'GRAY'
+  | 'GREEN'
+  | 'DARK_GREEN'
+  | 'LIGHT_GREEN'
+  | 'PURPLE';
 @Injectable()
 export class MailService {
   private readonly log = new Logger(MailService.name);
@@ -346,28 +353,53 @@ If you did not expect this email, contact support at ${supportEmail}.
 
     const tone: BadgeTone = args.badgeTone ?? 'GRAY';
 
-    const badgeBg: Record<typeof tone, string> = {
+    const badgeBg: Record<BadgeTone, string> = {
       RED: '#fee2e2',
       ORANGE: '#ffedd5',
       BLUE: '#dbeafe',
       GRAY: '#eef2f7',
+
       GREEN: '#dcfce7',
+
+      // Results
+      DARK_GREEN: '#dcfce7',
+
+      // Messages
+      LIGHT_GREEN: '#ecfdf5',
+
+      // Verification code
+      PURPLE: '#f3e8ff',
     };
 
-    const badgeFg: Record<typeof tone, string> = {
+    const badgeFg: Record<BadgeTone, string> = {
       RED: '#991b1b',
       ORANGE: '#9a3412',
       BLUE: '#1e40af',
       GRAY: '#374151',
+
       GREEN: '#166534',
+
+      // Results - strong/dark
+      DARK_GREEN: '#14532d',
+
+      // Messages - lighter visual treatment
+      LIGHT_GREEN: '#15803d',
+
+      // Verification
+      PURPLE: '#7e22ce',
     };
 
-    const badgeBorder: Record<typeof tone, string> = {
+    const badgeBorder: Record<BadgeTone, string> = {
       RED: '#fecaca',
       ORANGE: '#fed7aa',
       BLUE: '#bfdbfe',
       GRAY: '#e6eaf2',
+
       GREEN: '#bbf7d0',
+
+      DARK_GREEN: '#86efac',
+      LIGHT_GREEN: '#bbf7d0',
+      PURPLE: '#d8b4fe',
     };
 
     const badgeHtml = args.badgeText
@@ -631,7 +663,7 @@ If you did not expect this email, contact support at ${supportEmail}.
     }).format(expiresAt);
 
     const displayName = name?.trim() ? name.trim() : 'there';
-    const subject = 'Omega LIMS — Your verification code';
+    const subject = '🟣 Verification Code — Omega LIMS';
 
     const htmlBody = `
 <!doctype html>
@@ -654,7 +686,9 @@ If you did not expect this email, contact support at ${supportEmail}.
             <p style="margin:0 0 12px 0;">Use this verification code to complete your sign-in:</p>
 
             <div style="display:inline-block; font-size:24px; font-weight:900; letter-spacing:6px;
-                        background:#f6f8fc; border:1px solid #e6eaf2; padding:10px 14px; border-radius:12px;">
+                        background:#f3e8ff;
+border:1px solid #d8b4fe;
+color:#6b21a8; padding:10px 14px; border-radius:12px;">
               ${escapeHtml(code)}
             </div>
 

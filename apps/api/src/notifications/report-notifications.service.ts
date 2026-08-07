@@ -170,7 +170,7 @@ function highlightForStatus(status: string) {
   if (status === 'UNDER_CLIENT_PRELIMINARY_REVIEW') {
     return {
       badgeText: 'Preliminary Results Ready',
-      badgeTone: 'GREEN' as const,
+  badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Preliminary results are ready. Please review and approve or request corrections.',
     };
@@ -179,7 +179,7 @@ function highlightForStatus(status: string) {
   if (status === 'UNDER_CLIENT_FINAL_REVIEW') {
     return {
       badgeText: 'Final Results Ready',
-      badgeTone: 'GREEN' as const,
+    badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Final results are ready. Please review and approve or request corrections.',
     };
@@ -188,7 +188,7 @@ function highlightForStatus(status: string) {
   if (status === 'UNDER_CLIENT_REVIEW') {
     return {
       badgeText: 'Results Ready',
-      badgeTone: 'GREEN' as const,
+    badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required:  Results are ready. Please review and approve or request corrections.',
     };
@@ -209,7 +209,15 @@ function highlightForStatus(status: string) {
   };
 }
 
-type NotificationTone = 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
+type NotificationTone =
+  | 'RED'
+  | 'ORANGE'
+  | 'BLUE'
+  | 'GRAY'
+  | 'GREEN'
+  | 'DARK_GREEN'
+  | 'LIGHT_GREEN'
+  | 'PURPLE';
 
 function subjectMarkerForTone(tone: NotificationTone): string {
   switch (tone) {
@@ -224,6 +232,14 @@ function subjectMarkerForTone(tone: NotificationTone): string {
 
     case 'GREEN':
       return '🟢';
+      case 'DARK_GREEN':
+  return '🟢';
+
+case 'LIGHT_GREEN':
+  return '🟩';
+
+case 'PURPLE':
+  return '🟣';
 
     case 'GRAY':
     default:

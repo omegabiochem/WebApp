@@ -67,18 +67,11 @@ export class MessageDigestService {
 
       const subject =
         first.scope === 'CLIENT'
-          ? `[Messages] Omega LIMS — ${compact.length} thread update(s) — ${first.clientCode ?? 'Client'}`
-          : `[Messages] Omega LIMS — ${compact.length} thread update(s) — ${first.dept ?? 'LAB'}`;
-
-      // const title =
-      //   first.scope === 'CLIENT'
-      //     ? `New messages from lab (${first.clientCode ?? 'Client'})`
-      //     : `New client messages (${first.dept ?? 'LAB'})`;
+          ? `🟩 Message from Omega Lab — ${first.clientCode ?? 'Client'}`
+          : `🟩 Message from ${first.clientCode ?? 'Client'} — Omega LIMS`;
 
       const title =
-        first.scope === 'CLIENT'
-          ? `New messages from Lab`
-          : `New messages from Client`;
+        first.scope === 'CLIENT' ? 'New Message' : 'New Client Message';
 
       // const lines = compact.slice(0, 80).map((x) => {
       //   const from = x.senderName || x.senderRole;
@@ -99,8 +92,12 @@ export class MessageDigestService {
           subject,
           title,
           // badgeText: 'Message Digest',
-          badgeTone: 'BLUE',
-          priorityLine: 'You have new messages in Omega LIMS.',
+          badgeText: 'MESSAGE',
+          badgeTone: 'LIGHT_GREEN',
+          priorityLine:
+            first.scope === 'CLIENT'
+              ? 'You received a new message from Omega Lab.'
+              : `${first.clientCode ?? 'Client'} sent a new message.`,
           lines,
           actionUrl,
           actionLabel: actionUrl ? 'Open message' : undefined,
