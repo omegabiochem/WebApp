@@ -1749,6 +1749,14 @@ export default function SterilityReportForm({
     return status.replaceAll("_", " ");
   }
 
+  function isCorrectionTargetStatus(target: string) {
+    return (
+      target === "CHANGE_REQUESTED" ||
+      target === "CORRECTION_REQUESTED" ||
+      target.endsWith("_NEEDS_CORRECTION")
+    );
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2897,72 +2905,62 @@ export default function SterilityReportForm({
                       status as SterilityReportStatus
                     ]?.next ?? [];
 
-                  const correctionStatuses = nextStatuses.filter(
-                    (s) =>
-                      !hideNeedCorrectionButtons &&
-                      (s === "CHANGE_REQUESTED" ||
-                        s === "CORRECTION_REQUESTED"),
-                  );
+                  const hasCorrectionAction =
+                    !hideNeedCorrectionButtons &&
+                    nextStatuses.some((targetStatus) =>
+                      isCorrectionTargetStatus(String(targetStatus)),
+                    );
 
                   const normalStatuses = nextStatuses.filter(
-                    (s) =>
-                      s !== "CHANGE_REQUESTED" && s !== "CORRECTION_REQUESTED",
+                    (targetStatus) =>
+                      !isCorrectionTargetStatus(String(targetStatus)),
                   );
+
+                  const canSetCurrentStatus = STERILITY_STATUS_TRANSITIONS[
+                    status as SterilityReportStatus
+                  ]?.canSet.includes(role!);
 
                   return (
                     <>
-                      {correctionStatuses.length > 0 &&
-                        STERILITY_STATUS_TRANSITIONS[
-                          status as SterilityReportStatus
-                        ].canSet.includes(role!) && (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setCorrectionActionOpen((v) => !v)}
-                              className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                              disabled={isBusy}
-                            >
-                              {busy === "STATUS" && <Spinner />}
-                              Corrections ▾
-                            </button>
+                      {hasCorrectionAction && canSetCurrentStatus && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setCorrectionActionOpen((v) => !v)}
+                            className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                            disabled={isBusy}
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            Needs Corrections ▾
+                          </button>
 
-                            {correctionActionOpen && (
-                              <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
-                                {correctionStatuses.includes(
-                                  "CHANGE_REQUESTED",
-                                ) && (
-                                  <button
-                                    type="button"
-                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
-                                    onClick={() => {
-                                      setCorrectionActionOpen(false);
-                                      requestStatusChange("CHANGE_REQUESTED");
-                                    }}
-                                  >
-                                    Request Change
-                                  </button>
-                                )}
+                          {correctionActionOpen && (
+                            <div className="absolute left-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-lg border bg-white shadow-lg">
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CHANGE_REQUESTED");
+                                }}
+                              >
+                                Request Change
+                              </button>
 
-                                {correctionStatuses.includes(
-                                  "CORRECTION_REQUESTED",
-                                ) && (
-                                  <button
-                                    type="button"
-                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
-                                    onClick={() => {
-                                      setCorrectionActionOpen(false);
-                                      requestStatusChange(
-                                        "CORRECTION_REQUESTED",
-                                      );
-                                    }}
-                                  >
-                                    Raise Correction
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CORRECTION_REQUESTED");
+                                }}
+                              >
+                                Raise Correction
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {normalStatuses.map(
                         (targetStatus: SterilityReportStatus) => {
