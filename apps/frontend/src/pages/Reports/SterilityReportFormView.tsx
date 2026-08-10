@@ -270,13 +270,26 @@ function getJJLClientCode(report: any) {
   return String(report?.client || "").trim().toUpperCase();
 }
 
+function looksLikeUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim(),
+  );
+}
+
 function getSuppliedCreatedByName(report: any) {
-  return String(
+  const value = String(
     report?.createdByName ||
       report?.creatorName ||
       report?.createdByUser?.name ||
       "",
   ).trim();
+
+  // Never accept a UUID as a display name.
+  if (!value || looksLikeUuid(value)) {
+    return "";
+  }
+
+  return value;
 }
 
 function useCreatedByName(report: any, detailsPath: string) {
@@ -288,49 +301,44 @@ function useCreatedByName(report: any, detailsPath: string) {
     let cancelled = false;
 
     async function loadCreatedByName() {
+      // 1. Use a real supplied creator name when available.
       const suppliedName = getSuppliedCreatedByName(report);
+
       if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId && report?.id && detailsPath) {
+      // 2. Ask the report endpoint itself for createdByName.
+      // Do NOT use /users/lookup here because CLIENT cannot access it.
+      if (report?.id && detailsPath) {
         try {
-          const fullReport = await api<any>(detailsPath, { method: "GET" });
+          const fullReport = await api<any>(detailsPath, {
+            method: "GET",
+          });
 
-          creatorName = getSuppliedCreatedByName(fullReport);
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form usable if creator lookup is unavailable.
+          const resolvedName =
+            getSuppliedCreatedByName(fullReport);
+
+          if (resolvedName) {
+            if (!cancelled) {
+              setCreatedByName(resolvedName);
+            }
+            return;
+          }
+        } catch (error) {
+          console.error(
+            "Failed to resolve report creator:",
+            error,
+          );
         }
       }
 
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
-        return;
-      }
-
-      try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const users = await api<
-          { id: string; name: string | null; email: string | null }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
-
-        const creator = users.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || creatorId;
-
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName(creatorId);
+      // Never show the database UUID to the user.
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 

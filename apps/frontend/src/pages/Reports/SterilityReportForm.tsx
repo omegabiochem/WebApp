@@ -247,7 +247,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -280,17 +279,6 @@ export default function SterilityReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -308,6 +296,12 @@ export default function SterilityReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -316,30 +310,32 @@ export default function SterilityReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
-useEffect(() => {
-  if (!report?.id) return;
+  useEffect(() => {
+    if (!report?.id) return;
 
-  setReportId(report.id);
+    setReportId(report.id);
 
-  if (report.status) {
-    setStatus(report.status);
-  }
+    if (report.status) {
+      setStatus(report.status);
+    }
 
-  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
 
-  if (typeof report.version === "number") {
-    setReportVersion(report.version);
-  }
-}, [report?.id, report?.status, report?.reportNumber, report?.version]);
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,70 +348,45 @@ useEffect(() => {
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve report creator:", error);
+      }
+
+      // Never expose the UUID as a display name.
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -430,7 +401,6 @@ useEffect(() => {
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -492,8 +462,6 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
-
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -502,8 +470,6 @@ useEffect(() => {
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
-
-
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1186,11 +1152,11 @@ useEffect(() => {
           );
 
           setIsDirty(false);
-      onSaved?.({
-  ...report,
-  ...saved,
-  id: saved.id ?? reportId,
-});
+          onSaved?.({
+            ...report,
+            ...saved,
+            id: saved.id ?? reportId,
+          });
           alert("✅ Report saved as '" + saved.status + "'");
           return true;
         } catch (err: any) {
@@ -1202,8 +1168,6 @@ useEffect(() => {
             return false;
           }
           alert("❌ Error saving  report: " + (err.message || "Unknown error"));
-          return false;
-
           return false;
         }
       })) ?? false
@@ -1221,116 +1185,221 @@ useEffect(() => {
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      // const token = localStorage.getItem("token");
-      // const API_BASE = "http://localhost:3000";
+      const currentStatus = status as SterilityReportStatus;
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
 
-      const values = makeValues();
-      const okFields = validateAndSetErrors(values);
+      let okFields = true;
 
-      if (
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+      }
+
+      const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_TESTING_REVIEW" ||
-        // newStatus === "UNDER_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_REVIEW" ||
-        // newStatus === "RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_QA_REVIEW" ||
-        // newStatus === "QA_NEEDS_CORRECTION" ||
-        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        // newStatus === "CLIENT_NEEDS_CORRECTION" ||
         newStatus === "TESTING_ON_HOLD" ||
-        // newStatus === "TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
         newStatus === "LOCKED" ||
-        newStatus === "APPROVED"
+        newStatus === "APPROVED";
+
+      if (!centralApproval && requiresFullValidation && !okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
+        return false;
+      }
+
+      // Approval happens before the assigned user fixes the requested fields.
+      if (
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
       ) {
-        if (!okFields) {
-          alert("⚠️ Please fix the highlighted fields before changing status.");
+        return false;
+      }
+
+      // A save increments the version. Track it so we can reload the version
+      // before immediately performing the status transition.
+      let savedBeforeStatusChange = false;
+
+      if (!reportId || isDirty) {
+        const saved = await handleSave();
+        if (!saved) return false;
+        savedBeforeStatusChange = true;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Central approval may be opened from a stale dashboard/workspace copy.
+      // A just-completed save also increments the version asynchronously.
+      if ((centralApproval || savedBeforeStatusChange) && reportId) {
+        try {
+          const latestReport = await api<any>(`/reports/${reportId}`, {
+            method: "GET",
+          });
+
+          const latestStatus = latestReport?.status as
+            | SterilityReportStatus
+            | undefined;
+          const latestVersion =
+            typeof latestReport?.version === "number"
+              ? latestReport.version
+              : reportVersion;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(latestStatus)}. ` +
+                "The latest version has been loaded.",
+            );
+            return false;
+          }
+
+          expectedVersionForRequest = latestVersion;
+          setReportVersion(latestVersion);
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before status change:",
+            refreshError,
+          );
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
           return false;
         }
       }
 
-      //  if (newStatus === "SUBMITTED_BY_CLIENT") {
-      //   const sent = todayISO();
-      //   setDateSent(sent);
-      //   markDirty(); // ✅ IMPORTANT so handleSave runs
-      // }
-
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return false;
-      }
-
-      // ensure latest edits are saved
-      if (!reportId || isDirty) {
-        const saved = await handleSave();
-        if (!saved) return;
-      }
-
       try {
-        let updated: UpdatedReport;
-        updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
-          method: "PATCH",
-          // Server expects: status (always), reason (required for critical fields incl. status),
-          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
-          body: JSON.stringify({
-            status: newStatus,
-            reason: opts?.reason ?? "Changing Status",
-            eSignPassword: opts?.eSignPassword ?? undefined,
-            expectedVersion: reportVersion,
-          }),
-        });
+        const updated = await api<UpdatedReport>(
+          `/reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: newStatus,
+              reason:
+                opts?.reason ??
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
+              eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: expectedVersionForRequest,
+            }),
+          },
+        );
 
-        // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-        // const updated: { status?: ReportStatus; reportNumber?: string } =
-        //   await res.json();
+        const nextStatus = updated.status ?? newStatus;
+        const nextVersion =
+          typeof updated.version === "number"
+            ? updated.version
+            : expectedVersionForRequest + 1;
 
-        setStatus(updated.status ?? newStatus);
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
-        setReportVersion((prev) =>
-          typeof updated.version === "number" ? updated.version : prev + 1,
-        );
+
         setIsDirty(false);
-        onStatusChanged?.(updated);
-        alert(`✅ Status changed to ${newStatus}`);
 
-        // if (returnTo) {
-        //   backToDashboard();
-        //   return;
-        // }
-        // if (role === "CLIENT") {
-        //   backToDashboard();
-        // } else if (role === "FRONTDESK") {
-        //   navigate("/frontdeskDashboard");
-        // } else if (role === "MICRO") {
-        //   navigate("/microDashboard");
-        // } else if (role === "MC") {
-        //   navigate("/mcDashboard");
-        // } else if (role === "QA") {
-        //   navigate("/qaDashboard");
-        // } else if (role === "ADMIN") {
-        //   navigate("/adminDashboard");
-        // } else if (role === "SYSTEMADMIN") {
-        //   navigate("/systemAdminDashboard");
-        // }
+        onStatusChanged?.({
+          ...report,
+          ...updated,
+          id: reportId,
+          status: nextStatus,
+          version: nextVersion,
+        });
 
-        if (embedded) return true; // stay on page if embedded
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
+
+        if (embedded) return true;
         backToDashboard();
         return true;
       } catch (err: any) {
         console.error(err);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(`/reports/${reportId}`, {
+              method: "GET",
+            });
+
+            const latestStatus =
+              (latestReport?.status as SterilityReportStatus) || currentStatus;
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+          return false;
+        }
+
         const msg =
-          err?.response?.data?.message ||
-          err?.response?.message ||
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
           err?.message ||
           "Status update failed.";
 
-        throw new Error(msg);
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1644,6 +1713,18 @@ useEffect(() => {
     );
   }
 
+  function isCentralApprovalTransition(
+    currentStatus: SterilityReportStatus,
+    targetStatus: SterilityReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
+    );
+  }
+
   function shouldBlockStatusChangeForUnresolvedCorrections() {
     const pending = openCorrections.filter(
       (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
@@ -1668,7 +1749,13 @@ useEffect(() => {
     return status.replaceAll("_", " ");
   }
 
-
+  function isCorrectionTargetStatus(target: string) {
+    return (
+      target === "CHANGE_REQUESTED" ||
+      target === "CORRECTION_REQUESTED" ||
+      target.endsWith("_NEEDS_CORRECTION")
+    );
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2818,72 +2905,62 @@ useEffect(() => {
                       status as SterilityReportStatus
                     ]?.next ?? [];
 
-                  const correctionStatuses = nextStatuses.filter(
-                    (s) =>
-                      !hideNeedCorrectionButtons &&
-                      (s === "CHANGE_REQUESTED" ||
-                        s === "CORRECTION_REQUESTED"),
-                  );
+                  const hasCorrectionAction =
+                    !hideNeedCorrectionButtons &&
+                    nextStatuses.some((targetStatus) =>
+                      isCorrectionTargetStatus(String(targetStatus)),
+                    );
 
                   const normalStatuses = nextStatuses.filter(
-                    (s) =>
-                      s !== "CHANGE_REQUESTED" && s !== "CORRECTION_REQUESTED",
+                    (targetStatus) =>
+                      !isCorrectionTargetStatus(String(targetStatus)),
                   );
+
+                  const canSetCurrentStatus = STERILITY_STATUS_TRANSITIONS[
+                    status as SterilityReportStatus
+                  ]?.canSet.includes(role!);
 
                   return (
                     <>
-                      {correctionStatuses.length > 0 &&
-                        STERILITY_STATUS_TRANSITIONS[
-                          status as SterilityReportStatus
-                        ].canSet.includes(role!) && (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setCorrectionActionOpen((v) => !v)}
-                              className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                              disabled={isBusy}
-                            >
-                              {busy === "STATUS" && <Spinner />}
-                              Corrections ▾
-                            </button>
+                      {hasCorrectionAction && canSetCurrentStatus && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setCorrectionActionOpen((v) => !v)}
+                            className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                            disabled={isBusy}
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            Needs Corrections ▾
+                          </button>
 
-                            {correctionActionOpen && (
-                              <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
-                                {correctionStatuses.includes(
-                                  "CHANGE_REQUESTED",
-                                ) && (
-                                  <button
-                                    type="button"
-                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
-                                    onClick={() => {
-                                      setCorrectionActionOpen(false);
-                                      requestStatusChange("CHANGE_REQUESTED");
-                                    }}
-                                  >
-                                    Request Change
-                                  </button>
-                                )}
+                          {correctionActionOpen && (
+                            <div className="absolute left-0 top-full z-30 mt-2 w-40 overflow-hidden rounded-lg border bg-white shadow-lg">
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CHANGE_REQUESTED");
+                                }}
+                              >
+                                Request Change
+                              </button>
 
-                                {correctionStatuses.includes(
-                                  "CORRECTION_REQUESTED",
-                                ) && (
-                                  <button
-                                    type="button"
-                                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
-                                    onClick={() => {
-                                      setCorrectionActionOpen(false);
-                                      requestStatusChange(
-                                        "CORRECTION_REQUESTED",
-                                      );
-                                    }}
-                                  >
-                                    Raise Correction
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange("CORRECTION_REQUESTED");
+                                }}
+                              >
+                                Raise Correction
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {normalStatuses.map(
                         (targetStatus: SterilityReportStatus) => {
@@ -3048,10 +3125,12 @@ useEffect(() => {
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -3065,32 +3144,43 @@ useEffect(() => {
                     },
                   );
 
+                  // Creating the request changes the report status and increments
+                  // the optimistic-lock version. Reload both before continuing.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/reports/${reportId!}`, { method: "GET" }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as SterilityReportStatus) ||
+                    targetStatus;
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "MICRO") {
-                  //   navigate("/microDashboard");
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
-
                   backToDashboard();
                 })
               }

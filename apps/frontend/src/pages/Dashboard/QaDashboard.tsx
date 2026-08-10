@@ -442,7 +442,10 @@ function ApeChildPrintArea({
   }, [onAfterPrint]);
 
   return (
-<div id="bulk-print-root" className="hidden print:block ape-child-print-root">
+    <div
+      id="bulk-print-root"
+      className="hidden print:block ape-child-print-root"
+    >
       <div className="report-page">
         {reportType === "APE_VALIDATION_REPORT" ? (
           <ApeValidationReportView
@@ -1551,7 +1554,10 @@ export default function QaDashboard() {
         return;
       }
 
-      if (report.formType === "APE" && requiresBothApeChildReports(nextStatus)) {
+      if (
+        report.formType === "APE" &&
+        requiresBothApeChildReports(nextStatus)
+      ) {
         const canChange = await validateBothApeChildReportsBeforeStatusChange(
           report,
           nextStatus,
@@ -1998,7 +2004,9 @@ export default function QaDashboard() {
         return;
       }
 
-      const apeTargets = reportsToChange.filter((report) => report.formType === "APE");
+      const apeTargets = reportsToChange.filter(
+        (report) => report.formType === "APE",
+      );
 
       for (const apeTarget of apeTargets) {
         const canChange = await validateBothApeChildReportsBeforeStatusChange(
@@ -2211,6 +2219,10 @@ export default function QaDashboard() {
       toast.error("No selected reports are available for update");
       return;
     }
+
+    // ✅ IMPORTANT:
+    // Normal Update must NEVER inherit a previous correction launch.
+    setWorkspaceCorrectionKinds([]);
 
     // APE should open normal modal with APE Validation Report / APE Report tabs
     if (targets.length === 1 && targets[0].formType === "APE") {
@@ -2457,21 +2469,45 @@ export default function QaDashboard() {
     return `${parentId}:${reportType}`;
   }
 
-function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
-  const key = apeChildKey(parent.id, reportType);
-  const saved = apeChildReports[key];
+  function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
+    const key = apeChildKey(parent.id, reportType);
+    const saved = apeChildReports[key];
 
-  if (saved) {
+    if (saved) {
+      return {
+        ...parent,
+        ...saved,
+
+        // child identity
+        id: saved.id,
+        reportType,
+        parentReportId: parent.id,
+
+        // Preserve the real parent APE identifiers after spreading child data.
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
+
+        // ✅ parent workflow source
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+
+        // keep child info separately
+        childStatus: saved.status,
+        childVersion: saved.version,
+
+        // ✅ child screen should use parent status
+        status: parent.status,
+      };
+    }
+
     return {
       ...parent,
-      ...saved,
-
-      // child identity
-      id: saved.id,
-      reportType,
+      id: null,
       parentReportId: parent.id,
+      reportType,
 
-      // Preserve the real parent APE identifiers after spreading child data.
+      // Preserve the real parent APE identifiers.
       parentFormNumber: parent.formNumber,
       parentReportNumber: parent.reportNumber,
 
@@ -2480,168 +2516,141 @@ function makeApeChildReport(parent: Report, reportType: ApeReportTab) {
       workflowStatus: parent.status,
       parentVersion: parent.version ?? 0,
 
-      // keep child info separately
-      childStatus: saved.status,
-      childVersion: saved.version,
+      childStatus: "DRAFT",
+      childVersion: 0,
 
-      // ✅ child screen should use parent status
-      status: parent.status,
+      // ✅ start child screen from parent status
+      status: parent.status || "UNDER_TESTING_REVIEW",
+
+      reportNumber: "",
+      formType: undefined,
+
+      clientCode:
+        parent.clientCode ||
+        String(parent.formNumber || "").split("-")[0] ||
+        "",
+      dateSent: parent.dateSent ?? "",
+      typeOfTest: parent.typeOfTest ?? "APE",
+      sampleType: parent.sampleType ?? "",
+      formulaNo: parent.formulaNo ?? "",
+      description: parent.description ?? "",
+      lotNo: parent.lotNo ?? "",
+      manufactureDate: parent.manufactureDate ?? "",
+      testSopNo: (parent as any).testSopNo ?? "",
+      testReference: (parent as any).testReference ?? "USP <51> CURRENT",
+      dateTested: parent.dateTested ?? "",
+      dateCompleted: (parent as any).dateCompleted ?? "",
     };
   }
 
-  return {
-    ...parent,
-    id: null,
-    parentReportId: parent.id,
-    reportType,
+  function handleApeChildSaved(
+    parent: Report,
+    reportType: ApeReportTab,
+    updated: any,
+  ) {
+    const key = apeChildKey(parent.id, reportType);
+    const base = makeApeChildReport(parent, reportType);
 
-    // Preserve the real parent APE identifiers.
-    parentFormNumber: parent.formNumber,
-    parentReportNumber: parent.reportNumber,
-
-    // ✅ parent workflow source
-    parentStatus: parent.status,
-    workflowStatus: parent.status,
-    parentVersion: parent.version ?? 0,
-
-    childStatus: "DRAFT",
-    childVersion: 0,
-
-    // ✅ start child screen from parent status
-    status: parent.status || "UNDER_TESTING_REVIEW",
-
-    reportNumber: "",
-    formType: undefined,
-
-    clientCode:
-      parent.clientCode ||
-      String(parent.formNumber || "").split("-")[0] ||
-      "",
-    dateSent: parent.dateSent ?? "",
-    typeOfTest: parent.typeOfTest ?? "APE",
-    sampleType: parent.sampleType ?? "",
-    formulaNo: parent.formulaNo ?? "",
-    description: parent.description ?? "",
-    lotNo: parent.lotNo ?? "",
-    manufactureDate: parent.manufactureDate ?? "",
-    testSopNo: (parent as any).testSopNo ?? "",
-    testReference: (parent as any).testReference ?? "USP <51> CURRENT",
-    dateTested: parent.dateTested ?? "",
-    dateCompleted: (parent as any).dateCompleted ?? "",
-  };
-}
-
-function handleApeChildSaved(
-  parent: Report,
-  reportType: ApeReportTab,
-  updated: any,
-) {
-  const key = apeChildKey(parent.id, reportType);
-  const base = makeApeChildReport(parent, reportType);
-
-  setApeChildReports((prev) => ({
-    ...prev,
-    [key]: {
-      ...base,
-      ...updated,
-
-      id: updated?.id ?? base.id,
-      reportType,
-      parentReportId: parent.id,
-
-      // Preserve the real parent APE identifiers after spreading updated child data.
-      parentFormNumber: parent.formNumber,
-      parentReportNumber: parent.reportNumber,
-
-      // ✅ parent workflow status remains source of truth
-      parentStatus: parent.status,
-      workflowStatus: parent.status,
-      parentVersion: parent.version ?? 0,
-      status: parent.status,
-
-      // child saved status/version stored separately
-      childStatus: updated?.status,
-      childVersion: updated?.version,
-    },
-  }));
-}
-
-
-function handleApeParentStatusChanged(parent: Report, updated: any) {
-  const nextStatus = updated?.status ?? parent.status;
-
-  const nextVersion =
-    typeof updated?.version === "number"
-      ? updated.version
-      : (parent.version ?? 0) + 1;
-
-  const mergedParent: Report = {
-    ...parent,
-    ...updated,
-    id: parent.id,
-    status: nextStatus,
-    version: nextVersion,
-    reportNumber: updated?.reportNumber ?? parent.reportNumber,
-  };
-
-  setReports((prev) =>
-    prev.map((r) =>
-      r.id === parent.id
-        ? {
-            ...r,
-            ...mergedParent,
-          }
-        : r,
-    ),
-  );
-
-  setSelectedReport((prev) =>
-    prev?.id === parent.id
-      ? {
-          ...prev,
-          ...mergedParent,
-        }
-      : prev,
-  );
-
-  // Add this only if this dashboard has selectedReportsById state
-  setSelectedReportsById?.((prev: any) => {
-    if (!prev[parent.id]) return prev;
-
-    return {
+    setApeChildReports((prev) => ({
       ...prev,
-      [parent.id]: {
-        ...prev[parent.id],
-        ...mergedParent,
+      [key]: {
+        ...base,
+        ...updated,
+
+        id: updated?.id ?? base.id,
+        reportType,
+        parentReportId: parent.id,
+
+        // Preserve the real parent APE identifiers after spreading updated child data.
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
+
+        // ✅ parent workflow status remains source of truth
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+        status: parent.status,
+
+        // child saved status/version stored separately
+        childStatus: updated?.status,
+        childVersion: updated?.version,
       },
+    }));
+  }
+
+  function handleApeParentStatusChanged(parent: Report, updated: any) {
+    const nextStatus = updated?.status ?? parent.status;
+
+    const nextVersion =
+      typeof updated?.version === "number"
+        ? updated.version
+        : (parent.version ?? 0) + 1;
+
+    const mergedParent: Report = {
+      ...parent,
+      ...updated,
+      id: parent.id,
+      status: nextStatus,
+      version: nextVersion,
+      reportNumber: updated?.reportNumber ?? parent.reportNumber,
     };
-  });
 
-  // ✅ update both child tabs with same parent status
-  setApeChildReports((prev) => {
-    const next = { ...prev };
-
-    (["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeReportTab[]).forEach(
-      (reportType) => {
-        const key = apeChildKey(parent.id, reportType);
-
-        if (next[key]) {
-          next[key] = {
-            ...next[key],
-            parentStatus: nextStatus,
-            workflowStatus: nextStatus,
-            parentVersion: nextVersion,
-            status: nextStatus,
-          };
-        }
-      },
+    setReports((prev) =>
+      prev.map((r) =>
+        r.id === parent.id
+          ? {
+              ...r,
+              ...mergedParent,
+            }
+          : r,
+      ),
     );
 
-    return next;
-  });
-}
+    setSelectedReport((prev) =>
+      prev?.id === parent.id
+        ? {
+            ...prev,
+            ...mergedParent,
+          }
+        : prev,
+    );
 
+    // Add this only if this dashboard has selectedReportsById state
+    setSelectedReportsById?.((prev: any) => {
+      if (!prev[parent.id]) return prev;
 
+      return {
+        ...prev,
+        [parent.id]: {
+          ...prev[parent.id],
+          ...mergedParent,
+        },
+      };
+    });
+
+    // ✅ update both child tabs with same parent status
+    setApeChildReports((prev) => {
+      const next = { ...prev };
+
+      (["APE_VALIDATION_REPORT", "APE_REPORT"] as ApeReportTab[]).forEach(
+        (reportType) => {
+          const key = apeChildKey(parent.id, reportType);
+
+          if (next[key]) {
+            next[key] = {
+              ...next[key],
+              parentStatus: nextStatus,
+              workflowStatus: nextStatus,
+              parentVersion: nextVersion,
+              status: nextStatus,
+            };
+          }
+        },
+      );
+
+      return next;
+    });
+  }
 
   function isBlankApeValue(value: unknown) {
     return value === null || value === undefined || String(value).trim() === "";
@@ -2684,16 +2693,52 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     }
 
     addApeMissing(missing, "APE Validation Report - Client", child?.client);
-    addApeMissing(missing, "APE Validation Report - Date Sent", child?.dateSent);
-    addApeMissing(missing, "APE Validation Report - Type of Test", child?.typeOfTest);
-    addApeMissing(missing, "APE Validation Report - Sample Type", child?.sampleType);
-    addApeMissing(missing, "APE Validation Report - Formula #", child?.formulaNo);
-    addApeMissing(missing, "APE Validation Report - Description", child?.description);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Sent",
+      child?.dateSent,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Type of Test",
+      child?.typeOfTest,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Sample Type",
+      child?.sampleType,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Formula #",
+      child?.formulaNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Description",
+      child?.description,
+    );
     addApeMissing(missing, "APE Validation Report - Lot #", child?.lotNo);
-    addApeMissing(missing, "APE Validation Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Validation Report - Test Reference", child?.testReference);
-    addApeMissing(missing, "APE Validation Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Validation Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test SOP #",
+      child?.testSopNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test Reference",
+      child?.testReference,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Tested",
+      child?.dateTested,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.validationSections)
       ? child.validationSections
@@ -2731,8 +2776,16 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
     });
 
     if (requiresApeReviewedSignature(targetStatus)) {
-      addApeMissing(missing, "APE Validation Report - Reviewed By", child?.reviewedBy);
-      addApeMissing(missing, "APE Validation Report - Reviewed Date", child?.reviewedDate);
+      addApeMissing(
+        missing,
+        "APE Validation Report - Reviewed By",
+        child?.reviewedBy,
+      );
+      addApeMissing(
+        missing,
+        "APE Validation Report - Reviewed Date",
+        child?.reviewedDate,
+      );
     }
 
     return missing;
@@ -2925,7 +2978,7 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
 
     setApeReportTab(parent.id, firstInvalidTab);
 
-      toast(
+    toast(
       `Warning: Please complete both APE Validation Report and APE Report before changing status to ${niceStatus(
         targetStatus,
       )}.`,
@@ -2950,7 +3003,10 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
 
     const apeChild = makeApeChildReport(parent, "APE_REPORT");
 
-    const beforeParentStatusChange = (targetStatus: string, currentChild?: any) =>
+    const beforeParentStatusChange = (
+      targetStatus: string,
+      currentChild?: any,
+    ) =>
       validateBothApeChildReportsBeforeStatusChange(
         parent,
         targetStatus,
@@ -5397,22 +5453,6 @@ function handleApeParentStatusChanged(parent: Report, updated: any) {
             >
               Raise Correction
             </button>
-
-            {/* <div className="my-1 border-t" /> */}
-
-            {/* <button
-                    type="button"
-                    className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
-                    onClick={() => {
-                      closeCorrectionMenu();
-                      openSelectedForCorrection([
-                        "REQUEST_CHANGE",
-                        "RAISE_CORRECTION",
-                      ]);
-                    }}
-                  >
-                    Open Both
-                  </button> */}
           </div>,
           document.body,
         )}

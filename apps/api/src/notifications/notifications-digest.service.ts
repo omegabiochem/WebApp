@@ -18,7 +18,7 @@ function parseRecipientsKey(key: string): string[] {
 
 type DigestHighlight = {
   badgeText: string;
-  badgeTone: 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN';
+  badgeTone: 'RED' | 'ORANGE' | 'BLUE' | 'GRAY' | 'GREEN' | 'DARK_GREEN';
   priorityLine?: string;
 };
 
@@ -86,7 +86,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasPreliminaryResultsReady) {
     return {
       badgeText: 'Preliminary Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Preliminary results are ready. Please review and approve or request corrections.',
     };
@@ -97,7 +97,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasFinalResultsReady) {
     return {
       badgeText: 'Final Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Final results are ready. Please review and approve or request corrections.',
     };
@@ -108,7 +108,7 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
   if (hasResultsReady) {
     return {
       badgeText: 'Results Available',
-      badgeTone: 'GREEN' as const,
+      badgeTone: 'DARK_GREEN' as const,
       priorityLine:
         'Action required: Results are ready. Please review and approve or request corrections.',
     };
@@ -130,6 +130,29 @@ function digestHighlightForStatuses(statuses: string[]): DigestHighlight {
     badgeTone: 'GRAY',
     priorityLine: undefined,
   };
+}
+
+function subjectMarkerForTone(tone: DigestHighlight['badgeTone']): string {
+  switch (tone) {
+    case 'RED':
+      return '🔴';
+
+    case 'ORANGE':
+      return '🟠';
+
+    case 'BLUE':
+      return '🔵';
+
+    case 'GREEN':
+      return '🟢';
+
+    case 'DARK_GREEN':
+      return '🟢';
+
+    case 'GRAY':
+    default:
+      return '⚪';
+  }
 }
 
 function digestBucketForStatus(status: string): string {
@@ -204,21 +227,28 @@ export class NotificationsDigestService {
       // compress: last update per reportId
       const latestByReport = new Map<string, (typeof items)[number]>();
       for (const it of items) latestByReport.set(it.reportId, it);
-      const compact = [...latestByReport.values()];
+      const compact = [...latestByReport.values()].sort((a, b) =>
+        String(a.formNumber).localeCompare(String(b.formNumber), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      );
 
       const hi = digestHighlightForStatuses(
         compact.map((x) => String(x.newStatus)),
       );
 
+      const subjectMarker = subjectMarkerForTone(hi.badgeTone);
+
       const title =
         first.scope === 'CLIENT'
-          ? `${hi.badgeText}: Summary updates (${first.clientCode ?? 'Client'})`
-          : `${hi.badgeText}: Lab summary updates (${first.dept ?? 'LAB'})`;
+          ? `Report Update Summary (${first.clientCode ?? 'Client'})`
+          : `Lab Report Update Summary (${first.dept ?? 'LAB'})`;
 
       const subject =
         first.scope === 'CLIENT'
-          ? `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
-          : `[${hi.badgeText}] Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
+          ? `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.clientCode ?? 'Client'}`
+          : `${subjectMarker} ${hi.badgeText} — Omega LIMS — ${compact.length} update(s) — ${first.dept ?? 'LAB'}`;
 
       const lines = compact.slice(0, 80).map((x) => {
         // keep clean; if you want URL per line, append it

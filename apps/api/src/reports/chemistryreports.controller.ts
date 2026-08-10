@@ -101,6 +101,37 @@ export class ChemistryReportsController {
     return this.svc.update(req.user, id, body);
   }
 
+  // @Patch(':id/status')
+  // async updateStatus(
+  //   @Req() req: any,
+  //   @Param('id') id: string,
+  //   @Body()
+  //   body: {
+  //     status: ChemistryReportStatus;
+  //     reason?: string;
+  //     eSignPassword?: string;
+  //     expectedVersion?: number;
+  //   },
+  // ) {
+  //   const reasonFromHeader = req.headers['x-change-reason'] as
+  //     | string
+  //     | undefined;
+  //   const eSignFromHeader = req.headers['x-esign-password'] as
+  //     | string
+  //     | undefined;
+
+  //   return withRequestContext(
+  //     {
+  //       userId: req.user?.userId,
+  //       role: req.user?.role,
+  //       ip: req.ip,
+  //       reason: body?.reason ?? reasonFromHeader,
+  //       eSignPassword: body?.eSignPassword ?? eSignFromHeader,
+  //     },
+  //     () => this.svc.update(req.user, id, body),
+  //   );
+  // }
+
   @Patch(':id/status')
   async updateStatus(
     @Req() req: any,
@@ -116,6 +147,7 @@ export class ChemistryReportsController {
     const reasonFromHeader = req.headers['x-change-reason'] as
       | string
       | undefined;
+
     const eSignFromHeader = req.headers['x-esign-password'] as
       | string
       | undefined;
@@ -128,7 +160,7 @@ export class ChemistryReportsController {
         reason: body?.reason ?? reasonFromHeader,
         eSignPassword: body?.eSignPassword ?? eSignFromHeader,
       },
-      () => this.svc.update(req.user, id, body),
+      () => this.svc.updateStatus(req.user, id, body),
     );
   }
 

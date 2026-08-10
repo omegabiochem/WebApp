@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -425,8 +426,10 @@ function splitPatch(patch: Record<string, any>) {
   return { base, details };
 }
 
+type ChemistryDbClient = PrismaService | Prisma.TransactionClient;
+
 function updateDetailsByType(
-  tx: PrismaService,
+  tx: ChemistryDbClient,
   formType: FormType,
   chemistryId: string,
   data: Record<string, any>,
@@ -499,9 +502,10 @@ function extractSelectedActives(actives: any): string[] {
     .map((a) => String(a.label ?? a.name ?? a.active ?? '').trim())
     .filter(Boolean);
 }
-
 @Injectable()
 export class ChemistryReportsService {
+  private readonly logger = new Logger(ChemistryReportsService.name);
+
   // Service methods would go here
   constructor(
     private readonly reportsGateway: ReportsGateway,
@@ -511,6 +515,116 @@ export class ChemistryReportsService {
     private readonly chemistryNotifications: ChemistryReportNotificationsService,
     private readonly dashboardSync: DashboardReportSyncService,
   ) {}
+
+  /**
+   * Keeps the workflow snapshot in DashboardReport inside the same transaction
+   * as ChemistryReport. The upsert makes this self-healing for historical
+   * reports that do not yet have a DashboardReport row.
+   */
+  private async updateDashboardStatusInsideTransaction(
+    tx: Prisma.TransactionClient,
+    chemistryId: string,
+  ) {
+    const source = await tx.chemistryReport.findUnique({
+      where: { id: chemistryId },
+      select: {
+        formType: true,
+        formNumber: true,
+        reportNumber: true,
+        prefix: true,
+        clientCode: true,
+        status: true,
+        version: true,
+        lockedAt: true,
+        createdBy: true,
+        updatedBy: true,
+        ReportnumberAssignedAt: true,
+        ReportnumberAssignedBy: true,
+        workflowReturnStatus: true,
+        workflowRequestKind: true,
+        workflowRequestedByRole: true,
+        workflowRequestedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!source) {
+      throw new NotFoundException(
+        'Chemistry report not found during dashboard synchronization',
+      );
+    }
+
+    const dashboardData = {
+      formType: source.formType,
+      formNumber: source.formNumber,
+      reportNumber: source.reportNumber,
+      prefix: source.prefix,
+      clientCode: source.clientCode,
+      status: String(source.status),
+      version: source.version,
+      sourceLockedAt: source.lockedAt,
+      sourceCreatedBy: source.createdBy,
+      sourceUpdatedBy: source.updatedBy,
+      reportNumberAssignedAt: source.ReportnumberAssignedAt,
+      reportNumberAssignedBy: source.ReportnumberAssignedBy,
+      workflowReturnStatus: source.workflowReturnStatus
+        ? String(source.workflowReturnStatus)
+        : null,
+      workflowRequestKind: source.workflowRequestKind,
+      workflowRequestedByRole: source.workflowRequestedByRole,
+      workflowRequestedAt: source.workflowRequestedAt,
+      createdAt: source.createdAt,
+      updatedAt: source.updatedAt,
+      detailStatus: String(source.status),
+    };
+
+    await tx.dashboardReport.upsert({
+      where: {
+        sourceType_sourceId: {
+          sourceType: 'CHEMISTRY_REPORT',
+          sourceId: chemistryId,
+        },
+      },
+      create: {
+        sourceType: 'CHEMISTRY_REPORT',
+        sourceId: chemistryId,
+        ...dashboardData,
+      },
+      update: dashboardData,
+    });
+  }
+
+  private async addCreatorName(report: any) {
+    if (!report) return report;
+
+    const createdBy = String(report.createdBy || '').trim();
+
+    if (!createdBy) {
+      return {
+        ...report,
+        createdByName: null,
+      };
+    }
+
+    const creator = await this.prisma.user.findUnique({
+      where: { id: createdBy },
+      select: {
+        name: true,
+        userId: true,
+        email: true,
+      },
+    });
+
+    return {
+      ...report,
+      createdByName:
+        creator?.name?.trim() ||
+        creator?.userId?.trim() ||
+        creator?.email?.trim() ||
+        null,
+    };
+  }
 
   // 👇 add this inside the class
   private _getCorrectionsArray(r: any): CorrectionItem[] {
@@ -627,8 +741,11 @@ export class ChemistryReportsService {
     await this.dashboardSync.syncChemistryReport(created.id);
 
     const flat = flattenReport(created);
-    this.reportsGateway.notifyReportCreated(flat);
-    return flat;
+    const response = await this.addCreatorName(flat);
+
+    this.reportsGateway.notifyReportCreated(response);
+
+    return response;
   }
 
   async get(id: string) {
@@ -639,8 +756,14 @@ export class ChemistryReportsService {
         coa: true,
       },
     });
-    if (!r) throw new NotFoundException('Report not found');
-    return flattenReport(r);
+
+    if (!r) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const flat = flattenReport(r);
+
+    return this.addCreatorName(flat);
   }
 
   private _coerce(obj: any) {
@@ -886,6 +1009,7 @@ export class ChemistryReportsService {
       }
 
       base.status = targetStatus;
+      details.status = targetStatus;
 
       const isReturningFromCentralizedUpdate =
         (current.status === 'UNDER_CHANGE_UPDATE' ||
@@ -966,6 +1090,7 @@ export class ChemistryReportsService {
       if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
 
       base.status = patchIn.status;
+      details.status = patchIn.status;
     }
 
     // const ops: Prisma.PrismaPromise<any>[] = [
@@ -997,43 +1122,55 @@ export class ChemistryReportsService {
     //   this.reportsGateway.notifyReportUpdate(updated);
     // }
 
-    // ✅ Step 1: attempt base update with version check
-    const baseRes = await this.prisma.chemistryReport.updateMany({
-      where: {
-        id,
-        ...(typeof expectedVersion === 'number'
-          ? { version: expectedVersion }
-          : {}),
-      },
-      data: {
-        ...base,
-        updatedBy: user.userId,
-        version: { increment: 1 },
-      },
-    });
-
-    // ✅ Step 2: if expectedVersion was provided, enforce conflict
-    if (typeof expectedVersion === 'number' && baseRes.count === 0) {
-      throw new ConflictException({
-        code: 'CONFLICT',
-        message:
-          'This report was updated by someone else. Please reload and try again.',
-        expectedVersion,
-        currentVersion: current.version,
+    // Update ChemistryReport, its detail row, and the dashboard workflow
+    // snapshot atomically. If DashboardReport cannot be updated, everything
+    // rolls back and ChemistryReport will not be left ahead of the dashboard.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const baseRes = await tx.chemistryReport.updateMany({
+        where: {
+          id,
+          ...(typeof expectedVersion === 'number'
+            ? { version: expectedVersion }
+            : {}),
+        },
+        data: {
+          ...base,
+          updatedBy: user.userId,
+          version: { increment: 1 },
+        },
       });
-    }
 
-    // ✅ Step 3: now update details (only after base update succeeded)
-    if (Object.keys(details).length > 0) {
-      await updateDetailsByType(this.prisma, current.formType, id, details);
-    }
+      if (baseRes.count === 0) {
+        if (typeof expectedVersion === 'number') {
+          throw new ConflictException({
+            code: 'CONFLICT',
+            message:
+              'This report was updated by someone else. Please reload and try again.',
+            expectedVersion,
+            currentVersion: current.version,
+          });
+        }
 
-    // ✅ Step 4: read updated report and do notifications + email
-    const updated = await this.prisma.chemistryReport.findUnique({
-      where: { id },
-      include: { chemistryMix: true, coa: true },
+        throw new NotFoundException('Chemistry report not found');
+      }
+
+      if (Object.keys(details).length > 0) {
+        await updateDetailsByType(tx, current.formType, id, details);
+      }
+
+      await this.updateDashboardStatusInsideTransaction(tx, id);
+
+      const result = await tx.chemistryReport.findUnique({
+        where: { id },
+        include: { chemistryMix: true, coa: true },
+      });
+
+      if (!result) {
+        throw new NotFoundException('Report not found after update');
+      }
+
+      return result;
     });
-    if (!updated) throw new NotFoundException('Report not found after update');
 
     if (!current.reportNumber && updated.reportNumber) {
       await this.prisma.auditTrail.create({
@@ -1087,39 +1224,40 @@ export class ChemistryReportsService {
       this.reportsGateway.notifyReportUpdate(updated);
     }
 
-    if (patchIn.status && String(current.status) !== String(patchIn.status)) {
-      const slug =
-        current.formType === 'CHEMISTRY_MIX'
-          ? 'chemistry-mix'
-          : current.formType === 'COA'
-            ? 'coa'
-            : 'chemistry-mix';
+    // Keep the dashboard copy aligned with the root report before returning.
+    await this.dashboardSync.syncChemistryReportAndVerify(id);
 
-      current.formType === 'CHEMISTRY_MIX'
-        ? 'chemistry-mix'
-        : current.formType === 'COA'
-          ? 'coa'
-          : 'chemistry-mix';
+    if (patchIn.status && String(current.status) !== String(patchIn.status)) {
+      const slug = current.formType === 'COA' ? 'coa' : 'chemistry-mix';
 
       const clientCode = current.clientCode ?? null;
-      const clientName = pickDetails(current)?.client ?? '-'; // or '-' if you prefer
+      const clientName = pickDetails(current)?.client ?? '-';
 
-      await this.chemistryNotifications.onStatusChanged({
-        formType: current.formType,
-        reportId: current.id,
-        formNumber: current.formNumber,
-        clientName,
-        clientCode,
-        oldStatus: prevStatus,
-        newStatus: String(patchIn.status),
-        reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
-        actorUserId: user.userId,
-      });
+      try {
+        await this.chemistryNotifications.onStatusChanged({
+          formType: current.formType,
+          reportId: current.id,
+          formNumber: current.formNumber,
+          clientName,
+          clientCode,
+          oldStatus: prevStatus,
+          newStatus: String(patchIn.status),
+          reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+          actorUserId: user.userId,
+        });
+      } catch (error: any) {
+        this.logger.error(
+          `Chemistry report ${id} status changed from ${prevStatus} to ${String(
+            patchIn.status,
+          )}, but notification delivery failed: ${error?.message ?? error}`,
+          error?.stack,
+        );
+      }
     }
 
-    await this.dashboardSync.syncChemistryReport(id);
+    const flat = flattenReport(updated);
 
-    return flattenReport(updated);
+    return this.addCreatorName(flat);
   }
 
   // async updateStatus(
@@ -1338,6 +1476,28 @@ export class ChemistryReportsService {
 
     const patch: any = { status: target };
 
+    // Preserve the original requester and request type for approval routing.
+    if (target === 'CHANGE_REQUESTED' || target === 'CORRECTION_REQUESTED') {
+      patch.workflowReturnStatus = current.status;
+      patch.workflowRequestKind =
+        target === 'CHANGE_REQUESTED' ? 'CHANGE' : 'CORRECTION';
+      patch.workflowRequestedByRole = user.role;
+      patch.workflowRequestedAt = new Date();
+    }
+
+    // Clear centralized workflow metadata only when returning to the
+    // original status after the requested update is completed.
+    if (
+      (current.status === 'UNDER_CHANGE_UPDATE' ||
+        current.status === 'UNDER_CORRECTION_UPDATE') &&
+      target === current.workflowReturnStatus
+    ) {
+      patch.workflowReturnStatus = null;
+      patch.workflowRequestKind = null;
+      patch.workflowRequestedByRole = null;
+      patch.workflowRequestedAt = null;
+    }
+
     // ✅ report number assignment (same behavior as update())
     function yyyy(d: Date = new Date()): string {
       return String(d.getFullYear());
@@ -1382,10 +1542,32 @@ export class ChemistryReportsService {
 
     if (target === 'LOCKED') patch.lockedAt = new Date();
 
-    const updated = await this.prisma.chemistryReport.update({
-      where: { id },
-      data: { ...patch, updatedBy: user.userId },
-      include: { chemistryMix: true, coa: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.chemistryReport.update({
+        where: { id },
+        data: {
+          ...patch,
+          updatedBy: user.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await updateDetailsByType(tx, current.formType, id, {
+        status: target,
+      });
+
+      await this.updateDashboardStatusInsideTransaction(tx, id);
+
+      const result = await tx.chemistryReport.findUnique({
+        where: { id },
+        include: { chemistryMix: true, coa: true },
+      });
+
+      if (!result) {
+        throw new NotFoundException('Report not found after status update');
+      }
+
+      return result;
     });
 
     // if (!current.reportNumber && updated.reportNumber) {
@@ -1429,33 +1611,39 @@ export class ChemistryReportsService {
     // ✅ websocket
     this.reportsGateway.notifyStatusChange(id, target);
 
-    // ✅ OPTIONAL: send same email notification as update()
-    if (prevStatus !== target) {
-      const slug =
-        current.formType === 'CHEMISTRY_MIX'
-          ? 'chemistry-mix'
-          : current.formType === 'COA'
-            ? 'coa'
-            : 'chemistry-mix';
+    await this.dashboardSync.syncChemistryReportAndVerify(id);
 
+    if (prevStatus !== target) {
+      const slug = current.formType === 'COA' ? 'coa' : 'chemistry-mix';
       const clientName = pickDetails(current)?.client ?? '-';
 
-      await this.chemistryNotifications.onStatusChanged({
-        formType: current.formType,
-        reportId: current.id,
-        formNumber: current.formNumber,
-        clientName,
-        clientCode: current.clientCode ?? null,
-        oldStatus: String(prevStatus),
-        newStatus: String(target),
-        reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
-        actorUserId: user.userId,
-      });
+      try {
+        await this.chemistryNotifications.onStatusChanged({
+          formType: current.formType,
+          reportId: current.id,
+          formNumber: current.formNumber,
+          clientName,
+          clientCode: current.clientCode ?? null,
+          oldStatus: String(prevStatus),
+          newStatus: String(target),
+          reportUrl: `${process.env.APP_URL}/chemistry-reports/${slug}/${current.id}`,
+          actorUserId: user.userId,
+        });
+      } catch (error: any) {
+        this.logger.error(
+          `Chemistry report ${id} status changed from ${String(
+            prevStatus,
+          )} to ${String(target)}, but notification delivery failed: ${
+            error?.message ?? error
+          }`,
+          error?.stack,
+        );
+      }
     }
 
-    await this.dashboardSync.syncChemistryReport(id);
+    const flat = flattenReport(updated);
 
-    return flattenReport(updated);
+    return this.addCreatorName(flat);
   }
 
   async addAttachment(
@@ -1686,20 +1874,28 @@ export class ChemistryReportsService {
         report.status === 'CHANGE_REQUESTED' ||
         report.status === 'CORRECTION_REQUESTED')
     ) {
-      await this.prisma.chemistryReport.update({
-        where: { id },
-        data: {
-          status: report.workflowReturnStatus,
-          workflowReturnStatus: null,
-          workflowRequestKind: null,
-          workflowRequestedByRole: null,
-          workflowRequestedAt: null,
-          updatedBy: user.userId,
-          version: { increment: 1 },
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.chemistryReport.update({
+          where: { id },
+          data: {
+            status: report.workflowReturnStatus!,
+            workflowReturnStatus: null,
+            workflowRequestKind: null,
+            workflowRequestedByRole: null,
+            workflowRequestedAt: null,
+            updatedBy: user.userId,
+            version: { increment: 1 },
+          },
+        });
+
+        await updateDetailsByType(tx, report.formType, id, {
+          status: report.workflowReturnStatus!,
+        });
+
+        await this.updateDashboardStatusInsideTransaction(tx, id);
       });
 
-      await this.dashboardSync.syncChemistryReport(id);
+      await this.dashboardSync.syncChemistryReportAndVerify(id);
 
       await this.logCorrectionAudit({
         reportId: report.id,

@@ -1,5 +1,3 @@
-
-
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
@@ -224,9 +222,8 @@ export class DashboardReportSyncService {
       reviewedBy: (details as any)?.reviewedBy ?? null,
       reviewedDate: (details as any)?.reviewedDate ?? null,
 
-      detailStatus: (details as any)?.status
-        ? String((details as any).status)
-        : null,
+      // Root report status is the workflow source of truth.
+      detailStatus: String(report.status),
       detailLockedAt: (details as any)?.lockedAt ?? null,
       detailCreatedBy: (details as any)?.createdBy ?? null,
       detailUpdatedBy: (details as any)?.updatedBy ?? null,
@@ -365,9 +362,8 @@ export class DashboardReportSyncService {
       reviewedBy: (details as any)?.reviewedBy ?? null,
       reviewedDate: (details as any)?.reviewedDate ?? null,
 
-      detailStatus: (details as any)?.status
-        ? String((details as any).status)
-        : null,
+      // Root report status is the workflow source of truth.
+      detailStatus: String(report.status),
       detailLockedAt: (details as any)?.lockedAt ?? null,
       detailCreatedBy: (details as any)?.createdBy ?? null,
       detailUpdatedBy: (details as any)?.updatedBy ?? null,
@@ -460,6 +456,143 @@ export class DashboardReportSyncService {
     });
   }
 
+
+  private async assertDashboardSnapshot(
+    sourceType: 'MICRO_REPORT' | 'CHEMISTRY_REPORT',
+    sourceId: string,
+    expectedStatus: string,
+    expectedVersion: number,
+  ) {
+    const row = await this.prisma.dashboardReport.findUnique({
+      where: {
+        sourceType_sourceId: {
+          sourceType,
+          sourceId,
+        },
+      },
+      select: {
+        status: true,
+        version: true,
+      },
+    });
+
+    if (
+      !row ||
+      row.status !== expectedStatus ||
+      row.version !== expectedVersion
+    ) {
+      throw new Error(
+        `Dashboard synchronization mismatch for ${sourceType}:${sourceId}. ` +
+          `Expected ${expectedStatus}/${expectedVersion}, received ` +
+          `${row?.status ?? 'MISSING'}/${row?.version ?? 'MISSING'}`,
+      );
+    }
+  }
+
+  async syncMicroReportAndVerify(reportId: string) {
+    const source = await this.prisma.report.findUnique({
+      where: { id: reportId },
+      select: {
+        status: true,
+        version: true,
+        updatedAt: true,
+        workflowReturnStatus: true,
+        workflowRequestKind: true,
+        workflowRequestedByRole: true,
+        workflowRequestedAt: true,
+      },
+    });
+
+    if (!source) {
+      await this.removeMicroReport(reportId);
+      return;
+    }
+
+    try {
+      await this.syncMicroReport(reportId);
+    } catch (error) {
+      const fallback = await this.prisma.dashboardReport.updateMany({
+        where: {
+          sourceType: 'MICRO_REPORT',
+          sourceId: reportId,
+        },
+        data: {
+          status: String(source.status),
+          detailStatus: String(source.status),
+          version: source.version,
+          updatedAt: source.updatedAt,
+          workflowReturnStatus: source.workflowReturnStatus
+            ? String(source.workflowReturnStatus)
+            : null,
+          workflowRequestKind: source.workflowRequestKind,
+          workflowRequestedByRole: source.workflowRequestedByRole,
+          workflowRequestedAt: source.workflowRequestedAt,
+        },
+      });
+
+      if (fallback.count === 0) throw error;
+    }
+
+    await this.assertDashboardSnapshot(
+      'MICRO_REPORT',
+      reportId,
+      String(source.status),
+      source.version,
+    );
+  }
+
+  async syncChemistryReportAndVerify(chemistryId: string) {
+    const source = await this.prisma.chemistryReport.findUnique({
+      where: { id: chemistryId },
+      select: {
+        status: true,
+        version: true,
+        updatedAt: true,
+        workflowReturnStatus: true,
+        workflowRequestKind: true,
+        workflowRequestedByRole: true,
+        workflowRequestedAt: true,
+      },
+    });
+
+    if (!source) {
+      await this.removeChemistryReport(chemistryId);
+      return;
+    }
+
+    try {
+      await this.syncChemistryReport(chemistryId);
+    } catch (error) {
+      const fallback = await this.prisma.dashboardReport.updateMany({
+        where: {
+          sourceType: 'CHEMISTRY_REPORT',
+          sourceId: chemistryId,
+        },
+        data: {
+          status: String(source.status),
+          detailStatus: String(source.status),
+          version: source.version,
+          updatedAt: source.updatedAt,
+          workflowReturnStatus: source.workflowReturnStatus
+            ? String(source.workflowReturnStatus)
+            : null,
+          workflowRequestKind: source.workflowRequestKind,
+          workflowRequestedByRole: source.workflowRequestedByRole,
+          workflowRequestedAt: source.workflowRequestedAt,
+        },
+      });
+
+      if (fallback.count === 0) throw error;
+    }
+
+    await this.assertDashboardSnapshot(
+      'CHEMISTRY_REPORT',
+      chemistryId,
+      String(source.status),
+      source.version,
+    );
+  }
+
   async removeMicroReport(reportId: string) {
     await this.prisma.dashboardReport.deleteMany({
       where: {
@@ -479,8 +612,9 @@ export class DashboardReportSyncService {
   }
 
   async rebuildAll() {
-    await this.prisma.dashboardReport.deleteMany({});
-
+    // Do not delete the dashboard table first. Each sync method already uses
+    // upsert, so rebuilding can safely repair missing/stale snapshots while
+    // users continue working.
     const microReports = await this.prisma.report.findMany({
       select: { id: true },
       orderBy: { createdAt: 'asc' },

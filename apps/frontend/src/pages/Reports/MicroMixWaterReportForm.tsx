@@ -299,7 +299,6 @@ function SpinnerDark({ className = "" }: { className?: string }) {
   );
 }
 
-
 export default function MicroMixWaterReportForm({
   report,
   onClose,
@@ -326,17 +325,6 @@ export default function MicroMixWaterReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -354,6 +342,12 @@ export default function MicroMixWaterReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -362,30 +356,32 @@ export default function MicroMixWaterReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
-useEffect(() => {
-  if (!report?.id) return;
+  useEffect(() => {
+    if (!report?.id) return;
 
-  setReportId(report.id);
+    setReportId(report.id);
 
-  if (report.status) {
-    setStatus(report.status);
-  }
+    if (report.status) {
+      setStatus(report.status);
+    }
 
-  setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
+    setReportNumber(report.reportNumber ? String(report.reportNumber) : "");
 
-  if (typeof report.version === "number") {
-    setReportVersion(report.version);
-  }
-}, [report?.id, report?.status, report?.reportNumber, report?.version]);
+    if (typeof report.version === "number") {
+      setReportVersion(report.version);
+    }
+  }, [report?.id, report?.status, report?.reportNumber, report?.version]);
 
   useEffect(() => {
     let cancelled = false;
@@ -398,70 +394,44 @@ useEffect(() => {
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve report creator:", error);
+      }
+
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -476,7 +446,6 @@ useEffect(() => {
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -530,13 +499,21 @@ useEffect(() => {
 
   const [tbc_gram, set_tbc_gram] = useState(report?.tbc_gram || "");
   const [tbc_result, set_tbc_result] = useState(report?.tbc_result || "");
-  const [tbc_spec, set_tbc_spec] = useState(() => normalizeSpec(report?.tbc_spec));
-  const [tbcUnit, setTbcUnit] = useState<Unit>(() => extractUnit(report?.tbc_spec));
+  const [tbc_spec, set_tbc_spec] = useState(() =>
+    normalizeSpec(report?.tbc_spec),
+  );
+  const [tbcUnit, setTbcUnit] = useState<Unit>(() =>
+    extractUnit(report?.tbc_spec),
+  );
 
   const [tmy_gram, set_tmy_gram] = useState(report?.tmy_gram || "");
   const [tmy_result, set_tmy_result] = useState(report?.tmy_result || "");
-  const [tmy_spec, set_tmy_spec] = useState(() => normalizeSpec(report?.tmy_spec));
-  const [tmyUnit, setTmyUnit] = useState<Unit>(() => extractUnit(report?.tmy_spec));
+  const [tmy_spec, set_tmy_spec] = useState(() =>
+    normalizeSpec(report?.tmy_spec),
+  );
+  const [tmyUnit, setTmyUnit] = useState<Unit>(() =>
+    extractUnit(report?.tmy_spec),
+  );
 
   const UNIT_OPTIONS: Unit[] = ["CFU/mL", "CFU/g", "CFU / device"];
   const DEFAULT_SPEC_OPTIONS = ["<10", "<100", "<200"];
@@ -549,15 +526,20 @@ useEffect(() => {
     const loadedTmyUnit = extractUnit(report?.tmy_spec);
     if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
       const sharedSpec = loadedTbcSpec || loadedTmySpec;
-      set_tbc_spec(sharedSpec); set_tmy_spec(sharedSpec);
-      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
+      set_tbc_spec(sharedSpec);
+      set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
       return;
     }
-    set_tbc_spec(loadedTbcSpec); set_tmy_spec(loadedTmySpec);
-    setTbcUnit(loadedTbcUnit); setTmyUnit(loadedTmyUnit);
+    set_tbc_spec(loadedTbcSpec);
+    set_tmy_spec(loadedTmySpec);
+    setTbcUnit(loadedTbcUnit);
+    setTmyUnit(loadedTmyUnit);
   }, [report?.id]);
 
-  const isDeviceSpecification = tbcUnit === "CFU / device" || tmyUnit === "CFU / device";
+  const isDeviceSpecification =
+    tbcUnit === "CFU / device" || tmyUnit === "CFU / device";
 
   // Allow user-added custom spec values (shared by both TBC + TMY)
   const [customSpecOptions, setCustomSpecOptions] = useState<string[]>([]);
@@ -693,7 +675,6 @@ useEffect(() => {
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
 
-
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
     // const token = localStorage.getItem("token");
@@ -702,8 +683,6 @@ useEffect(() => {
       .then((list) => setCorrections(list)) // explicit lambda avoids any inference weirdness
       .catch(() => {});
   }, [reportId]);
-
-
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -731,9 +710,11 @@ useEffect(() => {
   const { search, state } = location;
   const params = useMemo(() => new URLSearchParams(search), [search]);
 
-  const routeCorrectionLaunch = !!state?.correctionLaunch;
-  const routeCorrectionKinds =
-    (state?.correctionKinds as CorrectionLaunchKind[]) ?? [];
+  const routeCorrectionLaunch = !embedded && !!state?.correctionLaunch;
+
+  const routeCorrectionKinds = !embedded
+    ? ((state?.correctionKinds as CorrectionLaunchKind[]) ?? [])
+    : [];
 
   const effectiveCorrectionLaunch = correctionLaunch || routeCorrectionLaunch;
   const effectiveCorrectionKinds =
@@ -945,11 +926,24 @@ useEffect(() => {
     );
   }
 
+  function canShowQaNeedsCorrection(
+    currentStatus: ReportStatus,
+    currentRole?: Role,
+  ) {
+    if (currentRole !== "QA" && currentRole !== "SYSTEMADMIN") {
+      return false;
+    }
+
+    return (
+      currentStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
+      currentStatus === "UNDER_QA_FINAL_REVIEW" ||
+      currentStatus === "UNDER_FINAL_RESUBMISSION_QA_REVIEW"
+    );
+  }
 
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_FINAL_REVIEW" || s === "LOCKED");
-
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -1324,11 +1318,15 @@ useEffect(() => {
     const loadedTmyUnit = extractUnit(data?.tmy_spec);
     if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
       const sharedSpec = loadedTbcSpec || loadedTmySpec;
-      set_tbc_spec(sharedSpec); set_tmy_spec(sharedSpec);
-      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
+      set_tbc_spec(sharedSpec);
+      set_tmy_spec(sharedSpec);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
     } else {
-      set_tbc_spec(loadedTbcSpec); set_tmy_spec(loadedTmySpec);
-      setTbcUnit(loadedTbcUnit); setTmyUnit(loadedTmyUnit);
+      set_tbc_spec(loadedTbcSpec);
+      set_tmy_spec(loadedTmySpec);
+      setTbcUnit(loadedTbcUnit);
+      setTmyUnit(loadedTmyUnit);
     }
     set_tmy_gram(data?.tmy_gram ?? "");
     set_tmy_result(data?.tmy_result ?? "");
@@ -1673,8 +1671,6 @@ useEffect(() => {
               (err.message || "Unknown error"),
           );
           return false;
-
-          return false;
         }
       })) ?? false
     );
@@ -1691,47 +1687,41 @@ useEffect(() => {
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      // const token = localStorage.getItem("token");
-      // const API_BASE = "http://localhost:3000";
+      const currentStatus = status as ReportStatus;
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
 
-      const values = makeValues();
-      const okFields = validateAndSetErrors(values);
-      const okRows = validatePathogenRows(values.pathogens, role, phase);
+      let okFields = true;
+      let okRows = true;
 
-      if (
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+        okRows = validatePathogenRows(values.pathogens, role, phase);
+      }
+
+      const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
         newStatus === "RECEIVED_BY_FRONTDESK" ||
         newStatus === "UNDER_PRELIMINARY_TESTING_REVIEW" ||
-        // newStatus === "UNDER_PRELIMINARY_RESUBMISSION_TESTING_REVIEW" ||
         newStatus === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
-        // newStatus === "PRELIMINARY_RESUBMISSION_BY_CLIENT" ||
         newStatus === "UNDER_FINAL_TESTING_REVIEW" ||
         newStatus === "UNDER_QA_PRELIMINARY_REVIEW" ||
         newStatus === "UNDER_QA_FINAL_REVIEW" ||
         newStatus === "UNDER_ADMIN_REVIEW" ||
         newStatus === "UNDER_CLIENT_FINAL_REVIEW" ||
-        // newStatus === "UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW" ||
-        // newStatus === "FINAL_RESUBMISSION_BY_CLIENT" ||
         newStatus === "PRELIMINARY_APPROVED" ||
         newStatus === "FINAL_TESTING_ON_HOLD" ||
-        // newStatus === "FINAL_TESTING_NEEDS_CORRECTION" ||
-        // newStatus === "UNDER_FINAL_RESUBMISSION_TESTING_REVIEW" ||
-        // newStatus === "QA_NEEDS_PRELIMINARY_CORRECTION" ||
-        // newStatus === "QA_NEEDS_FINAL_CORRECTION" ||
-        // newStatus === "ADMIN_NEEDS_CORRECTION" ||
         newStatus === "ADMIN_REJECTED" ||
-        // newStatus === "CLIENT_NEEDS_PRELIMINARY_CORRECTION" ||
-        // newStatus === "CLIENT_NEEDS_FINAL_CORRECTION" ||
-        // newStatus === "FINAL_RESUBMISSION_BY_TESTING" ||
         newStatus === "PRELIMINARY_TESTING_ON_HOLD" ||
-        // newStatus === "PRELIMINARY_TESTING_NEEDS_CORRECTION" ||
         newStatus === "FRONTDESK_ON_HOLD" ||
-        // newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-        // newStatus === "UNDER_CLIENT_FINAL_CORRECTION" ||
         newStatus === "LOCKED" ||
-        newStatus === "FINAL_APPROVED"
-      ) {
+        newStatus === "FINAL_APPROVED";
+
+      if (!centralApproval && requiresFullValidation) {
         if (!okFields) {
           alert("⚠️ Please fix the highlighted fields before changing status.");
           return false;
@@ -1742,82 +1732,187 @@ useEffect(() => {
         }
       }
 
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
+      // Approval happens before the assigned user fixes the requested fields.
+      if (
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
+      ) {
         return false;
       }
-      //   if (newStatus === "SUBMITTED_BY_CLIENT") {
-      //   const sent = todayISO();
-      //   setDateSent(sent);
-      //   markDirty(); // ✅ IMPORTANT so handleSave runs
-      // }
 
-      // ensure latest edits are saved
+      // A save increments the version. Track it so we can reload the version
+      // before immediately performing the status transition.
+      let savedBeforeStatusChange = false;
+
       if (!reportId || isDirty) {
         const saved = await handleSave();
-        if (!saved) return;
+        if (!saved) return false;
+        savedBeforeStatusChange = true;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Central approval may be opened from a stale dashboard/workspace copy.
+      // A just-completed save also increments the version asynchronously.
+      if ((centralApproval || savedBeforeStatusChange) && reportId) {
+        try {
+          const latestReport = await api<any>(`/reports/${reportId}`, {
+            method: "GET",
+          });
+
+          const latestStatus = latestReport?.status as ReportStatus | undefined;
+          const latestVersion =
+            typeof latestReport?.version === "number"
+              ? latestReport.version
+              : reportVersion;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(latestStatus)}. ` +
+                "The latest version has been loaded.",
+            );
+            return false;
+          }
+
+          expectedVersionForRequest = latestVersion;
+          setReportVersion(latestVersion);
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before status change:",
+            refreshError,
+          );
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
+          return false;
+        }
       }
 
       try {
-        let updated: UpdatedReport;
-        updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
-          method: "PATCH",
-          // Server expects: status (always), reason (required for critical fields incl. status),
-          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
-          body: JSON.stringify({
-            status: newStatus,
-            reason: opts?.reason ?? "Changing Status",
-            eSignPassword: opts?.eSignPassword ?? undefined,
-            expectedVersion: reportVersion,
-          }),
-        });
+        const updated = await api<UpdatedReport>(
+          `/reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: newStatus,
+              reason:
+                opts?.reason ??
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
+              eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: expectedVersionForRequest,
+            }),
+          },
+        );
 
-        // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-        // const updated: { status?: ReportStatus; reportNumber?: string } =
-        //   await res.json();
+        const nextStatus = updated.status ?? newStatus;
+        const nextVersion =
+          typeof updated.version === "number"
+            ? updated.version
+            : expectedVersionForRequest + 1;
 
-        setStatus(updated.status ?? newStatus);
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
-        setReportVersion((prev) =>
-          typeof updated.version === "number" ? updated.version : prev + 1,
-        );
+
         setIsDirty(false);
+
         onStatusChanged?.({
           ...report,
           ...updated,
           id: reportId,
-          status: updated.status ?? newStatus,
+          status: nextStatus,
+          version: nextVersion,
         });
-        alert(`✅ Status changed to ${newStatus}`);
-        // if (role === "CLIENT") {
-        //   backToDashboard();
-        // } else if (role === "FRONTDESK") {
-        //   navigate("/frontdeskDashboard");
-        // } else if (role === "MICRO") {
-        //   navigate("/microDashboard");
-        // } else if (role === "MC") {
-        //   navigate("/mcDashboard");
-        // } else if (role === "QA") {
-        //   navigate("/qaDashboard");
-        // } else if (role === "ADMIN") {
-        //   navigate("/adminDashboard");
-        // } else if (role === "SYSTEMADMIN") {
-        //   navigate("/systemAdminDashboard");
-        // }
+
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
 
         if (embedded) return true;
         backToDashboard();
         return true;
       } catch (err: any) {
         console.error(err);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(`/reports/${reportId}`, {
+              method: "GET",
+            });
+
+            const latestStatus =
+              (latestReport?.status as ReportStatus) || currentStatus;
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+          return false;
+        }
+
         const msg =
-          err?.response?.data?.message ||
-          err?.response?.message ||
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
           err?.message ||
           "Status update failed.";
 
-        throw new Error(msg);
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1967,16 +2062,31 @@ useEffect(() => {
   }
 
   function applySpecValue(target: "tbc_spec" | "tmy_spec", value: string) {
-    const [specValue, parsedUnit] = value.split("|") as [string, Unit | undefined];
+    const [specValue, parsedUnit] = value.split("|") as [
+      string,
+      Unit | undefined,
+    ];
     const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
     const unitValue = parsedUnit || currentUnit;
     if (unitValue === "CFU / device") {
-      set_tbc_spec(specValue); set_tmy_spec(specValue);
-      setTbcUnit("CFU / device"); setTmyUnit("CFU / device");
-      clearError("tbc_spec"); clearError("tmy_spec"); markDirty(); return;
+      set_tbc_spec(specValue);
+      set_tmy_spec(specValue);
+      setTbcUnit("CFU / device");
+      setTmyUnit("CFU / device");
+      clearError("tbc_spec");
+      clearError("tmy_spec");
+      markDirty();
+      return;
     }
-    if (target === "tbc_spec") { set_tbc_spec(specValue); setTbcUnit(unitValue); clearError("tbc_spec"); }
-    else { set_tmy_spec(specValue); setTmyUnit(unitValue); clearError("tmy_spec"); }
+    if (target === "tbc_spec") {
+      set_tbc_spec(specValue);
+      setTbcUnit(unitValue);
+      clearError("tbc_spec");
+    } else {
+      set_tmy_spec(specValue);
+      setTmyUnit(unitValue);
+      clearError("tmy_spec");
+    }
     markDirty();
   }
 
@@ -2252,6 +2362,18 @@ useEffect(() => {
     return false;
   }
 
+  function isCentralApprovalTransition(
+    currentStatus: ReportStatus,
+    targetStatus: ReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
+    );
+  }
+
   function shouldBlockStatusChangeForUnresolvedCorrections() {
     const pending = openCorrections.filter(
       (c) => hasCorrectionBeenFixed(c) && c.status === "OPEN",
@@ -2271,8 +2393,6 @@ useEffect(() => {
   function formatStatusText(status: string) {
     return status.replaceAll("_", " ");
   }
-
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2994,327 +3114,332 @@ useEffect(() => {
             <div className="p-2">SPECIFICATION</div>
           </div>
 
-                    <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
-          {/* Row 1: Total Bacterial Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-b border-black">
-              Total Bacterial Count:
-            </div>
+          <div className="grid grid-cols-[27%_10%_17%_18%_28%] text-[12px]">
+            {/* Row 1: Total Bacterial Count */}
+            <div className="contents">
+              <div className="py-1 px-2 font-bold border-r border-b border-black">
+                Total Bacterial Count:
+              </div>
 
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-b border-black">
-              <div className="py-1 px-2 text-center"> x 10^0</div>
-            </div>
+              {/* DILUTION (static) */}
+              <div className="py-1 px-2 border-r border-b border-black">
+                <div className="py-1 px-2 text-center"> x 10^0</div>
+              </div>
 
-            {/* GRAM STAIN */}
-            <div
-              id="f-tbc_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_gram" errors={errors} />
-              <ResolveOverlay field="tbc_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tbc_gram") && errors.tbc_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_gram}
-                onChange={(e) => {
-                  set_tbc_gram(e.target.value);
-                  clearError("tbc_gram");
-                  markDirty();
+              {/* GRAM STAIN */}
+              <div
+                id="f-tbc_gram"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tbc_gram");
+                  setAddMessage("");
                 }}
-                readOnly={lock("tbc_gram")}
-                aria-invalid={!!errors.tbc_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tbc_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tbc_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
-                "tbc_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tbc_result" errors={errors} />
-              <ResolveOverlay field="tbc_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tbc_result") && errors.tbc_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tbc_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tbc_result}
-                onChange={(e) => {
-                  set_tbc_result(e.target.value);
-                  clearError("tbc_result");
-                  markDirty();
-                }}
-                readOnly={lock("tbc_result")}
-                placeholder={tbc_spec ? tbcUnit : ""}
-                aria-invalid={!!errors.tbc_result}
-              />
-              <div className="py-1 px-2 text-center">{tbcUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            {/* SPECIFICATION */}
-            <div
-              id="f-tbc_spec"
-              className={`py-1 px-2 flex relative ${
-                isDeviceSpecification
-                  ? "row-span-2 items-center"
-                  : "border-b border-black"
-              } ${dashClass("tbc_spec")} ${
-                isDeviceSpecification && hasCorrection("tmy_spec")
-                  ? "dash dash-red"
-                  : ""
-              }`}
-            >
-              <FieldErrorBadge name="tbc_spec" errors={errors} />
-              {isDeviceSpecification && (
-                <FieldErrorBadge name="tmy_spec" errors={errors} />
-              )}
-              <ResolveOverlay field="tbc_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tbc_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TBC specification"
-                  aria-label="Add correction for TBC specification"
-                />
-              )}
-
-              <div className="flex w-full items-center gap-2">
-                <select
+                className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
+                  "tbc_gram",
+                )}`}
+              >
+                <FieldErrorBadge name="tbc_gram" errors={errors} />
+                <ResolveOverlay field="tbc_gram" />
+                <input
                   className={`w-full input-editable px-1 border ${
-                    !lock("tbc_spec") && errors.tbc_spec
+                    !lock("tbc_gram") && errors.tbc_gram
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("tbc_spec")
+                    hasCorrection("tbc_gram")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
-                  }`}
-                  value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
-                  onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
-                  disabled={lock("tbc_spec")}
-                  aria-invalid={!!errors.tbc_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
-
-                {!lock("tbc_spec") && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAddSpec("tbc_spec");
-                    }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Total Mold & Yeast Count */}
-          <div className="contents">
-            <div className="py-1 px-2 font-bold border-r border-black">
-              Total Mold & Yeast Count:
-            </div>
-
-            {/* DILUTION (static) */}
-            <div className="py-1 px-2 border-r border-black">
-              <div className="py-1 px-2 text-center"> x 10^0</div>
-            </div>
-
-            {/* GRAM STAIN */}
-            <div
-              id="f-tmy_gram"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_gram");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_gram",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_gram" errors={errors} />
-              <ResolveOverlay field="tmy_gram" />
-              <input
-                className={`w-full input-editable px-1 border ${
-                  !lock("tmy_gram") && errors.tmy_gram
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_gram")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_gram}
-                onChange={(e) => {
-                  set_tmy_gram(e.target.value);
-                  clearError("tmy_gram");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_gram")}
-                aria-invalid={!!errors.tmy_gram}
-              />
-            </div>
-
-            {/* RESULT */}
-            <div
-              id="f-tmy_result"
-              onClick={() => {
-                if (!selectingCorrections) return;
-                setAddForField("tmy_result");
-                setAddMessage("");
-              }}
-              className={`py-1 px-2 border-r border-black flex relative ${dashClass(
-                "tmy_result",
-              )}`}
-            >
-              <FieldErrorBadge name="tmy_result" errors={errors} />
-              <ResolveOverlay field="tmy_result" />
-              <input
-                className={`w-1/2 input-editable px-1 border ${
-                  !lock("tmy_result") && errors.tmy_result
-                    ? "border-red-500 ring-1 ring-red-500"
-                    : "border-black/70"
-                } ${
-                  hasCorrection("tmy_result")
-                    ? "ring-2 ring-rose-500 animate-pulse"
-                    : ""
-                }focus:outline-none focus:ring-0 focus:border-black`}
-                value={tmy_result}
-                onChange={(e) => {
-                  set_tmy_result(e.target.value);
-                  clearError("tmy_result");
-                  markDirty();
-                }}
-                readOnly={lock("tmy_result")}
-                placeholder={tmy_spec ? tmyUnit : ""}
-                aria-invalid={!!errors.tmy_result}
-              />
-              <div className="py-1 px-2 text-center">{tmyUnit}</div>
-            </div>
-
-            {/* SPECIFICATION */}
-            {/* SPECIFICATION */}
-            {!isDeviceSpecification && (
-            <div
-              id="f-tmy_spec"
-              className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
-            >
-              <FieldErrorBadge name="tmy_spec" errors={errors} />
-              <ResolveOverlay field="tmy_spec" />
-
-              {selectingCorrections && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tbc_gram}
+                  onChange={(e) => {
+                    set_tbc_gram(e.target.value);
+                    clearError("tbc_gram");
+                    markDirty();
                   }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddForField("tmy_spec");
-                    setAddMessage("");
-                  }}
-                  title="Click to add correction for TMY specification"
-                  aria-label="Add correction for TMY specification"
+                  readOnly={lock("tbc_gram")}
+                  aria-invalid={!!errors.tbc_gram}
                 />
-              )}
+              </div>
 
-              <div className="flex w-full items-center gap-2">
-                <select
-                  className={`w-full input-editable px-1 border ${
-                    !lock("tmy_spec") && errors.tmy_spec
+              {/* RESULT */}
+              <div
+                id="f-tbc_result"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tbc_result");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-b border-black flex relative ${dashClass(
+                  "tbc_result",
+                )}`}
+              >
+                <FieldErrorBadge name="tbc_result" errors={errors} />
+                <ResolveOverlay field="tbc_result" />
+                <input
+                  className={`w-1/2 input-editable px-1 border ${
+                    !lock("tbc_result") && errors.tbc_result
                       ? "border-red-500 ring-1 ring-red-500"
                       : "border-black/70"
                   } ${
-                    hasCorrection("tmy_spec")
+                    hasCorrection("tbc_result")
                       ? "ring-2 ring-rose-500 animate-pulse"
                       : ""
-                  }`}
-                  value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
-                  onChange={(e) => applySpecValue("tmy_spec", e.target.value)}
-                  disabled={lock("tmy_spec")}
-                  aria-invalid={!!errors.tmy_spec}
-                >
-                  <option value="">-- Select --</option>
-                  {specOptions.flatMap((opt) =>
-                    UNIT_OPTIONS.map((unit) => (
-                      <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
-                        {formatSpec(opt, unit)}
-                      </option>
-                    )),
-                  )}
-                </select>
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tbc_result}
+                  onChange={(e) => {
+                    set_tbc_result(e.target.value);
+                    clearError("tbc_result");
+                    markDirty();
+                  }}
+                  readOnly={lock("tbc_result")}
+                  placeholder={tbc_spec ? tbcUnit : ""}
+                  aria-invalid={!!errors.tbc_result}
+                />
+                <div className="py-1 px-2 text-center">{tbcUnit}</div>
+              </div>
 
-                {!lock("tmy_spec") && (
+              {/* SPECIFICATION */}
+              {/* SPECIFICATION */}
+              <div
+                id="f-tbc_spec"
+                className={`py-1 px-2 flex relative ${
+                  isDeviceSpecification
+                    ? "row-span-2 items-center"
+                    : "border-b border-black"
+                } ${dashClass("tbc_spec")} ${
+                  isDeviceSpecification && hasCorrection("tmy_spec")
+                    ? "dash dash-red"
+                    : ""
+                }`}
+              >
+                <FieldErrorBadge name="tbc_spec" errors={errors} />
+                {isDeviceSpecification && (
+                  <FieldErrorBadge name="tmy_spec" errors={errors} />
+                )}
+                <ResolveOverlay field="tbc_spec" />
+
+                {selectingCorrections && (
                   <button
                     type="button"
-                    onClick={(e) => {
+                    className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
-                      openAddSpec("tmy_spec");
                     }}
-                    className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
-                    title="Add new specification"
-                  >
-                    +
-                  </button>
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAddForField("tbc_spec");
+                      setAddMessage("");
+                    }}
+                    title="Click to add correction for TBC specification"
+                    aria-label="Add correction for TBC specification"
+                  />
                 )}
+
+                <div className="flex w-full items-center gap-2">
+                  <select
+                    className={`w-full input-editable px-1 border ${
+                      !lock("tbc_spec") && errors.tbc_spec
+                        ? "border-red-500 ring-1 ring-red-500"
+                        : "border-black/70"
+                    } ${
+                      hasCorrection("tbc_spec")
+                        ? "ring-2 ring-rose-500 animate-pulse"
+                        : ""
+                    }`}
+                    value={tbc_spec ? `${tbc_spec}|${tbcUnit}` : ""}
+                    onChange={(e) => applySpecValue("tbc_spec", e.target.value)}
+                    disabled={lock("tbc_spec")}
+                    aria-invalid={!!errors.tbc_spec}
+                  >
+                    <option value="">-- Select --</option>
+                    {specOptions.flatMap((opt) =>
+                      UNIT_OPTIONS.map((unit) => (
+                        <option key={`${opt}-${unit}`} value={`${opt}|${unit}`}>
+                          {formatSpec(opt, unit)}
+                        </option>
+                      )),
+                    )}
+                  </select>
+
+                  {!lock("tbc_spec") && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAddSpec("tbc_spec");
+                      }}
+                      className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                      title="Add new specification"
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-            )}
-          </div>
+
+            {/* Row 2: Total Mold & Yeast Count */}
+            <div className="contents">
+              <div className="py-1 px-2 font-bold border-r border-black">
+                Total Mold & Yeast Count:
+              </div>
+
+              {/* DILUTION (static) */}
+              <div className="py-1 px-2 border-r border-black">
+                <div className="py-1 px-2 text-center"> x 10^0</div>
+              </div>
+
+              {/* GRAM STAIN */}
+              <div
+                id="f-tmy_gram"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tmy_gram");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+                  "tmy_gram",
+                )}`}
+              >
+                <FieldErrorBadge name="tmy_gram" errors={errors} />
+                <ResolveOverlay field="tmy_gram" />
+                <input
+                  className={`w-full input-editable px-1 border ${
+                    !lock("tmy_gram") && errors.tmy_gram
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tmy_gram")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tmy_gram}
+                  onChange={(e) => {
+                    set_tmy_gram(e.target.value);
+                    clearError("tmy_gram");
+                    markDirty();
+                  }}
+                  readOnly={lock("tmy_gram")}
+                  aria-invalid={!!errors.tmy_gram}
+                />
+              </div>
+
+              {/* RESULT */}
+              <div
+                id="f-tmy_result"
+                onClick={() => {
+                  if (!selectingCorrections) return;
+                  setAddForField("tmy_result");
+                  setAddMessage("");
+                }}
+                className={`py-1 px-2 border-r border-black flex relative ${dashClass(
+                  "tmy_result",
+                )}`}
+              >
+                <FieldErrorBadge name="tmy_result" errors={errors} />
+                <ResolveOverlay field="tmy_result" />
+                <input
+                  className={`w-1/2 input-editable px-1 border ${
+                    !lock("tmy_result") && errors.tmy_result
+                      ? "border-red-500 ring-1 ring-red-500"
+                      : "border-black/70"
+                  } ${
+                    hasCorrection("tmy_result")
+                      ? "ring-2 ring-rose-500 animate-pulse"
+                      : ""
+                  }focus:outline-none focus:ring-0 focus:border-black`}
+                  value={tmy_result}
+                  onChange={(e) => {
+                    set_tmy_result(e.target.value);
+                    clearError("tmy_result");
+                    markDirty();
+                  }}
+                  readOnly={lock("tmy_result")}
+                  placeholder={tmy_spec ? tmyUnit : ""}
+                  aria-invalid={!!errors.tmy_result}
+                />
+                <div className="py-1 px-2 text-center">{tmyUnit}</div>
+              </div>
+
+              {/* SPECIFICATION */}
+              {/* SPECIFICATION */}
+              {!isDeviceSpecification && (
+                <div
+                  id="f-tmy_spec"
+                  className={`py-1 px-2 flex relative ${dashClass("tmy_spec")}`}
+                >
+                  <FieldErrorBadge name="tmy_spec" errors={errors} />
+                  <ResolveOverlay field="tmy_spec" />
+
+                  {selectingCorrections && (
+                    <button
+                      type="button"
+                      className="absolute inset-0 z-30 cursor-pointer bg-amber-50/30"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setAddForField("tmy_spec");
+                        setAddMessage("");
+                      }}
+                      title="Click to add correction for TMY specification"
+                      aria-label="Add correction for TMY specification"
+                    />
+                  )}
+
+                  <div className="flex w-full items-center gap-2">
+                    <select
+                      className={`w-full input-editable px-1 border ${
+                        !lock("tmy_spec") && errors.tmy_spec
+                          ? "border-red-500 ring-1 ring-red-500"
+                          : "border-black/70"
+                      } ${
+                        hasCorrection("tmy_spec")
+                          ? "ring-2 ring-rose-500 animate-pulse"
+                          : ""
+                      }`}
+                      value={tmy_spec ? `${tmy_spec}|${tmyUnit}` : ""}
+                      onChange={(e) =>
+                        applySpecValue("tmy_spec", e.target.value)
+                      }
+                      disabled={lock("tmy_spec")}
+                      aria-invalid={!!errors.tmy_spec}
+                    >
+                      <option value="">-- Select --</option>
+                      {specOptions.flatMap((opt) =>
+                        UNIT_OPTIONS.map((unit) => (
+                          <option
+                            key={`${opt}-${unit}`}
+                            value={`${opt}|${unit}`}
+                          >
+                            {formatSpec(opt, unit)}
+                          </option>
+                        )),
+                      )}
+                    </select>
+
+                    {!lock("tmy_spec") && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAddSpec("tmy_spec");
+                        }}
+                        className="h-8 w-8 rounded-md border border-black/50 bg-white hover:bg-slate-50"
+                        title="Add new specification"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -3794,67 +3919,72 @@ useEffect(() => {
               )}
               {!showAssignReportNumberButton &&
                 (() => {
-                  const nextStatuses =
-                    STATUS_TRANSITIONS[status as ReportStatus]?.next ?? [];
+                  const currentTransition =
+                    STATUS_TRANSITIONS[status as ReportStatus];
 
-                  const correctionStatuses = nextStatuses.filter(
-                    (s) =>
-                      !hideNeedCorrectionButtons &&
-                      isCorrectionTargetStatus(String(s)),
-                  );
+                  const nextStatuses = currentTransition?.next ?? [];
 
+                  const canSetCurrentStatus =
+                    currentTransition?.canSet.includes(role!) ?? false;
+
+                  // ✅ Central correction flow:
+                  // Do NOT depend on QA_NEEDS_* being present in workflow.next.
+                  const showNeedsCorrection =
+                    !hideNeedCorrectionButtons &&
+                    canSetCurrentStatus &&
+                    canShowQaNeedsCorrection(status as ReportStatus, role);
+
+                  // ✅ Never render old correction statuses as normal buttons.
                   const normalStatuses = nextStatuses.filter(
-                    (s) => !isCorrectionTargetStatus(String(s)),
+                    (targetStatus) =>
+                      !isCorrectionTargetStatus(String(targetStatus)),
                   );
 
                   return (
                     <>
-                      {correctionStatuses.length > 0 &&
-                        STATUS_TRANSITIONS[
-                          status as ReportStatus
-                        ].canSet.includes(role!) && (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setCorrectionActionOpen((v) => !v)}
-                              className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                              disabled={isBusy}
-                            >
-                              {busy === "STATUS" && <Spinner />}
-                              Needs Correction ▾
-                            </button>
+                      {showNeedsCorrection && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setCorrectionActionOpen((v) => !v)}
+                            className="px-4 py-2  rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                            disabled={isBusy}
+                          >
+                            {busy === "STATUS" && <Spinner />}
+                            Needs Correction ▾
+                          </button>
 
-                            {correctionActionOpen && (
-                              <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
-                                <button
-                                  type="button"
-                                  className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
-                                  onClick={() => {
-                                    setCorrectionActionOpen(false);
-                                    requestStatusChange(
-                                      "CHANGE_REQUESTED" as ReportStatus,
-                                    );
-                                  }}
-                                >
-                                  Request Change
-                                </button>
+                          {correctionActionOpen && (
+                            <div className="absolute left-0 top-full z-30 mt-2 w-36 overflow-hidden rounded-lg border bg-white shadow-lg">
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange(
+                                    "CHANGE_REQUESTED" as ReportStatus,
+                                  );
+                                }}
+                              >
+                                Request Change
+                              </button>
 
-                                <button
-                                  type="button"
-                                  className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
-                                  onClick={() => {
-                                    setCorrectionActionOpen(false);
-                                    requestStatusChange(
-                                      "CORRECTION_REQUESTED" as ReportStatus,
-                                    );
-                                  }}
-                                >
-                                  Raise Correction
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              <button
+                                type="button"
+                                className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-yellow-50"
+                                onClick={() => {
+                                  setCorrectionActionOpen(false);
+                                  requestStatusChange(
+                                    "CORRECTION_REQUESTED" as ReportStatus,
+                                  );
+                                }}
+                              >
+                                Raise Correction
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {normalStatuses.map((targetStatus: ReportStatus) => {
                         const buttonConfig = statusButtons[targetStatus];
@@ -4014,10 +4144,12 @@ useEffect(() => {
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -4031,32 +4163,42 @@ useEffect(() => {
                     },
                   );
 
+                  // Creating the request changes the report status and increments
+                  // the optimistic-lock version. Reload both before continuing.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/reports/${reportId!}`, { method: "GET" }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as ReportStatus) || targetStatus;
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
-
-                  // if (role === "CLIENT") {
-                  //   backToDashboard();
-                  // } else if (role === "FRONTDESK") {
-                  //   navigate("/frontdeskDashboard");
-                  // } else if (role === "MICRO") {
-                  //   navigate("/microDashboard");
-                  // } else if (role === "MC") {
-                  //   navigate("/mcDashboard");
-                  // } else if (role === "QA") {
-                  //   navigate("/qaDashboard");
-                  // } else if (role === "ADMIN") {
-                  //   navigate("/adminDashboard");
-                  // } else if (role === "SYSTEMADMIN") {
-                  //   navigate("/systemAdminDashboard");
-                  // }
-
                   backToDashboard();
                 })
               }

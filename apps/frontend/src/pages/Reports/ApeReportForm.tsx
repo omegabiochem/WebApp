@@ -285,17 +285,6 @@ export default function ApeReportForm({
       "",
   ).trim();
 
-  const currentUserIdCandidates = [
-    (user as any)?.id,
-    (user as any)?.userId,
-    (user as any)?.sub,
-    (user as any)?.uid,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-
-  const currentUserIdentityKey = currentUserIdCandidates.join("|");
-
   const navigate = useNavigate();
 
   // const initialData = JSON.stringify(report || {});
@@ -313,6 +302,12 @@ export default function ApeReportForm({
     typeof report?.version === "number" ? report.version : 0,
   );
 
+  function looksLikeUuid(value?: string | null) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim(),
+    );
+  }
+
   const [createdByName, setCreatedByName] = useState<string>(() => {
     const explicitName = String(
       report?.createdByName ||
@@ -321,13 +316,15 @@ export default function ApeReportForm({
         "",
     ).trim();
 
-    if (explicitName) return explicitName;
-    if (!report?.id) return currentUserDisplayName;
+    if (explicitName && !looksLikeUuid(explicitName)) {
+      return explicitName;
+    }
 
-    const creatorId = String(report?.createdBy || "").trim();
-    return creatorId && currentUserIdCandidates.includes(creatorId)
-      ? currentUserDisplayName
-      : "";
+    if (!report?.id) {
+      return currentUserDisplayName;
+    }
+
+    return "";
   });
 
   useEffect(() => {
@@ -357,70 +354,44 @@ export default function ApeReportForm({
           "",
       ).trim();
 
-      if (suppliedName) {
-        if (!cancelled) setCreatedByName(suppliedName);
+      if (suppliedName && !looksLikeUuid(suppliedName)) {
+        if (!cancelled) {
+          setCreatedByName(suppliedName);
+        }
         return;
       }
 
       if (!reportId) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      let creatorId = String(report?.createdBy || "").trim();
-      let creatorName = "";
-
-      if (!creatorId) {
-        try {
-          const fullReport = await api<any>(`/reports/${reportId}`, {
-            method: "GET",
-          });
-
-          creatorName = String(
-            fullReport?.createdByName ||
-              fullReport?.creatorName ||
-              fullReport?.createdByUser?.name ||
-              "",
-          ).trim();
-
-          creatorId = String(fullReport?.createdBy || "").trim();
-        } catch {
-          // Keep the form available even if creator lookup is unavailable.
+        if (!cancelled) {
+          setCreatedByName(currentUserDisplayName);
         }
-      }
-
-      if (creatorName) {
-        if (!cancelled) setCreatedByName(creatorName);
-        return;
-      }
-
-      if (
-        creatorId &&
-        currentUserDisplayName &&
-        currentUserIdCandidates.includes(creatorId)
-      ) {
-        if (!cancelled) setCreatedByName(currentUserDisplayName);
-        return;
-      }
-
-      if (!creatorId) {
-        if (!cancelled) setCreatedByName("");
         return;
       }
 
       try {
-        const qs = new URLSearchParams({ ids: creatorId });
-        const creators = await api<
-          { id: string; name: string | null; email: string }[]
-        >(`/users/lookup?${qs.toString()}`, { method: "GET" });
+        const fullReport = await api<any>(`/reports/${reportId}`, {
+          method: "GET",
+        });
 
-        const creator = creators.find((item) => item.id === creatorId);
-        const resolvedName =
-          creator?.name?.trim() || creator?.email?.trim() || "";
+        const creatorName = String(
+          fullReport?.createdByName ||
+            fullReport?.creatorName ||
+            fullReport?.createdByUser?.name ||
+            "",
+        ).trim();
 
-        if (!cancelled) setCreatedByName(resolvedName);
-      } catch {
-        if (!cancelled) setCreatedByName("");
+        if (creatorName && !looksLikeUuid(creatorName)) {
+          if (!cancelled) {
+            setCreatedByName(creatorName);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve APE creator:", error);
+      }
+
+      if (!cancelled) {
+        setCreatedByName("");
       }
     }
 
@@ -435,7 +406,6 @@ export default function ApeReportForm({
     report?.createdByName,
     report?.creatorName,
     currentUserDisplayName,
-    currentUserIdentityKey,
   ]);
 
   // //To set clientCode automatically when creating a new report
@@ -510,7 +480,6 @@ export default function ApeReportForm({
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
   const [changeReason, setChangeReason] = useState("");
   const [eSignPassword, setESignPassword] = useState("");
-
 
   // ⬇️ Fetch existing corrections when a report id is present (new or existing)
   useEffect(() => {
@@ -705,11 +674,9 @@ export default function ApeReportForm({
     );
   }
 
-
   const uiNeedsESign = (s: string) =>
     (role === "ADMIN" || role === "SYSTEMADMIN" || role === "FRONTDESK") &&
     (s === "UNDER_CLIENT_REVIEW" || s === "LOCKED");
-
 
   function requestStatusChange(target: ReportStatus) {
     if (!reportId) {
@@ -1142,8 +1109,6 @@ export default function ApeReportForm({
           }
           alert("❌ Error saving  report: " + (err.message || "Unknown error"));
           return false;
-
-          return false;
         }
       })) ?? false
     );
@@ -1160,80 +1125,205 @@ export default function ApeReportForm({
     opts?: { reason?: string; eSignPassword?: string },
   ) {
     return await runBusy("STATUS", async () => {
-      const values = makeValues();
-      const okFields = validateAndSetErrors(values);
-      if (!okFields) {
-        alert("⚠️ Please fix the highlighted fields before saving.");
+      const currentStatus = status as ReportStatus;
+      const centralApproval = isCentralApprovalTransition(
+        currentStatus,
+        newStatus,
+      );
+
+      let okFields = true;
+
+      if (!centralApproval) {
+        const values = makeValues();
+        okFields = validateAndSetErrors(values);
+      }
+
+      if (!centralApproval && !okFields) {
+        alert("⚠️ Please fix the highlighted fields before changing status.");
         return false;
       }
+
+      // Approval happens before the assigned user fixes the requested fields.
       if (
-        newStatus === "UNDER_DRAFT_REVIEW" ||
-        newStatus === "SUBMITTED_BY_CLIENT" ||
-        newStatus === "RECEIVED_BY_FRONTDESK" ||
-        newStatus === "UNDER_ADMIN_REVIEW" ||
-        newStatus === "ADMIN_NEEDS_CORRECTION" ||
-        newStatus === "ADMIN_REJECTED" ||
-        newStatus === "FRONTDESK_ON_HOLD" ||
-        newStatus === "FRONTDESK_NEEDS_CORRECTION" ||
-        newStatus === "LOCKED"
+        !centralApproval &&
+        shouldBlockStatusChangeForUnresolvedCorrections()
       ) {
-        if (!okFields) {
-          alert("⚠️ Please fix the highlighted fields before changing status.");
-          return;
-        }
+        return false;
       }
 
-      if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-        return;
-      }
+      // A save increments the version. Track it so we can reload the version
+      // before immediately performing the status transition.
+      let savedBeforeStatusChange = false;
 
-      // ensure latest edits are saved
       if (!reportId || isDirty) {
         const saved = await handleSave();
-        if (!saved) return;
+        if (!saved) return false;
+        savedBeforeStatusChange = true;
+      }
+
+      let expectedVersionForRequest = reportVersion;
+
+      // Central approval may be opened from a stale dashboard/workspace copy.
+      // A just-completed save also increments the version asynchronously.
+      if ((centralApproval || savedBeforeStatusChange) && reportId) {
+        try {
+          const latestReport = await api<any>(`/reports/${reportId}`, {
+            method: "GET",
+          });
+
+          const latestStatus = latestReport?.status as ReportStatus | undefined;
+          const latestVersion =
+            typeof latestReport?.version === "number"
+              ? latestReport.version
+              : reportVersion;
+
+          if (latestStatus && latestStatus !== currentStatus) {
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+
+            alert(
+              `⚠️ This report is now ${formatStatusText(latestStatus)}. ` +
+                "The latest version has been loaded.",
+            );
+            return false;
+          }
+
+          expectedVersionForRequest = latestVersion;
+          setReportVersion(latestVersion);
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh report before status change:",
+            refreshError,
+          );
+          alert(
+            "❌ Could not verify the latest report version. Please close and reopen the report.",
+          );
+          return false;
+        }
       }
 
       try {
-        let updated: UpdatedReport;
-        updated = await api<UpdatedReport>(`/reports/${reportId}/status`, {
-          method: "PATCH",
-          // Server expects: status (always), reason (required for critical fields incl. status),
-          // and eSignPassword when moving to UNDER_CLIENT_FINAL_REVIEW or LOCKED.
-          body: JSON.stringify({
-            status: newStatus,
-            reason: opts?.reason ?? "Changing Status",
-            eSignPassword: opts?.eSignPassword ?? undefined,
-            expectedVersion: reportVersion,
-          }),
-        });
+        const updated = await api<UpdatedReport>(
+          `/reports/${reportId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: newStatus,
+              reason:
+                opts?.reason ??
+                (centralApproval
+                  ? newStatus === "UNDER_CHANGE_UPDATE"
+                    ? "Change request approved"
+                    : "Correction request approved"
+                  : "Changing Status"),
+              eSignPassword: opts?.eSignPassword ?? undefined,
+              expectedVersion: expectedVersionForRequest,
+            }),
+          },
+        );
 
-        // if (!res.ok) throw new Error(`Status update failed: ${res.statusText}`);
-        // const updated: { status?: ReportStatus; reportNumber?: string } =
-        //   await res.json();
+        const nextStatus = updated.status ?? newStatus;
+        const nextVersion =
+          typeof updated.version === "number"
+            ? updated.version
+            : expectedVersionForRequest + 1;
 
-        setStatus(updated.status ?? newStatus);
+        setStatus(nextStatus);
+        setReportVersion(nextVersion);
+
         if (updated.reportNumber != null) {
           setReportNumber(String(updated.reportNumber));
         }
-        setReportVersion((prev) =>
-          typeof updated.version === "number" ? updated.version : prev + 1,
-        );
-        setReportNumber(updated.reportNumber || reportNumber);
+
         setIsDirty(false);
+
         onStatusChanged?.({
           ...report,
-          ...makeValues(),
           ...updated,
           id: reportId,
-          status: updated.status ?? newStatus,
+          status: nextStatus,
+          version: nextVersion,
         });
-        alert(`✅ Status changed to ${newStatus}`);
 
-        if (embedded) return;
+        alert(
+          centralApproval
+            ? newStatus === "UNDER_CHANGE_UPDATE"
+              ? "✅ Change request approved. The report is now available for the requested update."
+              : "✅ Correction request approved. The report is now available for correction."
+            : `✅ Status changed to ${newStatus}`,
+        );
+
+        if (embedded) return true;
         backToDashboard();
+        return true;
       } catch (err: any) {
         console.error(err);
-        alert("❌ Error changing status: " + err.message);
+
+        if (err?.status === 409) {
+          try {
+            const latestReport = await api<any>(`/reports/${reportId}`, {
+              method: "GET",
+            });
+
+            const latestStatus =
+              (latestReport?.status as ReportStatus) || currentStatus;
+            const latestVersion =
+              typeof latestReport?.version === "number"
+                ? latestReport.version
+                : reportVersion;
+
+            setStatus(latestStatus);
+            setReportVersion(latestVersion);
+
+            if (latestReport?.reportNumber != null) {
+              setReportNumber(String(latestReport.reportNumber));
+            }
+
+            onStatusChanged?.({
+              ...report,
+              ...latestReport,
+              id: reportId,
+              status: latestStatus,
+              version: latestVersion,
+            });
+          } catch (reloadError) {
+            console.error(
+              "Failed to reload report after version conflict:",
+              reloadError,
+            );
+          }
+
+          const expected = err?.body?.expectedVersion;
+          const current = err?.body?.currentVersion;
+
+          alert(
+            expected != null && current != null
+              ? `⚠️ The report version changed from ${expected} to ${current}. The latest version has been loaded. Please click Approve again.`
+              : "⚠️ The report was updated after this window opened. The latest version has been loaded. Please click Approve again.",
+          );
+          return false;
+        }
+
+        const msg =
+          (typeof err?.body === "string" && err.body.trim()) ||
+          err?.body?.message ||
+          err?.message ||
+          "Status update failed.";
+
+        alert(`❌ ${msg}`);
+        return false;
       }
     });
   }
@@ -1539,6 +1629,18 @@ export default function ApeReportForm({
     return s === "UNDER_CORRECTION_UPDATE" || s === "UNDER_CHANGE_UPDATE";
   }
 
+  function isCentralApprovalTransition(
+    currentStatus: ReportStatus,
+    targetStatus: ReportStatus,
+  ) {
+    return (
+      (currentStatus === "CHANGE_REQUESTED" &&
+        targetStatus === "UNDER_CHANGE_UPDATE") ||
+      (currentStatus === "CORRECTION_REQUESTED" &&
+        targetStatus === "UNDER_CORRECTION_UPDATE")
+    );
+  }
+
   function shouldBlockStatusChangeForUnresolvedCorrections() {
     if (role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA") {
       return false;
@@ -1580,9 +1682,6 @@ export default function ApeReportForm({
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
 
   return (
     <>
@@ -2541,10 +2640,9 @@ export default function ApeReportForm({
                       !isCorrectionTargetStatus(String(targetStatus)),
                   );
 
-                  const canSetCurrentStatus =
-                    APE_STATUS_TRANSITIONS[
-                      status as ReportStatus
-                    ]?.canSet.includes(role!);
+                  const canSetCurrentStatus = APE_STATUS_TRANSITIONS[
+                    status as ReportStatus
+                  ]?.canSet.includes(role!);
 
                   return (
                     <>
@@ -2552,7 +2650,9 @@ export default function ApeReportForm({
                         <div className="relative">
                           <button
                             type="button"
-                            onClick={() => setCorrectionActionOpen((open) => !open)}
+                            onClick={() =>
+                              setCorrectionActionOpen((open) => !open)
+                            }
                             className="px-4 py-2 rounded-md border text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                             disabled={isBusy}
                           >
@@ -2746,10 +2846,12 @@ export default function ApeReportForm({
               }
               onClick={() =>
                 runBusy("SEND_CORRECTIONS", async () => {
+                  const targetStatus = pendingStatus!;
+
                   await createCorrections(
                     reportId!,
                     pendingCorrections,
-                    pendingStatus!,
+                    targetStatus,
                     "Corrections requested",
                     reportVersion,
                     {
@@ -2763,13 +2865,40 @@ export default function ApeReportForm({
                     },
                   );
 
+                  // Creating the request changes the report status and increments
+                  // the optimistic-lock version. Reload both before continuing.
+                  const [freshCorrections, latestReport] = await Promise.all([
+                    getCorrections(reportId!),
+                    api<any>(`/reports/${reportId!}`, { method: "GET" }),
+                  ]);
+
+                  const latestStatus =
+                    (latestReport?.status as ReportStatus) || targetStatus;
+                  const latestVersion =
+                    typeof latestReport?.version === "number"
+                      ? latestReport.version
+                      : reportVersion + 1;
+
+                  setCorrections(freshCorrections);
+                  setStatus(latestStatus);
+                  setReportVersion(latestVersion);
+
+                  if (latestReport?.reportNumber != null) {
+                    setReportNumber(String(latestReport.reportNumber));
+                  }
+
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
-
-                  const fresh = await getCorrections(reportId!);
-                  setCorrections(fresh);
-                  setStatus(pendingStatus!);
                   setPendingStatus(null);
+                  setIsDirty(false);
+
+                  onStatusChanged?.({
+                    ...report,
+                    ...latestReport,
+                    id: reportId,
+                    status: latestStatus,
+                    version: latestVersion,
+                  });
 
                   if (embedded) return;
                   backToDashboard();
