@@ -26,6 +26,7 @@ import de from 'zod/v4/locales/de.js';
 import th from 'zod/v4/locales/th.js';
 import { ReportsGateway } from './reports.gateway';
 import { DashboardReportSyncService } from 'src/dashboards/dashboard-report-sync.service';
+import { WorkflowReminderService } from 'src/notifications/workflow-reminder.service';
 
 // Micro & Chem department code for reportNumber
 function getDeptLetterForForm(formType: FormType) {
@@ -502,6 +503,7 @@ function extractSelectedActives(actives: any): string[] {
     .map((a) => String(a.label ?? a.name ?? a.active ?? '').trim())
     .filter(Boolean);
 }
+
 @Injectable()
 export class ChemistryReportsService {
   private readonly logger = new Logger(ChemistryReportsService.name);
@@ -514,6 +516,7 @@ export class ChemistryReportsService {
     private readonly attachments: ChemistryAttachmentsService,
     private readonly chemistryNotifications: ChemistryReportNotificationsService,
     private readonly dashboardSync: DashboardReportSyncService,
+    private readonly workflowReminders: WorkflowReminderService,
   ) {}
 
   /**
@@ -808,6 +811,38 @@ export class ChemistryReportsService {
   //   });
   //   return reports.map(flattenReport);
   // }
+
+  private async syncWorkflowReminderSafe(args: {
+    reportId: string;
+    formType: FormType;
+    formNumber: string;
+    clientCode?: string | null;
+    newStatus: string;
+    requestKind?: string | null;
+    requestedByRole?: UserRole | null;
+  }) {
+    try {
+      await this.workflowReminders.handleStatusChange({
+        sourceType: 'CHEMISTRY_REPORT',
+        sourceId: args.reportId,
+
+        formType: args.formType,
+        formNumber: args.formNumber,
+
+        clientCode: args.clientCode ?? null,
+
+        newStatus: args.newStatus,
+
+        requestKind: args.requestKind,
+        requestedByRole: args.requestedByRole ?? null,
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Chemistry report ${args.reportId} reminder scheduling failed: ${error?.message ?? error}`,
+        error?.stack,
+      );
+    }
+  }
 
   async findAll() {
     const reports = await this.prisma.chemistryReport.findMany({
@@ -1227,6 +1262,21 @@ export class ChemistryReportsService {
     // Keep the dashboard copy aligned with the root report before returning.
     await this.dashboardSync.syncChemistryReportAndVerify(id);
 
+    if (patchIn.status && prevStatus !== String(patchIn.status)) {
+      await this.syncWorkflowReminderSafe({
+        reportId: updated.id,
+        formType: updated.formType,
+        formNumber: updated.formNumber,
+        clientCode: updated.clientCode,
+
+        newStatus: String(updated.status),
+
+        requestKind: updated.workflowRequestKind,
+
+        requestedByRole: updated.workflowRequestedByRole,
+      });
+    }
+
     if (patchIn.status && String(current.status) !== String(patchIn.status)) {
       const slug = current.formType === 'COA' ? 'coa' : 'chemistry-mix';
 
@@ -1614,6 +1664,21 @@ export class ChemistryReportsService {
     await this.dashboardSync.syncChemistryReportAndVerify(id);
 
     if (prevStatus !== target) {
+      await this.syncWorkflowReminderSafe({
+        reportId: updated.id,
+        formType: updated.formType,
+        formNumber: updated.formNumber,
+        clientCode: updated.clientCode,
+
+        newStatus: String(updated.status),
+
+        requestKind: updated.workflowRequestKind,
+
+        requestedByRole: updated.workflowRequestedByRole,
+      });
+    }
+
+    if (prevStatus !== target) {
       const slug = current.formType === 'COA' ? 'coa' : 'chemistry-mix';
       const clientName = pickDetails(current)?.client ?? '-';
 
@@ -1894,6 +1959,20 @@ export class ChemistryReportsService {
 
         await this.updateDashboardStatusInsideTransaction(tx, id);
       });
+
+      try {
+        await this.workflowReminders.resolveForSource(
+          'CHEMISTRY_REPORT',
+          report.id,
+        );
+      } catch (error: any) {
+        this.logger.error(
+          `Chemistry report ${report.id} reminder cancellation failed after correction resolution: ${
+            error?.message ?? error
+          }`,
+          error?.stack,
+        );
+      }
 
       await this.dashboardSync.syncChemistryReportAndVerify(id);
 

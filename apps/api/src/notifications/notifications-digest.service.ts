@@ -204,7 +204,7 @@ export class NotificationsDigestService {
     if (rows.length === 0) return;
 
     // group by recipients + scope (+ client/dept)
-    const groups = new Map<string, typeof rows>();
+    const groups = new Map<string, typeof rows>();  
     for (const r of rows) {
       const k = [
         r.scope,

@@ -1233,3 +1233,172 @@ model ApeReportDetails {
 
   report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
+
+enum WorkflowReminderSourceType {
+  REPORT
+  CHEMISTRY_REPORT
+}
+
+enum WorkflowReminderTargetSide {
+  CLIENT
+  LAB
+  APPROVAL_TEAM
+}
+
+enum WorkflowReminderKind {
+  CHANGE
+  CORRECTION
+}
+
+model ClientDetails {
+  clientCode String @id
+
+  // -------------------------
+  // BASIC INFORMATION
+  // -------------------------
+  name      String?
+  legalName String?
+  active    Boolean @default(true)
+
+  // -------------------------
+  // CONTACT INFORMATION
+  // -------------------------
+  primaryContactName  String?
+  primaryContactEmail String?
+  primaryContactPhone String?
+
+  secondaryContactName  String?
+  secondaryContactEmail String?
+  secondaryContactPhone String?
+
+  // -------------------------
+  // ADDRESS
+  // -------------------------
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String? @default("USA")
+
+  // -------------------------
+  // TIMEZONE
+  // -------------------------
+  // Examples:
+  // America/New_York
+  // America/Chicago
+  // America/Denver
+  // America/Los_Angeles
+  timeZone String @default("America/New_York")
+
+  // Working time stored as minutes after midnight.
+  // 540  = 09:00 AM
+  // 1020 = 05:00 PM
+  workdayStartMinutes Int @default(540)
+  workdayEndMinutes   Int @default(1020)
+
+  // ISO weekday:
+  // 1 Monday ... 7 Sunday
+  workingDays Int[] @default([1, 2, 3, 4, 5])
+
+  // -------------------------
+  // WORKFLOW REMINDERS
+  // -------------------------
+  workflowReminderEnabled Boolean @default(true)
+
+  // 60 = one working hour
+  workflowReminderIntervalMinutes Int @default(60)
+
+  // Your requested limit
+  workflowReminderMaxCount Int @default(10)
+
+  // -------------------------
+  // BILLING
+  // -------------------------
+  billingContactName String?
+  billingEmail       String?
+  billingPhone       String?
+
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountry      String?
+
+  paymentTerms String?
+
+  // -------------------------
+  // INTERNAL / FUTURE
+  // -------------------------
+  accountManager String?
+  notes          String?
+
+  // Flexible future configuration
+  settings Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([active])
+  @@index([timeZone])
+}
+
+model WorkflowReminder {
+  id String @id @default(cuid())
+
+  sourceType WorkflowReminderSourceType
+  sourceId   String
+
+  formType   FormType
+  formNumber String
+
+  clientCode String?
+
+  // Status that must still exist for reminder to be valid.
+  // We keep this String because Report and Chemistry
+  // use two different Prisma status enums.
+  expectedStatus String
+
+  requestKind WorkflowReminderKind?
+
+  requestedByRole UserRole?
+
+  targetSide WorkflowReminderTargetSide
+
+  // Prevent multiple active reminders for same report.
+  // Example:
+  // REPORT:abc123
+  // CHEMISTRY_REPORT:def456
+  //
+  // Set NULL after resolved.
+  activeKey String? @unique
+
+  startedAt DateTime @default(now())
+
+  nextReminderAt DateTime
+
+  lastReminderAt DateTime?
+  reminderCount  Int       @default(0)
+  maxReminders   Int       @default(10)
+
+  // Used to prevent two server instances from sending same email.
+  claimedAt DateTime?
+  claimKey  String?
+
+  // Email retry / debugging
+  sendAttempts Int     @default(0)
+  lastError    String?
+
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([nextReminderAt, resolvedAt])
+  @@index([sourceType, sourceId])
+  @@index([clientCode])
+  @@index([expectedStatus])
+  @@index([claimedAt])
+}

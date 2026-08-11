@@ -10,6 +10,7 @@ import { ClientNotificationsService } from './client-notifications.service';
 import { ClientNotificationsController } from './client-notifications.controller';
 import { NotificationsDigestService } from './notifications-digest.service';
 import { NotificationModule } from './inAppNotifications/notification.module';
+import { WorkflowReminderService } from './workflow-reminder.service';
 
 
 @Module({
@@ -26,11 +27,13 @@ import { NotificationModule } from './inAppNotifications/notification.module';
     ClientNotificationsService, // ✅ custom emails + mode logic
     ReportNotificationsService, // existing
     ChemistryReportNotificationsService,
+      WorkflowReminderService,
   ],
   exports: [
     ClientNotificationsService, // (optional but useful later)
     ReportNotificationsService,
     ChemistryReportNotificationsService,
+      WorkflowReminderService,
   ],
 })
 export class NotificationsModule {}
