@@ -1,11 +1,11 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
-import {
-  CHEMISTRY_ALLOWED_STATUSES,
-  MICRO_ALLOWED_STATUSES,
-  STERILITY_APE_ALLOWED_STATUSES,
-} from '../utils/dashboardStatuses';
+// import {
+//   CHEMISTRY_ALLOWED_STATUSES,
+//   MICRO_ALLOWED_STATUSES,
+//   STERILITY_APE_ALLOWED_STATUSES,
+// } from '../utils/dashboardStatuses';
 
 type McDashboardQuery = {
   cat?: string;
@@ -268,21 +268,21 @@ function getFormTypesFromQuery(query: McDashboardQuery): FormType[] {
   return all;
 }
 
-function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
-  const set = new Set<string>();
+// function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
+//   const set = new Set<string>();
 
-  for (const ft of formTypes) {
-    if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
-      MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    } else if (ft === 'STERILITY' || ft === 'APE') {
-      STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    } else if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
-      CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    }
-  }
+//   for (const ft of formTypes) {
+//     if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
+//       MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     } else if (ft === 'STERILITY' || ft === 'APE') {
+//       STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     } else if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
+//       CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     }
+//   }
 
-  return Array.from(set);
-}
+//   return Array.from(set);
+// }
 
 @Injectable()
 export class McDashboardService {
@@ -327,15 +327,22 @@ export class McDashboardService {
       },
     };
 
-    const allowedStatuses = getAllowedStatusesForFormTypes(formTypes);
+    // const allowedStatuses = getAllowedStatusesForFormTypes(formTypes);
 
-    if (status !== 'ALL' && allowedStatuses.includes(status)) {
-      where.status = status;
-    } else {
-      where.status = {
-        in: allowedStatuses,
-      };
-    }
+    // if (status !== 'ALL' && allowedStatuses.includes(status)) {
+    //   where.status = status;
+    // } else {
+    //   where.status = {
+    //     in: allowedStatuses,
+    //   };
+    // }
+
+
+    // ✅ ALL means all statuses.
+// Only filter when a specific status is selected.
+if (status !== 'ALL') {
+  where.status = status;
+}
 
     const and: Prisma.DashboardReportWhereInput[] = [];
 
@@ -424,30 +431,6 @@ export class McDashboardService {
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
-    if (
-      !(rangeType === 'FORM' && hasFormRange) &&
-      !(rangeType === 'REPORT' && hasReportRange)
-    ) {
-      const [rows, total] = await Promise.all([
-        this.prisma.dashboardReport.findMany({
-          where,
-          orderBy: {
-            [dateField]: sort,
-          } as any,
-          skip,
-          take: perPage,
-        }),
-        this.prisma.dashboardReport.count({ where }),
-      ]);
-
-      return {
-        rows: rows.map(mapDashboardRow),
-        total,
-        page,
-        perPage,
-        totalPages: Math.max(1, Math.ceil(total / perPage)),
-      };
-    }
 
     if (
       !(rangeType === 'FORM' && hasFormRange) &&

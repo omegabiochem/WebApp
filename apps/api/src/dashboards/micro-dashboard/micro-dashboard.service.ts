@@ -1,10 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
-import {
-  MICRO_ALLOWED_STATUSES,
-  STERILITY_APE_ALLOWED_STATUSES,
-} from '../utils/dashboardStatuses';
+// import {
+//   MICRO_ALLOWED_STATUSES,
+//   STERILITY_APE_ALLOWED_STATUSES,
+// } from '../utils/dashboardStatuses';
 
 type MicroDashboardQuery = {
   form?: string;
@@ -31,27 +31,27 @@ type MicroDashboardQuery = {
   pinnedIds?: string;
 };
 
-function getAllowedStatusesFromQuery(form?: string): string[] {
-  switch (form) {
-    case 'MICRO':
-    case 'MICRO_WATER':
-    case 'MICROWATER':
-      return MICRO_ALLOWED_STATUSES;
+// function getAllowedStatusesFromQuery(form?: string): string[] {
+//   switch (form) {
+//     case 'MICRO':
+//     case 'MICRO_WATER':
+//     case 'MICROWATER':
+//       return MICRO_ALLOWED_STATUSES;
 
-    case 'STERILITY':
-    case 'APE':
-      return STERILITY_APE_ALLOWED_STATUSES;
+//     case 'STERILITY':
+//     case 'APE':
+//       return STERILITY_APE_ALLOWED_STATUSES;
 
-    case 'ALL':
-    default:
-      return [
-        ...new Set([
-          ...MICRO_ALLOWED_STATUSES,
-          ...STERILITY_APE_ALLOWED_STATUSES,
-        ]),
-      ];
-  }
-}
+//     case 'ALL':
+//     default:
+//       return [
+//         ...new Set([
+//           ...MICRO_ALLOWED_STATUSES,
+//           ...STERILITY_APE_ALLOWED_STATUSES,
+//         ]),
+//       ];
+//   }
+// }
 
 function toInt(value: any, fallback: number) {
   const n = Number(value);
@@ -148,7 +148,7 @@ function getFormTypesFromQuery(form?: string): FormType[] {
 
     case 'ALL':
     default:
-      return ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'];
+      return ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY', 'APE'];
   }
 }
 
@@ -198,14 +198,19 @@ export class MicroDashboardService {
       },
     };
 
-    const allowedStatuses = getAllowedStatusesFromQuery(query.form);
+    // const allowedStatuses = getAllowedStatusesFromQuery(query.form);
 
+    // if (status !== 'ALL') {
+    //   where.status = status;
+    // } else {
+    //   where.status = {
+    //     in: allowedStatuses,
+    //   };
+    // }
+    // ✅ ALL means all statuses.
+    // Only filter when a specific status is selected.
     if (status !== 'ALL') {
       where.status = status;
-    } else {
-      where.status = {
-        in: allowedStatuses,
-      };
     }
 
     const and: Prisma.DashboardReportWhereInput[] = [];

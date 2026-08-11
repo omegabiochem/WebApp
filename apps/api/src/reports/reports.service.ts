@@ -27,6 +27,7 @@ import * as path from 'path';
 import { AttachmentsService } from 'src/attachments/attachments.service';
 import { ReportNotificationsService } from 'src/notifications/report-notifications.service';
 import { DashboardReportSyncService } from 'src/dashboards/dashboard-report-sync.service';
+import { WorkflowReminderService } from 'src/notifications/workflow-reminder.service';
 
 // ----------------------------
 // Which roles may edit which fields (unchanged)
@@ -1031,6 +1032,7 @@ export class ReportsService {
     private readonly attachments: AttachmentsService,
     private readonly reportNotifications: ReportNotificationsService,
     private readonly dashboardSync: DashboardReportSyncService,
+    private readonly workflowReminders: WorkflowReminderService,
   ) {}
 
   /**
@@ -1182,6 +1184,38 @@ export class ReportsService {
         creator?.email?.trim() ||
         null,
     };
+  }
+
+  private async syncWorkflowReminderSafe(args: {
+    reportId: string;
+    formType: FormType;
+    formNumber: string;
+    clientCode?: string | null;
+    newStatus: string;
+    requestKind?: string | null;
+    requestedByRole?: UserRole | null;
+  }) {
+    try {
+      await this.workflowReminders.handleStatusChange({
+        sourceType: 'REPORT',
+        sourceId: args.reportId,
+
+        formType: args.formType,
+        formNumber: args.formNumber,
+
+        clientCode: args.clientCode ?? null,
+
+        newStatus: args.newStatus,
+
+        requestKind: args.requestKind,
+        requestedByRole: args.requestedByRole ?? null,
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Report ${args.reportId} reminder scheduling failed: ${error?.message ?? error}`,
+        error?.stack,
+      );
+    }
   }
 
   async createLabReportDraft(
@@ -1954,6 +1988,21 @@ export class ReportsService {
     await this.dashboardSync.syncMicroReportAndVerify(id);
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
+      await this.syncWorkflowReminderSafe({
+        reportId: updated.id,
+        formType: updated.formType,
+        formNumber: updated.formNumber,
+        clientCode: updated.clientCode,
+
+        newStatus: String(updated.status),
+
+        requestKind: updated.workflowRequestKind,
+
+        requestedByRole: updated.workflowRequestedByRole,
+      });
+    }
+
+    if (patchIn.status && prevStatus !== String(patchIn.status)) {
       const slug =
         current.formType === 'MICRO_MIX'
           ? 'micro-mix'
@@ -2326,6 +2375,21 @@ export class ReportsService {
     await this.dashboardSync.syncMicroReportAndVerify(id);
 
     if (prevStatus !== target) {
+      await this.syncWorkflowReminderSafe({
+        reportId: updated.id,
+        formType: updated.formType,
+        formNumber: updated.formNumber,
+        clientCode: updated.clientCode,
+
+        newStatus: String(updated.status),
+
+        requestKind: updated.workflowRequestKind,
+
+        requestedByRole: updated.workflowRequestedByRole,
+      });
+    }
+
+    if (prevStatus !== target) {
       const slug =
         current.formType === 'MICRO_MIX'
           ? 'micro-mix'
@@ -2637,6 +2701,16 @@ export class ReportsService {
 
         await this.syncDashboardRootInsideTransaction(tx, id);
       });
+      try {
+        await this.workflowReminders.resolveForSource('REPORT', report.id);
+      } catch (error: any) {
+        this.logger.error(
+          `Report ${report.id} reminder cancellation failed after correction resolution: ${
+            error?.message ?? error
+          }`,
+          error?.stack,
+        );
+      }
 
       await this.dashboardSync.syncMicroReportAndVerify(id);
 

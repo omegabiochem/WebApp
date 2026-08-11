@@ -2,11 +2,11 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { FormType, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { DashboardReportSyncService } from '../dashboard-report-sync.service.js';
-import {
-  CHEMISTRY_ALLOWED_STATUSES,
-  MICRO_ALLOWED_STATUSES,
-  STERILITY_APE_ALLOWED_STATUSES,
-} from '../utils/dashboardStatuses.js';
+// import {
+//   CHEMISTRY_ALLOWED_STATUSES,
+//   MICRO_ALLOWED_STATUSES,
+//   STERILITY_APE_ALLOWED_STATUSES,
+// } from '../utils/dashboardStatuses.js';
 
 type AdminDashboardQuery = {
   form?: string;
@@ -159,25 +159,25 @@ function mapDashboardRow(r: any) {
   };
 }
 
-function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
-  const set = new Set<string>();
+// function getAllowedStatusesForFormTypes(formTypes: FormType[]): string[] {
+//   const set = new Set<string>();
 
-  for (const ft of formTypes) {
-    if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
-      MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    }
+//   for (const ft of formTypes) {
+//     if (ft === 'MICRO_MIX' || ft === 'MICRO_MIX_WATER') {
+//       MICRO_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     }
 
-    if (ft === 'STERILITY' || ft === 'APE') {
-      STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    }
+//     if (ft === 'STERILITY' || ft === 'APE') {
+//       STERILITY_APE_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     }
 
-    if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
-      CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
-    }
-  }
+//     if (ft === 'CHEMISTRY_MIX' || ft === 'COA') {
+//       CHEMISTRY_ALLOWED_STATUSES.forEach((s) => set.add(s));
+//     }
+//   }
 
-  return Array.from(set);
-}
+//   return Array.from(set);
+// }
 
 @Injectable()
 export class SystemAdminDashboardService {
@@ -217,16 +217,22 @@ export class SystemAdminDashboardService {
       },
     };
 
-    const allowedStatuses = getAllowedStatusesForFormTypes(
-      getFormTypesFromQuery(form),
-    );
+    // const allowedStatuses = getAllowedStatusesForFormTypes(
+    //   getFormTypesFromQuery(form),
+    // );
 
-    if (status !== 'ALL' && allowedStatuses.includes(status)) {
+    // if (status !== 'ALL' && allowedStatuses.includes(status)) {
+    //   where.status = status;
+    // } else {
+    //   where.status = {
+    //     in: allowedStatuses,
+    //   } as any;
+    // }
+
+    // ✅ "ALL" really means every status in DashboardReport.
+    // Only filter by status when the user explicitly selected one.
+    if (status !== 'ALL') {
       where.status = status;
-    } else {
-      where.status = {
-        in: allowedStatuses,
-      } as any;
     }
 
     const and: Prisma.DashboardReportWhereInput[] = [];

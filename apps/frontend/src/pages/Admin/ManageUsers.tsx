@@ -512,7 +512,7 @@ export default function UsersAdmin() {
             Admin Settings
           </h1>
           <p className="text-sm text-slate-600">
-            Manage users and client notification recipients.
+            Manage users, clients, notification settings, and shared accounts.
           </p>
         </div>
 
@@ -1804,6 +1804,277 @@ function NotificationsAllClients() {
 
 /* ==================== CLIENTS TAB ==================== */
 
+type ClientDetailsRow = {
+  clientCode: string;
+
+  name?: string | null;
+  legalName?: string | null;
+  active: boolean;
+
+  primaryContactName?: string | null;
+  primaryContactEmail?: string | null;
+  primaryContactPhone?: string | null;
+
+  secondaryContactName?: string | null;
+  secondaryContactEmail?: string | null;
+  secondaryContactPhone?: string | null;
+
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+
+  timeZone: string;
+
+  workdayStartMinutes: number;
+  workdayEndMinutes: number;
+  workingDays: number[];
+
+  workflowReminderEnabled: boolean;
+  workflowReminderIntervalMinutes: number;
+  workflowReminderMaxCount: number;
+
+  billingContactName?: string | null;
+  billingEmail?: string | null;
+  billingPhone?: string | null;
+
+  billingAddressLine1?: string | null;
+  billingAddressLine2?: string | null;
+  billingCity?: string | null;
+  billingState?: string | null;
+  billingPostalCode?: string | null;
+  billingCountry?: string | null;
+
+  paymentTerms?: string | null;
+
+  accountManager?: string | null;
+  notes?: string | null;
+
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type ClientDetailsForm = {
+  name: string;
+  legalName: string;
+  active: boolean;
+
+  primaryContactName: string;
+  primaryContactEmail: string;
+  primaryContactPhone: string;
+
+  secondaryContactName: string;
+  secondaryContactEmail: string;
+  secondaryContactPhone: string;
+
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+
+  timeZone: string;
+  workdayStart: string;
+  workdayEnd: string;
+  workingDays: number[];
+
+  workflowReminderEnabled: boolean;
+  workflowReminderIntervalMinutes: number;
+  workflowReminderMaxCount: number;
+
+  billingContactName: string;
+  billingEmail: string;
+  billingPhone: string;
+
+  billingAddressLine1: string;
+  billingAddressLine2: string;
+  billingCity: string;
+  billingState: string;
+  billingPostalCode: string;
+  billingCountry: string;
+
+  paymentTerms: string;
+  accountManager: string;
+  notes: string;
+};
+
+const TIME_ZONE_OPTIONS = [
+  {
+    value: "America/New_York",
+    label: "Eastern Time — New York",
+  },
+  {
+    value: "America/Chicago",
+    label: "Central Time — Chicago",
+  },
+  {
+    value: "America/Denver",
+    label: "Mountain Time — Denver",
+  },
+  {
+    value: "America/Phoenix",
+    label: "Arizona Time — Phoenix",
+  },
+  {
+    value: "America/Los_Angeles",
+    label: "Pacific Time — Los Angeles",
+  },
+  {
+    value: "America/Anchorage",
+    label: "Alaska Time — Anchorage",
+  },
+  {
+    value: "Pacific/Honolulu",
+    label: "Hawaii Time — Honolulu",
+  },
+];
+
+const WORKING_DAY_OPTIONS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 7, label: "Sun" },
+];
+
+function minutesToTime(value: number | null | undefined) {
+  const total =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.min(1439, Math.max(0, value))
+      : 540;
+
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0",
+  )}`;
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return 0;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function emptyClientDetailsForm(): ClientDetailsForm {
+  return {
+    name: "",
+    legalName: "",
+    active: true,
+
+    primaryContactName: "",
+    primaryContactEmail: "",
+    primaryContactPhone: "",
+
+    secondaryContactName: "",
+    secondaryContactEmail: "",
+    secondaryContactPhone: "",
+
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "USA",
+
+    timeZone: "America/New_York",
+    workdayStart: "09:00",
+    workdayEnd: "17:00",
+    workingDays: [1, 2, 3, 4, 5],
+
+    workflowReminderEnabled: true,
+    workflowReminderIntervalMinutes: 60,
+    workflowReminderMaxCount: 10,
+
+    billingContactName: "",
+    billingEmail: "",
+    billingPhone: "",
+
+    billingAddressLine1: "",
+    billingAddressLine2: "",
+    billingCity: "",
+    billingState: "",
+    billingPostalCode: "",
+    billingCountry: "USA",
+
+    paymentTerms: "",
+    accountManager: "",
+    notes: "",
+  };
+}
+
+function clientDetailsToForm(row: ClientDetailsRow): ClientDetailsForm {
+  return {
+    name: row.name ?? "",
+    legalName: row.legalName ?? "",
+    active: row.active ?? true,
+
+    primaryContactName: row.primaryContactName ?? "",
+    primaryContactEmail: row.primaryContactEmail ?? "",
+    primaryContactPhone: row.primaryContactPhone ?? "",
+
+    secondaryContactName: row.secondaryContactName ?? "",
+    secondaryContactEmail: row.secondaryContactEmail ?? "",
+    secondaryContactPhone: row.secondaryContactPhone ?? "",
+
+    addressLine1: row.addressLine1 ?? "",
+    addressLine2: row.addressLine2 ?? "",
+    city: row.city ?? "",
+    state: row.state ?? "",
+    postalCode: row.postalCode ?? "",
+    country: row.country ?? "USA",
+
+    timeZone: row.timeZone || "America/New_York",
+
+    workdayStart: minutesToTime(row.workdayStartMinutes),
+    workdayEnd: minutesToTime(row.workdayEndMinutes),
+
+    workingDays:
+      row.workingDays?.length > 0
+        ? [...row.workingDays].sort((a, b) => a - b)
+        : [1, 2, 3, 4, 5],
+
+    workflowReminderEnabled: row.workflowReminderEnabled ?? true,
+
+    workflowReminderIntervalMinutes: row.workflowReminderIntervalMinutes ?? 60,
+
+    workflowReminderMaxCount: row.workflowReminderMaxCount ?? 10,
+
+    billingContactName: row.billingContactName ?? "",
+    billingEmail: row.billingEmail ?? "",
+    billingPhone: row.billingPhone ?? "",
+
+    billingAddressLine1: row.billingAddressLine1 ?? "",
+    billingAddressLine2: row.billingAddressLine2 ?? "",
+    billingCity: row.billingCity ?? "",
+    billingState: row.billingState ?? "",
+    billingPostalCode: row.billingPostalCode ?? "",
+    billingCountry: row.billingCountry ?? "USA",
+
+    paymentTerms: row.paymentTerms ?? "",
+    accountManager: row.accountManager ?? "",
+    notes: row.notes ?? "",
+  };
+}
+
 function ClientsAdminTab() {
   type ClientRow = {
     clientCode: string;
@@ -1814,19 +2085,84 @@ function ClientsAdminTab() {
   };
 
   const [q, setQ] = useState("");
+
   const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<ClientRow[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [detailsRows, setDetailsRows] = useState<ClientDetailsRow[]>([]);
+
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+
+  const [form, setForm] = useState<ClientDetailsForm>(emptyClientDetailsForm());
+
+  const configuredCodes = useMemo(
+    () => new Set(detailsRows.map((x) => x.clientCode)),
+    [detailsRows],
+  );
+
+  const selectedClient = useMemo(
+    () => clients.find((x) => x.clientCode === selectedCode) ?? null,
+    [clients, selectedCode],
+  );
+
+  const selectedDetails = useMemo(
+    () => detailsRows.find((x) => x.clientCode === selectedCode) ?? null,
+    [detailsRows, selectedCode],
+  );
+
+  const filteredClients = useMemo(() => {
+    const search = q.trim().toUpperCase();
+
+    if (!search) return clients;
+
+    return clients.filter((client) => {
+      const details = detailsRows.find(
+        (x) => x.clientCode === client.clientCode,
+      );
+
+      return (
+        client.clientCode.toUpperCase().includes(search) ||
+        String(details?.name ?? "")
+          .toUpperCase()
+          .includes(search) ||
+        String(details?.legalName ?? "")
+          .toUpperCase()
+          .includes(search)
+      );
+    });
+  }, [clients, detailsRows, q]);
+
+  function updateField<K extends keyof ClientDetailsForm>(
+    key: K,
+    value: ClientDetailsForm[K],
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
 
   async function load() {
     setLoading(true);
+
     try {
-      // ✅ adjust endpoint to your backend route
-      // recommended:
-      // GET /admin/clients?q=...
-      const res = await api<ClientRow[]>(
-        `/admin/clients?q=${encodeURIComponent(q.trim())}`,
-      );
-      setItems(res);
+      const [clientRows, clientDetailsRows] = await Promise.all([
+        api<ClientRow[]>(`/admin/clients?q=${encodeURIComponent(q.trim())}`),
+
+        api<ClientDetailsRow[]>("/client-details"),
+      ]);
+
+      setClients(clientRows);
+      setDetailsRows(clientDetailsRows);
+
+      setSelectedCode((prev) => {
+        if (prev && clientRows.some((x) => x.clientCode === prev)) {
+          return prev;
+        }
+
+        return clientRows[0]?.clientCode ?? null;
+      });
     } catch (e: any) {
       toast.error(e?.message || "Failed to load clients");
     } finally {
@@ -1835,120 +2171,1142 @@ function ClientsAdminTab() {
   }
 
   useEffect(() => {
-    const t = setTimeout(() => load(), 250);
+    const t = setTimeout(() => {
+      load();
+    }, 250);
+
     return () => clearTimeout(t);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
+  useEffect(() => {
+    if (!selectedCode) {
+      setForm(emptyClientDetailsForm());
+      return;
+    }
+
+    const existing = detailsRows.find((x) => x.clientCode === selectedCode);
+
+    if (existing) {
+      setForm(clientDetailsToForm(existing));
+    } else {
+      setForm(emptyClientDetailsForm());
+    }
+  }, [selectedCode, detailsRows]);
+
+  function toggleWorkingDay(day: number) {
+    setForm((prev) => {
+      const exists = prev.workingDays.includes(day);
+
+      const next = exists
+        ? prev.workingDays.filter((x) => x !== day)
+        : [...prev.workingDays, day];
+
+      return {
+        ...prev,
+        workingDays: next.sort((a, b) => a - b),
+      };
+    });
+  }
+
+  function validate() {
+    if (!selectedCode) {
+      toast.error("Select a client");
+      return false;
+    }
+
+    if (!form.timeZone) {
+      toast.error("Time zone is required");
+      return false;
+    }
+
+    const start = timeToMinutes(form.workdayStart);
+    const end = timeToMinutes(form.workdayEnd);
+
+    if (start >= end) {
+      toast.error("Workday end time must be after start time");
+      return false;
+    }
+
+    if (form.workingDays.length === 0) {
+      toast.error("Select at least one working day");
+      return false;
+    }
+
+    if (form.workflowReminderIntervalMinutes < 1) {
+      toast.error("Reminder interval must be at least 1 minute");
+      return false;
+    }
+
+    if (
+      form.workflowReminderMaxCount < 1 ||
+      form.workflowReminderMaxCount > 10
+    ) {
+      toast.error("Maximum reminders must be between 1 and 10");
+      return false;
+    }
+
+    return true;
+  }
+
+  function buildPayload() {
+    return {
+      name: form.name.trim() || null,
+      legalName: form.legalName.trim() || null,
+      active: form.active,
+
+      primaryContactName: form.primaryContactName.trim() || null,
+
+      primaryContactEmail:
+        form.primaryContactEmail.trim().toLowerCase() || null,
+
+      primaryContactPhone: form.primaryContactPhone.trim() || null,
+
+      secondaryContactName: form.secondaryContactName.trim() || null,
+
+      secondaryContactEmail:
+        form.secondaryContactEmail.trim().toLowerCase() || null,
+
+      secondaryContactPhone: form.secondaryContactPhone.trim() || null,
+
+      addressLine1: form.addressLine1.trim() || null,
+
+      addressLine2: form.addressLine2.trim() || null,
+
+      city: form.city.trim() || null,
+
+      state: form.state.trim().toUpperCase() || null,
+
+      postalCode: form.postalCode.trim() || null,
+
+      country: form.country.trim() || "USA",
+
+      timeZone: form.timeZone,
+
+      workdayStartMinutes: timeToMinutes(form.workdayStart),
+
+      workdayEndMinutes: timeToMinutes(form.workdayEnd),
+
+      workingDays: form.workingDays,
+
+      workflowReminderEnabled: form.workflowReminderEnabled,
+
+      workflowReminderIntervalMinutes: Number(
+        form.workflowReminderIntervalMinutes,
+      ),
+
+      workflowReminderMaxCount: Number(form.workflowReminderMaxCount),
+
+      billingContactName: form.billingContactName.trim() || null,
+
+      billingEmail: form.billingEmail.trim().toLowerCase() || null,
+
+      billingPhone: form.billingPhone.trim() || null,
+
+      billingAddressLine1: form.billingAddressLine1.trim() || null,
+
+      billingAddressLine2: form.billingAddressLine2.trim() || null,
+
+      billingCity: form.billingCity.trim() || null,
+
+      billingState: form.billingState.trim().toUpperCase() || null,
+
+      billingPostalCode: form.billingPostalCode.trim() || null,
+
+      billingCountry: form.billingCountry.trim() || null,
+
+      paymentTerms: form.paymentTerms.trim() || null,
+
+      accountManager: form.accountManager.trim() || null,
+
+      notes: form.notes.trim() || null,
+    };
+  }
+
+  async function saveClientDetails() {
+    if (!selectedCode) return;
+    if (!validate()) return;
+
+    setSaving(true);
+
+    try {
+      const payload = buildPayload();
+
+      let result: ClientDetailsRow;
+
+      if (configuredCodes.has(selectedCode)) {
+        result = await api<ClientDetailsRow>(
+          `/client-details/${encodeURIComponent(selectedCode)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          },
+        );
+
+        toast.success("Client details updated");
+      } else {
+        result = await api<ClientDetailsRow>("/client-details", {
+          method: "POST",
+          body: JSON.stringify({
+            clientCode: selectedCode,
+            ...payload,
+          }),
+        });
+
+        toast.success("Client details created");
+      }
+
+      setDetailsRows((prev) => {
+        const exists = prev.some((x) => x.clientCode === result.clientCode);
+
+        if (exists) {
+          return prev.map((x) =>
+            x.clientCode === result.clientCode ? result : x,
+          );
+        }
+
+        return [...prev, result].sort((a, b) =>
+          a.clientCode.localeCompare(b.clientCode),
+        );
+      });
+
+      setForm(clientDetailsToForm(result));
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save client details");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div className={cx(card, "overflow-hidden")}>
-        <div className={cx(cardHeader, "flex items-center justify-between")}>
-          <div className="flex items-center gap-2">
-            <Settings2 size={18} className="text-slate-600" />
-            <div className="font-semibold text-slate-900">Clients</div>
-          </div>
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      {/* ======================================================
+          LEFT SIDE — CLIENT LIST
+      ====================================================== */}
 
-          <button onClick={load} className={btn.outline} type="button">
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-
-        <div className="p-4">
-          <label className="block text-xs text-slate-600 mb-1">
-            Search client code
-          </label>
-          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <Search size={16} className="text-slate-400" />
-            <input
-              className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
-              placeholder="ABC, TEM..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="border-t border-slate-200">
-          {loading ? (
-            <div className="p-4 text-sm text-slate-500">Loading...</div>
-          ) : items.length === 0 ? (
-            <div className="p-4 text-sm text-slate-500">No clients found.</div>
-          ) : (
-            <div className="p-3">
-              <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-slate-50">
-                <div>Client Code</div>
-                <div>Total Users</div>
-                <div>Active Users</div>
-                <div>Notif Mode</div>
-                <div>Custom Emails</div>
+      <div className="xl:col-span-4">
+        <div className={cx(card, "overflow-hidden sticky top-4")}>
+          <div
+            className={cx(
+              cardHeader,
+              "flex items-center justify-between gap-3",
+            )}
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <Settings2 size={18} className="text-slate-600" />
+                <div className="font-semibold text-slate-900">Clients</div>
               </div>
 
-              <div className="divide-y divide-slate-200">
-                {items.map((c) => (
-                  <div key={c.clientCode} className="py-3">
-                    <div className="hidden lg:grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 items-start px-3">
-                      <div className="font-semibold text-slate-900">
-                        {c.clientCode}
-                      </div>
-                      <div className="text-slate-900">{c.totalUsers}</div>
-                      <div className="text-slate-900">{c.activeUsers}</div>
-                      <div className="text-slate-900">
-                        {c.notificationsMode ?? "—"}
-                      </div>
-                      <div className="text-slate-900">
-                        {c.customEmails ?? "—"}
-                      </div>
-                    </div>
-
-                    {/* mobile */}
-                    <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 space-y-2 shadow-sm">
-                      <div className="flex items-start justify-between">
-                        <div className="font-semibold text-slate-900">
-                          {c.clientCode}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {c.notificationsMode ?? "—"}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="text-slate-500">
-                          Total users
-                          <div className="text-slate-900 font-medium">
-                            {c.totalUsers}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Active users
-                          <div className="text-slate-900 font-medium">
-                            {c.activeUsers}
-                          </div>
-                        </div>
-                        <div className="text-slate-500">
-                          Custom emails
-                          <div className="text-slate-900 font-medium">
-                            {c.customEmails ?? "—"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-xs text-slate-600">
-                        Use Notifications tab to edit recipients & mode.
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="px-3 pt-3 text-xs text-slate-600">
-                Tip: this view can be built from Users +
-                ClientNotificationConfig aggregation.
+              <div className="text-xs text-slate-500 mt-1">
+                Select a client to manage details.
               </div>
             </div>
-          )}
+
+            <button
+              onClick={load}
+              className={btn.outline}
+              type="button"
+              disabled={loading}
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="p-4">
+            <label className="block text-xs text-slate-600 mb-1">
+              Search client
+            </label>
+
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <Search size={16} className="text-slate-400" />
+
+              <input
+                className="w-full outline-none text-sm bg-transparent text-slate-900 placeholder:text-slate-400"
+                placeholder="Code or client name..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200">
+            {loading ? (
+              <div className="p-4 text-sm text-slate-500">
+                Loading clients...
+              </div>
+            ) : filteredClients.length === 0 ? (
+              <div className="p-4 text-sm text-slate-500">
+                No clients found.
+              </div>
+            ) : (
+              <div className="max-h-[70vh] overflow-auto">
+                {filteredClients.map((client) => {
+                  const selected = client.clientCode === selectedCode;
+
+                  const details = detailsRows.find(
+                    (x) => x.clientCode === client.clientCode,
+                  );
+
+                  const configured = !!details;
+
+                  return (
+                    <button
+                      key={client.clientCode}
+                      type="button"
+                      onClick={() => setSelectedCode(client.clientCode)}
+                      className={cx(
+                        "w-full text-left px-4 py-4 border-b border-slate-200 transition",
+                        selected
+                          ? "bg-indigo-50 hover:bg-indigo-50"
+                          : "bg-white hover:bg-slate-50",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold tracking-wide text-slate-900">
+                              {client.clientCode}
+                            </span>
+
+                            {details?.active === false && (
+                              <span className="rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-200 px-2 py-0.5 text-[11px]">
+                                INACTIVE
+                              </span>
+                            )}
+                          </div>
+
+                          {details?.name && (
+                            <div className="text-sm text-slate-700 mt-1 truncate">
+                              {details.name}
+                            </div>
+                          )}
+
+                          <div className="text-xs text-slate-500 mt-2">
+                            Users:{" "}
+                            <span className="font-medium text-slate-700">
+                              {client.activeUsers}/{client.totalUsers} active
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-slate-500 mt-1">
+                            Notifications:{" "}
+                            <span className="font-medium text-slate-700">
+                              {client.notificationsMode ?? "—"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          className={cx(
+                            "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ring-1",
+                            configured
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : "bg-amber-50 text-amber-800 ring-amber-200",
+                          )}
+                        >
+                          {configured && <Check size={12} />}
+
+                          {configured ? "Configured" : "Setup required"}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* ======================================================
+          RIGHT SIDE — DETAILS
+      ====================================================== */}
+
+      <div className="xl:col-span-8 space-y-4">
+        {!selectedClient || !selectedCode ? (
+          <div className={cx(card, "p-8 text-center")}>
+            <div className="text-sm text-slate-500">
+              Select a client to manage details.
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* =================================================
+                CLIENT HEADER
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-xl font-semibold text-slate-900">
+                      {selectedCode}
+                    </h2>
+
+                    <span
+                      className={cx(
+                        "inline-flex rounded-full px-2 py-1 text-xs font-medium ring-1",
+                        selectedDetails
+                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                          : "bg-amber-50 text-amber-800 ring-amber-200",
+                      )}
+                    >
+                      {selectedDetails
+                        ? "Client details configured"
+                        : "Client details not configured"}
+                    </span>
+                  </div>
+
+                  <div className="text-sm text-slate-600 mt-1">
+                    {form.name ||
+                      form.legalName ||
+                      "Add client information below."}
+                  </div>
+
+                  <div className="text-xs text-slate-500 mt-2">
+                    {selectedClient.activeUsers} active users •{" "}
+                    {selectedClient.customEmails ?? 0} custom notification
+                    emails
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.active}
+                      onChange={(e) => updateField("active", e.target.checked)}
+                      className="accent-indigo-600"
+                    />
+                    Active client
+                  </label>
+
+                  <button
+                    type="button"
+                    className={btn.primary}
+                    onClick={saveClientDetails}
+                    disabled={saving}
+                  >
+                    {saving
+                      ? "Saving..."
+                      : selectedDetails
+                        ? "Save Changes"
+                        : "Create Client Details"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                BASIC INFORMATION
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Basic Information
+                </div>
+
+                <div className="text-xs text-slate-500 mt-1">
+                  General client identity and internal ownership.
+                </div>
+              </div>
+
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Client Code
+                  </label>
+
+                  <input
+                    className={cx(inputBase, "bg-slate-100 cursor-not-allowed")}
+                    value={selectedCode}
+                    disabled
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Client Name
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.name}
+                    onChange={(e) => updateField("name", e.target.value)}
+                    placeholder="ABC Laboratories"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Legal Name
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.legalName}
+                    onChange={(e) => updateField("legalName", e.target.value)}
+                    placeholder="Official company name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Account Manager
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.accountManager}
+                    onChange={(e) =>
+                      updateField("accountManager", e.target.value)
+                    }
+                    placeholder="Omega staff member"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                CONTACTS
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Contact Information
+                </div>
+              </div>
+
+              <div className="p-4 space-y-5">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 mb-3">
+                    Primary Contact
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Name
+                      </label>
+
+                      <input
+                        className={inputBase}
+                        value={form.primaryContactName}
+                        onChange={(e) =>
+                          updateField("primaryContactName", e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Email
+                      </label>
+
+                      <input
+                        type="email"
+                        className={inputBase}
+                        value={form.primaryContactEmail}
+                        onChange={(e) =>
+                          updateField("primaryContactEmail", e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Phone
+                      </label>
+
+                      <input
+                        className={inputBase}
+                        value={form.primaryContactPhone}
+                        onChange={(e) =>
+                          updateField("primaryContactPhone", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-5">
+                  <div className="text-sm font-semibold text-slate-800 mb-3">
+                    Secondary Contact
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Name
+                      </label>
+
+                      <input
+                        className={inputBase}
+                        value={form.secondaryContactName}
+                        onChange={(e) =>
+                          updateField("secondaryContactName", e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Email
+                      </label>
+
+                      <input
+                        type="email"
+                        className={inputBase}
+                        value={form.secondaryContactEmail}
+                        onChange={(e) =>
+                          updateField("secondaryContactEmail", e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">
+                        Phone
+                      </label>
+
+                      <input
+                        className={inputBase}
+                        value={form.secondaryContactPhone}
+                        onChange={(e) =>
+                          updateField("secondaryContactPhone", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                ADDRESS
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">Address</div>
+              </div>
+
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Address Line 1
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.addressLine1}
+                    onChange={(e) =>
+                      updateField("addressLine1", e.target.value)
+                    }
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Address Line 2
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.addressLine2}
+                    onChange={(e) =>
+                      updateField("addressLine2", e.target.value)
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    City
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.city}
+                    onChange={(e) => updateField("city", e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    State / Province
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.state}
+                    onChange={(e) => updateField("state", e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    ZIP / Postal Code
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.postalCode}
+                    onChange={(e) => updateField("postalCode", e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Country
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    value={form.country}
+                    onChange={(e) => updateField("country", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                TIMEZONE / WORKING HOURS
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Time Zone & Working Hours
+                </div>
+
+                <div className="text-xs text-slate-500 mt-1">
+                  Client-side workflow reminders follow this client's local
+                  working schedule.
+                </div>
+              </div>
+
+              <div className="p-4 space-y-5">
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Time Zone
+                  </label>
+
+                  <select
+                    className={cx(inputBase, "cursor-pointer")}
+                    value={form.timeZone}
+                    onChange={(e) => updateField("timeZone", e.target.value)}
+                  >
+                    {TIME_ZONE_OPTIONS.map((zone) => (
+                      <option key={zone.value} value={zone.value}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="text-xs text-slate-500 mt-1">
+                    Stored as: {form.timeZone}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Workday Start
+                    </label>
+
+                    <input
+                      type="time"
+                      className={inputBase}
+                      value={form.workdayStart}
+                      onChange={(e) =>
+                        updateField("workdayStart", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Workday End
+                    </label>
+
+                    <input
+                      type="time"
+                      className={inputBase}
+                      value={form.workdayEnd}
+                      onChange={(e) =>
+                        updateField("workdayEnd", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-2">
+                    Working Days
+                  </label>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                    {WORKING_DAY_OPTIONS.map((day) => {
+                      const checked = form.workingDays.includes(day.value);
+
+                      return (
+                        <button
+                          type="button"
+                          key={day.value}
+                          onClick={() => toggleWorkingDay(day.value)}
+                          className={cx(
+                            "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                            checked
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                          )}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                WORKFLOW REMINDERS
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Workflow Reminder Settings
+                </div>
+
+                <div className="text-xs text-slate-500 mt-1">
+                  Controls reminders for pending change and correction
+                  workflows.
+                </div>
+              </div>
+
+              <div className="p-4 space-y-5">
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-indigo-600 mt-1"
+                    checked={form.workflowReminderEnabled}
+                    onChange={(e) =>
+                      updateField("workflowReminderEnabled", e.target.checked)
+                    }
+                  />
+
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      Enable workflow reminders
+                    </div>
+
+                    <div className="text-xs text-slate-500 mt-1">
+                      Reminders stop automatically when the workflow status
+                      changes.
+                    </div>
+                  </div>
+                </label>
+
+                <div
+                  className={cx(
+                    "grid grid-cols-1 md:grid-cols-2 gap-3",
+                    !form.workflowReminderEnabled && "opacity-50",
+                  )}
+                >
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Reminder Interval
+                    </label>
+
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        className={cx(inputBase, "pr-20")}
+                        value={form.workflowReminderIntervalMinutes}
+                        disabled={!form.workflowReminderEnabled}
+                        onChange={(e) =>
+                          updateField(
+                            "workflowReminderIntervalMinutes",
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                      />
+
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">
+                        minutes
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Recommended: 60 working minutes.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Maximum Reminders
+                    </label>
+
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      className={inputBase}
+                      value={form.workflowReminderMaxCount}
+                      disabled={!form.workflowReminderEnabled}
+                      onChange={(e) => {
+                        const value = Number(e.target.value) || 1;
+
+                        updateField(
+                          "workflowReminderMaxCount",
+                          Math.min(10, Math.max(1, value)),
+                        );
+                      }}
+                    />
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Maximum allowed: 10.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                    Reminder statuses
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
+                    <div>• Correction Requested</div>
+                    <div>• Change Requested</div>
+                    <div>• Under Correction Update</div>
+                    <div>• Under Change Update</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                BILLING
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Billing Information
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Contact
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingContactName}
+                      onChange={(e) =>
+                        updateField("billingContactName", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Email
+                    </label>
+
+                    <input
+                      type="email"
+                      className={inputBase}
+                      value={form.billingEmail}
+                      onChange={(e) =>
+                        updateField("billingEmail", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Phone
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingPhone}
+                      onChange={(e) =>
+                        updateField("billingPhone", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Address Line 1
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingAddressLine1}
+                      onChange={(e) =>
+                        updateField("billingAddressLine1", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Address Line 2
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingAddressLine2}
+                      onChange={(e) =>
+                        updateField("billingAddressLine2", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing City
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingCity}
+                      onChange={(e) =>
+                        updateField("billingCity", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing State
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingState}
+                      onChange={(e) =>
+                        updateField("billingState", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing ZIP / Postal Code
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingPostalCode}
+                      onChange={(e) =>
+                        updateField("billingPostalCode", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Billing Country
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.billingCountry}
+                      onChange={(e) =>
+                        updateField("billingCountry", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Payment Terms
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      value={form.paymentTerms}
+                      onChange={(e) =>
+                        updateField("paymentTerms", e.target.value)
+                      }
+                      placeholder="Net 30, Net 45, prepaid..."
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================
+                NOTES
+            ================================================= */}
+
+            <div className={cx(card, "overflow-hidden")}>
+              <div className={cardHeader}>
+                <div className="font-semibold text-slate-900">
+                  Internal Notes
+                </div>
+
+                <div className="text-xs text-slate-500 mt-1">
+                  Internal Omega client notes.
+                </div>
+              </div>
+
+              <div className="p-4">
+                <textarea
+                  className={cx(inputBase, "min-h-[120px] resize-y")}
+                  value={form.notes}
+                  onChange={(e) => updateField("notes", e.target.value)}
+                  placeholder="Special instructions, client preferences, contract notes..."
+                />
+              </div>
+            </div>
+
+            {/* =================================================
+                BOTTOM SAVE BAR
+            ================================================= */}
+
+            <div className={cx(card, "p-4")}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-xs text-slate-500">
+                  {selectedDetails?.updatedAt
+                    ? `Last updated: ${fmtDate(selectedDetails.updatedAt)}`
+                    : "Client details have not been created yet."}
+                </div>
+
+                <button
+                  type="button"
+                  className={btn.primary}
+                  onClick={saveClientDetails}
+                  disabled={saving}
+                >
+                  {saving
+                    ? "Saving..."
+                    : selectedDetails
+                      ? "Save Changes"
+                      : "Create Client Details"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
