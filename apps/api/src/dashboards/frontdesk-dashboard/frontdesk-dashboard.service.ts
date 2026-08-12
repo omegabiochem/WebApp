@@ -23,7 +23,7 @@ type FrontdeskDashboardQuery = {
   perPage?: string;
   sort?: string;
 
-    pinnedIds?: string;
+  pinnedIds?: string;
 };
 
 const FRONTDESK_STATUSES = [
@@ -52,7 +52,9 @@ function parseDateEnd(value?: string) {
 function extractSequence(value?: string | number | null): number | null {
   if (value == null) return null;
 
-  const match = String(value).trim().match(/(\d{5,})$/);
+  const match = String(value)
+    .trim()
+    .match(/(\d{5,})$/);
   if (!match) return null;
 
   const digits = match[1];
@@ -96,10 +98,7 @@ function withPinnedFilter(
     AND: [
       where,
       {
-        sourceId:
-          mode === 'PINNED'
-            ? { in: pinnedIds }
-            : { notIn: pinnedIds },
+        sourceId: mode === 'PINNED' ? { in: pinnedIds } : { notIn: pinnedIds },
       },
     ],
   };
@@ -109,14 +108,22 @@ function mapFormFilter(form?: string): FormType | undefined {
   switch (form) {
     case 'MICRO':
       return 'MICRO_MIX';
+
     case 'MICROWATER':
       return 'MICRO_MIX_WATER';
+
     case 'STERILITY':
       return 'STERILITY';
+
+    case 'APE':
+      return 'APE';
+
     case 'CHEMISTRY':
       return 'CHEMISTRY_MIX';
+
     case 'COA':
       return 'COA';
+
     default:
       return undefined;
   }
@@ -146,6 +153,79 @@ function mapDashboardRow(r: any) {
 export class FrontdeskDashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async addAttachmentCounts(rows: any[]) {
+    if (!rows.length) return [];
+
+    const microIds = rows
+      .filter((r) => r.sourceType === 'MICRO_REPORT')
+      .map((r) => String(r.sourceId))
+      .filter(Boolean);
+
+    const chemistryIds = rows
+      .filter((r) => r.sourceType === 'CHEMISTRY_REPORT')
+      .map((r) => String(r.sourceId))
+      .filter(Boolean);
+
+    const [microCounts, chemistryCounts] = await Promise.all([
+      microIds.length
+        ? this.prisma.attachment.groupBy({
+            by: ['reportId'],
+            where: {
+              reportId: {
+                in: microIds,
+              },
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : Promise.resolve([]),
+
+      chemistryIds.length
+        ? this.prisma.chemistryAttachment.groupBy({
+            by: ['chemistryId'],
+            where: {
+              chemistryId: {
+                in: chemistryIds,
+              },
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const microCountMap = new Map<string, number>(
+      microCounts.map((x: any): [string, number] => [
+        String(x.reportId),
+        Number(x._count?._all ?? 0),
+      ]),
+    );
+
+    const chemistryCountMap = new Map<string, number>(
+      chemistryCounts.map((x: any): [string, number] => [
+        String(x.chemistryId),
+        Number(x._count?._all ?? 0),
+      ]),
+    );
+
+    return rows.map((r) => {
+      let attachmentsCount = 0;
+
+      if (r.sourceType === 'MICRO_REPORT') {
+        attachmentsCount = microCountMap.get(String(r.sourceId)) ?? 0;
+      } else if (r.sourceType === 'CHEMISTRY_REPORT') {
+        attachmentsCount = chemistryCountMap.get(String(r.sourceId)) ?? 0;
+      }
+
+      return {
+        ...mapDashboardRow(r),
+        attachmentsCount,
+      };
+    });
+  }
+
   async listReports(user: any, query: FrontdeskDashboardQuery) {
     if (
       user.role !== UserRole.FRONTDESK &&
@@ -159,13 +239,16 @@ export class FrontdeskDashboardService {
     const perPage = Math.min(toInt(query.perPage, 10), 100);
     const skip = (page - 1) * perPage;
 
-
     const pinnedIds = parsePinnedIds(query.pinnedIds);
-const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
+    const pinOrder = new Map<string, number>(
+      pinnedIds.map((id, index): [string, number] => [id, index]),
+    );
 
     const form = query.form || 'ALL';
     const status = query.status || 'ALL';
-    const q = String(query.q || '').trim().toLowerCase();
+    const q = String(query.q || '')
+      .trim()
+      .toLowerCase();
     const client = String(query.client || '').trim();
     const reportSearch = String(query.report || '').trim();
 
@@ -189,38 +272,38 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const and: Prisma.DashboardReportWhereInput[] = [];
 
     if (q) {
-  and.push({
-    OR: [
-      { searchableText: { contains: q, mode: 'insensitive' } },
+      and.push({
+        OR: [
+          { searchableText: { contains: q, mode: 'insensitive' } },
 
-      // direct dashboard columns
-      { typeOfTest: { contains: q, mode: 'insensitive' } },
-      { sampleType: { contains: q, mode: 'insensitive' } },
-      { formulaNo: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
-      { lotNo: { contains: q, mode: 'insensitive' } },
-      { client: { contains: q, mode: 'insensitive' } },
-      { clientCode: { contains: q, mode: 'insensitive' } },
-      { formNumber: { contains: q, mode: 'insensitive' } },
-      { reportNumber: { contains: q, mode: 'insensitive' } },
+          // direct dashboard columns
+          { typeOfTest: { contains: q, mode: 'insensitive' } },
+          { sampleType: { contains: q, mode: 'insensitive' } },
+          { formulaNo: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { lotNo: { contains: q, mode: 'insensitive' } },
+          { client: { contains: q, mode: 'insensitive' } },
+          { clientCode: { contains: q, mode: 'insensitive' } },
+          { formNumber: { contains: q, mode: 'insensitive' } },
+          { reportNumber: { contains: q, mode: 'insensitive' } },
 
-      // chemistry fields
-      { sampleDescription: { contains: q, mode: 'insensitive' } },
-      { lotBatchNo: { contains: q, mode: 'insensitive' } },
-      { formulaId: { contains: q, mode: 'insensitive' } },
-      { sampleSize: { contains: q, mode: 'insensitive' } },
-      { numberOfActives: { contains: q, mode: 'insensitive' } },
-      { selectedActivesText: { contains: q, mode: 'insensitive' } },
+          // chemistry fields
+          { sampleDescription: { contains: q, mode: 'insensitive' } },
+          { lotBatchNo: { contains: q, mode: 'insensitive' } },
+          { formulaId: { contains: q, mode: 'insensitive' } },
+          { sampleSize: { contains: q, mode: 'insensitive' } },
+          { numberOfActives: { contains: q, mode: 'insensitive' } },
+          { selectedActivesText: { contains: q, mode: 'insensitive' } },
 
-      // extra searchable fields
-      { comments: { contains: q, mode: 'insensitive' } },
-      { idNo: { contains: q, mode: 'insensitive' } },
-      { testedBy: { contains: q, mode: 'insensitive' } },
-      { reviewedBy: { contains: q, mode: 'insensitive' } },
-      { status: { contains: q, mode: 'insensitive' } },
-    ],
-  });
-}
+          // extra searchable fields
+          { comments: { contains: q, mode: 'insensitive' } },
+          { idNo: { contains: q, mode: 'insensitive' } },
+          { testedBy: { contains: q, mode: 'insensitive' } },
+          { reviewedBy: { contains: q, mode: 'insensitive' } },
+          { status: { contains: q, mode: 'insensitive' } },
+        ],
+      });
+    }
 
     if (client) {
       and.push({
@@ -265,94 +348,92 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
-
-
     if (
-  !(rangeType === 'FORM' && hasFormRange) &&
-  !(rangeType === 'REPORT' && hasReportRange)
-) {
-  if (!pinnedIds.length) {
-    const [rows, total] = await Promise.all([
-      this.prisma.dashboardReport.findMany({
-        where,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip,
-        take: perPage,
-      }),
-      this.prisma.dashboardReport.count({ where }),
-    ]);
+      !(rangeType === 'FORM' && hasFormRange) &&
+      !(rangeType === 'REPORT' && hasReportRange)
+    ) {
+      if (!pinnedIds.length) {
+        const [rows, total] = await Promise.all([
+          this.prisma.dashboardReport.findMany({
+            where,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip,
+            take: perPage,
+          }),
+          this.prisma.dashboardReport.count({ where }),
+        ]);
 
-    return {
-      rows: rows.map(mapDashboardRow),
-      total,
-      page,
-      perPage,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
-    };
-  }
+        return {
+          rows: await this.addAttachmentCounts(rows),
+          total,
+          page,
+          perPage,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+        };
+      }
 
-  const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
-  const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
+      const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
+      const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
 
-  const [pinnedRowsRaw, total] = await Promise.all([
-    this.prisma.dashboardReport.findMany({
-      where: pinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-    }),
-    this.prisma.dashboardReport.count({ where }),
-  ]);
+      const [pinnedRowsRaw, total] = await Promise.all([
+        this.prisma.dashboardReport.findMany({
+          where: pinnedWhere,
+          orderBy: {
+            [dateField]: sort,
+          } as any,
+        }),
+        this.prisma.dashboardReport.count({ where }),
+      ]);
 
-  const pinnedRows = pinnedRowsRaw.sort((a, b) => {
-    const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    return ai - bi;
-  });
-
-  const pinnedCount = pinnedRows.length;
-
-  let rows: any[] = [];
-
-  if (skip < pinnedCount) {
-    const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
-    const remaining = perPage - pinnedSlice.length;
-
-    let unpinnedSlice: any[] = [];
-
-    if (remaining > 0) {
-      unpinnedSlice = await this.prisma.dashboardReport.findMany({
-        where: unpinnedWhere,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip: 0,
-        take: remaining,
+      const pinnedRows = pinnedRowsRaw.sort((a, b) => {
+        const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        return ai - bi;
       });
+
+      const pinnedCount = pinnedRows.length;
+
+      let rows: any[] = [];
+
+      if (skip < pinnedCount) {
+        const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
+        const remaining = perPage - pinnedSlice.length;
+
+        let unpinnedSlice: any[] = [];
+
+        if (remaining > 0) {
+          unpinnedSlice = await this.prisma.dashboardReport.findMany({
+            where: unpinnedWhere,
+            orderBy: {
+              [dateField]: sort,
+            } as any,
+            skip: 0,
+            take: remaining,
+          });
+        }
+
+        rows = [...pinnedSlice, ...unpinnedSlice];
+      } else {
+        rows = await this.prisma.dashboardReport.findMany({
+          where: unpinnedWhere,
+          orderBy: {
+            [dateField]: sort,
+          } as any,
+          skip: skip - pinnedCount,
+          take: perPage,
+        });
+      }
+
+      return {
+        rows: await this.addAttachmentCounts(rows),
+        total,
+        page,
+        perPage,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+      };
     }
-
-    rows = [...pinnedSlice, ...unpinnedSlice];
-  } else {
-    rows = await this.prisma.dashboardReport.findMany({
-      where: unpinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-      skip: skip - pinnedCount,
-      take: perPage,
-    });
-  }
-
-  return {
-    rows: rows.map(mapDashboardRow),
-    total,
-    page,
-    perPage,
-    totalPages: Math.max(1, Math.ceil(total / perPage)),
-  };
-}
 
     const allRows = await this.prisma.dashboardReport.findMany({
       where,
@@ -382,29 +463,31 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const safePage = Math.min(page, totalPages);
     const safeSkip = (safePage - 1) * perPage;
 
-const orderedRows = pinnedIds.length
-  ? [
-      ...filteredRows
-        .filter((r) => pinnedIds.includes(String(r.sourceId)))
-        .sort((a, b) => {
-          const ai =
-            pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          const bi =
-            pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          return ai - bi;
-        }),
-      ...filteredRows.filter((r) => !pinnedIds.includes(String(r.sourceId))),
-    ]
-  : filteredRows;
+    const orderedRows = pinnedIds.length
+      ? [
+          ...filteredRows
+            .filter((r) => pinnedIds.includes(String(r.sourceId)))
+            .sort((a, b) => {
+              const ai =
+                pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              const bi =
+                pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+              return ai - bi;
+            }),
+          ...filteredRows.filter(
+            (r) => !pinnedIds.includes(String(r.sourceId)),
+          ),
+        ]
+      : filteredRows;
 
-return {
-  rows: orderedRows
-    .slice(safeSkip, safeSkip + perPage)
-    .map(mapDashboardRow),
-  total,
-  page: safePage,
-  perPage,
-  totalPages,
-};
+    const pagedRows = orderedRows.slice(safeSkip, safeSkip + perPage);
+
+    return {
+      rows: await this.addAttachmentCounts(pagedRows),
+      total,
+      page: safePage,
+      perPage,
+      totalPages,
+    };
   }
 }
