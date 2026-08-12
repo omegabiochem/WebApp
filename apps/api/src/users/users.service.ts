@@ -8,6 +8,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { ReportStatus, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { MailService } from 'src/mail/mail.service';
+import { NotificationGateway } from 'src/notifications/inAppNotifications/notification.gateway';
 
 const USERID_RE = /^[a-z0-9._-]{4,20}$/;
 
@@ -51,6 +52,8 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private mail: MailService,
+
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   // Admin must provide userId
@@ -227,10 +230,63 @@ export class UsersService {
   }
 
   async toggleActive(id: string, active: boolean) {
-    const found = await this.prisma.user.findUnique({ where: { id } });
-    if (!found) throw new NotFoundException('User not found');
-    await this.prisma.user.update({ where: { id }, data: { active } });
-    return { ok: true };
+    const found = await this.prisma.user.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!active) {
+      await this.prisma.user.update({
+        where: {
+          id,
+        },
+
+        data: {
+          active: false,
+
+          passwordVersion: {
+            increment: 1,
+          },
+
+          refreshTokenHash: null,
+          refreshTokenExpAt: null,
+          refreshTokenRotatedAt: null,
+
+          twoFactorCodeHash: null,
+          twoFactorExpiresAt: null,
+          twoFactorAttempts: 0,
+        },
+      });
+
+      /*
+       * Kick browser immediately.
+       */
+      this.notificationGateway.emitForceLogoutToUser(id, 'USER_DISABLED');
+    } else {
+      await this.prisma.user.update({
+        where: {
+          id,
+        },
+
+        data: {
+          active: true,
+
+          failedLoginCount: 0,
+          lockedUntil: null,
+          lastFailedLoginAt: null,
+        },
+      });
+    }
+
+    return {
+      ok: true,
+      active,
+    };
   }
 
   async updateClientCode(id: string, clientCode: string | null) {
@@ -328,13 +384,55 @@ export class UsersService {
   }
 
   async forceSignout(id: string) {
-    const u = await this.prisma.user.findUnique({ where: { id } });
-    if (!u) throw new NotFoundException('User not found');
-    await this.prisma.user.update({
-      where: { id },
-      data: { passwordVersion: { increment: 1 } },
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id,
+      },
+
+      select: {
+        id: true,
+        email: true,
+        active: true,
+      },
     });
-    return { ok: true };
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    /*
+     * First invalidate backend sessions.
+     */
+    await this.prisma.user.update({
+      where: {
+        id,
+      },
+
+      data: {
+        passwordVersion: {
+          increment: 1,
+        },
+
+        refreshTokenHash: null,
+        refreshTokenExpAt: null,
+        refreshTokenRotatedAt: null,
+
+        twoFactorCodeHash: null,
+        twoFactorExpiresAt: null,
+        twoFactorAttempts: 0,
+      },
+    });
+
+    /*
+     * Then immediately tell the user's
+     * connected browser to logout.
+     */
+    this.notificationGateway.emitForceLogoutToUser(id, 'ADMIN_FORCE_SIGNOUT');
+
+    return {
+      ok: true,
+      message: 'User signed out from all sessions',
+    };
   }
 
   async checkUserIdAvailability(value: string) {

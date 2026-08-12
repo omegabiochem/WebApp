@@ -4,29 +4,53 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
 
-
+import {
+  Server,
+  Socket,
+} from 'socket.io';
 
 @WebSocketGateway({
-  cors: { origin: '*', credentials: true },
+  cors: {
+    origin: '*',
+    credentials: true,
+  },
 })
 export class ReportsGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect
 {
-  @WebSocketServer() server: Server;
+  @WebSocketServer()
+  server!: Server;
 
-  handleConnection(client: any) {
-    const ua = client.handshake?.headers?.['user-agent'];
-    const origin = client.handshake?.headers?.origin;
-    const referer = client.handshake?.headers?.referer;
-    const authToken = client.handshake?.auth?.token ? 'yes' : 'no';
+  handleConnection(
+    client: Socket,
+  ) {
+    const ua =
+      client.handshake?.headers?.[
+        'user-agent'
+      ];
+
+    const origin =
+      client.handshake?.headers
+        ?.origin;
+
+    const referer =
+      client.handshake?.headers
+        ?.referer;
+
+    const authToken =
+      client.handshake?.auth?.token
+        ? 'yes'
+        : 'no';
 
     console.log(
       '✅ WS connected:',
       client.id,
       'count=',
-      this.server.engine.clientsCount,
+      this.server.engine
+        .clientsCount,
       'token=',
       authToken,
       'origin=',
@@ -36,33 +60,62 @@ export class ReportsGateway
       'ua=',
       ua?.slice(0, 60),
     );
-
-    client.on('disconnect', (reason: string) => {
-      console.log('❌ WS disconnected:', client.id, 'reason=', reason);
-    });
   }
 
-  handleDisconnect(client: Socket) {
+  handleDisconnect(
+    client: Socket,
+  ) {
     console.log(
       '❌ WS disconnected:',
       client.id,
       'count=',
-      this.server.engine.clientsCount,
+      this.server.engine
+        .clientsCount,
     );
   }
 
-  notifyReportCreated(payload: any) {
-    console.log('📣 emit report.created');
-    this.server.emit('report.created', payload);
+  notifyReportCreated(
+    payload: any,
+  ) {
+    console.log(
+      '📣 emit report.created',
+    );
+
+    this.server.emit(
+      'report.created',
+      payload,
+    );
   }
 
-  notifyReportUpdate(payload: any) {
-    console.log('📣 emit report.updated');
-    this.server.emit('report.updated', payload);
+  notifyReportUpdate(
+    payload: any,
+  ) {
+    console.log(
+      '📣 emit report.updated',
+    );
+
+    this.server.emit(
+      'report.updated',
+      payload,
+    );
   }
 
-  notifyStatusChange(reportId: string, status: string) {
-    console.log('📣 emit report.statusChanged', reportId, status);
-    this.server.emit('report.statusChanged', { reportId, status });
+  notifyStatusChange(
+    reportId: string,
+    status: string,
+  ) {
+    console.log(
+      '📣 emit report.statusChanged',
+      reportId,
+      status,
+    );
+
+    this.server.emit(
+      'report.statusChanged',
+      {
+        reportId,
+        status,
+      },
+    );
   }
 }

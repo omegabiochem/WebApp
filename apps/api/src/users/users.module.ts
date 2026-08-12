@@ -16,9 +16,10 @@ import { PrismaService } from 'prisma/prisma.service';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { MailModule } from '../mail/mail.module';
+import { NotificationModule } from 'src/notifications/inAppNotifications/notification.module';
 
 @Module({
-  imports: [MailModule],
+  imports: [MailModule, NotificationModule],
   controllers: [UsersController],
   providers: [UsersService, PrismaService],
   exports: [UsersService],
