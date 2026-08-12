@@ -234,7 +234,6 @@ const formTypeToSlug: Record<string, string> = {
   // CHEMISTRY_* can be added when you wire those forms
 };
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -252,9 +251,13 @@ const JJL_CREATED_BY_FORM_TYPES = new Set([
 
 function isJJLSubmissionForm(report: Report) {
   const clientCode =
-    String(report.clientCode || "").trim().toUpperCase() ||
+    String(report.clientCode || "")
+      .trim()
+      .toUpperCase() ||
     getFormPrefix(report.formNumber) ||
-    String(report.client || "").trim().toUpperCase();
+    String(report.client || "")
+      .trim()
+      .toUpperCase();
 
   return (
     JJL_CREATED_BY_FORM_TYPES.has(String(report.formType)) &&
@@ -289,7 +292,6 @@ function getSuppliedCreatedByName(report: any) {
 
   return value;
 }
-
 
 // const isMicro = (ft?: string) =>
 //   typeof ft === "string" && ft.startsWith("MICRO");
@@ -2337,17 +2339,11 @@ export default function ClientDashboard() {
     };
   }
 
-
-
   function isBlankApeValue(value: unknown) {
     return value === null || value === undefined || String(value).trim() === "";
   }
 
-  function addApeMissing(
-    missing: string[],
-    label: string,
-    value: unknown,
-  ) {
+  function addApeMissing(missing: string[], label: string, value: unknown) {
     if (isBlankApeValue(value)) missing.push(label);
   }
 
@@ -2497,17 +2493,9 @@ export default function ClientDashboard() {
     addApeMissing(missing, "APE Report - Description", child?.description);
     addApeMissing(missing, "APE Report - Lot #", child?.lotNo);
     addApeMissing(missing, "APE Report - Test SOP #", child?.testSopNo);
-    addApeMissing(
-      missing,
-      "APE Report - Test Reference",
-      child?.testReference,
-    );
+    addApeMissing(missing, "APE Report - Test Reference", child?.testReference);
     addApeMissing(missing, "APE Report - Date Tested", child?.dateTested);
-    addApeMissing(
-      missing,
-      "APE Report - Date Completed",
-      child?.dateCompleted,
-    );
+    addApeMissing(missing, "APE Report - Date Completed", child?.dateCompleted);
 
     const sections = Array.isArray(child?.apeReportSections)
       ? child.apeReportSections
@@ -2680,7 +2668,7 @@ export default function ClientDashboard() {
 
     setApeReportTab(parent.id, firstInvalidTab);
 
-     toast(
+    toast(
       `Warning: Please complete both APE Validation Report and APE Report before changing status to ${niceStatus(
         targetStatus,
       )}.`,
@@ -2767,7 +2755,6 @@ export default function ClientDashboard() {
       </div>
     );
   }
-
 
   function renderSelectedApeBody(report: Report) {
     // ✅ Client APE Update should open editable parent APE form
@@ -2924,13 +2911,27 @@ export default function ClientDashboard() {
       clientCode: user?.clientCode || null,
     });
 
-    await Promise.all(
-      voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
-    );
+    const voidedReports: Report[] = [];
 
-    toast.success(`Voided ${voidableSelected.length} report(s)`);
+    const BATCH_SIZE = 2;
+
+    for (let i = 0; i < voidableSelected.length; i += BATCH_SIZE) {
+      const batch = voidableSelected.slice(i, i + BATCH_SIZE);
+
+      const batchResults = await Promise.all(
+        batch.map((r) => setStatus(r, "VOID", reason, password)),
+      );
+
+      voidedReports.push(...batchResults);
+    }
+
+    toast.success(`Voided ${voidedReports.length} report(s)`);
+
     setSelectedIds([]);
     setSelectedReportsById({});
+
+    // ✅ reload final state from backend
+    setRefreshKey((x) => x + 1);
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -2958,11 +2959,19 @@ export default function ClientDashboard() {
     setBulkUpdating(true);
 
     try {
-      const updatedReports = await Promise.all(
-        selectedBulkReports.map((r) =>
-          setStatus(r, toStatus, "Bulk Status Change"),
-        ),
-      );
+      const updatedReports: Report[] = [];
+
+      const BATCH_SIZE = 2;
+
+      for (let i = 0; i < selectedBulkReports.length; i += BATCH_SIZE) {
+        const batch = selectedBulkReports.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.all(
+          batch.map((r) => setStatus(r, toStatus, "Bulk Status Change")),
+        );
+
+        updatedReports.push(...batchResults);
+      }
 
       const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
 
@@ -2997,10 +3006,18 @@ export default function ClientDashboard() {
         clientCode: user?.clientCode || null,
       });
 
-      toast.success(`Updated ${selectedBulkReports.length} report(s)`);
+      toast.success(`Updated ${updatedReports.length} report(s)`);
+
       setSelectedIds([]);
       setSelectedReportsById({});
+
+      // ✅ refresh from backend
+      setRefreshKey((x) => x + 1);
     } catch (e: any) {
+      console.error("Client bulk status update failed:", e);
+
+      setRefreshKey((x) => x + 1);
+
       toast.error(e?.message || "Bulk update failed");
     } finally {
       setBulkUpdating(false);
@@ -4664,9 +4681,7 @@ export default function ClientDashboard() {
                   />
                 </>
               ) : selectedReport?.formType === "APE" ? (
-                <>
-                  {renderSelectedApeBody(selectedReport)}
-                </>
+                <>{renderSelectedApeBody(selectedReport)}</>
               ) : selectedReport?.formType === "CHEMISTRY_MIX" ? (
                 <>
                   <ChemistryMixReportFormView

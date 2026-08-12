@@ -1952,13 +1952,27 @@ export default function QaDashboard() {
       clientCode: voidableSelected.map((r) => r.client || null).join(","),
     });
 
-    await Promise.all(
-      voidableSelected.map((r) => setStatus(r, "VOID", reason, password)),
-    );
+    const voidedReports: Report[] = [];
 
-    toast.success(`Voided ${voidableSelected.length} report(s)`);
+    const BATCH_SIZE = 2;
+
+    for (let i = 0; i < voidableSelected.length; i += BATCH_SIZE) {
+      const batch = voidableSelected.slice(i, i + BATCH_SIZE);
+
+      const batchResults = await Promise.all(
+        batch.map((r) => setStatus(r, "VOID", reason, password)),
+      );
+
+      voidedReports.push(...batchResults);
+    }
+
+    toast.success(`Voided ${voidedReports.length} report(s)`);
+
     setSelectedIds([]);
     setSelectedReportsById({});
+
+    // reload authoritative dashboard state
+    setRefreshKey((x) => x + 1);
   };
 
   const voidableSelected = selectedReportObjects.filter(
@@ -1978,6 +1992,7 @@ export default function QaDashboard() {
   const bulkStatusOptions = selectedFamily
     ? getStatusesForReportFamily(selectedFamily)
     : [];
+
   async function handleBulkChangeStatus(
     reportsToChange: Report[],
     nextStatus: string,
@@ -2017,34 +2032,44 @@ export default function QaDashboard() {
         if (!canChange) return;
       }
 
-      const updatedReports = await Promise.all(
-        reportsToChange.map(async (report) => {
-          const endpoint =
-            report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
-              ? `/chemistry-reports/${report.id}/change-status`
-              : `/reports/${report.id}/change-status`;
+      const updatedReports: Report[] = [];
 
-          const updated = await api<Partial<Report>>(endpoint, {
-            method: "PATCH",
-            body: JSON.stringify({
-              status: nextStatus,
-              reason: bulkReason,
-              eSignPassword: bulkESignPassword,
-            }),
-          });
+      const BATCH_SIZE = 2;
 
-          return {
-            ...report,
-            ...updated,
-            status: updated.status ?? nextStatus,
-            reportNumber: updated.reportNumber ?? report.reportNumber,
-            version:
-              typeof updated.version === "number"
-                ? updated.version
-                : (report.version ?? 0) + 1,
-          } as Report;
-        }),
-      );
+      for (let i = 0; i < reportsToChange.length; i += BATCH_SIZE) {
+        const batch = reportsToChange.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.all(
+          batch.map(async (report) => {
+            const endpoint =
+              report.formType === "CHEMISTRY_MIX" || report.formType === "COA"
+                ? `/chemistry-reports/${report.id}/change-status`
+                : `/reports/${report.id}/change-status`;
+
+            const updated = await api<Partial<Report>>(endpoint, {
+              method: "PATCH",
+              body: JSON.stringify({
+                status: nextStatus,
+                reason: bulkReason,
+                eSignPassword: bulkESignPassword,
+              }),
+            });
+
+            return {
+              ...report,
+              ...updated,
+              status: updated.status ?? nextStatus,
+              reportNumber: updated.reportNumber ?? report.reportNumber,
+              version:
+                typeof updated.version === "number"
+                  ? updated.version
+                  : (report.version ?? 0) + 1,
+            } as Report;
+          }),
+        );
+
+        updatedReports.push(...batchResults);
+      }
 
       const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
 
@@ -2069,6 +2094,8 @@ export default function QaDashboard() {
       setBulkESignError("");
       setSelectedIds([]);
       setSelectedReportsById({});
+
+      setRefreshKey((x) => x + 1);
     } catch (err: any) {
       const backendMsg =
         err?.message ||
