@@ -39,7 +39,7 @@ import {
   getInt,
   type DashboardColKey,
 } from "../../utils/globalUtils";
-import { Pin } from "lucide-react";
+import { Paperclip, Pin } from "lucide-react";
 import ApeReportFormView from "../Reports/ApeReportFormView";
 import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReport from "../LabReports/ApeReport";
@@ -873,6 +873,73 @@ export default function FrontDeskDashboard() {
     sortBy,
     sortDir,
     refreshKey,
+    pinnedIds,
+  ]);
+
+  useEffect(() => {
+    if (!filtersHydrated) return;
+
+    let cancelled = false;
+
+    const refreshAttachmentIndicators = async () => {
+      try {
+        const res = await fetchDashboardReports();
+
+        if (cancelled) return;
+
+        const incomingCountMap = new Map(
+          res.rows.map((r) => [r.id, Number(r.attachmentsCount ?? 0)]),
+        );
+
+        setReports((prev) =>
+          prev.map((r) => {
+            if (!incomingCountMap.has(r.id)) {
+              return r;
+            }
+
+            const nextCount = incomingCountMap.get(r.id) ?? 0;
+
+            if (Number(r.attachmentsCount ?? 0) === nextCount) {
+              return r;
+            }
+
+            return {
+              ...r,
+              attachmentsCount: nextCount,
+            };
+          }),
+        );
+      } catch (error) {
+        // Silent polling:
+        // do not disturb Frontdesk user if one poll fails.
+        console.warn("Attachment indicator refresh failed", error);
+      }
+    };
+
+    const timer = window.setInterval(refreshAttachmentIndicators, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    filtersHydrated,
+    page,
+    perPage,
+    formFilter,
+    statusFilter,
+    searchClient,
+    searchReport,
+    search,
+    fromDate,
+    toDate,
+    numberRangeType,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+    sortBy,
+    sortDir,
     pinnedIds,
   ]);
 
@@ -3623,6 +3690,11 @@ Missing: ${missing
                       {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
                     </th>
                   ))}
+
+                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap text-center">
+                    Attachment
+                  </th>
+
                   <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
                     Status
                   </th>
@@ -3812,7 +3884,37 @@ Missing: ${missing
                             )}
                           </td>
                         ))}
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          {Number(r.attachmentsCount ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              title={`${r.attachmentsCount} attachment${
+                                r.attachmentsCount === 1 ? "" : "s"
+                              } attached`}
+                              onClick={() => {
+                                setSelectedModalMode("VIEW");
+                                setSelectedReport(r);
+                                setSelectedViewPane("ATTACHMENTS");
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100"
+                            >
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                              </span>
 
+                              <Paperclip className="h-3.5 w-3.5" />
+
+                              <span>Attached</span>
+
+                              {Number(r.attachmentsCount ?? 0) > 1 && (
+                                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] leading-none text-white">
+                                  {r.attachmentsCount}
+                                </span>
+                              )}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span
                             className={classNames(
@@ -3983,7 +4085,49 @@ Missing: ${missing
                                     }
 
                                     await uploadAttachmentForReport(r, file);
+
+                                    const newAttachmentCount =
+                                      existing.length + 1;
+
+                                    setReports((prev) =>
+                                      prev.map((x) =>
+                                        x.id === r.id
+                                          ? {
+                                              ...x,
+                                              attachmentsCount:
+                                                newAttachmentCount,
+                                            }
+                                          : x,
+                                      ),
+                                    );
+
+                                    setSelectedReportsById((prev) => {
+                                      if (!prev[r.id]) return prev;
+
+                                      return {
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          attachmentsCount: newAttachmentCount,
+                                        },
+                                      };
+                                    });
+
+                                    setSelectedReport((prev) =>
+                                      prev?.id === r.id
+                                        ? {
+                                            ...prev,
+                                            attachmentsCount:
+                                              newAttachmentCount,
+                                          }
+                                        : prev,
+                                    );
+
                                     alert("✅ Uploaded!");
+
+                                    if (selectedReport?.id === r.id) {
+                                      setSelectedViewPane("ATTACHMENTS");
+                                    }
                                     // optional: if modal open for same report, switch pane
                                     if (selectedReport?.id === r.id)
                                       setSelectedViewPane("ATTACHMENTS");
@@ -4027,7 +4171,7 @@ Missing: ${missing
                 {!loading && pageRows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={2 + selectedCols.length + 2}
+                      colSpan={2 + selectedCols.length + 3}
                       className="px-4 py-12 text-center text-slate-500"
                     >
                       No reports found for{" "}
