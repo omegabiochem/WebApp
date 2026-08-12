@@ -317,7 +317,7 @@ export class AuthService {
     return `${name.slice(0, 2)}***@${domain}`;
   }
 
-  private signAccessTokenForSession(args: {
+  private async signAccessTokenForSession(args: {
     sub: string;
     role: any;
     uid?: string | null;
@@ -329,20 +329,56 @@ export class AuthService {
     actingAsUserId?: string | null;
     actingAsName?: string | null;
   }) {
+    const securityUser = await this.prisma.user.findUnique({
+      where: {
+        id: args.sub,
+      },
+
+      select: {
+        id: true,
+        active: true,
+        passwordVersion: true,
+      },
+    });
+
+    if (!securityUser) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    if (!securityUser.active) {
+      throw new UnauthorizedException('User account is inactive');
+    }
+
     return this.jwt.sign(
       {
         sub: args.sub,
+
         role: args.role,
+
         uid: args.uid ?? null,
+
         clientCode: args.clientCode ?? null,
+
         mcp: args.mcp ? true : undefined,
+
         authMode: args.authMode ?? 'NORMAL',
+
         commonAccountId: args.commonAccountId ?? null,
+
         commonAccountUserId: args.commonAccountUserId ?? null,
+
         actingAsUserId: args.actingAsUserId ?? null,
+
         actingAsName: args.actingAsName ?? null,
+
+        /*
+         * SECURITY VERSION
+         */
+        passwordVersion: securityUser.passwordVersion,
       },
-      { expiresIn: ACCESS_TOKEN_TTL },
+      {
+        expiresIn: ACCESS_TOKEN_TTL,
+      },
     );
   }
 
@@ -856,7 +892,7 @@ export class AuthService {
         setRequestContext({ skipAudit: false });
       }
 
-      const accessToken = this.signAccessTokenForSession({
+      const accessToken = await this.signAccessTokenForSession({
         sub: user.id,
         role: user.role,
         uid: user.userId ?? null,
@@ -897,7 +933,7 @@ export class AuthService {
       uid: user.userId ?? null,
       clientCode: user.clientCode ?? null,
     };
-    const accessToken = this.signAccessTokenForSession({
+    const accessToken = await this.signAccessTokenForSession({
       sub: user.id,
       role: user.role,
       uid: user.userId ?? null,
@@ -1211,7 +1247,7 @@ export class AuthService {
       clientCode: user.clientCode ?? null,
     };
 
-    const accessToken = this.signAccessTokenForSession({
+    const accessToken = await this.signAccessTokenForSession({
       sub: user.id,
       role: user.role,
       uid: user.userId ?? null,
@@ -1398,7 +1434,7 @@ export class AuthService {
         clientCode: user.clientCode ?? null,
       };
 
-      const accessToken = this.signAccessTokenForSession({
+      const accessToken = await this.signAccessTokenForSession({
         sub: user.id,
         role: user.role,
         uid: user.userId ?? null,
@@ -1425,7 +1461,7 @@ export class AuthService {
       uid: user.userId ?? null,
       clientCode: user.clientCode ?? null,
     };
-    const accessToken = this.signAccessTokenForSession({
+    const accessToken = await this.signAccessTokenForSession({
       sub: user.id,
       role: user.role,
       uid: user.userId ?? null,
@@ -1536,8 +1572,7 @@ export class AuthService {
         clientCode: payload.clientCode ?? user.clientCode ?? null,
         ip: this.getIp(req),
         entityId: payload.uid ?? user.userId ?? user.id,
-        details:
-          'User automatically logged out after 15 minutes of inactivity',
+        details: 'User automatically logged out after 15 minutes of inactivity',
         meta: {
           userAgent: this.getUA(req),
           reason: 'IDLE_TIMEOUT',
@@ -1605,7 +1640,7 @@ export class AuthService {
     // rotate refresh using same session context
     await this.issueRefreshForUser(session, res);
 
-    const accessToken = this.signAccessTokenForSession(session);
+    const accessToken = await this.signAccessTokenForSession(session);
 
     return {
       accessToken,
@@ -1862,7 +1897,7 @@ export class AuthService {
       setRequestContext({ skipAudit: false });
     }
 
-    const accessToken = this.signAccessTokenForSession({
+    const accessToken = await this.signAccessTokenForSession({
       sub: selectedUser.id,
       role: challenge.selectedRole,
       uid: selectedUser.userId ?? null,

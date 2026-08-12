@@ -1,14 +1,6 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import {
-  useNavigate,
-  useParams,
-} from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import toast from "react-hot-toast";
 
@@ -21,18 +13,37 @@ import {
   Check,
   Clock3,
   ContactRound,
+  Copy,
   CreditCard,
   FileText,
+  KeyRound,
+  LogOut,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   RefreshCw,
   Save,
   Settings2,
+  UserCheck,
   UserRound,
+  UsersRound,
+  UserX,
 } from "lucide-react";
 
 import { api } from "../../lib/api";
+import {
+  fetchUsers,
+  forceUserSignout,
+  resetUserPassword,
+  setUserActive,
+  setUserClientCode,
+  setUserEmail,
+  setUserName,
+  type UserRow,
+} from "../../services/usersService";
+import Modal from "../../components/common/Modal";
+import { socket } from "../../lib/socket";
 
 /* =========================================================
    TYPES
@@ -142,6 +153,7 @@ type ClientDetailsForm = {
 type Section =
   | "OVERVIEW"
   | "CONTACTS"
+  | "USERS"
   | "SCHEDULE"
   | "BILLING"
   | "NOTES";
@@ -150,14 +162,11 @@ type Section =
    STYLES
 ========================================================= */
 
-function cx(
-  ...classes: Array<string | false | undefined | null>
-) {
+function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
-const card =
-  "rounded-2xl border border-slate-200/80 bg-white shadow-sm";
+const card = "rounded-2xl border border-slate-200/80 bg-white shadow-sm";
 
 const inputBase =
   "w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 " +
@@ -175,10 +184,10 @@ const buttonPrimary = cx(
   "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 focus:ring-indigo-500/20",
 );
 
-// const buttonOutline = cx(
-//   buttonBase,
-//   "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-slate-300/30",
-// );
+const buttonOutline = cx(
+  buttonBase,
+  "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-slate-300/30",
+);
 
 /* =========================================================
    OPTIONS
@@ -222,6 +231,68 @@ const TIME_ZONE_OPTIONS = [
   },
 ];
 
+const US_STATE_OPTIONS = [
+  { value: "", label: "Select state" },
+  { value: "AL", label: "Alabama" },
+  { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" },
+  { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" },
+  { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" },
+  { value: "DE", label: "Delaware" },
+  { value: "FL", label: "Florida" },
+  { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" },
+  { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" },
+  { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" },
+  { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" },
+  { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" },
+  { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" },
+  { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" },
+  { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" },
+  { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" },
+  { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" },
+  { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" },
+  { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" },
+  { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" },
+  { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" },
+  { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" },
+  { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" },
+  { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" },
+  { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" },
+  { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" },
+  { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" },
+  { value: "WY", label: "Wyoming" },
+
+  // District / Territories
+  { value: "DC", label: "District of Columbia" },
+  { value: "PR", label: "Puerto Rico" },
+  { value: "GU", label: "Guam" },
+  { value: "VI", label: "U.S. Virgin Islands" },
+  { value: "AS", label: "American Samoa" },
+  { value: "MP", label: "Northern Mariana Islands" },
+];
+
 const DAYS = [
   { value: 1, label: "Mon", full: "Monday" },
   { value: 2, label: "Tue", full: "Tuesday" },
@@ -245,6 +316,10 @@ const SECTIONS: Array<{
     label: "Contacts",
   },
   {
+    value: "USERS",
+    label: "Users",
+  },
+  {
     value: "SCHEDULE",
     label: "Schedule & Reminders",
   },
@@ -262,9 +337,7 @@ const SECTIONS: Array<{
    HELPERS
 ========================================================= */
 
-function minutesToTime(
-  value: number | null | undefined,
-) {
+function minutesToTime(value: number | null | undefined) {
   const total =
     typeof value === "number" && Number.isFinite(value)
       ? Math.min(1439, Math.max(0, value))
@@ -273,18 +346,13 @@ function minutesToTime(
   const hour = Math.floor(total / 60);
   const minute = total % 60;
 
-  return `${String(hour).padStart(2, "0")}:${String(
-    minute,
-  ).padStart(2, "0")}`;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function timeToMinutes(value: string) {
   const [hour, minute] = value.split(":").map(Number);
 
-  if (
-    !Number.isFinite(hour) ||
-    !Number.isFinite(minute)
-  ) {
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
     return 0;
   }
 
@@ -343,111 +411,77 @@ function emptyForm(): ClientDetailsForm {
   };
 }
 
-function toForm(
-  row: ClientDetailsRow,
-): ClientDetailsForm {
+function toForm(row: ClientDetailsRow): ClientDetailsForm {
   return {
     name: row.name ?? "",
     legalName: row.legalName ?? "",
     active: row.active ?? true,
 
-    primaryContactName:
-      row.primaryContactName ?? "",
+    primaryContactName: row.primaryContactName ?? "",
 
-    primaryContactEmail:
-      row.primaryContactEmail ?? "",
+    primaryContactEmail: row.primaryContactEmail ?? "",
 
-    primaryContactPhone:
-      row.primaryContactPhone ?? "",
+    primaryContactPhone: row.primaryContactPhone ?? "",
 
-    secondaryContactName:
-      row.secondaryContactName ?? "",
+    secondaryContactName: row.secondaryContactName ?? "",
 
-    secondaryContactEmail:
-      row.secondaryContactEmail ?? "",
+    secondaryContactEmail: row.secondaryContactEmail ?? "",
 
-    secondaryContactPhone:
-      row.secondaryContactPhone ?? "",
+    secondaryContactPhone: row.secondaryContactPhone ?? "",
 
-    addressLine1:
-      row.addressLine1 ?? "",
+    addressLine1: row.addressLine1 ?? "",
 
-    addressLine2:
-      row.addressLine2 ?? "",
+    addressLine2: row.addressLine2 ?? "",
 
     city: row.city ?? "",
     state: row.state ?? "",
     postalCode: row.postalCode ?? "",
     country: row.country ?? "USA",
 
-    timeZone:
-      row.timeZone || "America/New_York",
+    timeZone: row.timeZone || "America/New_York",
 
-    workdayStart: minutesToTime(
-      row.workdayStartMinutes,
-    ),
+    workdayStart: minutesToTime(row.workdayStartMinutes),
 
-    workdayEnd: minutesToTime(
-      row.workdayEndMinutes,
-    ),
+    workdayEnd: minutesToTime(row.workdayEndMinutes),
 
     workingDays:
       row.workingDays?.length > 0
-        ? [...row.workingDays].sort(
-            (a, b) => a - b,
-          )
+        ? [...row.workingDays].sort((a, b) => a - b)
         : [1, 2, 3, 4, 5],
 
-    workflowReminderEnabled:
-      row.workflowReminderEnabled ?? true,
+    workflowReminderEnabled: row.workflowReminderEnabled ?? true,
 
-    workflowReminderIntervalMinutes:
-      row.workflowReminderIntervalMinutes ?? 60,
+    workflowReminderIntervalMinutes: row.workflowReminderIntervalMinutes ?? 60,
 
-    workflowReminderMaxCount:
-      row.workflowReminderMaxCount ?? 10,
+    workflowReminderMaxCount: row.workflowReminderMaxCount ?? 10,
 
-    billingContactName:
-      row.billingContactName ?? "",
+    billingContactName: row.billingContactName ?? "",
 
-    billingEmail:
-      row.billingEmail ?? "",
+    billingEmail: row.billingEmail ?? "",
 
-    billingPhone:
-      row.billingPhone ?? "",
+    billingPhone: row.billingPhone ?? "",
 
-    billingAddressLine1:
-      row.billingAddressLine1 ?? "",
+    billingAddressLine1: row.billingAddressLine1 ?? "",
 
-    billingAddressLine2:
-      row.billingAddressLine2 ?? "",
+    billingAddressLine2: row.billingAddressLine2 ?? "",
 
-    billingCity:
-      row.billingCity ?? "",
+    billingCity: row.billingCity ?? "",
 
-    billingState:
-      row.billingState ?? "",
+    billingState: row.billingState ?? "",
 
-    billingPostalCode:
-      row.billingPostalCode ?? "",
+    billingPostalCode: row.billingPostalCode ?? "",
 
-    billingCountry:
-      row.billingCountry ?? "USA",
+    billingCountry: row.billingCountry ?? "USA",
 
-    paymentTerms:
-      row.paymentTerms ?? "",
+    paymentTerms: row.paymentTerms ?? "",
 
-    accountManager:
-      row.accountManager ?? "",
+    accountManager: row.accountManager ?? "",
 
-    notes:
-      row.notes ?? "",
+    notes: row.notes ?? "",
   };
 }
 
-function formatDate(
-  value?: string | null,
-) {
+function formatDate(value?: string | null) {
   if (!value) return "—";
 
   const date = new Date(value);
@@ -468,9 +502,7 @@ function formatDate(
 function isValidOptionalEmail(value: string) {
   if (!value.trim()) return true;
 
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-    value.trim(),
-  );
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 /* =========================================================
@@ -493,13 +525,9 @@ function Field({
   return (
     <div className={className}>
       <div className="mb-1.5 flex items-center gap-1">
-        <label className="text-xs font-medium text-slate-700">
-          {label}
-        </label>
+        <label className="text-xs font-medium text-slate-700">{label}</label>
 
-        {required && (
-          <span className="text-rose-500">*</span>
-        )}
+        {required && <span className="text-rose-500">*</span>}
       </div>
 
       {children}
@@ -531,9 +559,7 @@ function CardTitle({
       )}
 
       <div>
-        <h2 className="text-sm font-semibold text-slate-900">
-          {title}
-        </h2>
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
 
         {description && (
           <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
@@ -564,18 +590,14 @@ function Toggle({
       className={cx(
         "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition",
         "focus:outline-none focus:ring-4 focus:ring-indigo-500/10",
-        checked
-          ? "bg-indigo-600"
-          : "bg-slate-300",
+        checked ? "bg-indigo-600" : "bg-slate-300",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
       <span
         className={cx(
           "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-          checked
-            ? "translate-x-6"
-            : "translate-x-1",
+          checked ? "translate-x-6" : "translate-x-1",
         )}
       />
     </button>
@@ -595,6 +617,8 @@ function SectionIcon({
 
     case "CONTACTS":
       return <ContactRound size={size} />;
+    case "USERS":
+      return <UsersRound size={size} />;
 
     case "SCHEDULE":
       return <Clock3 size={size} />;
@@ -625,56 +649,60 @@ export default function ClientDetailsAdmin() {
     .trim()
     .toUpperCase();
 
-  const [section, setSection] =
-    useState<Section>("OVERVIEW");
+  const [section, setSection] = useState<Section>("OVERVIEW");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [existing, setExisting] =
-    useState<ClientDetailsRow | null>(null);
+  const [existing, setExisting] = useState<ClientDetailsRow | null>(null);
 
-  const [form, setForm] =
-    useState<ClientDetailsForm>(
-      emptyForm(),
-    );
+  const [form, setForm] = useState<ClientDetailsForm>(emptyForm());
+
+  const [clientUsers, setClientUsers] = useState<UserRow[]>([]);
+
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
+  const [userModalOpen, setUserModalOpen] = useState(false);
+
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserClientCode, setEditUserClientCode] = useState("");
+  const [editUserActive, setEditUserActive] = useState(true);
+
+  const [userSaving, setUserSaving] = useState(false);
+
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [passwordUserLabel, setPasswordUserLabel] = useState("");
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   const [originalForm, setOriginalForm] =
-    useState<ClientDetailsForm>(
-      emptyForm(),
-    );
+    useState<ClientDetailsForm>(emptyForm());
 
   const dirty = useMemo(
-    () =>
-      JSON.stringify(form) !==
-      JSON.stringify(originalForm),
+    () => JSON.stringify(form) !== JSON.stringify(originalForm),
     [form, originalForm],
   );
 
-  const currentTimeZone =
-    TIME_ZONE_OPTIONS.find(
-      (x) => x.value === form.timeZone,
-    );
+  const currentTimeZone = TIME_ZONE_OPTIONS.find(
+    (x) => x.value === form.timeZone,
+  );
 
   const workingDaysLabel =
     form.workingDays.length === 0
       ? "No working days selected"
       : form.workingDays
-          .map(
-            (value) =>
-              DAYS.find(
-                (day) => day.value === value,
-              )?.label,
-          )
+          .map((value) => DAYS.find((day) => day.value === value)?.label)
           .filter(Boolean)
           .join(", ");
 
-  function updateField<
-    K extends keyof ClientDetailsForm,
-  >(
+  function updateField<K extends keyof ClientDetailsForm>(
     key: K,
     value: ClientDetailsForm[K],
   ) {
@@ -690,31 +718,19 @@ export default function ClientDetailsAdmin() {
     setLoading(true);
 
     try {
-      const rows =
-        await api<ClientDetailsRow[]>(
-          "/client-details",
-        );
+      const rows = await api<ClientDetailsRow[]>("/client-details");
 
       const row =
-        rows.find(
-          (x) =>
-            x.clientCode.toUpperCase() ===
-            clientCode,
-        ) ?? null;
+        rows.find((x) => x.clientCode.toUpperCase() === clientCode) ?? null;
 
       setExisting(row);
 
-      const nextForm = row
-        ? toForm(row)
-        : emptyForm();
+      const nextForm = row ? toForm(row) : emptyForm();
 
       setForm(nextForm);
       setOriginalForm(nextForm);
     } catch (e: any) {
-      toast.error(
-        e?.message ||
-          "Failed to load client details",
-      );
+      toast.error(e?.message || "Failed to load client details");
     } finally {
       setLoading(false);
     }
@@ -722,48 +738,87 @@ export default function ClientDetailsAdmin() {
 
   useEffect(() => {
     load();
+    loadClientUsers();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientCode]);
 
   useEffect(() => {
-    const onBeforeUnload = (
-      event: BeforeUnloadEvent,
-    ) => {
+    const applySnapshot = (response?: { onlineUserIds?: string[] }) => {
+      setOnlineUserIds(new Set(response?.onlineUserIds ?? []));
+    };
+
+    const requestPresence = () => {
+      socket.emit(
+        "presence:get",
+        {},
+        (response: { onlineUserIds?: string[] }) => {
+          applySnapshot(response);
+        },
+      );
+    };
+
+    const onPresenceChanged = (payload: {
+      userId?: string;
+      online?: boolean;
+    }) => {
+      if (!payload?.userId) {
+        return;
+      }
+
+      setOnlineUserIds((previous) => {
+        const next = new Set(previous);
+
+        if (payload.online) {
+          next.add(payload.userId!);
+        } else {
+          next.delete(payload.userId!);
+        }
+
+        return next;
+      });
+    };
+
+    socket.on("presence:changed", onPresenceChanged);
+
+    socket.on("connect", requestPresence);
+
+    if (socket.connected) {
+      requestPresence();
+    }
+
+    return () => {
+      socket.off("presence:changed", onPresenceChanged);
+
+      socket.off("connect", requestPresence);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!dirty) return;
 
       event.preventDefault();
     };
 
-    window.addEventListener(
-      "beforeunload",
-      onBeforeUnload,
-    );
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     return () => {
-      window.removeEventListener(
-        "beforeunload",
-        onBeforeUnload,
-      );
+      window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, [dirty]);
 
   function toggleDay(day: number) {
     setForm((prev) => {
-      const selected =
-        prev.workingDays.includes(day);
+      const selected = prev.workingDays.includes(day);
 
       const next = selected
-        ? prev.workingDays.filter(
-            (x) => x !== day,
-          )
+        ? prev.workingDays.filter((x) => x !== day)
         : [...prev.workingDays, day];
 
       return {
         ...prev,
-        workingDays: next.sort(
-          (a, b) => a - b,
-        ),
+        workingDays: next.sort((a, b) => a - b),
       };
     });
   }
@@ -777,56 +832,34 @@ export default function ClientDetailsAdmin() {
       if (!leave) return;
     }
 
-    navigate(
-      "/manage-users?tab=clients",
-    );
+    navigate("/manage-users?tab=clients");
   }
 
   function validate() {
     if (!clientCode) {
-      toast.error(
-        "Client code is missing",
-      );
+      toast.error("Client code is missing");
 
       return false;
     }
 
-    if (
-      !isValidOptionalEmail(
-        form.primaryContactEmail,
-      )
-    ) {
-      toast.error(
-        "Enter a valid primary contact email",
-      );
+    if (!isValidOptionalEmail(form.primaryContactEmail)) {
+      toast.error("Enter a valid primary contact email");
 
       setSection("CONTACTS");
 
       return false;
     }
 
-    if (
-      !isValidOptionalEmail(
-        form.secondaryContactEmail,
-      )
-    ) {
-      toast.error(
-        "Enter a valid secondary contact email",
-      );
+    if (!isValidOptionalEmail(form.secondaryContactEmail)) {
+      toast.error("Enter a valid secondary contact email");
 
       setSection("CONTACTS");
 
       return false;
     }
 
-    if (
-      !isValidOptionalEmail(
-        form.billingEmail,
-      )
-    ) {
-      toast.error(
-        "Enter a valid billing email",
-      );
+    if (!isValidOptionalEmail(form.billingEmail)) {
+      toast.error("Enter a valid billing email");
 
       setSection("BILLING");
 
@@ -834,52 +867,35 @@ export default function ClientDetailsAdmin() {
     }
 
     if (!form.timeZone) {
-      toast.error(
-        "Time zone is required",
-      );
+      toast.error("Time zone is required");
 
       setSection("SCHEDULE");
 
       return false;
     }
 
-    const start = timeToMinutes(
-      form.workdayStart,
-    );
+    const start = timeToMinutes(form.workdayStart);
 
-    const end = timeToMinutes(
-      form.workdayEnd,
-    );
+    const end = timeToMinutes(form.workdayEnd);
 
     if (start >= end) {
-      toast.error(
-        "Workday end must be after workday start",
-      );
+      toast.error("Workday end must be after workday start");
 
       setSection("SCHEDULE");
 
       return false;
     }
 
-    if (
-      form.workingDays.length === 0
-    ) {
-      toast.error(
-        "Select at least one working day",
-      );
+    if (form.workingDays.length === 0) {
+      toast.error("Select at least one working day");
 
       setSection("SCHEDULE");
 
       return false;
     }
 
-    if (
-      form.workflowReminderIntervalMinutes <
-      1
-    ) {
-      toast.error(
-        "Reminder interval must be at least 1 minute",
-      );
+    if (form.workflowReminderIntervalMinutes < 1) {
+      toast.error("Reminder interval must be at least 1 minute");
 
       setSection("SCHEDULE");
 
@@ -890,9 +906,7 @@ export default function ClientDetailsAdmin() {
       form.workflowReminderMaxCount < 1 ||
       form.workflowReminderMaxCount > 10
     ) {
-      toast.error(
-        "Maximum reminders must be between 1 and 10",
-      );
+      toast.error("Maximum reminders must be between 1 and 10");
 
       setSection("SCHEDULE");
 
@@ -902,136 +916,245 @@ export default function ClientDetailsAdmin() {
     return true;
   }
 
+  async function loadClientUsers() {
+    if (!clientCode) return;
+
+    setUsersLoading(true);
+
+    try {
+      const res = await fetchUsers({
+        q: "",
+        role: "CLIENT",
+        active: "ALL",
+        page: 1,
+        pageSize: 500,
+      });
+
+      const matchingUsers = res.items.filter(
+        (user) =>
+          String(user.clientCode ?? "")
+            .trim()
+            .toUpperCase() === clientCode,
+      );
+
+      setClientUsers(matchingUsers);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load client users");
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  function openUserEditor(user: UserRow) {
+    setSelectedUser(user);
+
+    setEditUserName(user.name ?? "");
+    setEditUserEmail(user.email ?? "");
+
+    setEditUserClientCode(user.clientCode ?? "");
+
+    setEditUserActive(user.active);
+
+    setUserModalOpen(true);
+  }
+
+  async function saveUser() {
+    if (!selectedUser) return;
+
+    const nextName = editUserName.trim() || null;
+
+    const nextEmail = editUserEmail.trim().toLowerCase();
+
+    const nextClientCode = editUserClientCode.trim().toUpperCase();
+
+    if (!nextEmail) {
+      toast.error("Email is required");
+      return;
+    }
+
+    if (!isValidOptionalEmail(nextEmail)) {
+      toast.error("Enter a valid email");
+      return;
+    }
+
+    if (!nextClientCode) {
+      toast.error("Client Code is required");
+      return;
+    }
+
+    if (!/^[A-Z]{3}$/.test(nextClientCode)) {
+      toast.error("Client Code must be exactly 3 uppercase letters");
+      return;
+    }
+
+    setUserSaving(true);
+
+    try {
+      // Name
+      if ((selectedUser.name ?? null) !== nextName) {
+        await setUserName(selectedUser.id, nextName);
+      }
+
+      // Email
+      if (selectedUser.email.toLowerCase() !== nextEmail) {
+        await setUserEmail(selectedUser.id, nextEmail);
+      }
+
+      // Client Code
+      if ((selectedUser.clientCode ?? "").toUpperCase() !== nextClientCode) {
+        await setUserClientCode(selectedUser.id, nextClientCode);
+      }
+
+      // Active / Disabled
+      if (selectedUser.active !== editUserActive) {
+        await setUserActive(selectedUser.id, editUserActive);
+      }
+
+      toast.success("User updated");
+
+      setUserModalOpen(false);
+      setSelectedUser(null);
+
+      await loadClientUsers();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update user");
+    } finally {
+      setUserSaving(false);
+    }
+  }
+
+  async function resetClientUserPassword(user: UserRow) {
+    try {
+      const res = await resetUserPassword(user.id);
+
+      setTemporaryPassword(res.tempPassword);
+
+      setPasswordUserLabel(`${user.name ?? "User"} • ${user.email}`);
+
+      setPasswordCopied(false);
+
+      // Close edit modal first
+      setUserModalOpen(false);
+
+      // Then show password modal
+      setPasswordModalOpen(true);
+
+      toast.success("Temporary password generated");
+    } catch (e: any) {
+      toast.error(e?.message || "Password reset failed");
+    }
+  }
+
+  async function copyTemporaryPassword() {
+    if (!temporaryPassword) {
+      toast.error("No temporary password available");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+
+      setPasswordCopied(true);
+
+      setTimeout(() => {
+        setPasswordCopied(false);
+      }, 1200);
+
+      toast.success("Password copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }
+
+  async function forceClientUserSignout(user: UserRow) {
+    const confirmed = window.confirm(`Force sign out ${user.email}?`);
+
+    if (!confirmed) return;
+
+    try {
+      await forceUserSignout(user.id);
+
+      toast.success("User signed out");
+
+      await loadClientUsers();
+    } catch (e: any) {
+      toast.error(e?.message || "Force signout failed");
+    }
+  }
+
   function payload() {
     return {
-      name:
-        form.name.trim() || null,
+      name: form.name.trim() || null,
 
-      legalName:
-        form.legalName.trim() || null,
+      legalName: form.legalName.trim() || null,
 
-      active:
-        form.active,
+      active: form.active,
 
-      primaryContactName:
-        form.primaryContactName.trim() ||
-        null,
+      primaryContactName: form.primaryContactName.trim() || null,
 
       primaryContactEmail:
-        form.primaryContactEmail
-          .trim()
-          .toLowerCase() || null,
+        form.primaryContactEmail.trim().toLowerCase() || null,
 
-      primaryContactPhone:
-        form.primaryContactPhone.trim() ||
-        null,
+      primaryContactPhone: form.primaryContactPhone.trim() || null,
 
-      secondaryContactName:
-        form.secondaryContactName.trim() ||
-        null,
+      secondaryContactName: form.secondaryContactName.trim() || null,
 
       secondaryContactEmail:
-        form.secondaryContactEmail
-          .trim()
-          .toLowerCase() || null,
+        form.secondaryContactEmail.trim().toLowerCase() || null,
 
-      secondaryContactPhone:
-        form.secondaryContactPhone.trim() ||
-        null,
+      secondaryContactPhone: form.secondaryContactPhone.trim() || null,
 
-      addressLine1:
-        form.addressLine1.trim() || null,
+      addressLine1: form.addressLine1.trim() || null,
 
-      addressLine2:
-        form.addressLine2.trim() || null,
+      addressLine2: form.addressLine2.trim() || null,
 
-      city:
-        form.city.trim() || null,
+      city: form.city.trim() || null,
 
-      state:
-        form.state
-          .trim()
-          .toUpperCase() || null,
+      state: form.state.trim().toUpperCase() || null,
 
-      postalCode:
-        form.postalCode.trim() || null,
+      postalCode: form.postalCode.trim() || null,
 
-      country:
-        form.country.trim() || "USA",
+      country: form.country.trim() || "USA",
 
-      timeZone:
-        form.timeZone,
+      timeZone: form.timeZone,
 
-      workdayStartMinutes:
-        timeToMinutes(
-          form.workdayStart,
-        ),
+      workdayStartMinutes: timeToMinutes(form.workdayStart),
 
-      workdayEndMinutes:
-        timeToMinutes(
-          form.workdayEnd,
-        ),
+      workdayEndMinutes: timeToMinutes(form.workdayEnd),
 
-      workingDays:
-        form.workingDays,
+      workingDays: form.workingDays,
 
-      workflowReminderEnabled:
-        form.workflowReminderEnabled,
+      workflowReminderEnabled: form.workflowReminderEnabled,
 
-      workflowReminderIntervalMinutes:
-        Number(
-          form.workflowReminderIntervalMinutes,
-        ),
+      workflowReminderIntervalMinutes: Number(
+        form.workflowReminderIntervalMinutes,
+      ),
 
-      workflowReminderMaxCount:
-        Number(
-          form.workflowReminderMaxCount,
-        ),
+      workflowReminderMaxCount: Number(form.workflowReminderMaxCount),
 
-      billingContactName:
-        form.billingContactName.trim() ||
-        null,
+      billingContactName: form.billingContactName.trim() || null,
 
-      billingEmail:
-        form.billingEmail
-          .trim()
-          .toLowerCase() || null,
+      billingEmail: form.billingEmail.trim().toLowerCase() || null,
 
-      billingPhone:
-        form.billingPhone.trim() || null,
+      billingPhone: form.billingPhone.trim() || null,
 
-      billingAddressLine1:
-        form.billingAddressLine1.trim() ||
-        null,
+      billingAddressLine1: form.billingAddressLine1.trim() || null,
 
-      billingAddressLine2:
-        form.billingAddressLine2.trim() ||
-        null,
+      billingAddressLine2: form.billingAddressLine2.trim() || null,
 
-      billingCity:
-        form.billingCity.trim() || null,
+      billingCity: form.billingCity.trim() || null,
 
-      billingState:
-        form.billingState
-          .trim()
-          .toUpperCase() || null,
+      billingState: form.billingState.trim().toUpperCase() || null,
 
-      billingPostalCode:
-        form.billingPostalCode.trim() ||
-        null,
+      billingPostalCode: form.billingPostalCode.trim() || null,
 
-      billingCountry:
-        form.billingCountry.trim() ||
-        "USA",
+      billingCountry: form.billingCountry.trim() || "USA",
 
-      paymentTerms:
-        form.paymentTerms.trim() || null,
+      paymentTerms: form.paymentTerms.trim() || null,
 
-      accountManager:
-        form.accountManager.trim() || null,
+      accountManager: form.accountManager.trim() || null,
 
-      notes:
-        form.notes.trim() || null,
+      notes: form.notes.trim() || null,
     };
   }
 
@@ -1044,52 +1167,58 @@ export default function ClientDetailsAdmin() {
       let result: ClientDetailsRow;
 
       if (existing) {
-        result =
-          await api<ClientDetailsRow>(
-            `/client-details/${encodeURIComponent(
-              clientCode,
-            )}`,
-            {
-              method: "PATCH",
-              body: JSON.stringify(
-                payload(),
-              ),
-            },
-          );
-
-        toast.success(
-          "Client details saved",
+        result = await api<ClientDetailsRow>(
+          `/client-details/${encodeURIComponent(clientCode)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload()),
+          },
         );
+
+        toast.success("Client details saved");
       } else {
-        result =
-          await api<ClientDetailsRow>(
-            "/client-details",
-            {
-              method: "POST",
+        result = await api<ClientDetailsRow>("/client-details", {
+          method: "POST",
 
-              body: JSON.stringify({
-                clientCode,
-                ...payload(),
-              }),
-            },
-          );
+          body: JSON.stringify({
+            clientCode,
+            ...payload(),
+          }),
+        });
 
-        toast.success(
-          "Client details created",
-        );
+        toast.success("Client details created");
       }
 
-      const nextForm =
-        toForm(result);
+      const previousClientActive = existing?.active;
+
+      const nextForm = toForm(result);
 
       setExisting(result);
       setForm(nextForm);
       setOriginalForm(nextForm);
+
+      /*
+       * Immediately update the visual user statuses
+       * when Active Client changed.
+       */
+      if (
+        previousClientActive !== undefined &&
+        previousClientActive !== result.active
+      ) {
+        setClientUsers((prev) =>
+          prev.map((user) => ({
+            ...user,
+            active: result.active,
+          })),
+        );
+      }
+
+      /*
+       * Then confirm against backend.
+       */
+      await loadClientUsers();
     } catch (e: any) {
-      toast.error(
-        e?.message ||
-          "Failed to save client details",
-      );
+      toast.error(e?.message || "Failed to save client details");
     } finally {
       setSaving(false);
     }
@@ -1116,10 +1245,7 @@ export default function ClientDetailsAdmin() {
       <div className="flex min-h-[65vh] items-center justify-center">
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50">
-            <RefreshCw
-              size={22}
-              className="animate-spin text-indigo-600"
-            />
+            <RefreshCw size={22} className="animate-spin text-indigo-600" />
           </div>
 
           <div className="mt-4 text-sm font-medium text-slate-700">
@@ -1153,7 +1279,6 @@ export default function ClientDetailsAdmin() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white transition group-hover:border-slate-300 group-hover:bg-slate-50">
             <ArrowLeft size={15} />
           </span>
-
           Client Management
         </button>
 
@@ -1187,9 +1312,7 @@ export default function ClientDetailsAdmin() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-                    {form.name ||
-                      form.legalName ||
-                      clientCode}
+                    {form.name || form.legalName || clientCode}
                   </h1>
 
                   <span
@@ -1206,9 +1329,7 @@ export default function ClientDetailsAdmin() {
                       <Settings2 size={12} />
                     )}
 
-                    {existing
-                      ? "Configured"
-                      : "Setup required"}
+                    {existing ? "Configured" : "Setup required"}
                   </span>
 
                   <span
@@ -1222,15 +1343,11 @@ export default function ClientDetailsAdmin() {
                     <span
                       className={cx(
                         "h-1.5 w-1.5 rounded-full",
-                        form.active
-                          ? "bg-emerald-500"
-                          : "bg-rose-500",
+                        form.active ? "bg-emerald-500" : "bg-rose-500",
                       )}
                     />
 
-                    {form.active
-                      ? "Active"
-                      : "Inactive"}
+                    {form.active ? "Active" : "Inactive"}
                   </span>
                 </div>
 
@@ -1241,28 +1358,17 @@ export default function ClientDetailsAdmin() {
 
                   {form.legalName && (
                     <>
-                      <span className="text-slate-300">
-                        •
-                      </span>
+                      <span className="text-slate-300">•</span>
 
-                      <span>
-                        {form.legalName}
-                      </span>
+                      <span>{form.legalName}</span>
                     </>
                   )}
 
                   {existing?.updatedAt && (
                     <>
-                      <span className="text-slate-300">
-                        •
-                      </span>
+                      <span className="text-slate-300">•</span>
 
-                      <span>
-                        Updated{" "}
-                        {formatDate(
-                          existing.updatedAt,
-                        )}
-                      </span>
+                      <span>Updated {formatDate(existing.updatedAt)}</span>
                     </>
                   )}
                 </div>
@@ -1279,18 +1385,15 @@ export default function ClientDetailsAdmin() {
                   </div>
 
                   <div className="text-[11px] text-slate-500">
-                    Available for operations
+                    {form.active
+                      ? "Client users can access Omega LIMS"
+                      : "Saving will disable and sign out all client users"}
                   </div>
                 </div>
 
                 <Toggle
                   checked={form.active}
-                  onChange={(value) =>
-                    updateField(
-                      "active",
-                      value,
-                    )
-                  }
+                  onChange={(value) => updateField("active", value)}
                 />
               </div>
 
@@ -1298,16 +1401,10 @@ export default function ClientDetailsAdmin() {
                 type="button"
                 className={buttonPrimary}
                 onClick={save}
-                disabled={
-                  saving ||
-                  (existing !== null && !dirty)
-                }
+                disabled={saving || (existing !== null && !dirty)}
               >
                 {saving ? (
-                  <RefreshCw
-                    size={16}
-                    className="animate-spin"
-                  />
+                  <RefreshCw size={16} className="animate-spin" />
                 ) : (
                   <Save size={16} />
                 )}
@@ -1329,16 +1426,13 @@ export default function ClientDetailsAdmin() {
         <div className="border-t border-slate-200/80 bg-white/70 px-3 py-2.5 backdrop-blur-sm">
           <div className="flex gap-1 overflow-x-auto">
             {SECTIONS.map((item) => {
-              const selected =
-                section === item.value;
+              const selected = section === item.value;
 
               return (
                 <button
                   key={item.value}
                   type="button"
-                  onClick={() =>
-                    setSection(item.value)
-                  }
+                  onClick={() => setSection(item.value)}
                   className={cx(
                     "inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition",
                     selected
@@ -1346,10 +1440,7 @@ export default function ClientDetailsAdmin() {
                       : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
                   )}
                 >
-                  <SectionIcon
-                    section={item.value}
-                    size={15}
-                  />
+                  <SectionIcon section={item.value} size={15} />
 
                   {item.label}
                 </button>
@@ -1377,37 +1468,26 @@ export default function ClientDetailsAdmin() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-              <Field label="Client Code">
-                <input
-                  value={clientCode}
-                  disabled
-                  className={inputBase}
-                />
+              <Field
+                label="Client Code"
+                hint="Unique code assigned to this client."
+              >
+                <input value={clientCode} disabled className={inputBase} />
               </Field>
 
               <Field label="Client Name">
                 <input
                   value={form.name}
-                  onChange={(e) =>
-                    updateField(
-                      "name",
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => updateField("name", e.target.value)}
                   className={inputBase}
-                  placeholder="e.g. JJL Laboratories"
+                  placeholder="e.g. ABC Laboratories"
                 />
               </Field>
 
               <Field label="Legal Name">
                 <input
                   value={form.legalName}
-                  onChange={(e) =>
-                    updateField(
-                      "legalName",
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => updateField("legalName", e.target.value)}
                   className={inputBase}
                   placeholder="Registered company name"
                 />
@@ -1415,14 +1495,9 @@ export default function ClientDetailsAdmin() {
 
               <Field label="Account Manager">
                 <input
-                  value={
-                    form.accountManager
-                  }
+                  value={form.accountManager}
                   onChange={(e) =>
-                    updateField(
-                      "accountManager",
-                      e.target.value,
-                    )
+                    updateField("accountManager", e.target.value)
                   }
                   className={inputBase}
                   placeholder="Omega team member"
@@ -1443,40 +1518,20 @@ export default function ClientDetailsAdmin() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-              <Field
-                label="Address Line 1"
-                className="sm:col-span-2"
-              >
+              <Field label="Address Line 1" className="sm:col-span-2">
                 <input
                   className={inputBase}
-                  value={
-                    form.addressLine1
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "addressLine1",
-                      e.target.value,
-                    )
-                  }
+                  value={form.addressLine1}
+                  onChange={(e) => updateField("addressLine1", e.target.value)}
                   placeholder="Street address"
                 />
               </Field>
 
-              <Field
-                label="Address Line 2"
-                className="sm:col-span-2"
-              >
+              <Field label="Address Line 2" className="sm:col-span-2">
                 <input
                   className={inputBase}
-                  value={
-                    form.addressLine2
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "addressLine2",
-                      e.target.value,
-                    )
-                  }
+                  value={form.addressLine2}
+                  onChange={(e) => updateField("addressLine2", e.target.value)}
                   placeholder="Suite, building, floor"
                 />
               </Field>
@@ -1485,40 +1540,31 @@ export default function ClientDetailsAdmin() {
                 <input
                   className={inputBase}
                   value={form.city}
-                  onChange={(e) =>
-                    updateField(
-                      "city",
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => updateField("city", e.target.value)}
                 />
               </Field>
 
-              <Field label="State / Province">
-                <input
-                  className={inputBase}
+              <Field label="State">
+                <select
+                  className={cx(inputBase, "cursor-pointer")}
                   value={form.state}
-                  onChange={(e) =>
-                    updateField(
-                      "state",
-                      e.target.value,
-                    )
-                  }
-                />
+                  onChange={(e) => updateField("state", e.target.value)}
+                >
+                  {US_STATE_OPTIONS.map((state) => (
+                    <option key={state.value || "EMPTY"} value={state.value}>
+                      {state.value
+                        ? `${state.label} (${state.value})`
+                        : state.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="ZIP / Postal Code">
                 <input
                   className={inputBase}
-                  value={
-                    form.postalCode
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "postalCode",
-                      e.target.value,
-                    )
-                  }
+                  value={form.postalCode}
+                  onChange={(e) => updateField("postalCode", e.target.value)}
                 />
               </Field>
 
@@ -1526,12 +1572,7 @@ export default function ClientDetailsAdmin() {
                 <input
                   className={inputBase}
                   value={form.country}
-                  onChange={(e) =>
-                    updateField(
-                      "country",
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => updateField("country", e.target.value)}
                 />
               </Field>
             </div>
@@ -1550,9 +1591,7 @@ export default function ClientDetailsAdmin() {
           <div className={card}>
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
-                icon={
-                  <UserRound size={17} />
-                }
+                icon={<UserRound size={17} />}
                 title="Primary Contact"
                 description="Main operational contact for this client."
               />
@@ -1567,19 +1606,11 @@ export default function ClientDetailsAdmin() {
                   />
 
                   <input
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="Full name"
-                    value={
-                      form.primaryContactName
-                    }
+                    value={form.primaryContactName}
                     onChange={(e) =>
-                      updateField(
-                        "primaryContactName",
-                        e.target.value,
-                      )
+                      updateField("primaryContactName", e.target.value)
                     }
                   />
                 </div>
@@ -1594,19 +1625,11 @@ export default function ClientDetailsAdmin() {
 
                   <input
                     type="email"
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="name@company.com"
-                    value={
-                      form.primaryContactEmail
-                    }
+                    value={form.primaryContactEmail}
                     onChange={(e) =>
-                      updateField(
-                        "primaryContactEmail",
-                        e.target.value,
-                      )
+                      updateField("primaryContactEmail", e.target.value)
                     }
                   />
                 </div>
@@ -1620,19 +1643,11 @@ export default function ClientDetailsAdmin() {
                   />
 
                   <input
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="+1 (000) 000-0000"
-                    value={
-                      form.primaryContactPhone
-                    }
+                    value={form.primaryContactPhone}
                     onChange={(e) =>
-                      updateField(
-                        "primaryContactPhone",
-                        e.target.value,
-                      )
+                      updateField("primaryContactPhone", e.target.value)
                     }
                   />
                 </div>
@@ -1645,9 +1660,7 @@ export default function ClientDetailsAdmin() {
           <div className={card}>
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
-                icon={
-                  <ContactRound size={17} />
-                }
+                icon={<ContactRound size={17} />}
                 title="Secondary Contact"
                 description="Backup contact when the primary contact is unavailable."
               />
@@ -1662,19 +1675,11 @@ export default function ClientDetailsAdmin() {
                   />
 
                   <input
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="Full name"
-                    value={
-                      form.secondaryContactName
-                    }
+                    value={form.secondaryContactName}
                     onChange={(e) =>
-                      updateField(
-                        "secondaryContactName",
-                        e.target.value,
-                      )
+                      updateField("secondaryContactName", e.target.value)
                     }
                   />
                 </div>
@@ -1689,19 +1694,11 @@ export default function ClientDetailsAdmin() {
 
                   <input
                     type="email"
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="name@company.com"
-                    value={
-                      form.secondaryContactEmail
-                    }
+                    value={form.secondaryContactEmail}
                     onChange={(e) =>
-                      updateField(
-                        "secondaryContactEmail",
-                        e.target.value,
-                      )
+                      updateField("secondaryContactEmail", e.target.value)
                     }
                   />
                 </div>
@@ -1715,24 +1712,331 @@ export default function ClientDetailsAdmin() {
                   />
 
                   <input
-                    className={cx(
-                      inputBase,
-                      "pl-9",
-                    )}
+                    className={cx(inputBase, "pl-9")}
                     placeholder="+1 (000) 000-0000"
-                    value={
-                      form.secondaryContactPhone
-                    }
+                    value={form.secondaryContactPhone}
                     onChange={(e) =>
-                      updateField(
-                        "secondaryContactPhone",
-                        e.target.value,
-                      )
+                      updateField("secondaryContactPhone", e.target.value)
                     }
                   />
                 </div>
               </Field>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+    USERS
+===================================================== */}
+
+      {section === "USERS" && (
+        <div className="space-y-4">
+          {/* Summary */}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {/* Total Users */}
+
+            <div className={cx(card, "p-4")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-slate-500">
+                    Total Users
+                  </div>
+
+                  <div className="mt-1 text-2xl font-bold text-slate-900">
+                    {clientUsers.length}
+                  </div>
+                </div>
+
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <UsersRound size={18} />
+                </div>
+              </div>
+            </div>
+
+            {/* Online */}
+
+            <div className={cx(card, "p-4")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-slate-500">
+                    Online Now
+                  </div>
+
+                  <div className="mt-1 text-2xl font-bold text-emerald-600">
+                    {
+                      clientUsers.filter((user) => onlineUserIds.has(user.id))
+                        .length
+                    }
+                  </div>
+                </div>
+
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <UserCheck size={18} />
+
+                  <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Active */}
+
+            <div className={cx(card, "p-4")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-slate-500">
+                    Active Users
+                  </div>
+
+                  <div className="mt-1 text-2xl font-bold text-slate-900">
+                    {clientUsers.filter((u) => u.active).length}
+                  </div>
+                </div>
+
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <UserCheck size={18} />
+                </div>
+              </div>
+            </div>
+
+            {/* Disabled */}
+
+            <div className={cx(card, "p-4")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-slate-500">
+                    Disabled
+                  </div>
+
+                  <div className="mt-1 text-2xl font-bold text-slate-900">
+                    {clientUsers.filter((u) => !u.active).length}
+                  </div>
+                </div>
+
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <UserX size={18} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* User list */}
+
+          <div className={card}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle
+                icon={<UsersRound size={17} />}
+                title={`Client Users — ${clientCode}`}
+                description="Users assigned to this client account."
+              />
+
+              <button
+                type="button"
+                onClick={loadClientUsers}
+                disabled={usersLoading}
+                className={buttonOutline}
+              >
+                <RefreshCw
+                  size={15}
+                  className={usersLoading ? "animate-spin" : ""}
+                />
+                Refresh
+              </button>
+            </div>
+
+            {usersLoading ? (
+              <div className="flex min-h-[220px] items-center justify-center">
+                <div className="text-center">
+                  <RefreshCw
+                    size={22}
+                    className="mx-auto animate-spin text-indigo-600"
+                  />
+
+                  <div className="mt-3 text-sm text-slate-500">
+                    Loading users...
+                  </div>
+                </div>
+              </div>
+            ) : clientUsers.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                  <UsersRound size={20} />
+                </div>
+
+                <div className="mt-4 font-semibold text-slate-900">
+                  No users assigned
+                </div>
+
+                <div className="mt-1 text-sm text-slate-500">
+                  No CLIENT users are currently assigned to {clientCode}.
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Desktop */}
+
+                <div className="hidden lg:block">
+                  <div className="grid grid-cols-[2fr_1.2fr_0.8fr_0.8fr_1fr_1fr_0.7fr] gap-4 border-b border-slate-100 bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <div>User</div>
+                    <div>User ID</div>
+                    <div>Status</div>
+                    <div>Presence</div>
+                    <div>Last Login</div>
+                    <div>Last Activity</div>
+                    <div className="text-right">Action</div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {clientUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="grid grid-cols-[2fr_1.2fr_0.8fr_0.8fr_1fr_1fr_0.7fr] gap-4 items-center px-5 py-4 transition hover:bg-slate-50/70"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900 truncate">
+                            {user.name || "Unnamed User"}
+                          </div>
+
+                          <div className="mt-0.5 text-xs text-slate-500 truncate">
+                            {user.email}
+                          </div>
+
+                          {user.mustChangePassword && (
+                            <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                              Must change password
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-sm text-slate-600">
+                          {user.userId ?? "—"}
+                        </div>
+
+                        <div>
+                          <span
+                            className={cx(
+                              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1",
+                              user.active
+                                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                : "bg-rose-50 text-rose-700 ring-rose-200",
+                            )}
+                          >
+                            <span
+                              className={cx(
+                                "h-1.5 w-1.5 rounded-full",
+                                user.active ? "bg-emerald-500" : "bg-rose-500",
+                              )}
+                            />
+
+                            {user.active ? "Active" : "Disabled"}
+                          </span>
+                        </div>
+
+                        <div>
+                          {onlineUserIds.has(user.id) ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                              <span className="relative flex h-2 w-2">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                              </span>
+                              Online
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                              <span className="h-2 w-2 rounded-full bg-slate-300" />
+                              Offline
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-slate-500">
+                          {formatDate(user.lastLoginAt)}
+                        </div>
+
+                        <div className="text-xs text-slate-500">
+                          {formatDate(user.lastActivityAt)}
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => openUserEditor(user)}
+                            className={buttonOutline}
+                          >
+                            <Pencil size={14} />
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mobile */}
+
+                <div className="divide-y divide-slate-100 lg:hidden">
+                  {clientUsers.map((user) => (
+                    <div key={user.id} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900">
+                            {user.name || "Unnamed User"}
+                          </div>
+
+                          <div className="mt-1 text-sm text-slate-500 break-all">
+                            {user.email}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-400">
+                            User ID: {user.userId ?? "—"}
+                          </div>
+                        </div>
+
+                        <span
+                          className={cx(
+                            "shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1",
+                            user.active
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                              : "bg-rose-50 text-rose-700 ring-rose-200",
+                          )}
+                        >
+                          {user.active ? "Active" : "Disabled"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-slate-400">Last Login</div>
+
+                          <div className="mt-1 text-slate-700">
+                            {formatDate(user.lastLoginAt)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-slate-400">Last Activity</div>
+
+                          <div className="mt-1 text-slate-700">
+                            {formatDate(user.lastActivityAt)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={cx(buttonOutline, "mt-4 w-full")}
+                        onClick={() => openUserEditor(user)}
+                      >
+                        <Pencil size={14} />
+                        Edit User
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1748,9 +2052,7 @@ export default function ClientDetailsAdmin() {
           <div className={card}>
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
-                icon={
-                  <CalendarDays size={17} />
-                }
+                icon={<CalendarDays size={17} />}
                 title="Working Schedule"
                 description="Defines when client-side reminder time is counted."
               />
@@ -1763,29 +2065,15 @@ export default function ClientDetailsAdmin() {
                 hint={`Stored as ${form.timeZone}`}
               >
                 <select
-                  className={cx(
-                    inputBase,
-                    "cursor-pointer",
-                  )}
+                  className={cx(inputBase, "cursor-pointer")}
                   value={form.timeZone}
-                  onChange={(e) =>
-                    updateField(
-                      "timeZone",
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => updateField("timeZone", e.target.value)}
                 >
-                  {TIME_ZONE_OPTIONS.map(
-                    (zone) => (
-                      <option
-                        key={zone.value}
-                        value={zone.value}
-                      >
-                        {zone.label} —{" "}
-                        {zone.description}
-                      </option>
-                    ),
-                  )}
+                  {TIME_ZONE_OPTIONS.map((zone) => (
+                    <option key={zone.value} value={zone.value}>
+                      {zone.label} — {zone.description}
+                    </option>
+                  ))}
                 </select>
               </Field>
 
@@ -1794,14 +2082,9 @@ export default function ClientDetailsAdmin() {
                   <input
                     type="time"
                     className={inputBase}
-                    value={
-                      form.workdayStart
-                    }
+                    value={form.workdayStart}
                     onChange={(e) =>
-                      updateField(
-                        "workdayStart",
-                        e.target.value,
-                      )
+                      updateField("workdayStart", e.target.value)
                     }
                   />
                 </Field>
@@ -1811,12 +2094,7 @@ export default function ClientDetailsAdmin() {
                     type="time"
                     className={inputBase}
                     value={form.workdayEnd}
-                    onChange={(e) =>
-                      updateField(
-                        "workdayEnd",
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => updateField("workdayEnd", e.target.value)}
                   />
                 </Field>
               </div>
@@ -1834,19 +2112,14 @@ export default function ClientDetailsAdmin() {
 
                 <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
                   {DAYS.map((day) => {
-                    const selected =
-                      form.workingDays.includes(
-                        day.value,
-                      );
+                    const selected = form.workingDays.includes(day.value);
 
                     return (
                       <button
                         key={day.value}
                         type="button"
                         title={day.full}
-                        onClick={() =>
-                          toggleDay(day.value)
-                        }
+                        onClick={() => toggleDay(day.value)}
                         className={cx(
                           "rounded-xl border px-2 py-2.5 text-xs font-semibold transition",
                           selected
@@ -1864,16 +2137,12 @@ export default function ClientDetailsAdmin() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-700">
                   <Clock3 size={14} />
-
                   Current schedule
                 </div>
 
                 <div className="mt-1.5 text-xs text-slate-500">
-                  {workingDaysLabel} •{" "}
-                  {form.workdayStart}–
-                  {form.workdayEnd} •{" "}
-                  {currentTimeZone?.label ??
-                    form.timeZone}
+                  {workingDaysLabel} • {form.workdayStart}–{form.workdayEnd} •{" "}
+                  {currentTimeZone?.label ?? form.timeZone}
                 </div>
               </div>
             </div>
@@ -1884,9 +2153,7 @@ export default function ClientDetailsAdmin() {
           <div className={card}>
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
-                icon={
-                  <BellRing size={17} />
-                }
+                icon={<BellRing size={17} />}
                 title="Workflow Reminders"
                 description="Automatically follow up while a workflow is still waiting for action."
               />
@@ -1900,21 +2167,15 @@ export default function ClientDetailsAdmin() {
                   </div>
 
                   <div className="mt-1 text-xs text-slate-500">
-                    Pause reminders automatically
-                    once the report leaves the
+                    Pause reminders automatically once the report leaves the
                     pending status.
                   </div>
                 </div>
 
                 <Toggle
-                  checked={
-                    form.workflowReminderEnabled
-                  }
+                  checked={form.workflowReminderEnabled}
                   onChange={(value) =>
-                    updateField(
-                      "workflowReminderEnabled",
-                      value,
-                    )
+                    updateField("workflowReminderEnabled", value)
                   }
                 />
               </div>
@@ -1922,8 +2183,7 @@ export default function ClientDetailsAdmin() {
               <div
                 className={cx(
                   "grid grid-cols-1 gap-3 sm:grid-cols-2",
-                  !form.workflowReminderEnabled &&
-                    "opacity-50",
+                  !form.workflowReminderEnabled && "opacity-50",
                 )}
               >
                 <Field
@@ -1934,27 +2194,15 @@ export default function ClientDetailsAdmin() {
                     <input
                       type="number"
                       min={1}
-                      disabled={
-                        !form.workflowReminderEnabled
-                      }
-                      value={
-                        form.workflowReminderIntervalMinutes
-                      }
+                      disabled={!form.workflowReminderEnabled}
+                      value={form.workflowReminderIntervalMinutes}
                       onChange={(e) =>
                         updateField(
                           "workflowReminderIntervalMinutes",
-                          Math.max(
-                            1,
-                            Number(
-                              e.target.value,
-                            ) || 1,
-                          ),
+                          Math.max(1, Number(e.target.value) || 1),
                         )
                       }
-                      className={cx(
-                        inputBase,
-                        "pr-20",
-                      )}
+                      className={cx(inputBase, "pr-20")}
                     />
 
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
@@ -1963,32 +2211,17 @@ export default function ClientDetailsAdmin() {
                   </div>
                 </Field>
 
-                <Field
-                  label="Maximum Reminders"
-                  hint="System maximum is 10."
-                >
+                <Field label="Maximum Reminders" hint="System maximum is 10.">
                   <input
                     type="number"
                     min={1}
                     max={10}
-                    disabled={
-                      !form.workflowReminderEnabled
-                    }
-                    value={
-                      form.workflowReminderMaxCount
-                    }
+                    disabled={!form.workflowReminderEnabled}
+                    value={form.workflowReminderMaxCount}
                     onChange={(e) =>
                       updateField(
                         "workflowReminderMaxCount",
-                        Math.min(
-                          10,
-                          Math.max(
-                            1,
-                            Number(
-                              e.target.value,
-                            ) || 1,
-                          ),
-                        ),
+                        Math.min(10, Math.max(1, Number(e.target.value) || 1)),
                       )
                     }
                     className={inputBase}
@@ -2012,10 +2245,7 @@ export default function ClientDetailsAdmin() {
                       key={label}
                       className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700"
                     >
-                      <Check
-                        size={13}
-                        className="text-emerald-600"
-                      />
+                      <Check size={13} className="text-emerald-600" />
 
                       {label}
                     </div>
@@ -2036,13 +2266,9 @@ export default function ClientDetailsAdmin() {
 
                     <p className="mt-1 text-xs leading-relaxed text-indigo-700">
                       Client-side actions use{" "}
-                      <strong>
-                        {currentTimeZone?.label ??
-                          form.timeZone}
-                      </strong>{" "}
-                      and the working schedule configured
-                      here. Lab-side actions continue to
-                      use Omega's working schedule.
+                      <strong>{currentTimeZone?.label ?? form.timeZone}</strong>{" "}
+                      and the working schedule configured here. Lab-side actions
+                      continue to use Omega's working schedule.
                     </p>
                   </div>
                 </div>
@@ -2063,9 +2289,7 @@ export default function ClientDetailsAdmin() {
           <div className={cx(card, "xl:col-span-2")}>
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
-                icon={
-                  <CreditCard size={17} />
-                }
+                icon={<CreditCard size={17} />}
                 title="Billing Contact"
                 description="Accounts payable or finance contact."
               />
@@ -2075,14 +2299,9 @@ export default function ClientDetailsAdmin() {
               <Field label="Contact Name">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingContactName
-                  }
+                  value={form.billingContactName}
                   onChange={(e) =>
-                    updateField(
-                      "billingContactName",
-                      e.target.value,
-                    )
+                    updateField("billingContactName", e.target.value)
                   }
                   placeholder="Billing contact"
                 />
@@ -2092,15 +2311,8 @@ export default function ClientDetailsAdmin() {
                 <input
                   type="email"
                   className={inputBase}
-                  value={
-                    form.billingEmail
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "billingEmail",
-                      e.target.value,
-                    )
-                  }
+                  value={form.billingEmail}
+                  onChange={(e) => updateField("billingEmail", e.target.value)}
                   placeholder="billing@company.com"
                 />
               </Field>
@@ -2108,15 +2320,8 @@ export default function ClientDetailsAdmin() {
               <Field label="Phone">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingPhone
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "billingPhone",
-                      e.target.value,
-                    )
-                  }
+                  value={form.billingPhone}
+                  onChange={(e) => updateField("billingPhone", e.target.value)}
                   placeholder="+1 (000) 000-0000"
                 />
               </Field>
@@ -2127,15 +2332,8 @@ export default function ClientDetailsAdmin() {
               >
                 <input
                   className={inputBase}
-                  value={
-                    form.paymentTerms
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "paymentTerms",
-                      e.target.value,
-                    )
-                  }
+                  value={form.paymentTerms}
+                  onChange={(e) => updateField("paymentTerms", e.target.value)}
                   placeholder="Net 30"
                 />
               </Field>
@@ -2154,38 +2352,22 @@ export default function ClientDetailsAdmin() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-              <Field
-                label="Address Line 1"
-                className="sm:col-span-2"
-              >
+              <Field label="Address Line 1" className="sm:col-span-2">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingAddressLine1
-                  }
+                  value={form.billingAddressLine1}
                   onChange={(e) =>
-                    updateField(
-                      "billingAddressLine1",
-                      e.target.value,
-                    )
+                    updateField("billingAddressLine1", e.target.value)
                   }
                 />
               </Field>
 
-              <Field
-                label="Address Line 2"
-                className="sm:col-span-2"
-              >
+              <Field label="Address Line 2" className="sm:col-span-2">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingAddressLine2
-                  }
+                  value={form.billingAddressLine2}
                   onChange={(e) =>
-                    updateField(
-                      "billingAddressLine2",
-                      e.target.value,
-                    )
+                    updateField("billingAddressLine2", e.target.value)
                   }
                 />
               </Field>
@@ -2193,44 +2375,33 @@ export default function ClientDetailsAdmin() {
               <Field label="City">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingCity
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "billingCity",
-                      e.target.value,
-                    )
-                  }
+                  value={form.billingCity}
+                  onChange={(e) => updateField("billingCity", e.target.value)}
                 />
               </Field>
 
-              <Field label="State / Province">
-                <input
-                  className={inputBase}
-                  value={
-                    form.billingState
-                  }
-                  onChange={(e) =>
-                    updateField(
-                      "billingState",
-                      e.target.value,
-                    )
-                  }
-                />
+              <Field label="State">
+                <select
+                  className={cx(inputBase, "cursor-pointer")}
+                  value={form.billingState}
+                  onChange={(e) => updateField("billingState", e.target.value)}
+                >
+                  {US_STATE_OPTIONS.map((state) => (
+                    <option key={state.value || "EMPTY"} value={state.value}>
+                      {state.value
+                        ? `${state.label} (${state.value})`
+                        : state.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="ZIP / Postal Code">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingPostalCode
-                  }
+                  value={form.billingPostalCode}
                   onChange={(e) =>
-                    updateField(
-                      "billingPostalCode",
-                      e.target.value,
-                    )
+                    updateField("billingPostalCode", e.target.value)
                   }
                 />
               </Field>
@@ -2238,14 +2409,9 @@ export default function ClientDetailsAdmin() {
               <Field label="Country">
                 <input
                   className={inputBase}
-                  value={
-                    form.billingCountry
-                  }
+                  value={form.billingCountry}
                   onChange={(e) =>
-                    updateField(
-                      "billingCountry",
-                      e.target.value,
-                    )
+                    updateField("billingCountry", e.target.value)
                   }
                 />
               </Field>
@@ -2271,12 +2437,7 @@ export default function ClientDetailsAdmin() {
           <div className="p-5">
             <textarea
               value={form.notes}
-              onChange={(e) =>
-                updateField(
-                  "notes",
-                  e.target.value,
-                )
-              }
+              onChange={(e) => updateField("notes", e.target.value)}
               className={cx(
                 inputBase,
                 "h-auto min-h-[280px] resize-y py-3 leading-relaxed",
@@ -2285,14 +2446,9 @@ export default function ClientDetailsAdmin() {
             />
 
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-              <span>
-                Internal use only
-              </span>
+              <span>Internal use only</span>
 
-              <span>
-                {form.notes.length.toLocaleString()}{" "}
-                characters
-              </span>
+              <span>{form.notes.length.toLocaleString()} characters</span>
             </div>
           </div>
         </div>
@@ -2322,19 +2478,251 @@ export default function ClientDetailsAdmin() {
               disabled={saving}
             >
               {saving ? (
-                <RefreshCw
-                  size={15}
-                  className="animate-spin"
-                />
+                <RefreshCw size={15} className="animate-spin" />
               ) : (
                 <Save size={15} />
               )}
-
               Save
             </button>
           </div>
         </div>
       )}
+
+      <Modal
+        open={userModalOpen}
+        onClose={() => {
+          setUserModalOpen(false);
+          setSelectedUser(null);
+        }}
+        title="Edit Client User"
+      >
+        {!selectedUser ? null : (
+          <div className="space-y-5">
+            {/* User summary */}
+
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                <UserRound size={19} />
+              </div>
+
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-900">
+                  {selectedUser.name || "Unnamed User"}
+                </div>
+
+                <div className="text-sm text-slate-500 truncate">
+                  {selectedUser.email}
+                </div>
+
+                <div className="mt-0.5 text-xs text-slate-400">
+                  {selectedUser.userId ?? "No User ID"} • {clientCode}
+                </div>
+              </div>
+            </div>
+
+            {/* Fields */}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Name">
+                <input
+                  className={inputBase}
+                  value={editUserName}
+                  onChange={(e) => setEditUserName(e.target.value)}
+                />
+              </Field>
+
+              <Field label="Email">
+                <input
+                  type="email"
+                  className={inputBase}
+                  value={editUserEmail}
+                  onChange={(e) => setEditUserEmail(e.target.value)}
+                />
+              </Field>
+
+              <Field label="User ID">
+                <input
+                  disabled
+                  className={inputBase}
+                  value={selectedUser.userId ?? ""}
+                />
+              </Field>
+
+              <Field
+                label="Client Code"
+                hint={
+                  editUserClientCode !==
+                  String(selectedUser.clientCode ?? "").toUpperCase()
+                    ? `This user will be moved from ${
+                        selectedUser.clientCode ?? clientCode
+                      } to ${editUserClientCode || "another client"}.`
+                    : "Client currently assigned to this user."
+                }
+              >
+                <input
+                  className={cx(
+                    inputBase,
+                    editUserClientCode !==
+                      String(selectedUser.clientCode ?? "").toUpperCase() &&
+                      "border-amber-300 bg-amber-50/40 focus:border-amber-400 focus:ring-amber-500/10",
+                  )}
+                  value={editUserClientCode}
+                  maxLength={3}
+                  onChange={(e) => {
+                    const cleaned = e.target.value
+                      .replace(/[^a-zA-Z]/g, "")
+                      .toUpperCase()
+                      .slice(0, 3);
+
+                    setEditUserClientCode(cleaned);
+                  }}
+                  placeholder="ABC"
+                />
+              </Field>
+            </div>
+
+            {/* Status */}
+
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">
+                  Account Status
+                </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  Disabled users cannot log in.
+                </div>
+              </div>
+
+              <Toggle checked={editUserActive} onChange={setEditUserActive} />
+            </div>
+
+            {/* Security */}
+
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Security Actions
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  className={buttonOutline}
+                  onClick={() => resetClientUserPassword(selectedUser)}
+                >
+                  <KeyRound size={15} />
+                  Reset Password
+                </button>
+
+                <button
+                  type="button"
+                  className={cx(
+                    buttonOutline,
+                    "text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700",
+                  )}
+                  onClick={() => forceClientUserSignout(selectedUser)}
+                >
+                  <LogOut size={15} />
+                  Force Signout
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                className={buttonOutline}
+                onClick={() => {
+                  setUserModalOpen(false);
+                  setSelectedUser(null);
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className={buttonPrimary}
+                disabled={userSaving}
+                onClick={saveUser}
+              >
+                {userSaving ? (
+                  <RefreshCw size={15} className="animate-spin" />
+                ) : (
+                  <Save size={15} />
+                )}
+
+                {userSaving ? "Saving..." : "Save User"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+        title="Temporary Password"
+      >
+        <div className="space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">
+              Password reset successful
+            </div>
+
+            <div className="mt-1 text-sm text-slate-500">
+              {passwordUserLabel}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700">
+              Temporary Password
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <code className="break-all text-base font-semibold text-slate-900">
+                {temporaryPassword}
+              </code>
+
+              <button
+                type="button"
+                className={buttonOutline}
+                onClick={copyTemporaryPassword}
+              >
+                {passwordCopied ? (
+                  <>
+                    <Check size={14} className="text-emerald-600" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} />
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="text-xs leading-relaxed text-slate-500">
+            The user will be required to follow your existing password-change
+            policy when they next log in.
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className={buttonPrimary}
+              onClick={() => setPasswordModalOpen(false)}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

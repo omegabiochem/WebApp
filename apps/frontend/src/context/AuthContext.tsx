@@ -98,6 +98,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearTimers();
   }, [clearTimers]);
 
+  useEffect(() => {
+    const onForceLogout = (payload: {
+      reason?: string;
+      clientCode?: string;
+    }) => {
+      console.log("🚪 auth:force-logout received", payload);
+
+      /*
+       * Immediately clear frontend authentication.
+       *
+       * Do NOT call /auth/logout here because
+       * the admin already invalidated the
+       * backend session.
+       */
+      hardLogout();
+
+      /*
+       * Immediately move user to login.
+       */
+      window.location.replace("/login");
+    };
+
+    socket.on("auth:force-logout", onForceLogout);
+
+    return () => {
+      socket.off("auth:force-logout", onForceLogout);
+    };
+  }, [hardLogout]);
+
   const performLogout = useCallback(
     async (reason: LogoutReason) => {
       if (loggingOutRef.current) return;

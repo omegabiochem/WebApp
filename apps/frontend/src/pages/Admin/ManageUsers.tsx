@@ -23,6 +23,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
+  Activity,
   Check,
   Copy,
   Search,
@@ -40,6 +41,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { socket } from "../../lib/socket";
 
 /* -------------------- helpers -------------------- */
 
@@ -269,7 +271,7 @@ export default function UsersAdmin() {
   const isAdmin = user?.role === "ADMIN" || user?.role === "SYSTEMADMIN";
 
   const [tab, setTab] = useState<
-    "USERS" | "NOTIFICATIONS" | "CLIENTS" | "COMMON_ACCOUNTS"
+    "USERS" | "NOTIFICATIONS" | "CLIENTS" | "COMMON_ACCOUNTS" | "LIVE_STATUS"
   >(() => {
     const requested = new URLSearchParams(window.location.search)
       .get("tab")
@@ -278,6 +280,7 @@ export default function UsersAdmin() {
     if (requested === "NOTIFICATIONS") return "NOTIFICATIONS";
     if (requested === "CLIENTS") return "CLIENTS";
     if (requested === "COMMON_ACCOUNTS") return "COMMON_ACCOUNTS";
+    if (requested === "LIVE_STATUS") return "LIVE_STATUS";
 
     return "USERS";
   });
@@ -596,6 +599,20 @@ export default function UsersAdmin() {
           >
             <Users size={16} />
             Common Accounts
+          </button>
+
+          <button
+            onClick={() => setTab("LIVE_STATUS")}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200",
+              tab === "LIVE_STATUS"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+            )}
+            type="button"
+          >
+            <Activity size={16} />
+            Live Status
           </button>
         </div>
       </div>
@@ -1154,6 +1171,7 @@ export default function UsersAdmin() {
       {/* {tab === "REPORTS" && <ReportsAdminTab />} */}
       {tab === "CLIENTS" && <ClientsAdminTab />}
       {tab === "COMMON_ACCOUNTS" && <CommonAccountsAdminTab />}
+      {tab === "LIVE_STATUS" && <LiveStatusAdminTab />}
 
       {/* Create result modal */}
       <Modal
@@ -2724,6 +2742,720 @@ function CommonAccountsAdminTab() {
                   </div>
                 )}
               </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== LIVE STATUS ==================== */
+
+function LiveStatusAdminTab() {
+  const [users, setUsers] = useState<UserRow[]>([]);
+
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const [loading, setLoading] = useState(false);
+
+  const [q, setQ] = useState("");
+
+  const [roleFilter, setRoleFilter] = useState<Role | "ALL">("ALL");
+
+  const [clientFilter, setClientFilter] = useState<string>("ALL");
+
+  const clientCodeOptions = useMemo(() => {
+    const codes = Array.from(
+      new Set(
+        users
+          .map((u) =>
+            String(u.clientCode ?? "")
+              .trim()
+              .toUpperCase(),
+          )
+          .filter(Boolean),
+      ),
+    ).sort();
+
+    return ["ALL", ...codes];
+  }, [users]);
+
+  const [presenceFilter, setPresenceFilter] = useState<
+    "ALL" | "ONLINE" | "OFFLINE"
+  >("ALL");
+
+  /* =====================================================
+     LOAD USERS
+  ===================================================== */
+
+  async function loadUsersForPresence() {
+    setLoading(true);
+
+    try {
+      const res = await fetchUsers({
+        q: "",
+        role: "ALL",
+        active: "ALL",
+        page: 1,
+        pageSize: 500,
+      });
+
+      setUsers(res.items);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* =====================================================
+     PRESENCE SNAPSHOT
+  ===================================================== */
+
+  function requestPresence() {
+    if (!socket.connected) {
+      return;
+    }
+
+    socket.emit(
+      "presence:get",
+      {},
+      (response: { onlineUserIds?: string[] }) => {
+        setOnlineUserIds(new Set(response?.onlineUserIds ?? []));
+      },
+    );
+  }
+
+  /* =====================================================
+     INITIAL LOAD
+  ===================================================== */
+
+  useEffect(() => {
+    void loadUsersForPresence();
+
+    requestPresence();
+  }, []);
+
+  /* =====================================================
+     REAL-TIME PRESENCE
+  ===================================================== */
+
+  useEffect(() => {
+    const onPresenceChanged = (payload: {
+      userId?: string;
+      online?: boolean;
+    }) => {
+      if (!payload?.userId) {
+        return;
+      }
+
+      setOnlineUserIds((previous) => {
+        const next = new Set(previous);
+
+        if (payload.online) {
+          next.add(payload.userId!);
+        } else {
+          next.delete(payload.userId!);
+        }
+
+        return next;
+      });
+    };
+
+    const onConnect = () => {
+      requestPresence();
+    };
+
+    socket.on("presence:changed", onPresenceChanged);
+
+    socket.on("connect", onConnect);
+
+    return () => {
+      socket.off("presence:changed", onPresenceChanged);
+
+      socket.off("connect", onConnect);
+    };
+  }, []);
+
+  /* =====================================================
+     COUNTS
+  ===================================================== */
+
+  const onlineUsers = useMemo(
+    () => users.filter((u) => onlineUserIds.has(u.id)),
+    [users, onlineUserIds],
+  );
+
+  const staffOnlineCount = useMemo(
+    () => onlineUsers.filter((u) => u.role !== "CLIENT").length,
+    [onlineUsers],
+  );
+
+  const clientOnlineCount = useMemo(
+    () => onlineUsers.filter((u) => u.role === "CLIENT").length,
+    [onlineUsers],
+  );
+
+  /* =====================================================
+     FILTER
+  ===================================================== */
+
+  const filteredUsers = useMemo(() => {
+    const search = q.trim().toLowerCase();
+
+    return users
+      .filter((u) => {
+        const online = onlineUserIds.has(u.id);
+
+        if (presenceFilter === "ONLINE" && !online) {
+          return false;
+        }
+
+        if (presenceFilter === "OFFLINE" && online) {
+          return false;
+        }
+
+        if (roleFilter !== "ALL" && u.role !== roleFilter) {
+          return false;
+        }
+
+        if (clientFilter !== "ALL") {
+          const userClientCode = String(u.clientCode ?? "")
+            .trim()
+            .toUpperCase();
+
+          if (userClientCode !== clientFilter) {
+            return false;
+          }
+        }
+
+        if (!search) {
+          return true;
+        }
+
+        return (
+          String(u.name ?? "")
+            .toLowerCase()
+            .includes(search) ||
+          String(u.email ?? "")
+            .toLowerCase()
+            .includes(search) ||
+          String(u.userId ?? "")
+            .toLowerCase()
+            .includes(search) ||
+          String(u.clientCode ?? "")
+            .toLowerCase()
+            .includes(search)
+        );
+      })
+      .sort((a, b) => {
+        /*
+         * Online users first.
+         */
+        const aOnline = onlineUserIds.has(a.id);
+
+        const bOnline = onlineUserIds.has(b.id);
+
+        if (aOnline !== bOnline) {
+          return aOnline ? -1 : 1;
+        }
+
+        return String(a.name ?? a.email).localeCompare(
+          String(b.name ?? b.email),
+        );
+      });
+  }, [users, onlineUserIds, q, roleFilter, clientFilter, presenceFilter]);
+
+  /* =====================================================
+     FORCE SIGNOUT
+  ===================================================== */
+
+  async function forceSignout(user: UserRow) {
+    const confirmed = window.confirm(`Force sign out ${user.email}?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await forceUserSignout(user.id);
+
+      toast.success("User signed out");
+
+      /*
+       * Presence socket should remove
+       * them automatically when their
+       * browser disconnects.
+       *
+       * Also update locally immediately.
+       */
+      setOnlineUserIds((previous) => {
+        const next = new Set(previous);
+
+        next.delete(user.id);
+
+        return next;
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Force signout failed");
+    }
+  }
+
+  /* =====================================================
+     REFRESH
+  ===================================================== */
+
+  async function refreshAll() {
+    await loadUsersForPresence();
+
+    requestPresence();
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
+
+      <div className={cx(card, "overflow-hidden")}>
+        <div
+          className={cx(
+            cardHeader,
+            "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          )}
+        >
+          <div>
+            <div className="flex items-center gap-2">
+              <Activity size={18} className="text-emerald-600" />
+
+              <div className="font-semibold text-slate-900">
+                Live User Status
+              </div>
+            </div>
+
+            <div className="mt-1 text-xs text-slate-500">
+              Real-time Omega LIMS user presence. Online status updates
+              automatically.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={refreshAll}
+            disabled={loading}
+            className={btn.outline}
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ===================================================
+          SUMMARY
+      =================================================== */}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Online */}
+
+        <div className={cx(card, "p-4")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-slate-500">
+                Online Now
+              </div>
+
+              <div className="mt-1 text-2xl font-bold text-emerald-600">
+                {onlineUsers.length}
+              </div>
+            </div>
+
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <Activity size={18} />
+
+              <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Staff */}
+
+        <div className={cx(card, "p-4")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-slate-500">
+                Staff Online
+              </div>
+
+              <div className="mt-1 text-2xl font-bold text-slate-900">
+                {staffOnlineCount}
+              </div>
+            </div>
+
+            <Shield size={19} className="text-indigo-600" />
+          </div>
+        </div>
+
+        {/* Clients */}
+
+        <div className={cx(card, "p-4")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-slate-500">
+                Client Users Online
+              </div>
+
+              <div className="mt-1 text-2xl font-bold text-slate-900">
+                {clientOnlineCount}
+              </div>
+            </div>
+
+            <Users size={19} className="text-blue-600" />
+          </div>
+        </div>
+
+        {/* Total */}
+
+        <div className={cx(card, "p-4")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-slate-500">
+                Total Accounts
+              </div>
+
+              <div className="mt-1 text-2xl font-bold text-slate-900">
+                {users.length}
+              </div>
+            </div>
+
+            <Users size={19} className="text-slate-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================
+          FILTERS
+      =================================================== */}
+
+      <div className={cx(card, "p-4")}>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px_180px_180px]">
+          {/* Search */}
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">Search</label>
+
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <Search size={16} className="text-slate-400" />
+
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                placeholder="Name, email, user ID, client..."
+              />
+            </div>
+          </div>
+
+          {/* Role */}
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">Role</label>
+
+            <select
+              className={cx(inputBase, "cursor-pointer")}
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as Role | "ALL")}
+            >
+              {roleOptions.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Client Code */}
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">
+              Client Code
+            </label>
+
+            <select
+              className={cx(inputBase, "cursor-pointer")}
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+            >
+              {clientCodeOptions.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Presence */}
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">
+              Presence
+            </label>
+
+            <select
+              className={cx(inputBase, "cursor-pointer")}
+              value={presenceFilter}
+              onChange={(e) =>
+                setPresenceFilter(
+                  e.target.value as "ALL" | "ONLINE" | "OFFLINE",
+                )
+              }
+            >
+              <option value="ALL">All</option>
+
+              <option value="ONLINE">Online</option>
+
+              <option value="OFFLINE">Offline</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================
+          USER TABLE
+      =================================================== */}
+
+      <div className={cx(card, "overflow-hidden")}>
+        <div className={cx(cardHeader, "flex items-center justify-between")}>
+          <div className="text-sm text-slate-600">
+            Showing{" "}
+            <span className="font-semibold text-slate-900">
+              {filteredUsers.length}
+            </span>{" "}
+            users
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Real-time
+          </div>
+        </div>
+
+        {loading && users.length === 0 ? (
+          <div className="p-10 text-center text-sm text-slate-500">
+            Loading users...
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="p-10 text-center text-sm text-slate-500">
+            No users found.
+          </div>
+        ) : (
+          <>
+            {/* Desktop */}
+
+            <div className="hidden lg:block">
+              <div className="grid grid-cols-[2fr_1fr_1fr_0.9fr_0.9fr_1.2fr_1.2fr_0.8fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
+                <div>User</div>
+                <div>Role</div>
+                <div>Client</div>
+                <div>Status</div>
+                <div>Presence</div>
+                <div>Last Login</div>
+                <div>Last Activity</div>
+                <div className="text-right">Action</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {filteredUsers.map((u) => {
+                  const online = onlineUserIds.has(u.id);
+
+                  return (
+                    <div
+                      key={u.id}
+                      className="grid grid-cols-[2fr_1fr_1fr_0.9fr_0.9fr_1.2fr_1.2fr_0.8fr] items-center gap-3 px-4 py-4 transition hover:bg-slate-50"
+                    >
+                      {/* User */}
+
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-slate-900">
+                          {u.name ?? "—"}
+                        </div>
+
+                        <div className="truncate text-sm text-slate-600">
+                          {u.email}
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-400">
+                          {u.userId ?? "—"}
+                        </div>
+                      </div>
+
+                      {/* Role */}
+
+                      <div>
+                        <span
+                          className={cx(
+                            "inline-flex rounded-full px-2 py-1 text-xs ring-1",
+                            rolePillClass(u.role),
+                          )}
+                        >
+                          {u.role}
+                        </span>
+                      </div>
+
+                      {/* Client */}
+
+                      <div className="text-sm text-slate-700">
+                        {u.clientCode ?? "—"}
+                      </div>
+
+                      {/* Active */}
+
+                      <div>
+                        <span
+                          className={cx(
+                            "inline-flex rounded-full px-2 py-1 text-xs ring-1",
+                            statusPill(u.active),
+                          )}
+                        >
+                          {u.active ? "ACTIVE" : "DISABLED"}
+                        </span>
+                      </div>
+
+                      {/* Presence */}
+
+                      <div>
+                        {online ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                            <span className="relative flex h-2 w-2">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+
+                              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                            </span>
+                            Online
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                            <span className="h-2 w-2 rounded-full bg-slate-300" />
+                            Offline
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Last login */}
+
+                      <div className="text-xs text-slate-600">
+                        {fmtDate(u.lastLoginAt)}
+                      </div>
+
+                      {/* Last activity */}
+
+                      <div className="text-xs text-slate-600">
+                        {fmtDate(u.lastActivityAt)}
+                      </div>
+
+                      {/* Actions */}
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={!online}
+                          onClick={() => forceSignout(u)}
+                          className={cx(btn.danger, !online && "opacity-40")}
+                        >
+                          Signout
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mobile */}
+
+            <div className="divide-y divide-slate-200 lg:hidden">
+              {filteredUsers.map((u) => {
+                const online = onlineUserIds.has(u.id);
+
+                return (
+                  <div key={u.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900">
+                          {u.name ?? "—"}
+                        </div>
+
+                        <div className="break-all text-sm text-slate-600">
+                          {u.email}
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-500">
+                          User ID: {u.userId ?? "—"}
+                        </div>
+                      </div>
+
+                      {online ? (
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                          Online
+                        </span>
+                      ) : (
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                          <span className="h-2 w-2 rounded-full bg-slate-300" />
+                          Offline
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <div className="text-slate-400">Role</div>
+
+                        <div className="mt-1 font-medium text-slate-700">
+                          {u.role}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-slate-400">Client</div>
+
+                        <div className="mt-1 font-medium text-slate-700">
+                          {u.clientCode ?? "—"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-slate-400">Last Login</div>
+
+                        <div className="mt-1 text-slate-700">
+                          {fmtDate(u.lastLoginAt)}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-slate-400">Last Activity</div>
+
+                        <div className="mt-1 text-slate-700">
+                          {fmtDate(u.lastActivityAt)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {online && (
+                      <button
+                        type="button"
+                        onClick={() => forceSignout(u)}
+                        className={cx(btn.danger, "mt-4 w-full")}
+                      >
+                        Force Signout
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
