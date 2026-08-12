@@ -2263,15 +2263,29 @@ export default function ChemistryDashboard() {
                         setBulkUpdating(true);
 
                         try {
-                          const updatedReports = await Promise.all(
-                            selected.map((r) =>
-                              setStatus({
-                                report: r,
-                                newStatus: s,
-                                reason: "Bulk Status Change",
-                              }),
-                            ),
-                          );
+                          const updatedReports: Report[] = [];
+
+                          const BATCH_SIZE = 2;
+
+                          for (
+                            let i = 0;
+                            i < selected.length;
+                            i += BATCH_SIZE
+                          ) {
+                            const batch = selected.slice(i, i + BATCH_SIZE);
+
+                            const batchResults = await Promise.all(
+                              batch.map((r) =>
+                                setStatus({
+                                  report: r,
+                                  newStatus: s,
+                                  reason: "Bulk Status Change",
+                                }),
+                              ),
+                            );
+
+                            updatedReports.push(...batchResults);
+                          }
 
                           const updatedMap = new Map(
                             updatedReports.map((r) => [r.id, r]),
@@ -2298,7 +2312,14 @@ export default function ChemistryDashboard() {
 
                           setSelectedIds([]);
                           setSelectedReportsById({});
+
+                          // refresh dashboard from backend
+                          setRefreshKey((x) => x + 1);
                         } catch (e: any) {
+                          console.error("Bulk status update failed:", e);
+
+                          setRefreshKey((x) => x + 1);
+
                           alert(e?.message || "Bulk update failed");
                         } finally {
                           setBulkUpdating(false);

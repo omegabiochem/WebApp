@@ -6,9 +6,7 @@ import {
   STATUS_TRANSITIONS as MICRO_STATUS_TRANSITIONS,
   type ReportStatus,
 } from "../../utils/microMixReportFormWorkflow";
-import {
-  STATUS_COLORS,
-} from "../../utils/microMixReportFormWorkflow";
+import { STATUS_COLORS } from "../../utils/microMixReportFormWorkflow";
 import { api, API_URL } from "../../lib/api";
 import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
 import { createPortal } from "react-dom";
@@ -305,8 +303,6 @@ function BulkPrintArea({
   );
 }
 
-
-
 function ApeChildPrintArea({
   report,
   reportType,
@@ -329,7 +325,10 @@ function ApeChildPrintArea({
   }, [onAfterPrint]);
 
   return (
-    <div id="bulk-print-root" className="hidden print:block ape-child-print-root">
+    <div
+      id="bulk-print-root"
+      className="hidden print:block ape-child-print-root"
+    >
       <div className="report-page">
         {reportType === "APE_VALIDATION_REPORT" ? (
           <ApeValidationReportView
@@ -344,7 +343,13 @@ function ApeChildPrintArea({
     </div>
   );
 }
-type ReportKind = "MICRO" | "MICRO_WATER" | "STERILITY" | "APE" | "CHEMISTRY" | "COA";
+type ReportKind =
+  | "MICRO"
+  | "MICRO_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY"
+  | "COA";
 
 function getReportKind(r: Report): ReportKind {
   switch (r.formType) {
@@ -702,9 +707,9 @@ export default function FrontDeskDashboard() {
     reportType: ApeReportTab;
   } | null>(null);
 
-  const [apeReportTabs, setApeReportTabs] = useState<Record<string, ApeReportTab>>(
-    {},
-  );
+  const [apeReportTabs, setApeReportTabs] = useState<
+    Record<string, ApeReportTab>
+  >({});
 
   const [apeChildReports, setApeChildReports] = useState<Record<string, any>>(
     {},
@@ -1404,10 +1409,21 @@ export default function FrontDeskDashboard() {
           if (!ok) return;
         }
       }
+      const BATCH_SIZE = 2;
 
-      const updatedReports = await Promise.all(
-        selected.map((r) => setStatus(r, toStatus, reason, { eSignPassword })),
-      );
+      const updatedReports: Report[] = [];
+
+      for (let i = 0; i < selected.length; i += BATCH_SIZE) {
+        const batch = selected.slice(i, i + BATCH_SIZE);
+
+        const results = await Promise.all(
+          batch.map((report) =>
+            setStatus(report, toStatus, reason, { eSignPassword }),
+          ),
+        );
+
+        updatedReports.push(...results);
+      }
 
       const updatedMap = new Map(updatedReports.map((r) => [r.id, r]));
 
@@ -2282,7 +2298,6 @@ export default function FrontDeskDashboard() {
     });
   };
 
-
   function getApeReportTab(parentId: string): ApeReportTab {
     return apeReportTabs[parentId] ?? "APE_VALIDATION_REPORT";
   }
@@ -2471,7 +2486,6 @@ export default function FrontDeskDashboard() {
     });
   }
 
-
   function isBlankApeValue(value: unknown) {
     return value === null || value === undefined || String(value).trim() === "";
   }
@@ -2502,16 +2516,52 @@ export default function FrontDeskDashboard() {
     }
 
     addApeMissing(missing, "APE Validation Report - Client", child?.client);
-    addApeMissing(missing, "APE Validation Report - Date Sent", child?.dateSent);
-    addApeMissing(missing, "APE Validation Report - Type of Test", child?.typeOfTest);
-    addApeMissing(missing, "APE Validation Report - Sample Type", child?.sampleType);
-    addApeMissing(missing, "APE Validation Report - Formula #", child?.formulaNo);
-    addApeMissing(missing, "APE Validation Report - Description", child?.description);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Sent",
+      child?.dateSent,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Type of Test",
+      child?.typeOfTest,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Sample Type",
+      child?.sampleType,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Formula #",
+      child?.formulaNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Description",
+      child?.description,
+    );
     addApeMissing(missing, "APE Validation Report - Lot #", child?.lotNo);
-    addApeMissing(missing, "APE Validation Report - Test SOP #", child?.testSopNo);
-    addApeMissing(missing, "APE Validation Report - Test Reference", child?.testReference);
-    addApeMissing(missing, "APE Validation Report - Date Tested", child?.dateTested);
-    addApeMissing(missing, "APE Validation Report - Date Completed", child?.dateCompleted);
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test SOP #",
+      child?.testSopNo,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Test Reference",
+      child?.testReference,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Tested",
+      child?.dateTested,
+    );
+    addApeMissing(
+      missing,
+      "APE Validation Report - Date Completed",
+      child?.dateCompleted,
+    );
 
     const sections = Array.isArray(child?.validationSections)
       ? child.validationSections
@@ -2692,7 +2742,9 @@ export default function FrontDeskDashboard() {
 
 Missing: ${missing
         .slice(0, 8)
-        .join("\n- ")}${missing.length > 8 ? `\n+${missing.length - 8} more` : ""}`,
+        .join(
+          "\n- ",
+        )}${missing.length > 8 ? `\n+${missing.length - 8} more` : ""}`,
     );
 
     return false;
@@ -2703,7 +2755,10 @@ Missing: ${missing
     const validationChild = makeApeChildReport(parent, "APE_VALIDATION_REPORT");
     const apeChild = makeApeChildReport(parent, "APE_REPORT");
 
-    const beforeParentStatusChange = (targetStatus: string, currentChild?: any) =>
+    const beforeParentStatusChange = (
+      targetStatus: string,
+      currentChild?: any,
+    ) =>
       validateBothApeChildReportsBeforeStatusChange(
         parent,
         targetStatus,
@@ -4100,41 +4155,41 @@ Missing: ${missing
                   selectedModalMode === "UPDATE"
                 ) &&
                   canUpdateThisReport(selectedReport, user) && (
-                  <button
-                    disabled={modalUpdating}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    onClick={async () => {
-                      if (modalUpdating) return;
-                      setModalUpdating(true);
+                    <button
+                      disabled={modalUpdating}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                      onClick={async () => {
+                        if (modalUpdating) return;
+                        setModalUpdating(true);
 
-                      try {
-                        let target = selectedReport;
-                        if (!target) return;
+                        try {
+                          let target = selectedReport;
+                          if (!target) return;
 
-                        if (
-                          target.status ===
-                          "PRELIMINARY_TESTING_NEEDS_CORRECTION"
-                        ) {
-                          target = await setStatus(
-                            target,
-                            "UNDER_CLIENT_PRELIMINARY_CORRECTION",
-                            "Sent back to client for correction",
-                          );
+                          if (
+                            target.status ===
+                            "PRELIMINARY_TESTING_NEEDS_CORRECTION"
+                          ) {
+                            target = await setStatus(
+                              target,
+                              "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+                              "Sent back to client for correction",
+                            );
+                          }
+
+                          setSelectedReport(null);
+                          openUpdateTarget(target);
+                        } catch (e: any) {
+                          alert(e?.message || "Failed to update status");
+                        } finally {
+                          setModalUpdating(false);
                         }
-
-                        setSelectedReport(null);
-                        openUpdateTarget(target);
-                      } catch (e: any) {
-                        alert(e?.message || "Failed to update status");
-                      } finally {
-                        setModalUpdating(false);
-                      }
-                    }}
-                  >
-                    {modalUpdating ? <Spinner /> : null}
-                    {modalUpdating ? "Updating..." : "Update"}
-                  </button>
-                )}
+                      }}
+                    >
+                      {modalUpdating ? <Spinner /> : null}
+                      {modalUpdating ? "Updating..." : "Update"}
+                    </button>
+                  )}
 
                 <button
                   disabled={printingSingle}

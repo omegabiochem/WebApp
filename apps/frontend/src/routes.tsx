@@ -48,6 +48,7 @@ import ApeReportForm from "./pages/Reports/ApeReportForm";
 import ApeValidationReport from "./pages/LabReports/ApeValidationReport";
 import ApeReport from "./pages/LabReports/ApeReport";
 import ApeLoginBook from "./loginbooks/ApeLoginBook";
+import ClientDetailsAdmin from "./pages/Admin/ClientDetailsAdmin";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -277,7 +278,7 @@ export const router = createBrowserRouter([
         ),
       },
 
-         {
+      {
         path: "reports/ape-report/new",
         element: (
           <RequireAuth>
@@ -540,6 +541,17 @@ export const router = createBrowserRouter([
       },
 
       {
+        path: "manage-users/client/:clientCode",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+              <ClientDetailsAdmin />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
         path: "chemistryLoginBook",
         element: (
           <RequireAuth>
@@ -562,7 +574,7 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
- {
+      {
         path: "apeLoginBook",
         element: (
           <RequireAuth>
