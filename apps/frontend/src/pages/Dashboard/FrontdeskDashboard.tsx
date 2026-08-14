@@ -1463,6 +1463,33 @@ export default function FrontDeskDashboard() {
     setBulkUpdating(true);
 
     try {
+      const missingAttachments = selected.filter(
+        (report) => Number(report.attachmentsCount ?? 0) < 1,
+      );
+
+      if (missingAttachments.length > 0) {
+        const forms = missingAttachments
+          .slice(0, 10)
+          .map((r) => r.formNumber)
+          .join(", ");
+
+        alert(
+          `Bulk Status cannot be changed.\n\n` +
+            `${missingAttachments.length} selected report${
+              missingAttachments.length === 1 ? "" : "s"
+            } ${
+              missingAttachments.length === 1 ? "has" : "have"
+            } no attachment.\n\n` +
+            `Missing attachment:\n${forms}${
+              missingAttachments.length > 10
+                ? `\n+${missingAttachments.length - 10} more`
+                : ""
+            }`,
+        );
+
+        return;
+      }
+
       for (const report of selected) {
         if (
           report.formType === "APE" &&
@@ -1668,6 +1695,13 @@ export default function FrontDeskDashboard() {
     .filter(Boolean) as Report[];
 
   const selected = selectedReportObjects;
+
+  const selectedMissingAttachments = useMemo(() => {
+    return selected.filter((r) => Number(r.attachmentsCount ?? 0) < 1);
+  }, [selected]);
+
+  const selectedAllHaveAttachments =
+    selected.length > 0 && selectedMissingAttachments.length === 0;
 
   const selectedSameKindAndStatus = useMemo(() => {
     if (selected.length === 0) return false;
@@ -3242,8 +3276,18 @@ Missing: ${missing
               disabled={
                 !selectedIds.length ||
                 !selectedSameKindAndStatus ||
+                !selectedAllHaveAttachments ||
                 bulkUpdating ||
                 printingBulk
+              }
+              title={
+                selectedIds.length > 0 && !selectedAllHaveAttachments
+                  ? `${selectedMissingAttachments.length} selected report${
+                      selectedMissingAttachments.length === 1 ? "" : "s"
+                    } ${
+                      selectedMissingAttachments.length === 1 ? "does" : "do"
+                    } not have an attachment`
+                  : "Bulk Status"
               }
               onClick={(e) => {
                 e.stopPropagation();
@@ -3251,12 +3295,15 @@ Missing: ${missing
               }}
               className={classNames(
                 "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition",
-                selectedIds.length && selectedSameKindAndStatus
+                selectedIds.length &&
+                  selectedSameKindAndStatus &&
+                  selectedAllHaveAttachments
                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
                   : "bg-slate-200 text-slate-500 cursor-not-allowed",
               )}
             >
               {bulkUpdating ? <Spinner /> : "⚡"}
+
               {bulkUpdating
                 ? "Applying..."
                 : `Bulk Status (${selectedIds.length})`}
