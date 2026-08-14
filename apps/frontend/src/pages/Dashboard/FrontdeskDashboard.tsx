@@ -3673,8 +3673,14 @@ Missing: ${missing
             <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-30 bg-slate-50">
                 <tr className="text-left text-slate-600">
-                  <th className="bg-slate-50 px-3 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
-                  <th className="bg-slate-50 px-4 py-3 font-medium w-10 whitespace-nowrap">
+                  {/* Pin */}
+                  <th className="bg-slate-50 px-2 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+
+                  {/* Attachment indicator */}
+                  <th className="bg-slate-50 px-1 py-3 font-medium w-6 whitespace-nowrap text-center"></th>
+
+                  {/* Checkbox */}
+                  <th className="bg-slate-50 px-3 py-3 font-medium w-8 whitespace-nowrap text-center">
                     <input
                       type="checkbox"
                       checked={allOnPageSelected}
@@ -3682,6 +3688,7 @@ Missing: ${missing
                       disabled={printingBulk}
                     />
                   </th>
+
                   {selectedCols.map((k) => (
                     <th
                       key={k}
@@ -3690,10 +3697,6 @@ Missing: ${missing
                       {DASHBOARD_COLS.find((c) => c.key === k)?.label ?? k}
                     </th>
                   ))}
-
-                  <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap text-center">
-                    Attachment
-                  </th>
 
                   <th className="bg-slate-50 px-4 py-3 font-medium whitespace-nowrap">
                     Status
@@ -3802,8 +3805,15 @@ Missing: ${missing
                       <td className="pl-2 pr-1 py-3">
                         <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
                       </td>
-                      <td className="pl-1 pr-3 py-3">
-                        <div className="h-4 w-4 rounded bg-slate-200" />
+
+                      {/* attachment */}
+                      <td className="px-1 py-3">
+                        <div className="mx-auto h-4 w-4 animate-pulse rounded bg-slate-200" />
+                      </td>
+
+                      {/* checkbox */}
+                      <td className="px-2 py-3">
+                        <div className="mx-auto h-4 w-4 rounded bg-slate-200" />
                       </td>
 
                       {selectedCols.map((k) => (
@@ -3841,7 +3851,8 @@ Missing: ${missing
                           isPinned(r.id) && "bg-blue-50/40",
                         )}
                       >
-                        <td className="pl-2 pr-1 py-3 text-center">
+                        {/* Pin */}
+                        <td className="pl-1 py-3 text-center">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -3864,7 +3875,32 @@ Missing: ${missing
                             />
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+
+                        {/* Attachment symbol */}
+                        <td className="py-3 text-center">
+                          {Number(r.attachmentsCount ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              title={`${r.attachmentsCount} attachment${
+                                Number(r.attachmentsCount) === 1 ? "" : "s"
+                              }`}
+                              aria-label={`${r.attachmentsCount} attachments`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+
+                                setSelectedModalMode("VIEW");
+                                setSelectedReport(r);
+                                setSelectedViewPane("ATTACHMENTS");
+                              }}
+                              className="inline-flex items-center justify-center rounded-md p-1 text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Checkbox */}
+                        <td className=" py-3 text-center">
                           <input
                             type="checkbox"
                             checked={isRowSelected(r.id)}
@@ -3884,37 +3920,7 @@ Missing: ${missing
                             )}
                           </td>
                         ))}
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          {Number(r.attachmentsCount ?? 0) > 0 && (
-                            <button
-                              type="button"
-                              title={`${r.attachmentsCount} attachment${
-                                r.attachmentsCount === 1 ? "" : "s"
-                              } attached`}
-                              onClick={() => {
-                                setSelectedModalMode("VIEW");
-                                setSelectedReport(r);
-                                setSelectedViewPane("ATTACHMENTS");
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100"
-                            >
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                              </span>
 
-                              <Paperclip className="h-3.5 w-3.5" />
-
-                              <span>Attached</span>
-
-                              {Number(r.attachmentsCount ?? 0) > 1 && (
-                                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] leading-none text-white">
-                                  {r.attachmentsCount}
-                                </span>
-                              )}
-                            </button>
-                          )}
-                        </td>
                         <td className="px-4 py-3">
                           <span
                             className={classNames(
