@@ -298,7 +298,6 @@ const DashStyles = () => (
   `}</style>
 );
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -315,7 +314,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -613,7 +614,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   const footerRevNo = report?.footerRevNo || "Rev-02";
 
   const footerDateEffective = report?.footerDateEffective
-    ? new Date(report.footerDateEffective).toLocaleDateString("en-US",{timeZone: "UTC"})
+    ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
+        timeZone: "UTC",
+      })
     : "06/03/2026";
 
   const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
@@ -717,15 +720,28 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
   const rawTbcUnit = getSpecUnit(report?.tbc_spec);
   const rawTmyUnit = getSpecUnit(report?.tmy_spec);
-  const isDeviceSpecification =
-    rawTbcUnit === "CFU / device" || rawTmyUnit === "CFU / device";
 
-  const tbcUnit = isDeviceSpecification ? "CFU / device" : rawTbcUnit;
-  const tmyUnit = isDeviceSpecification ? "CFU / device" : rawTmyUnit;
+  const hasTbcSpec = String(report?.tbc_spec ?? "").trim().length > 0;
+
+  const hasTmySpec = String(report?.tmy_spec ?? "").trim().length > 0;
+
+  // One shared unit for both rows
+  const sharedUnit =
+    rawTbcUnit === "CFU / device" || rawTmyUnit === "CFU / device"
+      ? "CFU / device"
+      : hasTbcSpec
+        ? rawTbcUnit
+        : hasTmySpec
+          ? rawTmyUnit
+          : rawTbcUnit;
+
+  const isDeviceSpecification = sharedUnit === "CFU / device";
+
+  const tbcUnit = sharedUnit;
+  const tmyUnit = sharedUnit;
 
   const sharedDeviceSpecValue =
     getSpecValue(report?.tbc_spec) || getSpecValue(report?.tmy_spec);
-
 
   return (
     <div
@@ -1063,7 +1079,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                     Total Bacterial Count:
                   </div>
                   <div className="px-1 py-0 border-r border-b border-black flex items-center justify-center">
-                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^1</div>
+                    <div className="px-0 py-0 text-center whitespace-nowrap">
+                      x 10^1
+                    </div>
                   </div>
                   <div
                     className={`px-1 py-0 border-r border-b border-black flex items-center relative ${dashClass("tbc_gram")}`}
@@ -1084,7 +1102,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                       readOnly
                       disabled
                     />
-                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tbcUnit}</div>
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">
+                      {tbcUnit}
+                    </div>
                   </div>
 
                   <div
@@ -1107,7 +1127,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                     Total Mold & Yeast Count:
                   </div>
                   <div className="px-1 py-0 border-r border-black flex items-center justify-center">
-                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^1</div>
+                    <div className="px-0 py-0 text-center whitespace-nowrap">
+                      x 10^1
+                    </div>
                   </div>
                   <div
                     className={`px-1 py-0 border-r border-black flex items-center relative ${dashClass("tmy_gram")}`}
@@ -1128,7 +1150,9 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                       readOnly
                       disabled
                     />
-                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tmyUnit}</div>
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">
+                      {tmyUnit}
+                    </div>
                   </div>
                 </div>
               </div>

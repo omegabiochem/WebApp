@@ -718,13 +718,31 @@ export default function MicroMixWaterReportFormView(
     return "CFU/mL";
   };
 
-  const rawTbcUnit = getSpecUnit(report?.tbc_spec);
-  const rawTmyUnit = getSpecUnit(report?.tmy_spec);
-  const isDeviceSpecification =
-    rawTbcUnit === "CFU / device" || rawTmyUnit === "CFU / device";
+const rawTbcUnit = getSpecUnit(report?.tbc_spec);
+const rawTmyUnit = getSpecUnit(report?.tmy_spec);
 
-  const tbcUnit = isDeviceSpecification ? "CFU / device" : rawTbcUnit;
-  const tmyUnit = isDeviceSpecification ? "CFU / device" : rawTmyUnit;
+const hasTbcSpec =
+  String(report?.tbc_spec ?? "").trim().length > 0;
+
+const hasTmySpec =
+  String(report?.tmy_spec ?? "").trim().length > 0;
+
+// One shared unit for both rows
+const sharedUnit =
+  rawTbcUnit === "CFU / device" ||
+  rawTmyUnit === "CFU / device"
+    ? "CFU / device"
+    : hasTbcSpec
+      ? rawTbcUnit
+      : hasTmySpec
+        ? rawTmyUnit
+        : rawTbcUnit;
+
+const isDeviceSpecification =
+  sharedUnit === "CFU / device";
+
+const tbcUnit = sharedUnit;
+const tmyUnit = sharedUnit;
 
   const sharedDeviceSpecValue =
     getSpecValue(report?.tbc_spec) || getSpecValue(report?.tmy_spec);

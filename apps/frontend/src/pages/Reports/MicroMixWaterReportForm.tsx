@@ -526,16 +526,27 @@ export default function MicroMixWaterReportForm({
     const loadedTmyUnit = extractUnit(report?.tmy_spec);
     if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
       const sharedSpec = loadedTbcSpec || loadedTmySpec;
+
       set_tbc_spec(sharedSpec);
       set_tmy_spec(sharedSpec);
+
       setTbcUnit("CFU / device");
       setTmyUnit("CFU / device");
-      return;
+    } else {
+      set_tbc_spec(loadedTbcSpec);
+      set_tmy_spec(loadedTmySpec);
+
+      // Use TBC unit if TBC has a specification.
+      // Otherwise use TMY unit.
+      const sharedUnit: Unit = loadedTbcSpec
+        ? loadedTbcUnit
+        : loadedTmySpec
+          ? loadedTmyUnit
+          : loadedTbcUnit;
+
+      setTbcUnit(sharedUnit);
+      setTmyUnit(sharedUnit);
     }
-    set_tbc_spec(loadedTbcSpec);
-    set_tmy_spec(loadedTmySpec);
-    setTbcUnit(loadedTbcUnit);
-    setTmyUnit(loadedTmyUnit);
   }, [report?.id]);
 
   const isDeviceSpecification =
@@ -1318,15 +1329,26 @@ export default function MicroMixWaterReportForm({
     const loadedTmyUnit = extractUnit(data?.tmy_spec);
     if (loadedTbcUnit === "CFU / device" || loadedTmyUnit === "CFU / device") {
       const sharedSpec = loadedTbcSpec || loadedTmySpec;
+
       set_tbc_spec(sharedSpec);
       set_tmy_spec(sharedSpec);
+
       setTbcUnit("CFU / device");
       setTmyUnit("CFU / device");
     } else {
       set_tbc_spec(loadedTbcSpec);
       set_tmy_spec(loadedTmySpec);
-      setTbcUnit(loadedTbcUnit);
-      setTmyUnit(loadedTmyUnit);
+
+      // Use TBC unit if TBC has a specification.
+      // Otherwise use TMY unit.
+      const sharedUnit: Unit = loadedTbcSpec
+        ? loadedTbcUnit
+        : loadedTmySpec
+          ? loadedTmyUnit
+          : loadedTbcUnit;
+
+      setTbcUnit(sharedUnit);
+      setTmyUnit(sharedUnit);
     }
     set_tmy_gram(data?.tmy_gram ?? "");
     set_tmy_result(data?.tmy_result ?? "");
@@ -1416,6 +1438,11 @@ export default function MicroMixWaterReportForm({
         validateAndSetErrors(values);
         validatePathogenRows(values.pathogens, role, phase);
 
+        const sharedSpecUnit: Unit =
+          tbcUnit === "CFU / device" || tmyUnit === "CFU / device"
+            ? "CFU / device"
+            : tbcUnit;
+
         // Build full payload
         const fullPayload: any = {
           client,
@@ -1433,10 +1460,14 @@ export default function MicroMixWaterReportForm({
           dateCompleted,
           tbc_gram,
           tbc_result,
-          tbc_spec: tbc_spec ? `${tbc_spec} ${tbcUnit}` : "",
+        tbc_spec: tbc_spec
+    ? `${tbc_spec} ${sharedSpecUnit}`
+    : "",
           tmy_gram,
           tmy_result,
-          tmy_spec: tmy_spec ? `${tmy_spec} ${tmyUnit}` : "",
+          tmy_spec: tmy_spec
+    ? `${tmy_spec} ${sharedSpecUnit}`
+    : "",
           pathogens,
           comments,
           testedBy,
@@ -1558,6 +1589,17 @@ export default function MicroMixWaterReportForm({
           const requestedBaseFields = new Set(
             openCorrections.map((c) => c.fieldKey.split(":")[0]),
           );
+
+          // TBC + TMY specification unit is coupled.
+          // If either specification is being corrected,
+          // ALWAYS save both specification fields.
+          if (
+            requestedBaseFields.has("tbc_spec") ||
+            requestedBaseFields.has("tmy_spec")
+          ) {
+            requestedBaseFields.add("tbc_spec");
+            requestedBaseFields.add("tmy_spec");
+          }
 
           payload = Object.fromEntries(
             Object.entries(payload).filter(([k]) => requestedBaseFields.has(k)),
@@ -2066,27 +2108,68 @@ export default function MicroMixWaterReportForm({
       string,
       Unit | undefined,
     ];
+
     const currentUnit = target === "tbc_spec" ? tbcUnit : tmyUnit;
+
     const unitValue = parsedUnit || currentUnit;
+
+    // =========================================================
+    // DEVICE MODE
+    // One shared specification + one shared unit
+    // =========================================================
     if (unitValue === "CFU / device") {
       set_tbc_spec(specValue);
       set_tmy_spec(specValue);
+
       setTbcUnit("CFU / device");
       setTmyUnit("CFU / device");
+
       clearError("tbc_spec");
       clearError("tmy_spec");
+
       markDirty();
       return;
     }
+
+    // =========================================================
+    // LEAVING DEVICE MODE
+    // Bring both rows back.
+    // Both start with the same specification because device mode
+    // previously had one shared specification.
+    // =========================================================
+    if (isDeviceSpecification) {
+      set_tbc_spec(specValue);
+      set_tmy_spec(specValue);
+
+      // IMPORTANT: unit is always shared
+      setTbcUnit(unitValue);
+      setTmyUnit(unitValue);
+
+      clearError("tbc_spec");
+      clearError("tmy_spec");
+
+      markDirty();
+      return;
+    }
+
+    // =========================================================
+    // NORMAL MODE
+    // Specification VALUE can be different.
+    // UNIT must always be the same.
+    // =========================================================
     if (target === "tbc_spec") {
       set_tbc_spec(specValue);
-      setTbcUnit(unitValue);
       clearError("tbc_spec");
     } else {
       set_tmy_spec(specValue);
-      setTmyUnit(unitValue);
       clearError("tmy_spec");
     }
+
+    // IMPORTANT:
+    // changing either dropdown changes unit for BOTH rows
+    setTbcUnit(unitValue);
+    setTmyUnit(unitValue);
+
     markDirty();
   }
 
