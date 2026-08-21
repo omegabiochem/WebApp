@@ -36,6 +36,7 @@ import { MicroDashboardModule } from './dashboards/micro-dashboard/micro-dashboa
 import { QaDashboardModule } from './dashboards/qa-dashboard/qa-dashboard.module';
 import { ChemistryDashboardModule } from './dashboards/chemistry-dashboard/chemistry-dashbaord.module';
 import { ClientDetailsModule } from './client-details/client-details/client-details.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { ClientDetailsModule } from './client-details/client-details/client-deta
     MicroDashboardModule,
     QaDashboardModule,
     ClientDetailsModule,
+    BillingModule,
   ],
   controllers: [HealthController, FaviconController],
   providers: [

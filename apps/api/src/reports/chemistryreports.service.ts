@@ -504,6 +504,77 @@ function extractSelectedActives(actives: any): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Billing milestone for CHEMISTRY_MIX and COA.
+ *
+ * The first transition to UNDER_CLIENT_REVIEW permanently records
+ * resultSentToClientAt.
+ *
+ * billingReadyAt is set once BOTH are true:
+ * 1. results have reached client review
+ * 2. a report number exists
+ *
+ * Neither timestamp is changed on later corrections/resubmissions.
+ */
+function buildChemistryBillingMilestonePatch(args: {
+  current: {
+    formType: FormType;
+    reportNumber?: string | null;
+    resultSentToClientAt?: Date | null;
+    billingReadyAt?: Date | null;
+  };
+
+  nextStatus?: ChemistryReportStatus | null;
+
+  pendingReportNumber?: string | null;
+
+  now?: Date;
+}) {
+  const { current, nextStatus, pendingReportNumber, now = new Date() } = args;
+
+  const patch: {
+    resultSentToClientAt?: Date;
+    billingReadyAt?: Date;
+  } = {};
+
+  /*
+   * Billing only applies to the two Chemistry root forms.
+   */
+  if (current.formType !== 'CHEMISTRY_MIX' && current.formType !== 'COA') {
+    return patch;
+  }
+
+  let effectiveResultSentAt = current.resultSentToClientAt ?? null;
+
+  /*
+   * First client-facing result review.
+   */
+  if (nextStatus === 'UNDER_CLIENT_REVIEW' && !current.resultSentToClientAt) {
+    patch.resultSentToClientAt = now;
+    effectiveResultSentAt = now;
+  }
+
+  /*
+   * Use either an already-existing report number or one being
+   * assigned in this same request.
+   */
+  const effectiveReportNumber =
+    pendingReportNumber ?? current.reportNumber ?? null;
+
+  /*
+   * Once billingReadyAt exists, never touch it again.
+   */
+  if (
+    !current.billingReadyAt &&
+    effectiveResultSentAt &&
+    effectiveReportNumber
+  ) {
+    patch.billingReadyAt = now;
+  }
+
+  return patch;
+}
+
 @Injectable()
 export class ChemistryReportsService {
   private readonly logger = new Logger(ChemistryReportsService.name);
@@ -518,6 +589,7 @@ export class ChemistryReportsService {
     private readonly dashboardSync: DashboardReportSyncService,
     private readonly workflowReminders: WorkflowReminderService,
   ) {}
+  
 
   /**
    * Keeps the workflow snapshot in DashboardReport inside the same transaction
@@ -1122,10 +1194,32 @@ export class ChemistryReportsService {
         await this.esign.verifyPassword(user.userId, String(password));
       }
 
-      if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
+      if (patchIn.status === 'LOCKED') {
+        base.lockedAt = new Date();
+      }
 
       base.status = patchIn.status;
       details.status = patchIn.status;
+
+      /*
+       * ---------------------------------------------------------
+       * BILLING MILESTONE
+       * ---------------------------------------------------------
+       *
+       * Run after report-number assignment so base.reportNumber can
+       * be used if it was created during this same request.
+       */
+      Object.assign(
+        base,
+        buildChemistryBillingMilestonePatch({
+          current,
+
+          nextStatus: patchIn.status as ChemistryReportStatus,
+
+          pendingReportNumber:
+            base.reportNumber ?? current.reportNumber ?? null,
+        }),
+      );
     }
 
     // const ops: Prisma.PrismaPromise<any>[] = [
@@ -1591,6 +1685,24 @@ export class ChemistryReportsService {
     }
 
     if (target === 'LOCKED') patch.lockedAt = new Date();
+
+    /*
+     * ---------------------------------------------------------
+     * BILLING MILESTONE
+     * ---------------------------------------------------------
+     *
+     * changeStatus() bypasses update(), so it must run the
+     * same billing milestone calculation independently.
+     */
+    Object.assign(
+      patch,
+      buildChemistryBillingMilestonePatch({
+        current,
+        nextStatus: target,
+
+        pendingReportNumber: patch.reportNumber ?? current.reportNumber ?? null,
+      }),
+    );
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.chemistryReport.update({

@@ -962,6 +962,108 @@ function shouldAssignReportNumber(
   return nextStatus === 'UNDER_PRELIMINARY_TESTING_REVIEW';
 }
 
+/**
+ * Billing milestone for MICRO / STERILITY / APE root reports.
+ *
+ * IMPORTANT:
+ * - This records the FIRST time results reach the client.
+ * - It never changes during corrections/resubmissions.
+ * - APE child reports are NEVER billable.
+ * - billingReadyAt means the SOURCE REPORT is ready for billing.
+ *   ClientDetails.billingEnabled / billingStartAt are applied later
+ *   when invoices are generated.
+ */
+function buildReportBillingMilestonePatch(args: {
+  current: {
+    formType: FormType;
+    reportType?: ReportType | null;
+    parentReportId?: string | null;
+    reportNumber?: string | null;
+    resultSentToClientAt?: Date | null;
+    billingReadyAt?: Date | null;
+  };
+
+  nextStatus?: ReportStatus | null;
+
+  // Use this when a report number is being assigned
+  // in the same update.
+  pendingReportNumber?: string | null;
+
+  now?: Date;
+}) {
+  const { current, nextStatus, pendingReportNumber, now = new Date() } = args;
+
+  const patch: {
+    resultSentToClientAt?: Date;
+    billingReadyAt?: Date;
+  } = {};
+
+  if (!nextStatus) {
+    return patch;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * APE CHILD PROTECTION
+   * ---------------------------------------------------------
+   *
+   * APE Validation Report and APE Report are separate Report rows.
+   * They must never create billing milestones.
+   */
+  if (current.parentReportId || current.reportType) {
+    return patch;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * RESULT-SENT MILESTONES
+   * ---------------------------------------------------------
+   */
+
+  const isMicroFinalClientReview =
+    (current.formType === 'MICRO_MIX' ||
+      current.formType === 'MICRO_MIX_WATER') &&
+    nextStatus === 'UNDER_CLIENT_FINAL_REVIEW';
+
+  const isSterilityOrApeClientReview =
+    (current.formType === 'STERILITY' || current.formType === 'APE') &&
+    nextStatus === 'UNDER_CLIENT_REVIEW';
+
+  const reachedClientResultMilestone =
+    isMicroFinalClientReview || isSterilityOrApeClientReview;
+
+  /*
+   * Preserve the original timestamp forever.
+   */
+  let effectiveResultSentAt = current.resultSentToClientAt ?? null;
+
+  if (reachedClientResultMilestone && !current.resultSentToClientAt) {
+    patch.resultSentToClientAt = now;
+    effectiveResultSentAt = now;
+  }
+
+  /*
+   * A report becomes billing-ready when BOTH are true:
+   *
+   * 1. Client result milestone was reached.
+   * 2. A report number exists.
+   *
+   * billingReadyAt is also permanent.
+   */
+  const effectiveReportNumber =
+    pendingReportNumber ?? current.reportNumber ?? null;
+
+  if (
+    !current.billingReadyAt &&
+    effectiveResultSentAt &&
+    effectiveReportNumber
+  ) {
+    patch.billingReadyAt = now;
+  }
+
+  return patch;
+}
+
 type ReportDbClient = PrismaService | Prisma.TransactionClient;
 
 function updateDetailsByType(
@@ -1877,9 +1979,31 @@ export class ReportsService {
         await this.esign.verifyPassword(user.userId, String(password));
       }
 
-      if (patchIn.status === 'LOCKED') base.lockedAt = new Date();
+      if (patchIn.status === 'LOCKED') {
+        base.lockedAt = new Date();
+      }
+
       base.status = patchIn.status;
       details.status = patchIn.status;
+
+      /*
+       * ---------------------------------------------------------
+       * BILLING MILESTONE
+       * ---------------------------------------------------------
+       *
+       * Must happen AFTER potential report-number assignment so
+       * base.reportNumber can participate in the readiness check.
+       */
+      Object.assign(
+        base,
+        buildReportBillingMilestonePatch({
+          current,
+          nextStatus: patchIn.status,
+
+          pendingReportNumber:
+            base.reportNumber ?? current.reportNumber ?? null,
+        }),
+      );
     }
 
     // Commit Report, active details, and the dashboard workflow snapshot together.

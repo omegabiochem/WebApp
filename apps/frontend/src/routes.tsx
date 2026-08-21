@@ -49,6 +49,7 @@ import ApeValidationReport from "./pages/LabReports/ApeValidationReport";
 import ApeReport from "./pages/LabReports/ApeReport";
 import ApeLoginBook from "./loginbooks/ApeLoginBook";
 import ClientDetailsAdmin from "./pages/Admin/ClientDetailsAdmin";
+import BillingDashboard from "./pages/Dashboard/BillingDashboard";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -178,6 +179,17 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <RequireRole roles={["MC", "ADMIN", "SYSTEMADMIN"]}>
               <MCDashboard />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+
+      {
+        path: "billing",
+        element: (
+          <RequireAuth>
+            <RequireRole roles={[ "ADMIN", "SYSTEMADMIN"]}>
+              <BillingDashboard />
             </RequireRole>
           </RequireAuth>
         ),
