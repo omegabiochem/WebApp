@@ -95,6 +95,13 @@ type ClientDetailsRow = {
 
   paymentTerms?: string | null;
 
+  /*
+   * Billing engine configuration.
+   * These fields already exist in ClientDetails on the backend.
+   */
+  billingEnabled: boolean;
+  billingStartAt?: string | null;
+
   accountManager?: string | null;
   notes?: string | null;
 
@@ -145,6 +152,13 @@ type ClientDetailsForm = {
   billingCountry: string;
 
   paymentTerms: string;
+
+  /*
+   * Billing engine configuration.
+   * billingStartAt is kept as YYYY-MM-DD for <input type="date">.
+   */
+  billingEnabled: boolean;
+  billingStartAt: string;
 
   accountManager: string;
   notes: string;
@@ -359,6 +373,28 @@ function timeToMinutes(value: string) {
   return hour * 60 + minute;
 }
 
+function toDateInputValue(value?: string | Date | null) {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function todayDateInputValue() {
+  const now = new Date();
+
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function emptyForm(): ClientDetailsForm {
   return {
     name: "",
@@ -404,6 +440,9 @@ function emptyForm(): ClientDetailsForm {
     billingCountry: "USA",
 
     paymentTerms: "",
+
+    billingEnabled: false,
+    billingStartAt: "",
 
     accountManager: "",
 
@@ -474,6 +513,9 @@ function toForm(row: ClientDetailsRow): ClientDetailsForm {
     billingCountry: row.billingCountry ?? "USA",
 
     paymentTerms: row.paymentTerms ?? "",
+
+    billingEnabled: row.billingEnabled ?? false,
+    billingStartAt: toDateInputValue(row.billingStartAt),
 
     accountManager: row.accountManager ?? "",
 
@@ -913,6 +955,14 @@ export default function ClientDetailsAdmin() {
       return false;
     }
 
+    if (form.billingEnabled && !form.billingStartAt) {
+      toast.error("Billing Start Date is required when billing is enabled");
+
+      setSection("BILLING");
+
+      return false;
+    }
+
     return true;
   }
 
@@ -1151,6 +1201,16 @@ export default function ClientDetailsAdmin() {
       billingCountry: form.billingCountry.trim() || "USA",
 
       paymentTerms: form.paymentTerms.trim() || null,
+
+      /*
+       * Billing engine settings.
+       *
+       * Send a real boolean and the YYYY-MM-DD value. The backend service
+       * safely converts the date to UTC midnight.
+       */
+      billingEnabled: form.billingEnabled,
+
+      billingStartAt: form.billingStartAt || null,
 
       accountManager: form.accountManager.trim() || null,
 
@@ -2283,138 +2343,267 @@ export default function ClientDetailsAdmin() {
       ===================================================== */}
 
       {section === "BILLING" && (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-          {/* Billing Contact */}
+        <div className="space-y-4">
+          {/* Billing Engine Configuration */}
 
-          <div className={cx(card, "xl:col-span-2")}>
+          <div
+            className={cx(
+              card,
+              form.billingEnabled
+                ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
+                : "bg-gradient-to-br from-white to-slate-50/70",
+            )}
+          >
             <div className="border-b border-slate-100 px-5 py-4">
               <CardTitle
                 icon={<CreditCard size={17} />}
-                title="Billing Contact"
-                description="Accounts payable or finance contact."
+                title="Billing Configuration"
+                description="Controls whether this client's eligible reports can enter Omega Billing."
               />
             </div>
 
-            <div className="space-y-4 p-5">
-              <Field label="Contact Name">
-                <input
-                  className={inputBase}
-                  value={form.billingContactName}
-                  onChange={(e) =>
-                    updateField("billingContactName", e.target.value)
-                  }
-                  placeholder="Billing contact"
-                />
-              </Field>
+            <div className="grid grid-cols-1 gap-5 p-5 lg:grid-cols-[1.4fr_1fr]">
+              <div
+                className={cx(
+                  "flex items-center justify-between gap-5 rounded-2xl border p-4",
+                  form.billingEnabled
+                    ? "border-emerald-200 bg-emerald-50/70"
+                    : "border-slate-200 bg-slate-50/80",
+                )}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-slate-900">
+                      Enable Billing
+                    </div>
 
-              <Field label="Email">
-                <input
-                  type="email"
-                  className={inputBase}
-                  value={form.billingEmail}
-                  onChange={(e) => updateField("billingEmail", e.target.value)}
-                  placeholder="billing@company.com"
-                />
-              </Field>
+                    <span
+                      className={cx(
+                        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
+                        form.billingEnabled
+                          ? "bg-emerald-100 text-emerald-700 ring-emerald-200"
+                          : "bg-slate-100 text-slate-500 ring-slate-200",
+                      )}
+                    >
+                      {form.billingEnabled ? "ENABLED" : "DISABLED"}
+                    </span>
+                  </div>
 
-              <Field label="Phone">
-                <input
-                  className={inputBase}
-                  value={form.billingPhone}
-                  onChange={(e) => updateField("billingPhone", e.target.value)}
-                  placeholder="+1 (000) 000-0000"
+                  <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-slate-500">
+                    When enabled, reports that reach their billing milestone on
+                    or after the Billing Start Date can appear under Billing →
+                    Unbilled.
+                  </p>
+                </div>
+
+                <Toggle
+                  checked={form.billingEnabled}
+                  onChange={(value) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      billingEnabled: value,
+
+                      /*
+                       * If billing is enabled for the first time, choose today
+                       * explicitly instead of relying on the backend's NOW
+                       * fallback. Keep an existing start date when disabling so
+                       * re-enabling does not accidentally change the cutoff.
+                       */
+                      billingStartAt:
+                        value && !prev.billingStartAt
+                          ? todayDateInputValue()
+                          : prev.billingStartAt,
+                    }));
+                  }}
                 />
-              </Field>
+              </div>
 
               <Field
-                label="Payment Terms"
-                hint="Examples: Net 30, Net 45, prepaid."
+                label="Billing Start Date"
+                required={form.billingEnabled}
+                hint={
+                  form.billingEnabled
+                    ? "Only reports with billingReadyAt on or after this date are eligible."
+                    : "Saved for future use. Billing remains off until Enable Billing is turned on."
+                }
               >
-                <input
-                  className={inputBase}
-                  value={form.paymentTerms}
-                  onChange={(e) => updateField("paymentTerms", e.target.value)}
-                  placeholder="Net 30"
-                />
+                <div className="relative">
+                  <CalendarDays
+                    size={15}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+
+                  <input
+                    type="date"
+                    className={cx(inputBase, "pl-9")}
+                    value={form.billingStartAt}
+                    onChange={(e) =>
+                      updateField("billingStartAt", e.target.value)
+                    }
+                  />
+                </div>
               </Field>
+            </div>
+
+            <div className="border-t border-slate-100 px-5 py-4">
+              <div
+                className={cx(
+                  "rounded-xl border px-4 py-3 text-xs leading-relaxed",
+                  form.billingEnabled
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-slate-200 bg-slate-50 text-slate-600",
+                )}
+              >
+                {form.billingEnabled ? (
+                  <>
+                    <strong>Billing is enabled.</strong>{" "}
+                    {form.billingStartAt
+                      ? `Eligible reports from ${form.billingStartAt} onward can enter billing.`
+                      : "Choose a Billing Start Date before saving."}
+                  </>
+                ) : (
+                  <>
+                    <strong>Billing is disabled.</strong> Reports for this
+                    client will not be discovered by the billing engine.
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Billing Address */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+            {/* Billing Contact */}
 
-          <div className={cx(card, "xl:col-span-3")}>
-            <div className="border-b border-slate-100 px-5 py-4">
-              <CardTitle
-                icon={<MapPin size={17} />}
-                title="Billing Address"
-                description="Address used for invoices and billing correspondence."
-              />
+            <div className={cx(card, "xl:col-span-2")}>
+              <div className="border-b border-slate-100 px-5 py-4">
+                <CardTitle
+                  icon={<CreditCard size={17} />}
+                  title="Billing Contact"
+                  description="Accounts payable or finance contact."
+                />
+              </div>
+
+              <div className="space-y-4 p-5">
+                <Field label="Contact Name">
+                  <input
+                    className={inputBase}
+                    value={form.billingContactName}
+                    onChange={(e) =>
+                      updateField("billingContactName", e.target.value)
+                    }
+                    placeholder="Billing contact"
+                  />
+                </Field>
+
+                <Field label="Email">
+                  <input
+                    type="email"
+                    className={inputBase}
+                    value={form.billingEmail}
+                    onChange={(e) => updateField("billingEmail", e.target.value)}
+                    placeholder="billing@company.com"
+                  />
+                </Field>
+
+                <Field label="Phone">
+                  <input
+                    className={inputBase}
+                    value={form.billingPhone}
+                    onChange={(e) => updateField("billingPhone", e.target.value)}
+                    placeholder="+1 (000) 000-0000"
+                  />
+                </Field>
+
+                <Field
+                  label="Payment Terms"
+                  hint="Examples: Net 30, Net 45, prepaid."
+                >
+                  <input
+                    className={inputBase}
+                    value={form.paymentTerms}
+                    onChange={(e) => updateField("paymentTerms", e.target.value)}
+                    placeholder="Net 30"
+                  />
+                </Field>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-              <Field label="Address Line 1" className="sm:col-span-2">
-                <input
-                  className={inputBase}
-                  value={form.billingAddressLine1}
-                  onChange={(e) =>
-                    updateField("billingAddressLine1", e.target.value)
-                  }
-                />
-              </Field>
+            {/* Billing Address */}
 
-              <Field label="Address Line 2" className="sm:col-span-2">
-                <input
-                  className={inputBase}
-                  value={form.billingAddressLine2}
-                  onChange={(e) =>
-                    updateField("billingAddressLine2", e.target.value)
-                  }
+            <div className={cx(card, "xl:col-span-3")}>
+              <div className="border-b border-slate-100 px-5 py-4">
+                <CardTitle
+                  icon={<MapPin size={17} />}
+                  title="Billing Address"
+                  description="Address used for invoices and billing correspondence."
                 />
-              </Field>
+              </div>
 
-              <Field label="City">
-                <input
-                  className={inputBase}
-                  value={form.billingCity}
-                  onChange={(e) => updateField("billingCity", e.target.value)}
-                />
-              </Field>
+              <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+                <Field label="Address Line 1" className="sm:col-span-2">
+                  <input
+                    className={inputBase}
+                    value={form.billingAddressLine1}
+                    onChange={(e) =>
+                      updateField("billingAddressLine1", e.target.value)
+                    }
+                  />
+                </Field>
 
-              <Field label="State">
-                <select
-                  className={cx(inputBase, "cursor-pointer")}
-                  value={form.billingState}
-                  onChange={(e) => updateField("billingState", e.target.value)}
-                >
-                  {US_STATE_OPTIONS.map((state) => (
-                    <option key={state.value || "EMPTY"} value={state.value}>
-                      {state.value
-                        ? `${state.label} (${state.value})`
-                        : state.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                <Field label="Address Line 2" className="sm:col-span-2">
+                  <input
+                    className={inputBase}
+                    value={form.billingAddressLine2}
+                    onChange={(e) =>
+                      updateField("billingAddressLine2", e.target.value)
+                    }
+                  />
+                </Field>
 
-              <Field label="ZIP / Postal Code">
-                <input
-                  className={inputBase}
-                  value={form.billingPostalCode}
-                  onChange={(e) =>
-                    updateField("billingPostalCode", e.target.value)
-                  }
-                />
-              </Field>
+                <Field label="City">
+                  <input
+                    className={inputBase}
+                    value={form.billingCity}
+                    onChange={(e) => updateField("billingCity", e.target.value)}
+                  />
+                </Field>
 
-              <Field label="Country">
-                <input
-                  className={inputBase}
-                  value={form.billingCountry}
-                  onChange={(e) =>
-                    updateField("billingCountry", e.target.value)
-                  }
-                />
-              </Field>
+                <Field label="State">
+                  <select
+                    className={cx(inputBase, "cursor-pointer")}
+                    value={form.billingState}
+                    onChange={(e) => updateField("billingState", e.target.value)}
+                  >
+                    {US_STATE_OPTIONS.map((state) => (
+                      <option key={state.value || "EMPTY"} value={state.value}>
+                        {state.value
+                          ? `${state.label} (${state.value})`
+                          : state.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="ZIP / Postal Code">
+                  <input
+                    className={inputBase}
+                    value={form.billingPostalCode}
+                    onChange={(e) =>
+                      updateField("billingPostalCode", e.target.value)
+                    }
+                  />
+                </Field>
+
+                <Field label="Country">
+                  <input
+                    className={inputBase}
+                    value={form.billingCountry}
+                    onChange={(e) =>
+                      updateField("billingCountry", e.target.value)
+                    }
+                  />
+                </Field>
+              </div>
             </div>
           </div>
         </div>

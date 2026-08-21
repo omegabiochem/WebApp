@@ -32,6 +32,7 @@ export default function Header() {
       { label: "Home", path: "/adminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
+      { label: "Billing", path: "/billing" },
       { label: "User Management", path: "/manage-users" },
       { label: "Report Management", path: "/manage-reports" },
       { label: "More", path: "/more" },
@@ -48,6 +49,7 @@ export default function Header() {
       { label: "Home", path: "/systemAdminDashboard" },
       { label: "Audit and Trail", path: "/audit" },
       { label: "Results", path: "/results" },
+      { label: "Billing", path: "/billing" },
       { label: "User Management", path: "/manage-users" },
       { label: "Report Management", path: "/manage-reports" },
       { label: "Support Tickets", path: "/supportTickets" },
@@ -88,6 +90,7 @@ export default function Header() {
     FRONTDESK: [
       { label: "Home", path: "/frontdeskDashboard" },
       { label: "Results", path: "/results" },
+      { label: "Billing", path: "/billing" },
       { label: "Support", path: "/support" },
     ],
     DEFAULT: [{ label: "Home", path: "/home" }],

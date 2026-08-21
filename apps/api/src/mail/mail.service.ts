@@ -778,4 +778,240 @@ ${description}
       TextBody: text,
     });
   }
+
+  async sendInvoiceEmail(args: {
+    to: string;
+    cc?: string[];
+    subject: string;
+    messageBody: string;
+
+    invoiceId: string;
+    invoiceNumber: string;
+    clientCode: string;
+
+    attachment: {
+      filename: string;
+      content: Buffer;
+    };
+  }) {
+    const from =
+      process.env.MAIL_FROM || 'Omega LIMS <no-reply@omegabiochemlab.com>';
+
+    const replyTo = process.env.MAIL_REPLY_TO || 'no-reply@omegabiochemlab.com';
+
+    const techSender =
+      process.env.MAIL_TECH_SENDER || 'tech@omegabiochemlab.com';
+
+    const brandName = process.env.MAIL_BRAND_NAME || 'Omega BioChem Lab';
+
+    const cc = (args.cc ?? []).map((x) => String(x).trim()).filter(Boolean);
+
+    const htmlBody = `
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f3f6fb;">
+  <table
+    role="presentation"
+    width="100%"
+    cellpadding="0"
+    cellspacing="0"
+    style="background:#f3f6fb;padding:24px 0;"
+  >
+    <tr>
+      <td align="center">
+        <table
+          role="presentation"
+          width="640"
+          cellpadding="0"
+          cellspacing="0"
+          style="
+            width:640px;
+            max-width:640px;
+            background:#ffffff;
+            border:1px solid #e6eaf2;
+            border-radius:14px;
+            overflow:hidden;
+          "
+        >
+          <tr>
+            <td
+              style="
+                background:#0b3a83;
+                padding:18px 22px;
+                color:#ffffff;
+                font-family:Arial,Helvetica,sans-serif;
+              "
+            >
+              <div style="font-size:18px;font-weight:700;">
+                ${escapeHtml(brandName)}
+              </div>
+
+              <div
+                style="
+                  margin-top:4px;
+                  color:#dbe8ff;
+                  font-size:13px;
+                  font-weight:600;
+                "
+              >
+                Billing Invoice
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td
+              style="
+                padding:22px;
+                font-family:Arial,Helvetica,sans-serif;
+                color:#111827;
+                font-size:14px;
+                line-height:1.6;
+              "
+            >
+              <p style="margin:0 0 14px 0;">
+                Please find your invoice attached.
+              </p>
+
+              <table
+                role="presentation"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                style="
+                  background:#f8fafc;
+                  border:1px solid #e2e8f0;
+                  border-radius:10px;
+                "
+              >
+                <tr>
+                  <td style="padding:14px;">
+                    <div>
+                      <strong>Invoice:</strong>
+                      ${escapeHtml(args.invoiceNumber)}
+                    </div>
+
+                    <div style="margin-top:6px;">
+                      <strong>Client:</strong>
+                      ${escapeHtml(args.clientCode)}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <div
+                style="
+                  margin-top:18px;
+                  white-space:pre-line;
+                "
+              >
+                ${escapeHtml(args.messageBody)}
+              </div>
+
+              <p
+                style="
+                  margin:20px 0 0 0;
+                  color:#6b7280;
+                  font-size:12px;
+                "
+              >
+                The official invoice PDF is attached to this email.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td
+              style="
+                border-top:1px solid #eef2f7;
+                padding:14px 22px;
+                font-family:Arial,Helvetica,sans-serif;
+                color:#6b7280;
+                font-size:12px;
+              "
+            >
+              © ${new Date().getFullYear()}
+              ${escapeHtml(brandName)}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+    const response = await this.client.sendEmail({
+      From: from,
+
+      To: args.to,
+
+      ...(cc.length
+        ? {
+            Cc: cc.join(','),
+          }
+        : {}),
+
+      Subject: args.subject,
+
+      HtmlBody: htmlBody,
+
+      TextBody:
+        `Invoice: ${args.invoiceNumber}\n` +
+        `Client: ${args.clientCode}\n\n` +
+        `${args.messageBody}\n\n` +
+        `The official invoice PDF is attached.`,
+
+      ReplyTo: replyTo,
+
+      MessageStream: 'outbound',
+
+      Tag: 'billing-invoice',
+
+      TrackOpens: true,
+
+      TrackLinks: 'HtmlOnly' as any,
+
+      Metadata: {
+        invoiceId: String(args.invoiceId),
+
+        invoiceNumber: String(args.invoiceNumber),
+
+        clientCode: String(args.clientCode),
+
+        emailType: 'billing-invoice',
+      },
+
+      Headers: [
+        {
+          Name: 'X-PM-Sender',
+
+          Value: techSender,
+        },
+      ],
+
+      Attachments: [
+        {
+          Name: args.attachment.filename,
+
+          Content: args.attachment.content.toString('base64'),
+
+          ContentType: 'application/pdf',
+
+          // Normal attachment, not embedded inside HTML
+          ContentID: null,
+        },
+      ],
+    });
+
+    this.log.log(
+      `[INVOICE EMAIL SENT] ` +
+        `invoice=${args.invoiceNumber} ` +
+        `to=${args.to} ` +
+        `messageId=${response.MessageID}`,
+    );
+
+    return response;
+  }
 }

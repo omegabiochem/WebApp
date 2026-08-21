@@ -104,12 +104,92 @@ export class ClientDetailsService {
 
     if (
       data.workflowReminderMaxCount !== undefined &&
-      (data.workflowReminderMaxCount < 1 || data.workflowReminderMaxCount > 10)
+      (data.workflowReminderMaxCount < 1 ||
+        data.workflowReminderMaxCount > 10)
     ) {
       throw new BadRequestException(
         'Reminder maximum must be between 1 and 10',
       );
     }
+  }
+
+  /* =========================================================
+     BILLING VALIDATION / COERCION
+  ========================================================= */
+
+  private normalizeBillingFields(data: Record<string, any>) {
+    const copy = {
+      ...data,
+    };
+
+    /*
+     * billingEnabled must be a real boolean.
+     *
+     * We intentionally do NOT accept strings such as:
+     * "true"
+     * "false"
+     *
+     * This prevents accidental truthy values from enabling billing.
+     */
+    if (
+      copy.billingEnabled !== undefined &&
+      typeof copy.billingEnabled !== 'boolean'
+    ) {
+      throw new BadRequestException(
+        'billingEnabled must be true or false',
+      );
+    }
+
+    /*
+     * billingStartAt may come from the frontend as:
+     *
+     * null
+     * ""
+     * ISO date string
+     * Date object
+     */
+    if (copy.billingStartAt !== undefined) {
+      if (
+        copy.billingStartAt === null ||
+        copy.billingStartAt === ''
+      ) {
+        copy.billingStartAt = null;
+      } else if (copy.billingStartAt instanceof Date) {
+        if (Number.isNaN(copy.billingStartAt.getTime())) {
+          throw new BadRequestException('Invalid billingStartAt date');
+        }
+      } else if (typeof copy.billingStartAt === 'string') {
+        const raw = copy.billingStartAt.trim();
+
+        if (!raw) {
+          copy.billingStartAt = null;
+        } else {
+          /*
+           * HTML <input type="date"> normally returns YYYY-MM-DD.
+           *
+           * Make that explicitly UTC midnight instead of relying
+           * on environment-specific date parsing.
+           */
+          const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+            ? new Date(`${raw}T00:00:00.000Z`)
+            : new Date(raw);
+
+          if (Number.isNaN(parsed.getTime())) {
+            throw new BadRequestException(
+              'Invalid billingStartAt date',
+            );
+          }
+
+          copy.billingStartAt = parsed;
+        }
+      } else {
+        throw new BadRequestException(
+          'billingStartAt must be a valid date or null',
+        );
+      }
+    }
+
+    return copy;
   }
 
   /* =========================================================
@@ -146,6 +226,9 @@ export class ClientDetailsService {
       'workflowReminderIntervalMinutes',
       'workflowReminderMaxCount',
 
+      /*
+       * BILLING CONTACT
+       */
       'billingContactName',
       'billingEmail',
       'billingPhone',
@@ -158,14 +241,25 @@ export class ClientDetailsService {
       'billingCountry',
 
       'paymentTerms',
+
+      /*
+       * BILLING ENGINE
+       */
+      'billingEnabled',
+      'billingStartAt',
+
       'accountManager',
       'notes',
       'settings',
     ];
 
-    return Object.fromEntries(
-      Object.entries(input ?? {}).filter(([key]) => allowed.includes(key)),
+    const filtered = Object.fromEntries(
+      Object.entries(input ?? {}).filter(([key]) =>
+        allowed.includes(key),
+      ),
     );
+
+    return this.normalizeBillingFields(filtered);
   }
 
   /* =========================================================
@@ -238,8 +332,7 @@ export class ClientDetailsService {
     /*
      * CLIENT ON
      *
-     * Per your requirement:
-     * make every CLIENT user active again.
+     * Make every CLIENT user active again.
      */
     await tx.user.updateMany({
       where: {
@@ -316,6 +409,23 @@ export class ClientDetailsService {
 
     this.validateWorkingHours(data);
 
+    /*
+     * BILLING SAFETY
+     *
+     * If a new client is created with billingEnabled=true but
+     * the administrator did not provide a billingStartAt,
+     * billing begins NOW.
+     *
+     * This prevents existing/imported reports from accidentally
+     * being captured later.
+     */
+    if (
+      data.billingEnabled === true &&
+      data.billingStartAt == null
+    ) {
+      data.billingStartAt = new Date();
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.clientDetails.create({
         data: {
@@ -331,7 +441,11 @@ export class ClientDetailsService {
        * disable and logout its users.
        */
       if (data.active === false) {
-        await this.syncClientUsersActiveState(tx, clientCode, false);
+        await this.syncClientUsersActiveState(
+          tx,
+          clientCode,
+          false,
+        );
       }
 
       return created;
@@ -342,7 +456,11 @@ export class ClientDetailsService {
      UPDATE
   ========================================================= */
 
-  async update(user: AuthUser, clientCodeInput: string, input: any) {
+  async update(
+    user: AuthUser,
+    clientCodeInput: string,
+    input: any,
+  ) {
     this.assertManager(user);
 
     const clientCode = clientCodeInput.trim().toUpperCase();
@@ -363,22 +481,69 @@ export class ClientDetailsService {
 
     this.validateWorkingHours({
       workdayStartMinutes:
-        data.workdayStartMinutes ?? existing.workdayStartMinutes,
+        data.workdayStartMinutes ??
+        existing.workdayStartMinutes,
 
-      workdayEndMinutes: data.workdayEndMinutes ?? existing.workdayEndMinutes,
+      workdayEndMinutes:
+        data.workdayEndMinutes ??
+        existing.workdayEndMinutes,
 
-      workingDays: data.workingDays ?? existing.workingDays,
+      workingDays:
+        data.workingDays ??
+        existing.workingDays,
 
       workflowReminderIntervalMinutes:
         data.workflowReminderIntervalMinutes ??
         existing.workflowReminderIntervalMinutes,
 
       workflowReminderMaxCount:
-        data.workflowReminderMaxCount ?? existing.workflowReminderMaxCount,
+        data.workflowReminderMaxCount ??
+        existing.workflowReminderMaxCount,
     });
 
+    /*
+     * =======================================================
+     * BILLING ENABLEMENT SAFETY
+     * =======================================================
+     *
+     * Existing clients default to:
+     *
+     * billingEnabled = false
+     * billingStartAt = null
+     *
+     * When billing is switched ON for the first time and the
+     * administrator did not explicitly choose a start date,
+     * automatically use the current timestamp.
+     *
+     * Therefore old reports do not suddenly enter billing.
+     */
+    const billingIsBeingEnabled =
+      data.billingEnabled === true &&
+      existing.billingEnabled === false;
+
+    if (
+      billingIsBeingEnabled &&
+      data.billingStartAt === undefined &&
+      existing.billingStartAt == null
+    ) {
+      data.billingStartAt = new Date();
+    }
+
+    /*
+     * If billing was already enabled and only other client
+     * information is being updated, leave billingStartAt alone.
+     *
+     * If the administrator explicitly sends:
+     *
+     * billingStartAt: null
+     *
+     * we allow that. The billing service will later treat
+     * a null start date as "no additional cutoff".
+     */
+
     const activeWasChanged =
-      typeof data.active === 'boolean' && data.active !== existing.active;
+      typeof data.active === 'boolean' &&
+      data.active !== existing.active;
 
     let affectedUserIds: string[] = [];
 
@@ -395,11 +560,12 @@ export class ClientDetailsService {
       });
 
       if (activeWasChanged) {
-        affectedUserIds = await this.syncClientUsersActiveState(
-          tx,
-          clientCode,
-          data.active as boolean,
-        );
+        affectedUserIds =
+          await this.syncClientUsersActiveState(
+            tx,
+            clientCode,
+            data.active as boolean,
+          );
       }
 
       return result;
@@ -410,14 +576,20 @@ export class ClientDetailsService {
      *
      * Only AFTER that do we send socket events.
      */
-    if (activeWasChanged && data.active === false) {
+    if (
+      activeWasChanged &&
+      data.active === false
+    ) {
       console.log(
         `🚪 Client ${clientCode} deactivated. ` +
           `Force logging out ${affectedUserIds.length} users.`,
       );
 
       for (const userId of affectedUserIds) {
-        console.log('🚪 Force logout client user:', userId);
+        console.log(
+          '🚪 Force logout client user:',
+          userId,
+        );
 
         this.notificationGateway.emitForceLogoutToUser(
           userId,
@@ -433,7 +605,10 @@ export class ClientDetailsService {
      *
      * No socket logout needed.
      */
-    if (activeWasChanged && data.active === true) {
+    if (
+      activeWasChanged &&
+      data.active === true
+    ) {
       console.log(
         `✅ Client ${clientCode} reactivated. ` +
           `${affectedUserIds.length} users activated.`,

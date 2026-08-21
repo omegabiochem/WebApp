@@ -44,6 +44,19 @@ model Report {
   apeReport           ApeReportDetails?
   statusHistory       StatusHistory[]
 
+  // -------------------------
+  // BILLING
+  // -------------------------
+  // First time the completed/result report was actually sent
+  // to the client-facing review stage.
+  // This never changes on corrections/resubmissions.
+  resultSentToClientAt DateTime?
+
+  // First time the report satisfied all billing requirements:
+  // result sent + report number assigned.
+  // Monthly billing is based on this field.
+  billingReadyAt DateTime?
+
   @@index([createdAt])
   @@index([updatedAt])
   @@index([status])
@@ -55,6 +68,8 @@ model Report {
   @@index([reportType])
   @@index([parentReportId])
   @@index([clientCode, reportType])
+  @@index([billingReadyAt])
+  @@index([clientCode, billingReadyAt])
 }
 
 model MicroMixDetails {
@@ -478,6 +493,12 @@ model ChemistryReport {
   coa           COADetails?
   statusHistory ChemistryReportStatusHistory[]
 
+  // -------------------------
+  // BILLING
+  // -------------------------
+  resultSentToClientAt DateTime?
+  billingReadyAt       DateTime?
+
   @@index([createdAt])
   @@index([updatedAt])
   @@index([status])
@@ -486,6 +507,8 @@ model ChemistryReport {
   @@index([clientCode, createdAt])
   @@index([clientCode, status])
   @@index([clientCode, formType])
+  @@index([billingReadyAt])
+  @@index([clientCode, billingReadyAt])
 }
 
 model ChemistryMixDetails {
@@ -1250,6 +1273,412 @@ enum WorkflowReminderKind {
   CORRECTION
 }
 
+enum BillingDepartment {
+  MICRO
+  CHEMISTRY
+}
+
+enum BillingPriceBasis {
+  // Entire matched charge is this price.
+  FLAT
+
+  // Price is multiplied by active count / quantity.
+  PER_ACTIVE
+}
+
+enum BillingInvoiceStatus {
+  DRAFT
+  CONFIRMED
+  SENT
+  VOID
+}
+
+enum BillingSourceType {
+  REPORT
+  CHEMISTRY_REPORT
+}
+
+enum BillingEmailStatus {
+  SENT
+  FAILED
+}
+
+model BillingPriceRule {
+  id String @id @default(cuid())
+
+  clientCode String
+
+  department BillingDepartment
+  formType   FormType
+
+  // Main test/category.
+  //
+  // MICRO examples:
+  // TBC_TFC
+  // USP_61
+  // USP_61_62
+  //
+  // CHEMISTRY examples:
+  // ID
+  // PERCENT_ASSAY
+  // CONTENT_UNIFORMITY
+  // OTHER
+  //
+  // COA:
+  // COA
+  testKey String
+
+  testLabel String?
+
+  // ---------------------------------------------------------
+  // INDIVIDUAL PRICING ITEM
+  // ---------------------------------------------------------
+  //
+  // MICRO:
+  //   null
+  //
+  // CHEMISTRY:
+  //   AVOBENZONE
+  //   DIMETHICONE
+  //   SALICYLIC_ACID
+  //   ZINC_OXIDE
+  //
+  // COA:
+  //   IDENTIFICATION
+  //   SPECIFIC_ROTATION
+  //   WATER
+  //   ASSAY
+  //
+  // Pricing is matched using this stable key.
+  itemKey String?
+
+  // Human-readable snapshot/display label.
+  //
+  // Examples:
+  // "Avobenzone"
+  // "Water Content"
+  // "Assay"
+  itemLabel String?
+
+  // ---------------------------------------------------------
+  // LEGACY ACTIVE-COUNT PRICING
+  // ---------------------------------------------------------
+  //
+  // Keep this for old price rules/history.
+  //
+  // New Chemistry/COA individual pricing rules should normally
+  // leave activeCount null.
+  activeCount Int?
+
+  priceBasis BillingPriceBasis @default(FLAT)
+
+  unitPrice Decimal @db.Decimal(12, 2)
+
+  active Boolean @default(true)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientCode])
+  @@index([clientCode, formType])
+  @@index([clientCode, formType, testKey])
+  // New individual-item lookup.
+  @@index([clientCode, formType, testKey, itemKey])
+  // Keep for old active-count rules.
+  @@index([clientCode, formType, testKey, activeCount])
+  @@index([effectiveFrom])
+  @@index([active])
+}
+
+model BillingInvoice {
+  id String @id @default(cuid())
+
+  invoiceNumber String? @unique
+
+  clientCode String
+
+  activeKey String? @unique
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status BillingInvoiceStatus @default(DRAFT)
+
+  currency String @default("USD")
+
+  subtotal         Decimal @default(0) @db.Decimal(12, 2)
+  adjustmentAmount Decimal @default(0) @db.Decimal(12, 2)
+  total            Decimal @default(0) @db.Decimal(12, 2)
+
+  // CLIENT BILLING SNAPSHOT
+  clientName      String?
+  clientLegalName String?
+
+  billingContactName String?
+  billingEmail       String?
+  billingPhone       String?
+
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountry      String?
+
+  paymentTerms String?
+
+  notes String?
+
+  // CONFIRMATION
+  confirmedAt DateTime?
+  confirmedBy String?
+
+  // EMAIL
+  sentAt DateTime?
+  sentBy String?
+
+  // DUE DATE
+  dueDate DateTime?
+
+  // SCHEDULED SEND
+  scheduledSendAt  DateTime?
+  scheduledToEmail String?
+  scheduledBy      String?
+  scheduledAt      DateTime?
+
+  // VOID
+  voidedAt   DateTime?
+  voidedBy   String?
+  voidReason String?
+
+  // PDF
+  pdfFilename      String?
+  pdfStorageKey    String?
+  pdfStorageBucket String?
+  pdfChecksum      String?
+  pdfCreatedAt     DateTime?
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines        BillingInvoiceLine[]
+  emails       BillingInvoiceEmail[]
+  extraCharges BillingInvoiceExtraCharge[]
+
+  // ---------------------------------------------------------
+  // REVISION HISTORY
+  // ---------------------------------------------------------
+  //
+  // Original invoice:
+  //   revisionOfInvoiceId = null
+  //   revisionNumber      = 0
+  //
+  // Revised invoice:
+  //   revisionOfInvoiceId = original invoice id
+  //   revisionNumber      = 1, 2, 3...
+  //
+  revisionOfInvoiceId String?
+  revisionNumber      Int     @default(0)
+
+  revisionOfInvoice BillingInvoice?  @relation("BillingInvoiceRevisions", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
+  revisions         BillingInvoice[] @relation("BillingInvoiceRevisions")
+
+  @@unique([revisionOfInvoiceId, revisionNumber])
+  @@index([revisionOfInvoiceId])
+  @@index([clientCode])
+  @@index([periodStart, periodEnd])
+  @@index([clientCode, periodStart])
+  @@index([status])
+  @@index([createdAt])
+  // Important for scheduled invoice sender
+  @@index([scheduledSendAt])
+  @@index([status, scheduledSendAt])
+}
+
+model BillingInvoiceExtraCharge {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  sourceType BillingSourceType
+  sourceId   String
+
+  formNumber   String
+  reportNumber String
+
+  name   String
+  amount Decimal @db.Decimal(12, 2)
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([invoiceId, sourceType, sourceId])
+}
+
+model BillingInvoiceLine {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  sourceType BillingSourceType
+  sourceId   String
+
+  // Permanent logical identity of the charge.
+  //
+  // Examples:
+  //
+  // REPORT:abc123:MICRO_MIX:USP_61_62
+  //
+  // CHEMISTRY_REPORT:def456:PERCENT_ASSAY
+  //
+  // CHEMISTRY_REPORT:def456:ID
+  chargeKey String
+
+  // Same as chargeKey while invoice is active.
+  //
+  // UNIQUE prevents charging the same source twice.
+  //
+  // Set NULL if invoice is VOID so a replacement invoice
+  // can legitimately contain the charge.
+  activeChargeKey String? @unique
+
+  formType FormType
+
+  formNumber   String
+  reportNumber String
+
+  clientCode String
+
+  resultSentToClientAt DateTime?
+  billingReadyAt       DateTime
+
+  // ---------------------------------------------------------
+  // PRICING COMPONENT
+  // ---------------------------------------------------------
+
+  testKey   String
+  testLabel String?
+
+  // Individual Chemistry active / COA item.
+  //
+  // MICRO:
+  // null
+  //
+  // CHEMISTRY:
+  // AVOBENZONE
+  // DIMETHICONE
+  // etc.
+  //
+  // COA:
+  // IDENTIFICATION
+  // WATER
+  // ASSAY
+  // etc.
+  itemKey String?
+
+  // Human-readable snapshot at invoice creation.
+  itemLabel String?
+
+  // Legacy field retained for historical invoices/rules.
+  activeCount Int?
+
+  priceBasis BillingPriceBasis
+
+  // Normally:
+  // FLAT       → quantity = 1
+  // PER_ACTIVE → quantity = activeCount
+  quantity Int @default(1)
+
+  // Nullable while DRAFT if pricing cannot be resolved.
+  unitPrice Decimal? @db.Decimal(12, 2)
+  amount    Decimal? @db.Decimal(12, 2)
+
+  // Snapshot reference only.
+  // Do not make invoice history dependent on the current price rule.
+  pricingRuleId String?
+
+  // Example:
+  // "No pricing rule configured"
+  // "Active count mismatch"
+  // "Missing Type of Test"
+  pricingIssue String?
+
+  // ---------------------------------------------------------
+  // MANUAL OVERRIDE
+  // ---------------------------------------------------------
+
+  manualOverride       Boolean   @default(false)
+  manualOverrideReason String?
+  manualOverrideBy     String?
+  manualOverrideAt     DateTime?
+
+  // Preserve the source values used to create this charge.
+  sourceSnapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([sourceType, sourceId])
+  @@index([chargeKey])
+  @@index([clientCode])
+  @@index([formType])
+  @@index([billingReadyAt])
+  @@index([testKey, itemKey])
+}
+
+model BillingInvoiceEmail {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  toEmail String
+
+  ccEmails String[] @default([])
+
+  subject String
+
+  // Optional snapshot of the message body used.
+  messageBody String?
+
+  status BillingEmailStatus
+
+  provider          String  @default("POSTMARK")
+  providerMessageId String?
+
+  sentBy String?
+  sentAt DateTime?
+
+  error String?
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@index([status])
+  @@index([providerMessageId])
+}
+
+model BillingInvoiceSequence {
+  year       Int @id
+  lastNumber Int @default(0)
+}
+
 model ClientDetails {
   clientCode String @id
 
@@ -1327,6 +1756,13 @@ model ClientDetails {
   billingCountry      String?
 
   paymentTerms String?
+
+  // Enable/disable automated billing eligibility for this client.
+  billingEnabled Boolean @default(false)
+
+  // Reports before this date are never automatically pulled
+  // into billing. Important when initially enabling billing.
+  billingStartAt DateTime?
 
   // -------------------------
   // INTERNAL / FUTURE
