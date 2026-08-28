@@ -2,23 +2,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
-import {
-  createCorrections,
-  getCorrections,
-  resolveCorrection,
-} from "../../utils/sterilityReportValidation";
-import {
-  STERILITY_STATUS_TRANSITIONS,
-  type CorrectionItem,
-  type SterilityReportStatus,
-} from "../../utils/SterilityReportFormWorkflow";
+// import {
+//   createCorrections,
+//   getCorrections,
+//   resolveCorrection,
+// } from "../../utils/sterilityReportValidation";
+// import {
+//   STERILITY_STATUS_TRANSITIONS,
+//   type CorrectionItem,
+//   type SterilityReportStatus,
+// } from "../../utils/SterilityReportFormWorkflow";
 import {
   JJL_SAMPLE_TYPE_OPTIONS,
   JJL_TYPE_OF_TEST_OPTIONS,
   todayISO,
 } from "../../utils/microMixReportFormWorkflow";
-import { canRoleEditApeChildField, pickApeChildEditablePayload } from "../../utils/apeReportFormWorkflow";
-
+import {
+  APE_STATUS_TRANSITIONS,
+  canRoleEditApeChildField,
+  pickApeChildEditablePayload,
+  type ApeReportStatus,
+  type CorrectionItem,
+} from "../../utils/apeReportFormWorkflow";
+import {
+  createCorrections,
+  getCorrections,
+  resolveCorrection,
+} from "../../utils/apeReportValidation";
 
 type Role =
   | "SYSTEMADMIN"
@@ -110,7 +120,6 @@ const ALWAYS_SHOW_SIGNATURES = true;
 const EDIT_ROLES = new Set<Role>(["MICRO", "MC", "ADMIN", "SYSTEMADMIN"]);
 
 const CALCULATION_EDIT_ROLES = new Set<Role>(["ADMIN", "SYSTEMADMIN"]);
-
 
 const statusButtons: Record<string, { label: string; color: string }> = {
   UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
@@ -318,9 +327,7 @@ function normalizeSettingNumber(
   return parsed;
 }
 
-function normalizeApeCalculationSettings(
-  value: any,
-): ApeCalculationSettings {
+function normalizeApeCalculationSettings(value: any): ApeCalculationSettings {
   return {
     percentDecreaseFormula:
       typeof value?.percentDecreaseFormula === "string" &&
@@ -420,9 +427,7 @@ function sanitizeNumericInput(value: string) {
   const cleaned = value.replace(/[^0-9.]/g, "");
   const [whole = "", ...decimalParts] = cleaned.split(".");
 
-  return decimalParts.length > 0
-    ? `${whole}.${decimalParts.join("")}`
-    : whole;
+  return decimalParts.length > 0 ? `${whole}.${decimalParts.join("")}` : whole;
 }
 
 function parseGrowthInput(value: unknown): number | null {
@@ -473,11 +478,7 @@ function calculatePercentDecrease(
     sampleGrowthMultiplier,
   );
 
-  if (
-    controlGrowth === null ||
-    sampleGrowth === null ||
-    controlGrowth <= 0
-  ) {
+  if (controlGrowth === null || sampleGrowth === null || controlGrowth <= 0) {
     return null;
   }
 
@@ -488,10 +489,7 @@ function calculatePercentDecrease(
   );
 }
 
-function formatPercentDecrease(
-  value: number | null,
-  decimalPlaces: number,
-) {
+function formatPercentDecrease(value: number | null, decimalPlaces: number) {
   if (value === null || !Number.isFinite(value)) return "";
 
   return `${value.toFixed(decimalPlaces)}%`;
@@ -532,10 +530,7 @@ function getInoculumResultFromDecrease(
     : "NOT OK";
 }
 
-function formatGrowthNotation(
-  rawValue: unknown,
-  multiplier: number,
-) {
+function formatGrowthNotation(rawValue: unknown, multiplier: number) {
   const value = parseGrowthInput(rawValue);
   if (value === null) return "";
 
@@ -554,21 +549,17 @@ function recalculateApeReportSections(
 ): ApeReportDaySection[] {
   const day0Section = sections.find((section) => section.key === "DAY_0");
   const day0ControlByOrganism = new Map(
-    (day0Section?.rows ?? []).map((row) => [
-      row.organism,
-      row.controlGrowth,
-    ]),
+    (day0Section?.rows ?? []).map((row) => [row.organism, row.controlGrowth]),
   );
 
   return sections.map((section) => ({
     ...section,
-    calculationSettings:
-      section.key === "DAY_0" ? settings : undefined,
+    calculationSettings: section.key === "DAY_0" ? settings : undefined,
     rows: section.rows.map((row) => {
       const controlGrowth =
         section.key === "DAY_0"
           ? row.controlGrowth
-          : day0ControlByOrganism.get(row.organism) ?? "";
+          : (day0ControlByOrganism.get(row.organism) ?? "");
 
       const sampleGrowthMultiplier =
         section.key === "DAY_0"
@@ -613,30 +604,32 @@ function normalizeApeReportSections(
   settings: ApeCalculationSettings,
   organismNames: string[] = DEFAULT_APE_ORGANISMS,
 ): ApeReportDaySection[] {
-  const normalized = makeDefaultApeReportSections(organismNames).map((defaultSection) => {
-    const existingSection = Array.isArray(value)
-      ? value.find((section: any) => section?.key === defaultSection.key)
-      : undefined;
+  const normalized = makeDefaultApeReportSections(organismNames).map(
+    (defaultSection) => {
+      const existingSection = Array.isArray(value)
+        ? value.find((section: any) => section?.key === defaultSection.key)
+        : undefined;
 
-    return {
-      key: defaultSection.key,
-      dayLabel: existingSection?.dayLabel || defaultSection.dayLabel,
-      rows: defaultSection.rows.map((defaultRow) => {
-        const existingRow = existingSection?.rows?.find(
-          (row: any) => row?.organism === defaultRow.organism,
-        );
+      return {
+        key: defaultSection.key,
+        dayLabel: existingSection?.dayLabel || defaultSection.dayLabel,
+        rows: defaultSection.rows.map((defaultRow) => {
+          const existingRow = existingSection?.rows?.find(
+            (row: any) => row?.organism === defaultRow.organism,
+          );
 
-        return {
-          organism: defaultRow.organism,
-          controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
-          sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
-          decrease: String(existingRow?.decrease ?? ""),
-          // Calculated again below from % decrease for every section.
-          innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
-        };
-      }),
-    };
-  });
+          return {
+            organism: defaultRow.organism,
+            controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
+            sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
+            decrease: String(existingRow?.decrease ?? ""),
+            // Calculated again below from % decrease for every section.
+            innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
+          };
+        }),
+      };
+    },
+  );
 
   return recalculateApeReportSections(normalized, settings);
 }
@@ -675,7 +668,6 @@ function Spinner({ className = "" }: { className?: string }) {
     />
   );
 }
-
 
 function SpinnerDark({ className = "" }: { className?: string }) {
   return (
@@ -799,8 +791,18 @@ export default function ApeReport({
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
+  type CorrectionRecipientSide = "AUTO" | "CLIENT" | "LAB" | "BOTH";
+
+  const [correctionRecipientSide, setCorrectionRecipientSide] =
+    useState<CorrectionRecipientSide>("AUTO");
+
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string; oldValue?: string | null }[]
+    {
+      fieldKey: string;
+      message: string;
+      oldValue?: string | null;
+      recipientSide?: Exclude<CorrectionRecipientSide, "AUTO"> | null;
+    }[]
   >([]);
   const [selectedCorrectionField, setSelectedCorrectionField] = useState("");
   const [addMessage, setAddMessage] = useState("");
@@ -899,8 +901,6 @@ export default function ApeReport({
     formatDateForInput(detail?.reviewedDate),
   );
 
-
-
   useEffect(() => {
     if (!reportId) return;
 
@@ -921,21 +921,45 @@ export default function ApeReport({
   function makeCorrectionFieldOptions(): CorrectionFieldOption[] {
     const options: CorrectionFieldOption[] = [
       { key: "client", label: "Client", value: client },
-      { key: "dateSent", label: "Date Sent", value: formatDateForInput(dateSent) },
+      {
+        key: "dateSent",
+        label: "Date Sent",
+        value: formatDateForInput(dateSent),
+      },
       { key: "typeOfTest", label: "Type of Test", value: typeOfTest },
       { key: "sampleType", label: "Sample Type", value: sampleType },
       { key: "formulaNo", label: "Formula #", value: formulaNo },
       { key: "description", label: "Description", value: description },
       { key: "lotNo", label: "Lot #", value: lotNo },
-      { key: "manufactureDate", label: "Manufacture Date", value: formatDateForInput(manufactureDate) },
+      {
+        key: "manufactureDate",
+        label: "Manufacture Date",
+        value: formatDateForInput(manufactureDate),
+      },
       { key: "testSopNo", label: "Test SOP #", value: testSopNo },
       { key: "testReference", label: "Test Reference", value: testReference },
-      { key: "dateTested", label: "Date Tested", value: formatDateForInput(dateTested) },
-      { key: "dateCompleted", label: "Date Completed", value: formatDateForInput(dateCompleted) },
+      {
+        key: "dateTested",
+        label: "Date Tested",
+        value: formatDateForInput(dateTested),
+      },
+      {
+        key: "dateCompleted",
+        label: "Date Completed",
+        value: formatDateForInput(dateCompleted),
+      },
       { key: "testedBy", label: "Tested By", value: testedBy },
-      { key: "testedDate", label: "Tested Date", value: formatDateForInput(testedDate) },
+      {
+        key: "testedDate",
+        label: "Tested Date",
+        value: formatDateForInput(testedDate),
+      },
       { key: "reviewedBy", label: "Reviewed By", value: reviewedBy },
-      { key: "reviewedDate", label: "Reviewed Date", value: formatDateForInput(reviewedDate) },
+      {
+        key: "reviewedDate",
+        label: "Reviewed Date",
+        value: formatDateForInput(reviewedDate),
+      },
     ];
 
     apeReportSections.forEach((section) => {
@@ -1024,16 +1048,24 @@ export default function ApeReport({
     addRequiredError(nextErrors, "description", "Description", description);
     addRequiredError(nextErrors, "lotNo", "Lot #", lotNo);
     addRequiredError(nextErrors, "testSopNo", "Test SOP #", testSopNo);
-    addRequiredError(nextErrors, "testReference", "Test Reference", testReference);
+    addRequiredError(
+      nextErrors,
+      "testReference",
+      "Test Reference",
+      testReference,
+    );
     addRequiredError(nextErrors, "dateTested", "Date Tested", dateTested);
-    addRequiredError(nextErrors, "dateCompleted", "Date Completed", dateCompleted);
+    addRequiredError(
+      nextErrors,
+      "dateCompleted",
+      "Date Completed",
+      dateCompleted,
+    );
 
     apeReportSections.forEach((section) => {
       section.rows.forEach((row, rowIndex) => {
-        const controlGrowthKey =
-          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`;
-        const sampleGrowthKey =
-          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`;
+        const controlGrowthKey = `apeReportSections.${section.key}.${rowIndex}.controlGrowth`;
+        const sampleGrowthKey = `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`;
 
         if (section.key === "DAY_0") {
           addRequiredError(
@@ -1092,9 +1124,7 @@ export default function ApeReport({
   }
 
   function fieldErrorClass(field: string) {
-    return errors[field]
-      ? "border-red-500 ring-1 ring-red-500 bg-red-50"
-      : "";
+    return errors[field] ? "border-red-500 ring-1 ring-red-500 bg-red-50" : "";
   }
 
   function signatureFieldErrorClass(field: string) {
@@ -1102,7 +1132,6 @@ export default function ApeReport({
       ? "border-b-red-500 ring-1 ring-red-500 bg-red-50"
       : "";
   }
-
 
   function fieldHasChanged(c: CorrectionItem) {
     return (
@@ -1147,14 +1176,19 @@ export default function ApeReport({
 
     if (!option || !addMessage.trim()) return;
 
+    const selectedSide =
+      correctionRecipientSide === "AUTO" ? null : correctionRecipientSide;
+
     setPendingCorrections((prev) => [
       ...prev,
       {
         fieldKey: option.key,
         message: addMessage.trim(),
         oldValue: option.value,
+        recipientSide: selectedSide,
       },
     ]);
+
     setSelectedCorrectionField("");
     setAddMessage("");
   }
@@ -1169,9 +1203,8 @@ export default function ApeReport({
       return;
     }
 
-    const canChangeParentStatus = await canChangeParentStatusWithDashboardGuard(
-      pendingStatus,
-    );
+    const canChangeParentStatus =
+      await canChangeParentStatusWithDashboardGuard(pendingStatus);
 
     if (!canChangeParentStatus) return;
 
@@ -1180,12 +1213,16 @@ export default function ApeReport({
         await createCorrections(
           reportIdRef.current!,
           pendingCorrections,
-          pendingStatus as SterilityReportStatus,
+          pendingStatus as ApeReportStatus,
           "Corrections requested",
           reportVersionRef.current,
           {
-            previousStatus: status as SterilityReportStatus,
-            workflowReturnStatus: status as SterilityReportStatus,
+            previousStatus: status as ApeReportStatus,
+            workflowReturnStatus: status as ApeReportStatus,
+            recipientSide:
+              correctionRecipientSide === "AUTO"
+                ? undefined
+                : correctionRecipientSide,
           },
         );
 
@@ -1213,6 +1250,7 @@ export default function ApeReport({
         setSelectingCorrections(false);
         setPendingCorrections([]);
         setPendingStatus(null);
+        setCorrectionRecipientSide("AUTO");
 
         onStatusChanged?.({
           ...report,
@@ -1226,7 +1264,9 @@ export default function ApeReport({
           version: nextVersion,
         });
 
-        alert(`✅ Corrections sent and parent APE status changed to ${pendingStatus}`);
+        alert(
+          `✅ Corrections sent and parent APE status changed to ${pendingStatus}`,
+        );
       } catch (err: any) {
         console.error(err);
         alert(
@@ -1255,6 +1295,10 @@ export default function ApeReport({
           : workflowVersionRef.current;
 
     setReportId(report?.id || null);
+
+    reportIdRef.current = report?.id || null;
+    reportVersionRef.current =
+      typeof report?.version === "number" ? report.version : 0;
 
     setStatus(
       (report as any)?.parentStatus ||
@@ -1301,6 +1345,13 @@ export default function ApeReport({
     setTestedDate(formatDateForInput(nextDetail?.testedDate));
     setReviewedBy(nextDetail?.reviewedBy || "");
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
+
+    setSelectingCorrections(false);
+    setPendingCorrections([]);
+    setPendingStatus(null);
+    setCorrectionRecipientSide("AUTO");
+    setSelectedCorrectionField("");
+    setAddMessage("");
 
     setIsDirty(false);
   }, [
@@ -1350,10 +1401,7 @@ export default function ApeReport({
       calculationSettingsDraft,
     );
 
-    if (
-      nextSettings.standardInoculumMin >
-      nextSettings.standardInoculumMax
-    ) {
+    if (nextSettings.standardInoculumMin > nextSettings.standardInoculumMax) {
       alert("⚠️ Standard inoculum minimum cannot be greater than maximum.");
       return;
     }
@@ -1396,10 +1444,7 @@ export default function ApeReport({
   }
 
   function canEditField(field: string) {
-    return (
-      canEditForm &&
-      canRoleEditApeChildField(role as any, field)
-    );
+    return canEditForm && canRoleEditApeChildField(role as any, field);
   }
 
   function lock(field: string) {
@@ -1437,17 +1482,17 @@ export default function ApeReport({
     });
 
     const sectionKey = apeReportSections[sectionIndex]?.key;
-    if (sectionKey) clearFieldError(apeReportFieldKey(sectionKey, rowIndex, field));
+    if (sectionKey)
+      clearFieldError(apeReportFieldKey(sectionKey, rowIndex, field));
 
     markDirty();
   }
 
   function makePayload() {
-    const calculatedApeReportSections =
-      recalculateApeReportSections(
-        apeReportSections,
-        calculationSettings,
-      );
+    const calculatedApeReportSections = recalculateApeReportSections(
+      apeReportSections,
+      calculationSettings,
+    );
 
     return {
       client,
@@ -1625,10 +1670,7 @@ export default function ApeReport({
   const canUseStatusButtons = pageMode === "UPDATE" && !forcePageReadOnly;
 
   function getNextStatuses() {
-    return (
-      STERILITY_STATUS_TRANSITIONS?.[status as SterilityReportStatus]?.next ??
-      []
-    );
+    return APE_STATUS_TRANSITIONS?.[status as ApeReportStatus]?.next ?? [];
   }
 
   async function canChangeParentStatusWithDashboardGuard(
@@ -1657,7 +1699,9 @@ export default function ApeReport({
 
     const okFields = validateForStatusChange(newStatus);
     if (!okFields) {
-      alert("⚠️ Please fill the highlighted/missing fields before changing status.");
+      alert(
+        "⚠️ Please fill the highlighted/missing fields before changing status.",
+      );
       return;
     }
 
@@ -1670,9 +1714,8 @@ export default function ApeReport({
       if (!saved) return;
     }
 
-    const canChangeParentStatus = await canChangeParentStatusWithDashboardGuard(
-      newStatus,
-    );
+    const canChangeParentStatus =
+      await canChangeParentStatusWithDashboardGuard(newStatus);
 
     if (!canChangeParentStatus) return;
 
@@ -1746,6 +1789,9 @@ export default function ApeReport({
 
       setSelectingCorrections(true);
       setPendingCorrections([]);
+      setCorrectionRecipientSide("AUTO");
+      setSelectedCorrectionField("");
+      setAddMessage("");
       setPendingStatus(targetStatus);
       return;
     }
@@ -1814,10 +1860,10 @@ export default function ApeReport({
           </div>
         )}
 
-
         {selectingCorrections && (
           <div className="no-print mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Correction selection is active. Choose fields below and add correction notes.
+            Correction selection is active. Choose fields below and add
+            correction notes.
           </div>
         )}
 
@@ -1864,9 +1910,7 @@ export default function ApeReport({
               {(report as any)?.parentReportNumber || reportNumber ? (
                 <span className="whitespace-nowrap">
                   REPORT NO:{" "}
-                  {String(
-                    (report as any)?.parentReportNumber || reportNumber,
-                  )}
+                  {String((report as any)?.parentReportNumber || reportNumber)}
                 </span>
               ) : null}
             </div>
@@ -1933,7 +1977,7 @@ export default function ApeReport({
                     value={typeOfTest}
                     onChange={(e) => {
                       setTypeOfTest(e.target.value);
-                    clearFieldError("typeOfTest");
+                      clearFieldError("typeOfTest");
                       markDirty();
                     }}
                     placeholder={isJJL ? "Select or type..." : ""}
@@ -1961,7 +2005,7 @@ export default function ApeReport({
                     value={sampleType}
                     onChange={(e) => {
                       setSampleType(e.target.value);
-                    clearFieldError("sampleType");
+                      clearFieldError("sampleType");
                       markDirty();
                     }}
                     placeholder={isJJL ? "Select or type..." : ""}
@@ -2007,7 +2051,7 @@ export default function ApeReport({
                 value={description}
                 onChange={(e) => {
                   setDescription(e.target.value);
-                    clearFieldError("description");
+                  clearFieldError("description");
                   markDirty();
                 }}
               />
@@ -2217,7 +2261,13 @@ export default function ApeReport({
 
                     <div className="border-r border-black px-1 py-[1px]">
                       <input
-                        className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "controlGrowth"))}
+                        className={tableInputClass(
+                          apeReportFieldKey(
+                            section.key,
+                            rowIndex,
+                            "controlGrowth",
+                          ),
+                        )}
                         value={
                           section.key !== "DAY_0"
                             ? ""
@@ -2238,13 +2288,22 @@ export default function ApeReport({
                             e.target.value,
                           )
                         }
-                        disabled={!canEditField("apeReportSections") || section.key !== "DAY_0"}
+                        disabled={
+                          !canEditField("apeReportSections") ||
+                          section.key !== "DAY_0"
+                        }
                       />
                     </div>
 
                     <div className="border-r border-black px-1 py-[1px]">
                       <input
-                        className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "sampleGrowth"))}
+                        className={tableInputClass(
+                          apeReportFieldKey(
+                            section.key,
+                            rowIndex,
+                            "sampleGrowth",
+                          ),
+                        )}
                         value={
                           editingApeCell === sampleGrowthKey
                             ? row.sampleGrowth
@@ -2271,7 +2330,9 @@ export default function ApeReport({
 
                     <div className="border-r border-black px-1 py-[1px]">
                       <input
-                        className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "decrease"))}
+                        className={tableInputClass(
+                          apeReportFieldKey(section.key, rowIndex, "decrease"),
+                        )}
                         value={row.decrease}
                         readOnly
                         disabled={!canEditField("apeReportSections")}
@@ -2280,7 +2341,13 @@ export default function ApeReport({
 
                     <div className="px-1 py-[1px]">
                       <input
-                        className={tableInputClass(apeReportFieldKey(section.key, rowIndex, "innoculumLevel"))}
+                        className={tableInputClass(
+                          apeReportFieldKey(
+                            section.key,
+                            rowIndex,
+                            "innoculumLevel",
+                          ),
+                        )}
                         value={row.innoculumLevel}
                         readOnly
                         disabled={!canEditField("apeReportSections")}
@@ -2313,7 +2380,7 @@ export default function ApeReport({
                     value={testedBy.toUpperCase()}
                     onChange={(e) => {
                       setTestedBy(e.target.value);
-                    clearFieldError("testedBy");
+                      clearFieldError("testedBy");
                       markDirty();
                     }}
                     readOnly={lock("testedBy")}
@@ -2330,7 +2397,7 @@ export default function ApeReport({
                     value={formatDateForInput(testedDate)}
                     onChange={(e) => {
                       setTestedDate(e.target.value);
-                    clearFieldError("testedDate");
+                      clearFieldError("testedDate");
                       markDirty();
                     }}
                     readOnly={lock("testedDate")}
@@ -2346,7 +2413,7 @@ export default function ApeReport({
                     value={reviewedBy.toUpperCase()}
                     onChange={(e) => {
                       setReviewedBy(e.target.value);
-                    clearFieldError("reviewedBy");
+                      clearFieldError("reviewedBy");
                       markDirty();
                     }}
                     readOnly={lock("reviewedBy")}
@@ -2363,7 +2430,7 @@ export default function ApeReport({
                     value={formatDateForInput(reviewedDate)}
                     onChange={(e) => {
                       setReviewedDate(e.target.value);
-                    clearFieldError("reviewedDate");
+                      clearFieldError("reviewedDate");
                       markDirty();
                     }}
                     readOnly={lock("reviewedDate")}
@@ -2382,7 +2449,7 @@ export default function ApeReport({
             {canUseStatusButtons &&
               getNextStatuses().map((targetStatus) => {
                 const transition =
-                  STERILITY_STATUS_TRANSITIONS[status as SterilityReportStatus];
+                  APE_STATUS_TRANSITIONS[status as ApeReportStatus];
 
                 if (!transition?.canSet?.includes(role as any)) return null;
                 if (!statusButtons[targetStatus]) return null;
@@ -2395,9 +2462,7 @@ export default function ApeReport({
                       type="button"
                       className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                       onClick={() =>
-                        requestStatusChange(
-                          targetStatus as SterilityReportStatus,
-                        )
+                        requestStatusChange(targetStatus as ApeReportStatus)
                       }
                       disabled={busy !== null}
                     >
@@ -2420,7 +2485,6 @@ export default function ApeReport({
           {/* Right side intentionally empty: top modal buttons handle close/save/print */}
         </div>
       )}
-
 
       {showCalculationSettings && canEditCalculationSettings && (
         <div className="no-print fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
@@ -2474,9 +2538,15 @@ export default function ApeReport({
                   {[
                     ["controlGrowthMultiplier", "Control Growth multiplier"],
                     ["day0SampleGrowthMultiplier", "Day 0 Sample multiplier"],
-                    ["laterDaySampleGrowthMultiplier", "Later-day Sample multiplier"],
+                    [
+                      "laterDaySampleGrowthMultiplier",
+                      "Later-day Sample multiplier",
+                    ],
                   ].map(([key, label]) => (
-                    <label key={key} className="text-xs font-semibold text-slate-700">
+                    <label
+                      key={key}
+                      className="text-xs font-semibold text-slate-700"
+                    >
                       {label}
                       <input
                         type="number"
@@ -2572,7 +2642,10 @@ export default function ApeReport({
                     ["nigerInoculumMin", "Niger minimum"],
                     ["nigerInoculumMax", "Niger maximum"],
                   ].map(([key, label]) => (
-                    <label key={key} className="text-xs font-semibold text-slate-700">
+                    <label
+                      key={key}
+                      className="text-xs font-semibold text-slate-700"
+                    >
                       {label}
                       <input
                         type="number"
@@ -2605,7 +2678,10 @@ export default function ApeReport({
                     ["twoLogThreshold", "2 Log threshold"],
                     ["threeLogThreshold", "3 Log threshold"],
                   ].map(([key, label]) => (
-                    <label key={key} className="text-xs font-semibold text-slate-700">
+                    <label
+                      key={key}
+                      className="text-xs font-semibold text-slate-700"
+                    >
                       {label}
                       <input
                         type="number"
@@ -2697,26 +2773,90 @@ export default function ApeReport({
             <button
               type="button"
               className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-              disabled={!selectedCorrectionField || !addMessage.trim() || busy !== null}
-              onClick={() => runBusy("ADD_CORRECTION", async () => addPendingCorrection())}
+              disabled={
+                !selectedCorrectionField || !addMessage.trim() || busy !== null
+              }
+              onClick={() =>
+                runBusy("ADD_CORRECTION", async () => addPendingCorrection())
+              }
             >
               Add
             </button>
           </div>
 
+          {["QA", "ADMIN", "SYSTEMADMIN"].includes(role ?? "") && (
+            <div className="mt-3 rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-semibold text-slate-700">
+                Send this change/correction to
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                {[
+                  ["AUTO", "Auto"],
+                  ["CLIENT", "Client"],
+                  ["LAB", "Lab"],
+                  ["BOTH", "Both"],
+                ].map(([value, label]) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-center justify-center rounded-lg border px-2 py-1.5 ${
+                      correctionRecipientSide === value
+                        ? "border-blue-600 bg-blue-50 text-blue-700"
+                        : "bg-white text-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      className="mr-1"
+                      checked={correctionRecipientSide === value}
+                      onChange={() =>
+                        setCorrectionRecipientSide(
+                          value as CorrectionRecipientSide,
+                        )
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-2 text-[11px] text-slate-500">
+                Auto uses field type. For mixed fields, choose Client, Lab, or
+                Both.
+              </div>
+            </div>
+          )}
+
           <ul className="mt-3 max-h-32 overflow-auto text-xs">
             {pendingCorrections.map((c, i) => {
-              const option = correctionFieldOptions.find((f) => f.key === c.fieldKey);
+              const option = correctionFieldOptions.find(
+                (f) => f.key === c.fieldKey,
+              );
               return (
-                <li key={`${c.fieldKey}-${i}`} className="flex items-center justify-between gap-2 border-b py-1">
+                <li
+                  key={`${c.fieldKey}-${i}`}
+                  className="flex items-center justify-between gap-2 border-b py-1"
+                >
                   <span className="truncate">
                     <b>{option?.label ?? c.fieldKey}</b>: {c.message}
+                    {c.recipientSide && (
+                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                        To: {c.recipientSide}
+                      </span>
+                    )}
+                    {!c.recipientSide && (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                        Auto
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"
                     className="text-rose-600 hover:underline"
                     onClick={() =>
-                      setPendingCorrections((prev) => prev.filter((_, idx) => idx !== i))
+                      setPendingCorrections((prev) =>
+                        prev.filter((_, idx) => idx !== i),
+                      )
                     }
                   >
                     remove
@@ -2737,6 +2877,7 @@ export default function ApeReport({
                 setSelectingCorrections(false);
                 setPendingCorrections([]);
                 setPendingStatus(null);
+                setCorrectionRecipientSide("AUTO");
                 setSelectedCorrectionField("");
                 setAddMessage("");
               }}
@@ -2746,7 +2887,9 @@ export default function ApeReport({
             <button
               type="button"
               className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={!pendingCorrections.length || !pendingStatus || busy !== null}
+              disabled={
+                !pendingCorrections.length || !pendingStatus || busy !== null
+              }
               onClick={sendPendingCorrections}
             >
               {busy === "SEND_CORRECTIONS" && <Spinner />}
@@ -2776,7 +2919,9 @@ export default function ApeReport({
           <div className="border-b bg-slate-50 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Correction Review</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Correction Review
+                </h3>
                 <p className="mt-1 text-xs text-slate-500">
                   Resolve only after the field value has been updated and saved.
                 </p>
@@ -2799,25 +2944,36 @@ export default function ApeReport({
             ) : (
               <div className="space-y-3">
                 {openCorrections.map((c, index) => {
-                  const option = correctionFieldOptions.find((f) => f.key === c.fieldKey);
+                  const option = correctionFieldOptions.find(
+                    (f) => f.key === c.fieldKey,
+                  );
                   const canResolve = canResolveCorrection(c);
 
                   return (
-                    <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div
+                      key={c.id}
+                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-slate-900">
                             {index + 1}. {option?.label ?? c.fieldKey}
                           </div>
                           <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                            <span className="font-semibold">Reason:</span> {c.message}
+                            <span className="font-semibold">Reason:</span>{" "}
+                            {c.message}
                           </div>
-                          {c.oldValue != null && String(c.oldValue).trim() !== "" && (
-                            <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                              <span className="font-semibold">Old Value:</span>{" "}
-                              {typeof c.oldValue === "string" ? c.oldValue : JSON.stringify(c.oldValue)}
-                            </div>
-                          )}
+                          {c.oldValue != null &&
+                            String(c.oldValue).trim() !== "" && (
+                              <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                <span className="font-semibold">
+                                  Old Value:
+                                </span>{" "}
+                                {typeof c.oldValue === "string"
+                                  ? c.oldValue
+                                  : JSON.stringify(c.oldValue)}
+                              </div>
+                            )}
                         </div>
                         <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
                           OPEN
@@ -2852,7 +3008,6 @@ export default function ApeReport({
           </div>
         </div>
       )}
-
     </>
   );
 }

@@ -1303,6 +1303,11 @@ enum BillingEmailStatus {
   FAILED
 }
 
+enum BillingInvoiceKind {
+  REPORT
+  MANUAL
+}
+
 model BillingPriceRule {
   id String @id @default(cuid())
 
@@ -1492,7 +1497,12 @@ model BillingInvoice {
   revisionOfInvoice BillingInvoice?  @relation("BillingInvoiceRevisions", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
   revisions         BillingInvoice[] @relation("BillingInvoiceRevisions")
 
+  invoiceKind BillingInvoiceKind @default(REPORT)
+
+  manualLines BillingManualInvoiceLine[]
+
   @@unique([revisionOfInvoiceId, revisionNumber])
+  @@index([invoiceKind])
   @@index([revisionOfInvoiceId])
   @@index([clientCode])
   @@index([periodStart, periodEnd])
@@ -1502,6 +1512,28 @@ model BillingInvoice {
   // Important for scheduled invoice sender
   @@index([scheduledSendAt])
   @@index([status, scheduledSendAt])
+}
+
+model BillingManualInvoiceLine {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  description String
+
+  quantity Int @default(1)
+
+  unitPrice Decimal @db.Decimal(12, 2)
+  amount    Decimal @db.Decimal(12, 2)
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
 }
 
 model BillingInvoiceExtraCharge {

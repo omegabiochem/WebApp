@@ -615,12 +615,15 @@ export function useChemistryReportValidation(
   return { errors, clearError, validateAndSetErrors };
 }
 
+export type CorrectionRecipientSide = "CLIENT" | "LAB" | "BOTH";
+
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
   message: string;
-  oldValue?: any;
+  oldValue?: any | null;
   status: "OPEN" | "RESOLVED";
+  recipientSide?: CorrectionRecipientSide | null;
   requestedByRole: Role;
   createdAt: string;
   resolvedAt?: string;
@@ -635,7 +638,12 @@ export async function getCorrections(reportId: string) {
 
 export async function createCorrections(
   reportId: string,
-  items: { fieldKey: string; message: string }[],
+  items: {
+    fieldKey: string;
+    message: string;
+    oldValue?: any | null;
+    recipientSide?: CorrectionRecipientSide | null;
+  }[],
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
@@ -643,6 +651,7 @@ export async function createCorrections(
     kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
     previousStatus?: string;
     workflowReturnStatus?: string;
+    recipientSide?: CorrectionRecipientSide;
   },
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {

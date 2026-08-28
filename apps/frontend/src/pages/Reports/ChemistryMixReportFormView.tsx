@@ -252,10 +252,14 @@ function AttachmentPreview({
   );
 }
 
-function formatDateForInput(value: string | null) {
+function formatDateForInput(value: string | null | undefined) {
   if (!value) return "";
+  if (value === "NA") return "NA";
 
-  return new Date(value).toISOString().split("T")[0];
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+  return d.toISOString().split("T")[0];
 }
 
 // const PrintStyles = () => (
@@ -299,7 +303,6 @@ function formatDateForInput(value: string | null) {
 //   `}</style>
 // );
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -316,7 +319,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -675,14 +680,13 @@ export default function ChemistryMixReportFormView(
   const dashClass = (keyOrPrefix: string) =>
     hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
 
-
-    const isSubmissionFormPane = activePane === "FORM";
+  const isSubmissionFormPane = activePane === "FORM";
   const blankIfForm = (value: any) => {
     if (isSubmissionFormPane) return "";
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
+  const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,
@@ -746,8 +750,6 @@ export default function ChemistryMixReportFormView(
         </div>
       )} */}
 
-
-      
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2 py-2">
@@ -773,7 +775,7 @@ export default function ChemistryMixReportFormView(
 
       {/* Controls (hidden on print) */}
 
-       {isReportPane || isSubmissionFormPane ? (
+      {isReportPane || isSubmissionFormPane ? (
         <>
           {/* Letterhead – same look as Micro */}
           <div className="mb-1 text-center">
@@ -813,7 +815,7 @@ export default function ChemistryMixReportFormView(
 
               {/* Right: Report Number */}
               <div className="text-right text-[12px] font-bold">
-                {!isFormPane  && report.reportNumber}
+                {!isFormPane && report.reportNumber}
               </div>
             </div>
           </div>
@@ -1167,14 +1169,18 @@ export default function ChemistryMixReportFormView(
               </div>
 
               {/* RIGHT: Date received */}
-           <div className={`flex items-center gap-2 whitespace-nowrap pl-2 relative ${dashClass("dateReceived")}`}>
+              <div
+                className={`flex items-center gap-2 whitespace-nowrap pl-2 relative ${dashClass("dateReceived")}`}
+              >
                 <span className="whitespace-nowrap font-medium">
                   DATE RECEIVED :
                 </span>
                 <input
                   type="date"
                   className="w-[80px] border-0 border-b border-black/60 outline-none text-[11px]"
-                  value={blankIfForm(formatDateForInput(report?.dateReceived ?? ""))}
+                  value={blankIfForm(
+                    formatDateForInput(report?.dateReceived ?? ""),
+                  )}
                   readOnly
                   disabled
                 />
@@ -1222,7 +1228,9 @@ export default function ChemistryMixReportFormView(
                     className="actives-row grid grid-cols-[25%_15%_13%_20%_12%_15%] border-b last:border-b-0 border-black"
                   >
                     {/* ACTIVE NAME + checkbox */}
-                   <div className={`flex items-start gap-2 border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:checked`)}`}>
+                    <div
+                      className={`flex items-start gap-2 border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:checked`)}`}
+                    >
                       {/* <input
                         type="checkbox"
                         className="thick-box2 mt-[2px]"
@@ -1240,35 +1248,45 @@ export default function ChemistryMixReportFormView(
                     </div>
 
                     {/* BULK ACTIVE LOT # */}
-                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:bulkActiveLot`)}`}>
+                    <div
+                      className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:bulkActiveLot`)}`}
+                    >
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.bulkActiveLot)}
                       </div>
                     </div>
 
                     {/* SOP # */}
-                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:sopNo`)}`}>
+                    <div
+                      className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:sopNo`)}`}
+                    >
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(blankIfForm(row.sopNo))}
                       </div>
                     </div>
 
                     {/* FORMULA CONTENT */}
-                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:formulaContent`)}`}>
+                    <div
+                      className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:formulaContent`)}`}
+                    >
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(row.formulaContent)}
                       </div>
                     </div>
 
                     {/* RESULTS */}
-                    <div className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:result`)}`}>
+                    <div
+                      className={`border-r border-black px-1 py-1 relative ${dashClass(`actives:${row.key}:result`)}`}
+                    >
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(blankIfForm(row.result))}
                       </div>
                     </div>
 
                     {/* DATE TESTED / INITIAL */}
-                    <div className={`px-1 py-1 relative ${dashClass(`actives:${row.key}:dateTestedInitial`)}`}>
+                    <div
+                      className={`px-1 py-1 relative ${dashClass(`actives:${row.key}:dateTestedInitial`)}`}
+                    >
                       <div className="whitespace-pre-wrap break-words leading-tight text-center">
                         {cellText(blankIfForm(row.dateTestedInitial))}
                       </div>
@@ -1288,7 +1306,9 @@ export default function ChemistryMixReportFormView(
 
           {/* Comments + signatures */}
           <div className="mt-2 text-[12px]">
-            <div className={`flex items-start gap-2 relative ${dashClass("comments")}`}>
+            <div
+              className={`flex items-start gap-2 relative ${dashClass("comments")}`}
+            >
               <span className="font-medium mt-[2px] whitespace-nowrap">
                 Comments :
               </span>
@@ -1313,7 +1333,9 @@ export default function ChemistryMixReportFormView(
               <>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
-                    <div className={`mb-1 flex items-center gap-2 relative ${dashClass("testedBy")}`}>
+                    <div
+                      className={`mb-1 flex items-center gap-2 relative ${dashClass("testedBy")}`}
+                    >
                       <span className="font-medium">VERIFIED BY :</span>
                       <input
                         className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -1324,7 +1346,9 @@ export default function ChemistryMixReportFormView(
                         disabled
                       />
                     </div>
-                   <div className={`flex items-center gap-2 relative ${dashClass("testedDate")}`}>
+                    <div
+                      className={`flex items-center gap-2 relative ${dashClass("testedDate")}`}
+                    >
                       <span className="font-medium">DATE :</span>
                       {hideDateInputs ? (
                         <div
@@ -1349,7 +1373,9 @@ export default function ChemistryMixReportFormView(
                   </div>
 
                   <div>
-                    <div className={`mb-1 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}>
+                    <div
+                      className={`mb-1 flex items-center gap-2 relative ${dashClass("reviewedBy")}`}
+                    >
                       <span className="font-medium">REVIEWED BY :</span>
                       <input
                         className={`flex-1 border-0 border-b border-black/60 outline-none ${
@@ -1360,7 +1386,9 @@ export default function ChemistryMixReportFormView(
                         disabled
                       />
                     </div>
-                    <div className={`flex items-center gap-2 relative ${dashClass("reviewedDate")}`}>
+                    <div
+                      className={`flex items-center gap-2 relative ${dashClass("reviewedDate")}`}
+                    >
                       <span className="font-medium">DATE :</span>
                       {hideDateInputs ? (
                         <div
@@ -1444,7 +1472,7 @@ export default function ChemistryMixReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-                { !isFormPane && report?.reportNumber && (
+                {!isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>
@@ -1480,55 +1508,59 @@ export default function ChemistryMixReportFormView(
       )}
 
       {!isBulk && openCorrections.length > 0 && (
-  <div className="no-print fixed bottom-20 right-6 z-40">
-    <button
-      onClick={() => setShowCorrTray((s) => !s)}
-      className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
-    >
-      📝 Corrections
-      <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
-        {openCorrections.length}
-      </span>
-    </button>
-  </div>
-)}
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="rounded-full border bg-white/95 px-4 py-2 text-sm shadow-lg hover:bg-white"
+          >
+            📝 Corrections
+            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-600 px-2 py-[1px] text-[11px] font-semibold text-white">
+              {openCorrections.length}
+            </span>
+          </button>
+        </div>
+      )}
 
-{!isBulk && showCorrTray && (
-  <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
-    <div className="flex items-center justify-between border-b px-3 py-2">
-      <div className="text-sm font-semibold">Open corrections</div>
-      <button
-        className="rounded px-2 py-1 text-xs hover:bg-slate-100"
-        onClick={() => setShowCorrTray(false)}
-      >
-        ✕
-      </button>
-    </div>
-
-    <div className="max-h-72 overflow-auto divide-y">
-      {openCorrections.map((c) => (
-        <div key={c.id} className="p-3 text-sm">
-          <div className="text-[11px] font-medium text-slate-500">
-            {c.fieldKey}
+      {!isBulk && showCorrTray && (
+        <div className="no-print fixed bottom-20 right-6 z-40 w-[380px] overflow-hidden rounded-xl border bg-white/95 shadow-2xl">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <div className="text-sm font-semibold">Open corrections</div>
+            <button
+              className="rounded px-2 py-1 text-xs hover:bg-slate-100"
+              onClick={() => setShowCorrTray(false)}
+            >
+              ✕
+            </button>
           </div>
 
-          <div className="mt-1">Reason: {c.message}</div>
+          <div className="max-h-72 overflow-auto divide-y">
+            {openCorrections.map((c) => (
+              <div key={c.id} className="p-3 text-sm">
+                <div className="text-[11px] font-medium text-slate-500">
+                  {c.fieldKey}
+                </div>
 
-          {c.oldValue != null && String(c.oldValue).trim() !== "" && (
-            <div className="mt-1 text-xs text-slate-600">
-              <span className="font-medium">Old Value:</span>{" "}
-              <span className="break-words">
-                {typeof c.oldValue === "string"
-                  ? c.oldValue
-                  : JSON.stringify(c.oldValue)}
-              </span>
-            </div>
-          )}
+                <div className="mt-1">Reason: {c.message}</div>
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
+                {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                  <div className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Old Value:</span>{" "}
+                    <span className="break-words">
+                      {typeof c.oldValue === "string"
+                        ? c.oldValue
+                        : JSON.stringify(c.oldValue)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
-    </div>
-  </div>
-)}
+      )}
     </div>
   );
 }

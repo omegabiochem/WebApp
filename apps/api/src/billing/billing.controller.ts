@@ -139,6 +139,76 @@ export class BillingController {
   }
 
   /* =========================================================
+     MANUAL INVOICES
+  ========================================================= */
+
+  @Post('invoices/manual')
+  createManualInvoice(
+    @Req() req: Request,
+    @Body()
+    body: {
+      clientCode: string;
+      notes?: string;
+    },
+  ) {
+    return this.billing.createManualInvoice(
+      (req as any).user,
+      body,
+    );
+  }
+
+  @Post('invoices/:invoiceId/manual-lines')
+  addManualInvoiceLine(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Body()
+    body: {
+      description: string;
+      quantity: string | number;
+      unitPrice: string | number;
+    },
+  ) {
+    return this.billing.addManualInvoiceLine(
+      (req as any).user,
+      invoiceId,
+      body,
+    );
+  }
+
+  @Patch('invoices/:invoiceId/manual-lines/:lineId')
+  updateManualInvoiceLine(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Param('lineId') lineId: string,
+    @Body()
+    body: {
+      description?: string;
+      quantity?: string | number;
+      unitPrice?: string | number;
+    },
+  ) {
+    return this.billing.updateManualInvoiceLine(
+      (req as any).user,
+      invoiceId,
+      lineId,
+      body,
+    );
+  }
+
+  @Delete('invoices/:invoiceId/manual-lines/:lineId')
+  deleteManualInvoiceLine(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Param('lineId') lineId: string,
+  ) {
+    return this.billing.deleteManualInvoiceLine(
+      (req as any).user,
+      invoiceId,
+      lineId,
+    );
+  }
+
+  /* =========================================================
      REFRESH PRICING
   ========================================================= */
 

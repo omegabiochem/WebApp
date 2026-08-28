@@ -475,6 +475,8 @@ const CRITICAL_FIELDS = new Set<string>([
   'status',
 ]);
 
+type CorrectionRecipientSide = 'CLIENT' | 'LAB' | 'BOTH';
+
 type CorrectionItem = {
   id: string;
   fieldKey: string;
@@ -482,13 +484,15 @@ type CorrectionItem = {
   status: 'OPEN' | 'RESOLVED';
   requestedByUserId: string;
   requestedByRole: UserRole;
+  createdAt: Date | string;
+  oldValue?: any | null;
 
-  createdAt: string; // ✅ keep as ISO string (you already store string)
-  oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
-  resolvedAt?: string | null; // ✅ ISO
+  recipientSide?: CorrectionRecipientSide | null;
+
+  resolvedAt?: string | null;
   resolvedByUserId?: string | null;
   resolvedByRole?: UserRole | null;
-  resolutionNote?: string | null; // optional
+  resolutionNote?: string | null;
 };
 
 function _getCorrectionsArray(r: any): CorrectionItem[] {
@@ -589,7 +593,6 @@ export class ChemistryReportsService {
     private readonly dashboardSync: DashboardReportSyncService,
     private readonly workflowReminders: WorkflowReminderService,
   ) {}
-  
 
   /**
    * Keeps the workflow snapshot in DashboardReport inside the same transaction
@@ -1860,12 +1863,18 @@ export class ChemistryReportsService {
     user: { userId: string; role: UserRole },
     id: string,
     body: {
-      items: { fieldKey: string; message: string; oldValue?: any | null }[];
+      items: {
+        fieldKey: string;
+        message: string;
+        oldValue?: any;
+        recipientSide?: CorrectionRecipientSide | null;
+      }[];
       targetStatus?: ChemistryReportStatus;
       reason?: string;
       expectedVersion?: number;
       previousStatus?: ChemistryReportStatus; // optional, for additional safety in concurrent scenarios
-      workflowReturnStatus?: ChemistryReportStatus; // optional, for better handling of centralized workflow states
+      workflowReturnStatus?: ChemistryReportStatus;
+      recipientSide?: CorrectionRecipientSide | null; // optional, for better handling of centralized workflow states
     },
   ) {
     if (!body.items?.length) {
@@ -1902,6 +1911,8 @@ export class ChemistryReportsService {
 
     const nowIso = new Date().toISOString();
     const existing = this._getCorrectionsArray(d);
+    const requestRecipientSide = body.recipientSide ?? null;
+
     const toAdd = body.items.map((it) => ({
       id: randomUUID(),
       fieldKey: it.fieldKey,
@@ -1911,6 +1922,9 @@ export class ChemistryReportsService {
       requestedByRole: user.role,
       createdAt: nowIso,
       oldValue: it.oldValue ?? null,
+
+      recipientSide: it.recipientSide ?? requestRecipientSide,
+
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
       resolvedByRole: null as UserRole | null,
@@ -1940,6 +1954,7 @@ export class ChemistryReportsService {
           fieldKey: c.fieldKey,
           message: c.message,
           oldValue: c.oldValue ?? null,
+          recipientSide: c.recipientSide ?? null,
           requestedByRole: c.requestedByRole,
           createdAt: c.createdAt,
         })),

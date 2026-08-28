@@ -85,6 +85,24 @@ export class UsersController {
     return this.users.updateClientCode(id, body.clientCode ?? null);
   }
 
+  // PATCH /users/:id/name
+@Patch(':id/name')
+updateName(
+  @Param('id') id: string,
+  @Body() body: { name: string | null },
+) {
+  return this.users.updateName(id, body.name ?? null);
+}
+
+// PATCH /users/:id/email
+@Patch(':id/email')
+updateEmail(
+  @Param('id') id: string,
+  @Body() body: { email: string },
+) {
+  return this.users.updateEmail(id, body.email);
+}
+
   // POST /users/:id/reset-password
   @Post(':id/reset-password')
   // @Roles('ADMIN', 'SYSTEMADMIN')

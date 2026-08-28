@@ -772,6 +772,8 @@ const CRITICAL_FIELDS = new Set<string>([
   'status',
 ]);
 
+type CorrectionRecipientSide = 'CLIENT' | 'LAB' | 'BOTH';
+
 type CorrectionItem = {
   id: string;
   fieldKey: string; // e.g. "dateSent", "tbc_result"
@@ -780,6 +782,7 @@ type CorrectionItem = {
   requestedByUserId: string;
   requestedByRole: UserRole;
   createdAt: Date;
+  recipientSide?: CorrectionRecipientSide | null;
   oldValue?: any | null; // ✅ snapshot at time of request (string | number | array | object)
   resolvedAt?: string | null; // ✅ ISO
   resolvedByUserId?: string | null;
@@ -2606,12 +2609,18 @@ export class ReportsService {
     user: { userId: string; role: UserRole },
     id: string,
     body: {
-      items: { fieldKey: string; message: string; oldValue?: any | null }[];
+      items: {
+        fieldKey: string;
+        message: string;
+        oldValue?: any;
+        recipientSide?: CorrectionRecipientSide | null;
+      }[];
       targetStatus?: ReportStatus;
       reason?: string;
       expectedVersion?: number;
       previousStatus?: ReportStatus;
       workflowReturnStatus?: ReportStatus;
+      recipientSide?: CorrectionRecipientSide | null;
     },
   ) {
     if (!body.items?.length) {
@@ -2650,6 +2659,9 @@ export class ReportsService {
 
     const nowIso = new Date().toISOString();
     const existing = this._getCorrectionsArray(d);
+
+    const requestRecipientSide = body.recipientSide ?? null;
+
     const toAdd = body.items.map((it) => ({
       id: randomUUID(),
       fieldKey: it.fieldKey,
@@ -2658,9 +2670,9 @@ export class ReportsService {
       requestedByUserId: user.userId,
       requestedByRole: user.role,
       createdAt: nowIso,
-
-      // ✅ store snapshot
       oldValue: it.oldValue ?? null,
+
+      recipientSide: it.recipientSide ?? requestRecipientSide,
 
       resolvedAt: null as string | null,
       resolvedByUserId: null as string | null,
@@ -2690,6 +2702,7 @@ export class ReportsService {
           fieldKey: c.fieldKey,
           message: c.message,
           oldValue: c.oldValue ?? null,
+          recipientSide: c.recipientSide ?? null,
           requestedByRole: c.requestedByRole,
           createdAt: c.createdAt,
         })),

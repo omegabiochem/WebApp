@@ -47,6 +47,12 @@ const ACTIVE_REPORT_STATUSES: ReportStatus[] = [
   'UNDER_FINAL_RESUBMISSION_ADMIN_REVIEW',
 ];
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(email: string) {
+  return String(email ?? '').trim().toLowerCase();
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -303,6 +309,89 @@ export class UsersService {
     });
     return { ok: true };
   }
+
+
+  async updateName(id: string, name: string | null) {
+  const found = await this.prisma.user.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+
+  if (!found) {
+    throw new NotFoundException('User not found');
+  }
+
+  const nextName = String(name ?? '').trim() || null;
+
+  const updated = await this.prisma.user.update({
+    where: { id },
+    data: { name: nextName },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      active: true,
+      userId: true,
+      clientCode: true,
+    },
+  });
+
+  return {
+    ok: true,
+    user: updated,
+  };
+}
+
+async updateEmail(id: string, email: string) {
+  const nextEmail = normalizeEmail(email);
+
+  if (!nextEmail || !EMAIL_RE.test(nextEmail)) {
+    throw new BadRequestException('Valid email is required');
+  }
+
+  const found = await this.prisma.user.findUnique({
+    where: { id },
+    select: { id: true, email: true },
+  });
+
+  if (!found) {
+    throw new NotFoundException('User not found');
+  }
+
+  const duplicate = await this.prisma.user.findFirst({
+    where: {
+      email: nextEmail,
+      NOT: { id },
+    },
+    select: { id: true },
+  });
+
+  if (duplicate) {
+    throw new BadRequestException('Email already exists');
+  }
+
+  const updated = await this.prisma.user.update({
+    where: { id },
+    data: {
+      email: nextEmail,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      active: true,
+      userId: true,
+      clientCode: true,
+    },
+  });
+
+  return {
+    ok: true,
+    user: updated,
+  };
+}
 
   // async resetPasswordAdmin(id: string) {
   //   const u = await this.prisma.user.findUnique({ where: { id } });

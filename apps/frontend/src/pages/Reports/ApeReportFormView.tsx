@@ -1042,7 +1042,11 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
-
+{c.recipientSide && (
+  <div className="mt-1 text-xs text-blue-700">
+    <span className="font-medium">To:</span> {c.recipientSide}
+  </div>
+)}
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}

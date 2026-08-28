@@ -640,8 +640,22 @@ export class BillingService {
       throw new BadRequestException('Only DRAFT invoices can be recalculated');
     }
 
-    const [lineAggregate, extraChargeAggregate] = await Promise.all([
+    const [
+      lineAggregate,
+      manualLineAggregate,
+      extraChargeAggregate,
+    ] = await Promise.all([
       tx.billingInvoiceLine.aggregate({
+        where: {
+          invoiceId,
+        },
+
+        _sum: {
+          amount: true,
+        },
+      }),
+
+      tx.billingManualInvoiceLine.aggregate({
         where: {
           invoiceId,
         },
@@ -665,10 +679,16 @@ export class BillingService {
     const lineSubtotal =
       lineAggregate._sum.amount ?? new Prisma.Decimal(0);
 
+    const manualLineSubtotal =
+      manualLineAggregate._sum.amount ?? new Prisma.Decimal(0);
+
     const extraChargeSubtotal =
       extraChargeAggregate._sum.amount ?? new Prisma.Decimal(0);
 
-    const subtotal = lineSubtotal.plus(extraChargeSubtotal).toDecimalPlaces(2);
+    const subtotal = lineSubtotal
+      .plus(manualLineSubtotal)
+      .plus(extraChargeSubtotal)
+      .toDecimalPlaces(2);
 
     const total = subtotal.plus(invoice.adjustmentAmount).toDecimalPlaces(2);
 
@@ -2063,6 +2083,9 @@ export class BillingService {
                 status:
                   'DRAFT',
 
+                invoiceKind:
+                  'REPORT',
+
                 createdBy:
                   user.userId,
 
@@ -2777,6 +2800,673 @@ export class BillingService {
     return this.getInvoice(user, invoiceId);
   }
 
+
+  /* =======================================================
+     MANUAL INVOICES
+  ======================================================= */
+
+  async createManualInvoice(
+    user: AuthUser,
+    dto: {
+      clientCode: string;
+      notes?: string;
+    },
+  ) {
+    this.assertManager(user);
+
+    const clientCode =
+      String(dto?.clientCode ?? '')
+        .trim()
+        .toUpperCase();
+
+    if (!clientCode) {
+      throw new BadRequestException(
+        'clientCode is required',
+      );
+    }
+
+    const client =
+      await this.prisma.clientDetails.findUnique({
+        where: {
+          clientCode,
+        },
+      });
+
+    if (!client) {
+      throw new NotFoundException(
+        `Client details not found for ${clientCode}`,
+      );
+    }
+
+    if (!client.active) {
+      throw new BadRequestException(
+        'Cannot create an invoice for an inactive client',
+      );
+    }
+
+    /*
+     * Manual invoices are intentionally independent from
+     * automatic report billing eligibility.
+     *
+     * billingEnabled / billingStartAt only control automatic
+     * LIMS report discovery.
+     */
+    const range =
+      getMonthRange(
+        undefined,
+        DEFAULT_BILLING_TIME_ZONE,
+      );
+
+    const invoice =
+      await this.prisma.billingInvoice.create({
+        data: {
+          invoiceKind:
+            'MANUAL',
+
+          clientCode,
+
+          activeKey:
+            null,
+
+          periodStart:
+            range.periodStart,
+
+          periodEnd:
+            range.periodEnd,
+
+          status:
+            'DRAFT',
+
+          currency:
+            'USD',
+
+          subtotal:
+            new Prisma.Decimal(0),
+
+          adjustmentAmount:
+            new Prisma.Decimal(0),
+
+          total:
+            new Prisma.Decimal(0),
+
+          clientName:
+            client.name ?? null,
+
+          clientLegalName:
+            client.legalName ?? null,
+
+          billingContactName:
+            client.billingContactName ?? null,
+
+          billingEmail:
+            client.billingEmail ?? null,
+
+          billingPhone:
+            client.billingPhone ?? null,
+
+          billingAddressLine1:
+            client.billingAddressLine1 ?? null,
+
+          billingAddressLine2:
+            client.billingAddressLine2 ?? null,
+
+          billingCity:
+            client.billingCity ?? null,
+
+          billingState:
+            client.billingState ?? null,
+
+          billingPostalCode:
+            client.billingPostalCode ?? null,
+
+          billingCountry:
+            client.billingCountry ?? null,
+
+          paymentTerms:
+            client.paymentTerms ?? null,
+
+          notes:
+            dto?.notes?.trim() ||
+            null,
+
+          createdBy:
+            user.userId,
+
+          updatedBy:
+            user.userId,
+        },
+      });
+
+    await this.auditInvoice(
+      user,
+      {
+        action:
+          'MANUAL_INVOICE_CREATED',
+
+        invoiceId:
+          invoice.id,
+
+        clientCode:
+          invoice.clientCode,
+
+        details:
+          `Created manual invoice draft for ${invoice.clientCode}`,
+
+        changes: {
+          invoiceKind:
+            'MANUAL',
+        },
+      },
+    );
+
+    return this.getInvoice(
+      user,
+      invoice.id,
+    );
+  }
+
+  private parseManualQuantity(
+    value: unknown,
+  ) {
+    const quantity =
+      Number(
+        String(
+          value ?? '',
+        ).trim(),
+      );
+
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 100000
+    ) {
+      throw new BadRequestException(
+        'quantity must be a whole number between 1 and 100000',
+      );
+    }
+
+    return quantity;
+  }
+
+  private normalizeManualDescription(
+    value: unknown,
+  ) {
+    const description =
+      String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ');
+
+    if (
+      description.length < 2 ||
+      description.length > 500
+    ) {
+      throw new BadRequestException(
+        'Description must be between 2 and 500 characters',
+      );
+    }
+
+    return description;
+  }
+
+  async addManualInvoiceLine(
+    user: AuthUser,
+    invoiceId: string,
+    dto: {
+      description: string;
+      quantity: number | string;
+      unitPrice: number | string;
+    },
+  ) {
+    this.assertManager(user);
+
+    const description =
+      this.normalizeManualDescription(
+        dto?.description,
+      );
+
+    const quantity =
+      this.parseManualQuantity(
+        dto?.quantity,
+      );
+
+    const unitPrice =
+      this.parseMoney(
+        dto?.unitPrice,
+        'unitPrice',
+      );
+
+    if (unitPrice.lte(0)) {
+      throw new BadRequestException(
+        'unitPrice must be greater than 0',
+      );
+    }
+
+    const amount =
+      unitPrice
+        .mul(
+          new Prisma.Decimal(
+            quantity,
+          ),
+        )
+        .toDecimalPlaces(2);
+
+    const result =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const invoice =
+            await tx.billingInvoice.findUnique({
+              where: {
+                id:
+                  invoiceId,
+              },
+            });
+
+          if (!invoice) {
+            throw new NotFoundException(
+              'Invoice not found',
+            );
+          }
+
+          if (
+            invoice.invoiceKind !==
+            'MANUAL'
+          ) {
+            throw new BadRequestException(
+              'Items can only be added to a MANUAL invoice',
+            );
+          }
+
+          if (
+            invoice.status !==
+            'DRAFT'
+          ) {
+            throw new BadRequestException(
+              'Manual invoice items can only be changed while the invoice is DRAFT',
+            );
+          }
+
+          const line =
+            await tx.billingManualInvoiceLine.create({
+              data: {
+                invoiceId:
+                  invoice.id,
+
+                description,
+
+                quantity,
+
+                unitPrice,
+
+                amount,
+
+                createdBy:
+                  user.userId,
+
+                updatedBy:
+                  user.userId,
+              },
+            });
+
+          await this.recalculateInvoiceTotals(
+            tx,
+            invoice.id,
+          );
+
+          return {
+            line,
+            clientCode:
+              invoice.clientCode,
+          };
+        },
+      );
+
+    await this.auditInvoice(
+      user,
+      {
+        action:
+          'MANUAL_INVOICE_LINE_ADDED',
+
+        invoiceId,
+
+        clientCode:
+          result.clientCode,
+
+        details:
+          `Added manual invoice item: ${description}`,
+
+        changes: {
+          manualLineId:
+            result.line.id,
+
+          description,
+
+          quantity,
+
+          unitPrice:
+            unitPrice.toFixed(2),
+
+          amount:
+            amount.toFixed(2),
+        },
+      },
+    );
+
+    return this.getInvoice(
+      user,
+      invoiceId,
+    );
+  }
+
+  async updateManualInvoiceLine(
+    user: AuthUser,
+    invoiceId: string,
+    lineId: string,
+    dto: {
+      description?: string;
+      quantity?: number | string;
+      unitPrice?: number | string;
+    },
+  ) {
+    this.assertManager(user);
+
+    const result =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const invoice =
+            await tx.billingInvoice.findUnique({
+              where: {
+                id:
+                  invoiceId,
+              },
+            });
+
+          if (!invoice) {
+            throw new NotFoundException(
+              'Invoice not found',
+            );
+          }
+
+          if (
+            invoice.invoiceKind !==
+            'MANUAL'
+          ) {
+            throw new BadRequestException(
+              'Items can only be changed on a MANUAL invoice',
+            );
+          }
+
+          if (
+            invoice.status !==
+            'DRAFT'
+          ) {
+            throw new BadRequestException(
+              'Manual invoice items can only be changed while the invoice is DRAFT',
+            );
+          }
+
+          const existing =
+            await tx.billingManualInvoiceLine.findFirst({
+              where: {
+                id:
+                  lineId,
+
+                invoiceId,
+              },
+            });
+
+          if (!existing) {
+            throw new NotFoundException(
+              'Manual invoice item not found',
+            );
+          }
+
+          const description =
+            dto?.description !==
+            undefined
+              ? this.normalizeManualDescription(
+                  dto.description,
+                )
+              : existing.description;
+
+          const quantity =
+            dto?.quantity !==
+            undefined
+              ? this.parseManualQuantity(
+                  dto.quantity,
+                )
+              : existing.quantity;
+
+          const unitPrice =
+            dto?.unitPrice !==
+            undefined
+              ? this.parseMoney(
+                  dto.unitPrice,
+                  'unitPrice',
+                )
+              : existing.unitPrice;
+
+          if (unitPrice.lte(0)) {
+            throw new BadRequestException(
+              'unitPrice must be greater than 0',
+            );
+          }
+
+          const amount =
+            unitPrice
+              .mul(
+                new Prisma.Decimal(
+                  quantity,
+                ),
+              )
+              .toDecimalPlaces(2);
+
+          const updated =
+            await tx.billingManualInvoiceLine.update({
+              where: {
+                id:
+                  lineId,
+              },
+
+              data: {
+                description,
+
+                quantity,
+
+                unitPrice,
+
+                amount,
+
+                updatedBy:
+                  user.userId,
+              },
+            });
+
+          await this.recalculateInvoiceTotals(
+            tx,
+            invoice.id,
+          );
+
+          return {
+            existing,
+            updated,
+            clientCode:
+              invoice.clientCode,
+          };
+        },
+      );
+
+    await this.auditInvoice(
+      user,
+      {
+        action:
+          'MANUAL_INVOICE_LINE_UPDATED',
+
+        invoiceId,
+
+        clientCode:
+          result.clientCode,
+
+        details:
+          `Updated manual invoice item ${lineId}`,
+
+        changes: {
+          manualLineId:
+            lineId,
+
+          before: {
+            description:
+              result.existing.description,
+
+            quantity:
+              result.existing.quantity,
+
+            unitPrice:
+              result.existing.unitPrice.toFixed(2),
+
+            amount:
+              result.existing.amount.toFixed(2),
+          },
+
+          after: {
+            description:
+              result.updated.description,
+
+            quantity:
+              result.updated.quantity,
+
+            unitPrice:
+              result.updated.unitPrice.toFixed(2),
+
+            amount:
+              result.updated.amount.toFixed(2),
+          },
+        },
+      },
+    );
+
+    return this.getInvoice(
+      user,
+      invoiceId,
+    );
+  }
+
+  async deleteManualInvoiceLine(
+    user: AuthUser,
+    invoiceId: string,
+    lineId: string,
+  ) {
+    this.assertManager(user);
+
+    const result =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const invoice =
+            await tx.billingInvoice.findUnique({
+              where: {
+                id:
+                  invoiceId,
+              },
+            });
+
+          if (!invoice) {
+            throw new NotFoundException(
+              'Invoice not found',
+            );
+          }
+
+          if (
+            invoice.invoiceKind !==
+            'MANUAL'
+          ) {
+            throw new BadRequestException(
+              'Items can only be changed on a MANUAL invoice',
+            );
+          }
+
+          if (
+            invoice.status !==
+            'DRAFT'
+          ) {
+            throw new BadRequestException(
+              'Manual invoice items can only be changed while the invoice is DRAFT',
+            );
+          }
+
+          const existing =
+            await tx.billingManualInvoiceLine.findFirst({
+              where: {
+                id:
+                  lineId,
+
+                invoiceId,
+              },
+            });
+
+          if (!existing) {
+            throw new NotFoundException(
+              'Manual invoice item not found',
+            );
+          }
+
+          await tx.billingManualInvoiceLine.delete({
+            where: {
+              id:
+                lineId,
+            },
+          });
+
+          await this.recalculateInvoiceTotals(
+            tx,
+            invoice.id,
+          );
+
+          return {
+            existing,
+            clientCode:
+              invoice.clientCode,
+          };
+        },
+      );
+
+    await this.auditInvoice(
+      user,
+      {
+        action:
+          'MANUAL_INVOICE_LINE_DELETED',
+
+        invoiceId,
+
+        clientCode:
+          result.clientCode,
+
+        details:
+          `Deleted manual invoice item: ${result.existing.description}`,
+
+        changes: {
+          manualLineId:
+            result.existing.id,
+
+          description:
+            result.existing.description,
+
+          quantity:
+            result.existing.quantity,
+
+          unitPrice:
+            result.existing.unitPrice.toFixed(2),
+
+          amount:
+            result.existing.amount.toFixed(2),
+        },
+      },
+    );
+
+    return this.getInvoice(
+      user,
+      invoiceId,
+    );
+  }
+
   /* =======================================================
      REPORT-LEVEL ADDITIONAL CHARGES
   ======================================================= */
@@ -3077,6 +3767,7 @@ export class BillingService {
 
         include: {
           lines: true,
+          manualLines: true,
           extraCharges: true,
         },
       });
@@ -3089,9 +3780,25 @@ export class BillingService {
         throw new BadRequestException('Only DRAFT invoices can be confirmed');
       }
 
-      if (invoice.lines.length === 0) {
+      if (
+        invoice.invoiceKind ===
+          'REPORT' &&
+        invoice.lines.length ===
+          0
+      ) {
         throw new BadRequestException(
-          'Invoice cannot be confirmed without invoice lines',
+          'Report invoice cannot be confirmed without invoice lines',
+        );
+      }
+
+      if (
+        invoice.invoiceKind ===
+          'MANUAL' &&
+        invoice.manualLines.length ===
+          0
+      ) {
+        throw new BadRequestException(
+          'Manual invoice cannot be confirmed without at least one invoice item',
         );
       }
 
@@ -3152,14 +3859,31 @@ export class BillingService {
         );
       }
 
-      if (!client.billingEnabled) {
-        throw new BadRequestException('Billing is disabled for this client');
+      /*
+       * billingEnabled controls automatic REPORT billing only.
+       *
+       * A MANUAL invoice is intentionally allowed for any
+       * active client, even when automatic report billing
+       * is disabled.
+       */
+      if (
+        invoice.invoiceKind ===
+          'REPORT' &&
+        !client.billingEnabled
+      ) {
+        throw new BadRequestException(
+          'Billing is disabled for this client',
+        );
       }
 
       let subtotal = new Prisma.Decimal(0);
 
       for (const line of invoice.lines) {
         subtotal = subtotal.plus(line.amount!);
+      }
+
+      for (const line of invoice.manualLines) {
+        subtotal = subtotal.plus(line.amount);
       }
 
       for (const charge of invoice.extraCharges) {
@@ -3684,7 +4408,6 @@ export class BillingService {
                 },
               });
 
-
             /*
              * Only one revision may be "in progress".
              *
@@ -3759,6 +4482,13 @@ export class BillingService {
                     },
                   },
 
+                  manualLines: {
+                    orderBy: {
+                      createdAt:
+                        'asc',
+                    },
+                  },
+
                   extraCharges: {
                     orderBy: {
                       createdAt:
@@ -3804,12 +4534,14 @@ export class BillingService {
              * confirmInvoice() has been updated to preserve an
              * already-existing invoiceNumber.
              */
-            
             const revision =
               await tx.billingInvoice.create({
                 data: {
                   invoiceNumber:
                     revisionInvoiceNumber,
+
+                  invoiceKind:
+                    latestSentVersion.invoiceKind,
 
                   clientCode:
                     latestSentVersion.clientCode,
@@ -4059,6 +4791,39 @@ export class BillingService {
                           ? Prisma.JsonNull
                           : (line.sourceSnapshot as Prisma.InputJsonValue),
                     })),
+              });
+            }
+
+            if (
+              latestSentVersion.manualLines.length >
+              0
+            ) {
+              await tx.billingManualInvoiceLine.createMany({
+                data:
+                  latestSentVersion.manualLines.map(
+                    (line) => ({
+                      invoiceId:
+                        revision.id,
+
+                      description:
+                        line.description,
+
+                      quantity:
+                        line.quantity,
+
+                      unitPrice:
+                        line.unitPrice,
+
+                      amount:
+                        line.amount,
+
+                      createdBy:
+                        user.userId,
+
+                      updatedBy:
+                        user.userId,
+                    }),
+                  ),
               });
             }
 
@@ -4497,6 +5262,7 @@ export class BillingService {
           _count: {
             select: {
               lines: true,
+              manualLines: true,
               emails: true,
             },
           },
@@ -4557,6 +5323,12 @@ export class BillingService {
         emails: {
           orderBy: {
             createdAt: 'desc',
+          },
+        },
+
+        manualLines: {
+          orderBy: {
+            createdAt: 'asc',
           },
         },
 
@@ -4637,6 +5409,16 @@ export class BillingService {
         unitPrice: line.unitPrice ? line.unitPrice.toFixed(2) : null,
 
         amount: line.amount ? line.amount.toFixed(2) : null,
+      })),
+
+      manualLines: invoice.manualLines.map((line) => ({
+        ...line,
+
+        unitPrice:
+          line.unitPrice.toFixed(2),
+
+        amount:
+          line.amount.toFixed(2),
       })),
 
       extraCharges: invoice.extraCharges.map((charge) => ({

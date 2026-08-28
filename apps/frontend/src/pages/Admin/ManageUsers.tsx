@@ -419,15 +419,19 @@ export default function UsersAdmin() {
       const nextName = editName.trim() || null;
       const nextEmail = editEmail.trim().toLowerCase();
 
-      // ✅ name
+      if (!nextEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+        toast.error("Enter a valid email address");
+        return;
+      }
+
       if ((selected.name ?? null) !== nextName) {
         await setUserName(selected.id, nextName);
       }
 
-      // ✅ email
       if (selected.email.toLowerCase() !== nextEmail) {
         await setUserEmail(selected.id, nextEmail);
       }
+
       if (editRole !== selected.role) {
         await setUserRole(selected.id, editRole);
       }

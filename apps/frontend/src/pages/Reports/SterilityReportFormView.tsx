@@ -250,7 +250,6 @@ function AttachmentPreview({
 
 // ---------------- Print / blur styles ----------------
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -267,7 +266,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -319,8 +320,7 @@ function useCreatedByName(report: any, detailsPath: string) {
             method: "GET",
           });
 
-          const resolvedName =
-            getSuppliedCreatedByName(fullReport);
+          const resolvedName = getSuppliedCreatedByName(fullReport);
 
           if (resolvedName) {
             if (!cancelled) {
@@ -329,10 +329,7 @@ function useCreatedByName(report: any, detailsPath: string) {
             return;
           }
         } catch (error) {
-          console.error(
-            "Failed to resolve report creator:",
-            error,
-          );
+          console.error("Failed to resolve report creator:", error);
         }
       }
 
@@ -390,7 +387,11 @@ const BlurStyles = () => (
 function formatDateForInput(value: string | null | undefined) {
   if (!value) return "";
   if (value === "NA") return "NA";
-  return new Date(value).toISOString().split("T")[0];
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+  return d.toISOString().split("T")[0];
 }
 
 const DashStyles = () => (
@@ -553,7 +554,7 @@ export default function SterilityReportFormView(
   const dashClass = (keyOrPrefix: string) =>
     hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
 
-    const isSubmissionFormPane = activePane === "FORM";
+  const isSubmissionFormPane = activePane === "FORM";
   const blankIfForm = (value: any) => {
     if (isSubmissionFormPane) return "";
     return value ?? "";
@@ -616,8 +617,6 @@ export default function SterilityReportFormView(
         </div>
       )} */}
 
-
-      
       {!isBulk && showSwitcher !== false && (
         <div className="no-print sticky top-0 z-40 -mx-4 mb-3 border-b bg-white/95 px-4 backdrop-blur">
           <div className="flex items-center gap-2 py-2">
@@ -641,7 +640,7 @@ export default function SterilityReportFormView(
         </div>
       )}
 
-       {isReportPane || isSubmissionFormPane ? (
+      {isReportPane || isSubmissionFormPane ? (
         <>
           {/* Letterhead */}
           <div className="mb-2 text-center">
@@ -673,7 +672,7 @@ export default function SterilityReportFormView(
                   ? "STERILITY SUBMISSION FORM"
                   : "STERILITY REPORT"} */}
 
-                    {isSubmissionFormPane
+                {isSubmissionFormPane
                   ? "STERILITY SUBMISSION FORM"
                   : "STERILITY REPORT"}
               </div>
@@ -797,7 +796,7 @@ export default function SterilityReportFormView(
                 <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={ blankIfForm(report?.testSopNo) || ""}
+                  value={blankIfForm(report?.testSopNo) || ""}
                   readOnly
                   disabled
                 />
@@ -810,7 +809,9 @@ export default function SterilityReportFormView(
                 </div>
                 <input
                   className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                  value={blankIfForm(formatDateForInput(report?.dateTested)) || ""}
+                  value={
+                    blankIfForm(formatDateForInput(report?.dateTested)) || ""
+                  }
                   readOnly
                   disabled
                 />
@@ -825,7 +826,9 @@ export default function SterilityReportFormView(
               </div>
               <input
                 className="flex-1 input-editable py-[2px] text-[12px] leading-snug"
-                value={blankIfForm(formatDateForInput(report?.dateCompleted)) || ""}
+                value={
+                  blankIfForm(formatDateForInput(report?.dateCompleted)) || ""
+                }
                 readOnly
                 disabled
               />
@@ -1125,7 +1128,7 @@ export default function SterilityReportFormView(
               <div className="text-right leading-tight">
                 <div className="text-[11px] font-semibold">Report ID</div>
                 <div className="mono text-[11px]">{report?.id}</div>
-              { !isFormPane && report?.reportNumber && (
+                {!isFormPane && report?.reportNumber && (
                   <div className="text-[11px]">
                     Report # {report.reportNumber}
                   </div>
@@ -1192,7 +1195,11 @@ export default function SterilityReportFormView(
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
-
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}

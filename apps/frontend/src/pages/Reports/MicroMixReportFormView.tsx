@@ -539,10 +539,14 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
   const gramsFor = (p: PathRow) => p.grams ?? "11g";
 
-  function formatDateForInput(value: string | null) {
+  function formatDateForInput(value: string | null | undefined) {
     if (!value) return "";
-    // Convert ISO to yyyy-MM-dd
-    return new Date(value).toISOString().split("T")[0];
+    if (value === "NA") return "";
+
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+    return d.toISOString().split("T")[0];
   }
 
   // const appBase =
@@ -1541,6 +1545,11 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
 
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">

@@ -23,6 +23,7 @@ import { useAuth } from "../../context/AuthContext";
 import { api, apiBlob } from "../../lib/api";
 
 type BillingInvoiceStatus = "DRAFT" | "CONFIRMED" | "SENT" | "VOID";
+type BillingInvoiceKind = "REPORT" | "MANUAL";
 type BillingTab = "OVERVIEW" | "INVOICES" | "UNBILLED" | "PRICING";
 type BillingActionDialog =
   | {
@@ -41,6 +42,42 @@ type BillingActionDialog =
       scheduledSendLocal: string;
     }
   | { kind: "VOID"; reason: string }
+  | null;
+
+
+type BillingManualInvoiceLine = {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: string;
+  amount: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ManualInvoiceDialog =
+  | {
+      kind: "CREATE";
+      clientCode: string;
+    }
+  | {
+      kind: "ADD_LINE";
+      description: string;
+      quantity: string;
+      unitPrice: string;
+    }
+  | {
+      kind: "EDIT_LINE";
+      line: BillingManualInvoiceLine;
+      description: string;
+      quantity: string;
+      unitPrice: string;
+    }
+  | {
+      kind: "DELETE_LINE";
+      line: BillingManualInvoiceLine;
+    }
   | null;
 
 
@@ -116,6 +153,7 @@ type InvoiceRow = {
   id: string;
   activeKey?: string | null;
   invoiceNumber?: string | null;
+  invoiceKind: BillingInvoiceKind;
   revisionOfInvoiceId?: string | null;
   revisionNumber?: number;
   clientCode: string;
@@ -143,6 +181,7 @@ type InvoiceRow = {
   updatedAt: string;
   _count?: {
     lines?: number;
+    manualLines?: number;
     emails?: number;
   };
 };
@@ -223,6 +262,7 @@ type InvoiceDetail = InvoiceRow & {
   pdfStorageKey?: string | null;
   pdfChecksum?: string | null;
   lines: BillingLine[];
+  manualLines: BillingManualInvoiceLine[];
   emails: BillingEmailHistory[];
   extraCharges: BillingInvoiceExtraCharge[];
   revisionRootId?: string;
@@ -982,6 +1022,9 @@ export default function BillingDashboard() {
   const [extraChargeDialog, setExtraChargeDialog] =
     useState<ExtraChargeDialog>(null);
 
+  const [manualInvoiceDialog, setManualInvoiceDialog] =
+    useState<ManualInvoiceDialog>(null);
+
   const [priceForm, setPriceForm] = useState<PriceForm>({
     clientCode: "",
     department: "MICRO",
@@ -1136,8 +1179,13 @@ export default function BillingDashboard() {
   }, [refreshAll]);
 
   useEffect(() => {
-    if (tab === "PRICING" && isManager) {
+    if (!isManager) return;
+
+    if (tab === "PRICING") {
       refreshPrices();
+    }
+
+    if (tab === "PRICING" || tab === "INVOICES") {
       refreshBillingClients();
     }
   }, [tab, isManager, refreshPrices, refreshBillingClients]);
@@ -1762,6 +1810,211 @@ export default function BillingDashboard() {
       setInvoiceDetail(updated);
       setActionDialog(null);
       toast.success("Invoice voided");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function openCreateManualInvoice() {
+    if (!isManager) return;
+
+    setManualInvoiceDialog({
+      kind: "CREATE",
+      clientCode: clientCode.trim().toUpperCase(),
+    });
+  }
+
+  async function submitCreateManualInvoice() {
+    if (
+      !isManager ||
+      manualInvoiceDialog?.kind !== "CREATE"
+    ) {
+      return;
+    }
+
+    const selectedClient =
+      manualInvoiceDialog.clientCode.trim().toUpperCase();
+
+    if (!selectedClient) {
+      toast.error("Select a client");
+      return;
+    }
+
+    setWorking("CREATE_MANUAL_INVOICE");
+
+    try {
+      const created = await api<InvoiceDetail>(
+        "/billing/invoices/manual",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            clientCode: selectedClient,
+          }),
+        },
+      );
+
+      setManualInvoiceDialog(null);
+      setSelectedInvoiceId(created.id);
+      setInvoiceDetail(created);
+      setDraftAdjustment(created.adjustmentAmount ?? "0.00");
+      setDraftNotes(created.notes ?? "");
+
+      toast.success("Manual invoice draft created");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function openAddManualLine() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "MANUAL" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    setManualInvoiceDialog({
+      kind: "ADD_LINE",
+      description: "",
+      quantity: "1",
+      unitPrice: "",
+    });
+  }
+
+  function openEditManualLine(line: BillingManualInvoiceLine) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "MANUAL" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    setManualInvoiceDialog({
+      kind: "EDIT_LINE",
+      line,
+      description: line.description,
+      quantity: String(line.quantity),
+      unitPrice: line.unitPrice,
+    });
+  }
+
+  function openDeleteManualLine(line: BillingManualInvoiceLine) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "MANUAL" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    setManualInvoiceDialog({
+      kind: "DELETE_LINE",
+      line,
+    });
+  }
+
+  async function submitManualInvoiceLine() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      !manualInvoiceDialog ||
+      (manualInvoiceDialog.kind !== "ADD_LINE" &&
+        manualInvoiceDialog.kind !== "EDIT_LINE")
+    ) {
+      return;
+    }
+
+    const description = manualInvoiceDialog.description.trim();
+    const quantity = Number(manualInvoiceDialog.quantity);
+    const unitPrice = Number(manualInvoiceDialog.unitPrice);
+
+    if (description.length < 2) {
+      toast.error("Description must be at least 2 characters");
+      return;
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error("Quantity must be a whole number of at least 1");
+      return;
+    }
+
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      toast.error("Unit price must be greater than 0");
+      return;
+    }
+
+    const isEdit = manualInvoiceDialog.kind === "EDIT_LINE";
+    const lineId = isEdit ? manualInvoiceDialog.line.id : null;
+
+    setWorking(isEdit ? `MANUAL_LINE:${lineId}` : "ADD_MANUAL_LINE");
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        isEdit
+          ? `/billing/invoices/${invoiceDetail.id}/manual-lines/${lineId}`
+          : `/billing/invoices/${invoiceDetail.id}/manual-lines`,
+        {
+          method: isEdit ? "PATCH" : "POST",
+          body: JSON.stringify({
+            description,
+            quantity,
+            unitPrice: unitPrice.toFixed(2),
+          }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setManualInvoiceDialog(null);
+
+      toast.success(isEdit ? "Invoice item updated" : "Invoice item added");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function submitDeleteManualInvoiceLine() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      manualInvoiceDialog?.kind !== "DELETE_LINE"
+    ) {
+      return;
+    }
+
+    const line = manualInvoiceDialog.line;
+
+    setWorking(`DELETE_MANUAL_LINE:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/manual-lines/${line.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setManualInvoiceDialog(null);
+
+      toast.success("Invoice item deleted");
       await refreshAll();
     } catch (error: any) {
       toast.error(extractMessage(error));
@@ -3137,7 +3390,21 @@ export default function BillingDashboard() {
                 </p>
               </div>
 
-              <div className="flex items-end gap-2">
+              <div className="flex flex-wrap items-end gap-2">
+                {isManager && (
+                  <Button
+                    onClick={openCreateManualInvoice}
+                    disabled={working === "CREATE_MANUAL_INVOICE"}
+                  >
+                    {working === "CREATE_MANUAL_INVOICE" ? (
+                      <Spinner />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    Create Manual Invoice
+                  </Button>
+                )}
+
                 <label>
                   <span className="mb-1 block text-xs font-medium text-slate-500">
                     Rows
@@ -3157,11 +3424,13 @@ export default function BillingDashboard() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <div className="max-h-[560px] overflow-auto">
+              <table className="w-full min-w-[1080px] text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                   <tr>
                     <th className="px-4 py-3">Invoice #</th>
+                    <th className="px-4 py-3">Client</th>
+                    <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Period</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Lines</th>
@@ -3187,8 +3456,22 @@ export default function BillingDashboard() {
                           </div>
                         )}
                       </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                            row.invoiceKind === "MANUAL"
+                              ? "bg-violet-50 text-violet-700 ring-violet-200"
+                              : "bg-slate-50 text-slate-700 ring-slate-200"
+                          }`}
+                        >
+                          {row.invoiceKind === "MANUAL" ? "Manual" : "Reports"}
+                        </span>
+                      </td>
+
                       <td className="px-4 py-3 text-slate-600">
-                        {formatDate(row.periodStart)}
+                        {row.invoiceKind === "MANUAL"
+                          ? "—"
+                          : formatDate(row.periodStart)}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -3200,7 +3483,9 @@ export default function BillingDashboard() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {row._count?.lines ?? "-"}
+                        {row.invoiceKind === "MANUAL"
+                          ? row._count?.manualLines ?? 0
+                          : row._count?.lines ?? 0}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {money(row.subtotal)}
@@ -3251,7 +3536,7 @@ export default function BillingDashboard() {
                   {!loading && (invoices?.items?.length ?? 0) === 0 && (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={11}
                         className="px-4 py-12 text-center text-sm text-slate-500"
                       >
                         No invoices found for the selected filters.
@@ -3334,9 +3619,9 @@ export default function BillingDashboard() {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[1080px] text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                   <tr>
                     <th className="px-4 py-3">Form #</th>
                     <th className="px-4 py-3">Report #</th>
@@ -3952,9 +4237,9 @@ export default function BillingDashboard() {
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="max-h-[560px] overflow-auto">
                 <table className="w-full min-w-[980px] text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                     <tr>
                       <th className="px-4 py-3">Client</th>
                       <th className="px-4 py-3">Department</th>
@@ -4097,13 +4382,27 @@ export default function BillingDashboard() {
                   </h2>
 
                   {invoiceDetail && (
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusClass(
-                        invoiceDetail.status,
-                      )}`}
-                    >
-                      {nice(invoiceDetail.status)}
-                    </span>
+                    <>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusClass(
+                          invoiceDetail.status,
+                        )}`}
+                      >
+                        {nice(invoiceDetail.status)}
+                      </span>
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                          invoiceDetail.invoiceKind === "MANUAL"
+                            ? "bg-violet-50 text-violet-700 ring-violet-200"
+                            : "bg-slate-50 text-slate-700 ring-slate-200"
+                        }`}
+                      >
+                        {invoiceDetail.invoiceKind === "MANUAL"
+                          ? "Manual"
+                          : "Reports"}
+                      </span>
+                    </>
                   )}
                 </div>
               </div>
@@ -4141,19 +4440,21 @@ export default function BillingDashboard() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <div className="text-xs font-medium text-slate-500">
-                      Billing Period
+                  {invoiceDetail.invoiceKind === "REPORT" && (
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <div className="text-xs font-medium text-slate-500">
+                        Billing Period
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {formatDate(invoiceDetail.periodStart)} –{" "}
+                        {formatDate(
+                          new Date(
+                            new Date(invoiceDetail.periodEnd).getTime() - 1,
+                          ).toISOString(),
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-1 font-semibold">
-                      {formatDate(invoiceDetail.periodStart)} –{" "}
-                      {formatDate(
-                        new Date(
-                          new Date(invoiceDetail.periodEnd).getTime() - 1,
-                        ).toISOString(),
-                      )}
-                    </div>
-                  </div>
+                  )}
 
                   <div className="rounded-xl bg-slate-50 p-4">
                     <div className="text-xs font-medium text-slate-500">
@@ -4202,289 +4503,418 @@ export default function BillingDashboard() {
                 </div>
 
                 <div className="p-5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">
-                        Invoice Lines
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        {visibleInvoiceLines.length} charge
-                        {visibleInvoiceLines.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
+                  {invoiceDetail.invoiceKind === "MANUAL" ? (
+                    <>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">
+                            Manual Invoice Items
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            {invoiceDetail.manualLines.length} item
+                            {invoiceDetail.manualLines.length === 1 ? "" : "s"}
+                          </p>
+                        </div>
 
-                    {unresolvedInSelected > 0 && (
-                      <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                        <AlertTriangle className="h-4 w-4" />
-                        {unresolvedInSelected} pricing issue
-                        {unresolvedInSelected === 1 ? "" : "s"}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[820px] text-sm">
-                      <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                          <th className="px-4 py-3">Form #</th>
-                          <th className="px-4 py-3">Report #</th>
-                          <th className="px-4 py-3">Type</th>
-                          <th className="px-4 py-3">Test</th>
-                          <th className="px-4 py-3 text-right">Unit Price</th>
-                          <th className="px-4 py-3 text-right">Amount</th>
-                          <th className="px-4 py-3">Pricing</th>
-                          {invoiceDetail.status === "DRAFT" && isManager && (
-                            <th className="px-4 py-3 text-right">Action</th>
-                          )}
-                        </tr>
-                      </thead>
-
-                      <tbody className="divide-y divide-slate-100">
-                        {visibleInvoiceLines.map((line, lineIndex) => {
-                          const sourceKey =
-                            `${line.sourceType}:${line.sourceId}`;
-
-                          const firstSourceLineIndex =
-                            visibleInvoiceLines.findIndex(
-                              (candidate) =>
-                                `${candidate.sourceType}:${candidate.sourceId}` ===
-                                sourceKey,
-                            );
-
-                          const isFirstSourceLine =
-                            firstSourceLineIndex === lineIndex;
-
-                          return (
-                            <tr key={line.id} className="align-top">
-                              <td className="px-4 py-3 font-medium">
-                                {line.formNumber}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                {line.reportNumber}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                {nice(line.formType)}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                <div>
-                                  {line.testLabel || nice(line.testKey)}
-                                </div>
-
-                                {(line.itemLabel || line.itemKey) && (
-                                  <div className="mt-0.5 text-xs font-medium text-slate-600">
-                                    {line.itemLabel || nice(line.itemKey!)}
-                                  </div>
-                                )}
-
-                                {!line.itemKey &&
-                                  line.activeCount != null && (
-                                    <div className="text-xs text-slate-500">
-                                      Legacy: {line.activeCount} active
-                                      {line.activeCount === 1 ? "" : "s"}
-                                    </div>
-                                  )}
-                              </td>
-
-                              <td className="px-4 py-3 text-right">
-                                {line.unitPrice == null
-                                  ? "-"
-                                  : money(line.unitPrice)}
-                              </td>
-
-                              <td className="px-4 py-3 text-right font-medium">
-                                {line.amount == null
-                                  ? "-"
-                                  : money(line.amount)}
-                              </td>
-
-                              <td className="px-4 py-3 text-xs">
-                                {line.pricingIssue ? (
-                                  <span className="text-amber-800">
-                                    {line.pricingIssue}
-                                  </span>
-                                ) : line.manualOverride ? (
-                                  <span
-                                    className="text-blue-700"
-                                    title={
-                                      line.manualOverrideReason || undefined
-                                    }
-                                  >
-                                    Manual Override
-                                  </span>
-                                ) : (
-                                  <span className="text-emerald-700">
-                                    Rule
-                                  </span>
-                                )}
-                              </td>
-
-                              {invoiceDetail.status === "DRAFT" &&
-                                isManager && (
-                                  <td className="px-4 py-3 text-right">
-                                    <div className="flex justify-end gap-2">
-                                      <Button
-                                        variant="secondary"
-                                        disabled={
-                                          working === `LINE:${line.id}`
-                                        }
-                                        onClick={() => overrideLine(line)}
-                                      >
-                                        {working === `LINE:${line.id}` ? (
-                                          <Spinner dark />
-                                        ) : null}
-                                        Override
-                                      </Button>
-
-                                      {isFirstSourceLine && (
-                                        <Button
-                                          variant="secondary"
-                                          onClick={() =>
-                                            openAddExtraCharge({
-                                              sourceType: line.sourceType,
-                                              sourceId: line.sourceId,
-                                              formNumber: line.formNumber,
-                                              reportNumber: line.reportNumber,
-                                            })
-                                          }
-                                          disabled={!!working}
-                                        >
-                                          <Plus className="h-4 w-4" />
-                                          Additional Charge
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
-                            </tr>
-                          );
-                        })}
-
-                        {visibleInvoiceLines.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={
-                                invoiceDetail.status === "DRAFT" && isManager
-                                  ? 8
-                                  : 7
-                              }
-                              className="px-4 py-10 text-center text-sm text-slate-500"
-                            >
-                              No invoice lines match the common filters.
-                            </td>
-                          </tr>
+                        {invoiceDetail.status === "DRAFT" && isManager && (
+                          <Button
+                            onClick={openAddManualLine}
+                            disabled={!!working}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Item
+                          </Button>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          Additional Charges by Form
-                        </h3>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          Add named report-level charges such as rush processing or special handling.
-                        </p>
                       </div>
-                    </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[720px] text-sm">
-                        <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Form #</th>
-                            <th className="px-4 py-3">Report #</th>
-                            <th className="px-4 py-3">Additional Charges</th>
-                            <th className="px-4 py-3 text-right">Extra Total</th>
-                          </tr>
-                        </thead>
+                      <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="w-full min-w-[720px] text-sm">
+                          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                            <tr>
+                              <th className="px-4 py-3">Description</th>
+                              <th className="px-4 py-3 text-right">Qty</th>
+                              <th className="px-4 py-3 text-right">
+                                Unit Price
+                              </th>
+                              <th className="px-4 py-3 text-right">Amount</th>
+                              {invoiceDetail.status === "DRAFT" && isManager && (
+                                <th className="px-4 py-3 text-right">
+                                  Action
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
 
-                        <tbody className="divide-y divide-slate-100">
-                          {invoiceSourceRows
-                            .filter((row) => row.charges.length > 0)
-                            .map((row) => {
-                            const extraTotal = row.charges.reduce(
-                              (sum, charge) => sum + Number(charge.amount || 0),
-                              0,
-                            );
-
-                            return (
-                              <tr key={row.key} className="align-top">
+                          <tbody className="divide-y divide-slate-100">
+                            {invoiceDetail.manualLines.map((line) => (
+                              <tr key={line.id} className="align-top">
                                 <td className="px-4 py-3 font-medium text-slate-900">
-                                  {row.formNumber}
+                                  {line.description}
                                 </td>
-                                <td className="px-4 py-3 text-slate-600">
-                                  {row.reportNumber}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {row.charges.length ? (
-                                    <div className="space-y-2">
-                                      {row.charges.map((charge) => (
-                                        <div
-                                          key={charge.id}
-                                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                                        >
-                                          <div className="min-w-0">
-                                            <div className="truncate text-sm font-medium text-slate-800">
-                                              {charge.name}
-                                            </div>
-                                            <div className="text-xs text-slate-500">
-                                              {money(charge.amount)}
-                                            </div>
-                                          </div>
 
-                                          {invoiceDetail.status === "DRAFT" && isManager && (
-                                            <div className="flex shrink-0 gap-1">
-                                              <button
-                                                type="button"
-                                                onClick={() => openEditExtraCharge(charge)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-                                                title="Edit additional charge"
-                                              >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => openDeleteExtraCharge(charge)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                                                title="Delete additional charge"
-                                              >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
+                                <td className="px-4 py-3 text-right">
+                                  {line.quantity}
                                 </td>
-                                <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                                  {money(extraTotal)}
+
+                                <td className="px-4 py-3 text-right">
+                                  {money(line.unitPrice)}
+                                </td>
+
+                                <td className="px-4 py-3 text-right font-semibold">
+                                  {money(line.amount)}
+                                </td>
+
+                                {invoiceDetail.status === "DRAFT" &&
+                                  isManager && (
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="flex justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openEditManualLine(line)
+                                          }
+                                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                                          title="Edit invoice item"
+                                          aria-label="Edit invoice item"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openDeleteManualLine(line)
+                                          }
+                                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                                          title="Delete invoice item"
+                                          aria-label="Delete invoice item"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  )}
+                              </tr>
+                            ))}
+
+                            {invoiceDetail.manualLines.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={
+                                    invoiceDetail.status === "DRAFT" && isManager
+                                      ? 5
+                                      : 4
+                                  }
+                                  className="px-4 py-10 text-center text-sm text-slate-500"
+                                >
+                                  No items added yet. Add at least one item before
+                                  confirming this invoice.
                                 </td>
                               </tr>
-                            );
-                          })}
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">
+                            Invoice Lines
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            {visibleInvoiceLines.length} charge
+                            {visibleInvoiceLines.length === 1 ? "" : "s"}
+                          </p>
+                        </div>
 
-                          {invoiceSourceRows.every(
-                            (row) => row.charges.length === 0,
-                          ) && (
+                        {unresolvedInSelected > 0 && (
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                            <AlertTriangle className="h-4 w-4" />
+                            {unresolvedInSelected} pricing issue
+                            {unresolvedInSelected === 1 ? "" : "s"}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="w-full min-w-[820px] text-sm">
+                          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                             <tr>
-                              <td
-                                colSpan={4}
-                                className="px-4 py-8 text-center text-sm text-slate-500"
-                              >
-                                No additional charges added.
-                              </td>
+                              <th className="px-4 py-3">Form #</th>
+                              <th className="px-4 py-3">Report #</th>
+                              <th className="px-4 py-3">Type</th>
+                              <th className="px-4 py-3">Test</th>
+                              <th className="px-4 py-3 text-right">
+                                Unit Price
+                              </th>
+                              <th className="px-4 py-3 text-right">Amount</th>
+                              <th className="px-4 py-3">Pricing</th>
+                              {invoiceDetail.status === "DRAFT" && isManager && (
+                                <th className="px-4 py-3 text-right">
+                                  Action
+                                </th>
+                              )}
                             </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                          </thead>
+
+                          <tbody className="divide-y divide-slate-100">
+                            {visibleInvoiceLines.map((line, lineIndex) => {
+                              const sourceKey =
+                                `${line.sourceType}:${line.sourceId}`;
+
+                              const firstSourceLineIndex =
+                                visibleInvoiceLines.findIndex(
+                                  (candidate) =>
+                                    `${candidate.sourceType}:${candidate.sourceId}` ===
+                                    sourceKey,
+                                );
+
+                              const isFirstSourceLine =
+                                firstSourceLineIndex === lineIndex;
+
+                              return (
+                                <tr key={line.id} className="align-top">
+                                  <td className="px-4 py-3 font-medium">
+                                    {line.formNumber}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {line.reportNumber}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {nice(line.formType)}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div>
+                                      {line.testLabel || nice(line.testKey)}
+                                    </div>
+
+                                    {(line.itemLabel || line.itemKey) && (
+                                      <div className="mt-0.5 text-xs font-medium text-slate-600">
+                                        {line.itemLabel || nice(line.itemKey!)}
+                                      </div>
+                                    )}
+
+                                    {!line.itemKey &&
+                                      line.activeCount != null && (
+                                        <div className="text-xs text-slate-500">
+                                          Legacy: {line.activeCount} active
+                                          {line.activeCount === 1 ? "" : "s"}
+                                        </div>
+                                      )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    {line.unitPrice == null
+                                      ? "-"
+                                      : money(line.unitPrice)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-medium">
+                                    {line.amount == null
+                                      ? "-"
+                                      : money(line.amount)}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs">
+                                    {line.pricingIssue ? (
+                                      <span className="text-amber-800">
+                                        {line.pricingIssue}
+                                      </span>
+                                    ) : line.manualOverride ? (
+                                      <span
+                                        className="text-blue-700"
+                                        title={
+                                          line.manualOverrideReason || undefined
+                                        }
+                                      >
+                                        Manual Override
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-700">
+                                        Rule
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {invoiceDetail.status === "DRAFT" &&
+                                    isManager && (
+                                      <td className="px-4 py-3 text-right">
+                                        <div className="flex justify-end gap-2">
+                                          <Button
+                                            variant="secondary"
+                                            disabled={
+                                              working === `LINE:${line.id}`
+                                            }
+                                            onClick={() => overrideLine(line)}
+                                          >
+                                            {working === `LINE:${line.id}` ? (
+                                              <Spinner dark />
+                                            ) : null}
+                                            Override
+                                          </Button>
+
+                                          {isFirstSourceLine && (
+                                            <Button
+                                              variant="secondary"
+                                              onClick={() =>
+                                                openAddExtraCharge({
+                                                  sourceType: line.sourceType,
+                                                  sourceId: line.sourceId,
+                                                  formNumber: line.formNumber,
+                                                  reportNumber: line.reportNumber,
+                                                })
+                                              }
+                                              disabled={!!working}
+                                            >
+                                              <Plus className="h-4 w-4" />
+                                              Additional Charge
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    )}
+                                </tr>
+                              );
+                            })}
+
+                            {visibleInvoiceLines.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={
+                                    invoiceDetail.status === "DRAFT" && isManager
+                                      ? 8
+                                      : 7
+                                  }
+                                  className="px-4 py-10 text-center text-sm text-slate-500"
+                                >
+                                  No invoice lines match the common filters.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900">
+                              Additional Charges by Form
+                            </h3>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              Named report-level charges such as rush processing
+                              or special handling.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[720px] text-sm">
+                            <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-4 py-3">Form #</th>
+                                <th className="px-4 py-3">Report #</th>
+                                <th className="px-4 py-3">
+                                  Additional Charges
+                                </th>
+                                <th className="px-4 py-3 text-right">
+                                  Extra Total
+                                </th>
+                              </tr>
+                            </thead>
+
+                            <tbody className="divide-y divide-slate-100">
+                              {invoiceSourceRows
+                                .filter((row) => row.charges.length > 0)
+                                .map((row) => {
+                                  const extraTotal = row.charges.reduce(
+                                    (sum, charge) =>
+                                      sum + Number(charge.amount || 0),
+                                    0,
+                                  );
+
+                                  return (
+                                    <tr key={row.key} className="align-top">
+                                      <td className="px-4 py-3 font-medium text-slate-900">
+                                        {row.formNumber}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-600">
+                                        {row.reportNumber}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <div className="space-y-2">
+                                          {row.charges.map((charge) => (
+                                            <div
+                                              key={charge.id}
+                                              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                            >
+                                              <div className="min-w-0">
+                                                <div className="truncate text-sm font-medium text-slate-800">
+                                                  {charge.name}
+                                                </div>
+                                                <div className="text-xs text-slate-500">
+                                                  {money(charge.amount)}
+                                                </div>
+                                              </div>
+
+                                              {invoiceDetail.status ===
+                                                "DRAFT" &&
+                                                isManager && (
+                                                  <div className="flex shrink-0 gap-1">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        openEditExtraCharge(
+                                                          charge,
+                                                        )
+                                                      }
+                                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                                                      title="Edit additional charge"
+                                                    >
+                                                      <Pencil className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        openDeleteExtraCharge(
+                                                          charge,
+                                                        )
+                                                      }
+                                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                                                      title="Delete additional charge"
+                                                    >
+                                                      <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </div>
+                                                )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                                        {money(extraTotal)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+
+                              {invoiceSourceRows.every(
+                                (row) => row.charges.length === 0,
+                              ) && (
+                                <tr>
+                                  <td
+                                    colSpan={4}
+                                    className="px-4 py-8 text-center text-sm text-slate-500"
+                                  >
+                                    No additional charges added.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
                     <div className="space-y-4">
@@ -4523,18 +4953,20 @@ export default function BillingDashboard() {
                           </div>
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Button
-                              variant="secondary"
-                              onClick={refreshInvoicePricing}
-                              disabled={working === "REFRESH_PRICING"}
-                            >
-                              {working === "REFRESH_PRICING" ? (
-                                <Spinner dark />
-                              ) : (
-                                <RefreshCcw className="h-4 w-4" />
-                              )}
-                              Refresh Pricing
-                            </Button>
+                            {invoiceDetail.invoiceKind === "REPORT" && (
+                              <Button
+                                variant="secondary"
+                                onClick={refreshInvoicePricing}
+                                disabled={working === "REFRESH_PRICING"}
+                              >
+                                {working === "REFRESH_PRICING" ? (
+                                  <Spinner dark />
+                                ) : (
+                                  <RefreshCcw className="h-4 w-4" />
+                                )}
+                                Refresh Pricing
+                              </Button>
+                            )}
 
                             <Button
                               variant="secondary"
@@ -4552,7 +4984,9 @@ export default function BillingDashboard() {
                               onClick={confirmInvoice}
                               disabled={
                                 working === "CONFIRM" ||
-                                unresolvedInSelected > 0
+                                (invoiceDetail.invoiceKind === "REPORT"
+                                  ? unresolvedInSelected > 0
+                                  : invoiceDetail.manualLines.length === 0)
                               }
                             >
                               {working === "CONFIRM" ? (
@@ -5303,6 +5737,247 @@ export default function BillingDashboard() {
                     <Trash2 className="h-4 w-4" />
                   )}
                   Void Invoice
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualInvoiceDialog && (
+        <div className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Manual Invoice
+                </div>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">
+                  {manualInvoiceDialog.kind === "CREATE"
+                    ? "Create Manual Invoice"
+                    : manualInvoiceDialog.kind === "ADD_LINE"
+                      ? "Add Invoice Item"
+                      : manualInvoiceDialog.kind === "EDIT_LINE"
+                        ? "Edit Invoice Item"
+                        : "Delete Invoice Item"}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!working) {
+                    setManualInvoiceDialog(null);
+                  }
+                }}
+                disabled={!!working}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              {manualInvoiceDialog.kind === "CREATE" && (
+                <>
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900">
+                    Create an invoice for a service or charge that is not tied
+                    to a LIMS Form # or Report #.
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Client
+                    </span>
+                    <select
+                      autoFocus
+                      value={manualInvoiceDialog.clientCode}
+                      onChange={(e) =>
+                        setManualInvoiceDialog({
+                          ...manualInvoiceDialog,
+                          clientCode: e.target.value,
+                        })
+                      }
+                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Select Client</option>
+                      {billingClients
+                        .filter((client) => client.active !== false)
+                        .map((client) => (
+                          <option
+                            key={client.clientCode}
+                            value={client.clientCode}
+                          >
+                            {client.clientCode}
+                            {client.name ? ` — ${client.name}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {(manualInvoiceDialog.kind === "ADD_LINE" ||
+                manualInvoiceDialog.kind === "EDIT_LINE") && (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Description
+                    </span>
+                    <textarea
+                      autoFocus
+                      rows={3}
+                      value={manualInvoiceDialog.description}
+                      onChange={(e) =>
+                        setManualInvoiceDialog({
+                          ...manualInvoiceDialog,
+                          description: e.target.value,
+                        })
+                      }
+                      placeholder="Example: Stability consultation service"
+                      className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label>
+                      <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                        Quantity
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={manualInvoiceDialog.quantity}
+                        onChange={(e) =>
+                          setManualInvoiceDialog({
+                            ...manualInvoiceDialog,
+                            quantity: e.target.value,
+                          })
+                        }
+                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                        Unit Price
+                      </span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={manualInvoiceDialog.unitPrice}
+                        onChange={(e) =>
+                          setManualInvoiceDialog({
+                            ...manualInvoiceDialog,
+                            unitPrice: e.target.value,
+                          })
+                        }
+                        placeholder="0.00"
+                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-medium text-slate-500">
+                      Line Amount
+                    </div>
+                    <div className="mt-1 text-xl font-bold text-slate-900">
+                      {money(
+                        Math.max(
+                          0,
+                          Number(manualInvoiceDialog.quantity || 0),
+                        ) *
+                          Math.max(
+                            0,
+                            Number(manualInvoiceDialog.unitPrice || 0),
+                          ),
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {manualInvoiceDialog.kind === "DELETE_LINE" && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                  <div className="font-semibold text-rose-950">
+                    {manualInvoiceDialog.line.description}
+                  </div>
+                  <div className="mt-2 text-sm text-rose-800">
+                    {manualInvoiceDialog.line.quantity} ×{" "}
+                    {money(manualInvoiceDialog.line.unitPrice)} ={" "}
+                    {money(manualInvoiceDialog.line.amount)}
+                  </div>
+                  <div className="mt-3 text-xs text-rose-700">
+                    Delete this item from the draft invoice?
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+              <Button
+                variant="secondary"
+                onClick={() => setManualInvoiceDialog(null)}
+                disabled={!!working}
+              >
+                Cancel
+              </Button>
+
+              {manualInvoiceDialog.kind === "CREATE" && (
+                <Button
+                  onClick={submitCreateManualInvoice}
+                  disabled={
+                    working === "CREATE_MANUAL_INVOICE" ||
+                    !manualInvoiceDialog.clientCode
+                  }
+                >
+                  {working === "CREATE_MANUAL_INVOICE" ? <Spinner /> : null}
+                  Create Draft
+                </Button>
+              )}
+
+              {(manualInvoiceDialog.kind === "ADD_LINE" ||
+                manualInvoiceDialog.kind === "EDIT_LINE") && (
+                <Button
+                  onClick={submitManualInvoiceLine}
+                  disabled={
+                    working === "ADD_MANUAL_LINE" ||
+                    working?.startsWith("MANUAL_LINE:") === true
+                  }
+                >
+                  {working === "ADD_MANUAL_LINE" ||
+                  working?.startsWith("MANUAL_LINE:") ? (
+                    <Spinner />
+                  ) : null}
+                  {manualInvoiceDialog.kind === "EDIT_LINE"
+                    ? "Save Item"
+                    : "Add Item"}
+                </Button>
+              )}
+
+              {manualInvoiceDialog.kind === "DELETE_LINE" && (
+                <Button
+                  variant="danger"
+                  onClick={submitDeleteManualInvoiceLine}
+                  disabled={
+                    working ===
+                    `DELETE_MANUAL_LINE:${manualInvoiceDialog.line.id}`
+                  }
+                >
+                  {working ===
+                  `DELETE_MANUAL_LINE:${manualInvoiceDialog.line.id}` ? (
+                    <Spinner />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete Item
                 </Button>
               )}
             </div>

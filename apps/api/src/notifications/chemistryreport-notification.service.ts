@@ -274,6 +274,181 @@ function rolesForFrontdeskRelated(): UserRole[] {
   return uniqueRoles(['FRONTDESK']);
 }
 
+type CorrectionRecipientSide = 'CLIENT' | 'LAB' | 'BOTH';
+
+type CorrectionLike = {
+  fieldKey?: string | null;
+  status?: string | null;
+  recipientSide?: CorrectionRecipientSide | null;
+};
+
+function normalizeCorrectionFieldKey(fieldKey: string) {
+  return String(fieldKey ?? '')
+    .trim()
+    .replace(/\[\d+\]/g, '')
+    .split(':')[0]
+    .split('.')[0];
+}
+
+function isClientCorrectionField(formType: FormType, fieldKey: string) {
+  const raw = String(fieldKey ?? '').trim();
+  const key = normalizeCorrectionFieldKey(raw);
+
+  const commonClientFields = new Set([
+    'client',
+    'dateSent',
+    'typeOfTest',
+    'sampleType',
+    'formulaNo',
+    'idNo',
+    'description',
+    'sampleDescription',
+    'lotNo',
+    'lotBatchNo',
+    'manufactureDate',
+    'samplingDate',
+    'formulaId',
+    'sampleSize',
+    'numberOfActives',
+    'sampleTypes',
+    'testTypes',
+    'sampleCollected',
+    'stabilityNote',
+    'organisms',
+  ]);
+
+  if (commonClientFields.has(key)) return true;
+
+  // Micro client-side spec fields
+  if (key === 'tbc_spec' || key === 'tmy_spec') return true;
+
+  // Pathogen/spec-style correction is client-side.
+  // Pathogen result/gram/date-style correction is lab-side.
+  if (key === 'pathogens') {
+    if (raw.includes('spec')) return true;
+    if (raw.includes('result') || raw.includes('grams')) return false;
+
+    // Ambiguous pathogen correction: safer to keep lab/internal
+    return false;
+  }
+
+  // Chemistry active table:
+  // formulaContent is client-side; result/SOP/date-tested are chemistry-side.
+  if (key === 'actives') {
+    if (raw.includes('formulaContent')) return true;
+
+    if (
+      raw.includes('result') ||
+      raw.includes('sopNo') ||
+      raw.includes('dateTestedInitial') ||
+      raw.includes('bulkActiveLot')
+    ) {
+      return false;
+    }
+
+    // Ambiguous actives correction: safer to keep lab/internal
+    return false;
+  }
+
+  // COA table:
+  // Specification/item is client-side; result/SOP/date-tested is chemistry-side.
+  if (key === 'coaRows') {
+    if (raw.includes('Specification') || raw.includes('item')) return true;
+
+    if (
+      raw.includes('result') ||
+      raw.includes('sopValidatedTm') ||
+      raw.includes('dateTestedInitial')
+    ) {
+      return false;
+    }
+
+    // Ambiguous COA table correction: safer to keep lab/internal
+    return false;
+  }
+
+  return false;
+}
+
+function resolveCorrectionRecipientSideFromFields(
+  formType: FormType,
+  fieldKeys: string[],
+): CorrectionRecipientSide {
+  const keys = [
+    ...new Set(
+      fieldKeys
+        .map(String)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (keys.length === 0) {
+    return 'LAB';
+  }
+
+  const clientKeys = keys.filter((key) =>
+    isClientCorrectionField(formType, key),
+  );
+  const labKeys = keys.filter((key) => !isClientCorrectionField(formType, key));
+
+  if (clientKeys.length > 0 && labKeys.length > 0) return 'BOTH';
+  if (clientKeys.length > 0) return 'CLIENT';
+
+  return 'LAB';
+}
+
+function getOpenCorrectionFieldKeysFromDetails(details: any) {
+  const corrections = Array.isArray(details?.corrections)
+    ? (details.corrections as CorrectionLike[])
+    : [];
+
+  return corrections
+    .filter((c) => String(c?.status ?? 'OPEN') === 'OPEN')
+    .map((c) => String(c?.fieldKey ?? '').trim())
+    .filter(Boolean);
+}
+
+function normalizeManualRecipientSide(
+  value: any,
+): CorrectionRecipientSide | null {
+  const v = String(value ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (v === 'CLIENT') return 'CLIENT';
+  if (v === 'LAB') return 'LAB';
+  if (v === 'BOTH') return 'BOTH';
+
+  return null;
+}
+
+function resolveManualRecipientSide(
+  corrections: CorrectionLike[],
+): CorrectionRecipientSide | null {
+  const sides = corrections
+    .map((c) => normalizeManualRecipientSide(c.recipientSide))
+    .filter((x): x is CorrectionRecipientSide => Boolean(x));
+
+  if (sides.length === 0) return null;
+
+  if (sides.includes('BOTH')) return 'BOTH';
+
+  const unique = [...new Set(sides)];
+
+  if (unique.length > 1) return 'BOTH';
+
+  return unique[0];
+}
+
+function getOpenCorrectionItemsFromDetails(details: any): CorrectionLike[] {
+  const corrections = Array.isArray(details?.corrections)
+    ? (details.corrections as CorrectionLike[])
+    : [];
+
+  return corrections.filter((c) => String(c?.status ?? 'OPEN') === 'OPEN');
+}
+
 @Injectable()
 export class ChemistryReportNotificationsService {
   private readonly log = new Logger(ChemistryReportNotificationsService.name);
@@ -298,6 +473,43 @@ export class ChemistryReportNotificationsService {
 
   private adminTo() {
     return process.env.ADMIN_NOTIFY_TO || this.labTo();
+  }
+
+  private async getChemistryCorrectionRecipientSide(args: {
+    reportId: string;
+    formType: FormType;
+  }) {
+    const report = await this.prisma.chemistryReport.findUnique({
+      where: { id: args.reportId },
+      include: {
+        chemistryMix: true,
+        coa: true,
+      },
+    });
+
+    const openItems: CorrectionLike[] = [];
+
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.chemistryMix));
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.coa));
+
+    const fieldKeys = openItems
+      .map((c) => String(c?.fieldKey ?? '').trim())
+      .filter(Boolean);
+
+    const manualSide = resolveManualRecipientSide(openItems);
+
+    const side =
+      manualSide ??
+      resolveCorrectionRecipientSideFromFields(args.formType, fieldKeys);
+
+    this.log.warn(
+      `[CHEM CORRECTION FIELD ROUTING] report=${args.reportId} formType=${args.formType} fields=${fieldKeys.join(',') || 'NONE'} side=${side}`,
+    );
+
+    return {
+      side,
+      fieldKeys,
+    };
   }
 
   async onStatusChanged(args: NotifyArgs) {
@@ -820,20 +1032,25 @@ export class ChemistryReportNotificationsService {
       const requestedByClient = args2.requestedByRole === 'CLIENT';
       const workingLabRoles = rolesForWorkingLabByFormType(args.formType);
 
-      const recipientSide =
-        args2.requestKind === 'CHANGE'
-          ? requestedByClient
-            ? 'CLIENT'
-            : 'LAB'
-          : requestedByClient
-            ? 'LAB'
-            : 'CLIENT';
+      const fieldRouting = await this.getChemistryCorrectionRecipientSide({
+        reportId: args.reportId,
+        formType: args.formType,
+      });
+
+      let recipientSide: CorrectionRecipientSide;
+
+      if (requestedByClient) {
+        recipientSide = args2.requestKind === 'CHANGE' ? 'CLIENT' : 'LAB';
+      } else {
+        recipientSide = fieldRouting.side;
+      }
 
       this.log.log(
-        `Routing approved ${args2.requestKind} request for ${args.formNumber}: ` +
+        `Routing approved chemistry ${args2.requestKind} request for ${args.formNumber}: ` +
           `requestedBy=${args2.requestedByRole}, ` +
           `approvedBy=${actorUser?.role ?? 'UNKNOWN'}, ` +
-          `recipientSide=${recipientSide}`,
+          `recipientSide=${recipientSide}, ` +
+          `fields=${fieldRouting.fieldKeys.join(',') || 'NONE'}`,
       );
 
       const extraMeta = {
@@ -841,74 +1058,66 @@ export class ChemistryReportNotificationsService {
         requestedByRole: args2.requestedByRole,
         workflowReturnStatus: workflow?.workflowReturnStatus ?? null,
         approvedByRole: actorUser?.role ?? null,
+        correctionFieldKeys: fieldRouting.fieldKeys.join(','),
+        correctionRecipientSide: recipientSide,
       };
 
-      /*
-       * CHANGE:
-       * Client raised change -> client performs the change.
-       * Lab raised change -> lab performs the change.
-       */
-      if (args2.requestKind === 'CHANGE') {
-        const title = 'Change Request Approved';
-        const subject = `🟠 Change Request Approved — Omega LIMS — ${args.formNumber}`;
+      const isChange = args2.requestKind === 'CHANGE';
 
-        if (requestedByClient) {
-          await notifyClient(title, 'approved-change-to-client', {
+      const title = isChange
+        ? 'Change Request Approved'
+        : 'Correction Required';
+
+      const subject = isChange
+        ? `🟠 Change Request Approved — Omega LIMS — ${args.formNumber}`
+        : `🔴 Correction Required — Omega LIMS — ${args.formNumber}`;
+
+      const badgeText = isChange
+        ? 'CHANGE REQUEST APPROVED'
+        : 'CORRECTION REQUIRED';
+
+      const badgeTone: NotificationTone = isChange ? 'ORANGE' : 'RED';
+
+      const clientPriority = isChange
+        ? 'Your change request was approved. Please make the requested changes and resubmit the report.'
+        : 'Action required: Please correct the requested client-side fields and resubmit the report.';
+
+      const labPriority = isChange
+        ? 'The change request was approved. Please make the requested chemistry/testing changes to the report.'
+        : 'Action required: Please correct the requested chemistry/testing fields and resubmit the report.';
+
+      if (recipientSide === 'CLIENT' || recipientSide === 'BOTH') {
+        await notifyClient(
+          title,
+          isChange
+            ? 'approved-change-to-client'
+            : 'approved-correction-to-client',
+          {
             forceImmediate: true,
             subject,
-            badgeText: 'CHANGE REQUEST APPROVED',
-            badgeTone: 'ORANGE',
-            priorityLine:
-              'Your change request was approved. Please make the requested changes and resubmit the report.',
+            badgeText,
+            badgeTone,
+            priorityLine: clientPriority,
             extraMeta,
-          });
-        } else {
-          await notifyLab(title, 'approved-change-to-lab', {
+          },
+        );
+      }
+
+      if (recipientSide === 'LAB' || recipientSide === 'BOTH') {
+        await notifyLab(
+          title,
+          isChange ? 'approved-change-to-lab' : 'approved-correction-to-lab',
+          {
             forceImmediate: true,
             roles: workingLabRoles,
             emailRoles: workingLabRoles,
             subject,
-            badgeText: 'CHANGE REQUEST APPROVED',
-            badgeTone: 'ORANGE',
-            priorityLine:
-              'The change request was approved. Please make the requested changes to the report.',
+            badgeText,
+            badgeTone,
+            priorityLine: labPriority,
             extraMeta,
-          });
-        }
-
-        return;
-      }
-
-      /*
-       * CORRECTION:
-       * Client raised correction -> lab corrects the report.
-       * Lab raised correction -> client corrects the report.
-       */
-      const title = 'Correction Required';
-      const subject = `🔴 Correction Required — Omega LIMS — ${args.formNumber}`;
-
-      if (requestedByClient) {
-        await notifyLab(title, 'approved-correction-to-lab', {
-          forceImmediate: true,
-          roles: workingLabRoles,
-          emailRoles: workingLabRoles,
-          subject,
-          badgeText: 'CORRECTION REQUIRED',
-          badgeTone: 'RED',
-          priorityLine:
-            'Action required: The correction request was approved. Please correct the report and resubmit it.',
-          extraMeta,
-        });
-      } else {
-        await notifyClient(title, 'approved-correction-to-client', {
-          forceImmediate: true,
-          subject,
-          badgeText: 'CORRECTION REQUIRED',
-          badgeTone: 'RED',
-          priorityLine:
-            'Action required: The correction request was approved. Please correct the report and resubmit it.',
-          extraMeta,
-        });
+          },
+        );
       }
     };
 
