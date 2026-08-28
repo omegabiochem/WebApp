@@ -755,8 +755,18 @@ export default function MicroMixReportForm({
   //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
+  type CorrectionRecipientSide = "AUTO" | "CLIENT" | "LAB" | "BOTH";
+
+  const [correctionRecipientSide, setCorrectionRecipientSide] =
+    useState<CorrectionRecipientSide>("AUTO");
+
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string; oldValue?: string | null }[]
+    {
+      fieldKey: string;
+      message: string;
+      oldValue?: string | null;
+      recipientSide?: Exclude<CorrectionRecipientSide, "AUTO"> | null;
+    }[]
   >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
@@ -4202,6 +4212,16 @@ export default function MicroMixReportForm({
               <li key={i} className="flex items-center justify-between gap-2">
                 <span className="truncate">
                   <b>{c.fieldKey}</b>: {c.message}
+                  {c.recipientSide && (
+                    <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                      To: {c.recipientSide}
+                    </span>
+                  )}
+                  {!c.recipientSide && (
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      Auto
+                    </span>
+                  )}
                 </span>
                 <button
                   className="text-rose-600 hover:underline"
@@ -4227,6 +4247,7 @@ export default function MicroMixReportForm({
                 setSelectingCorrections(false);
                 setPendingCorrections([]);
                 setPendingStatus(null);
+                setCorrectionRecipientSide("AUTO");
               }}
             >
               Cancel
@@ -4254,6 +4275,10 @@ export default function MicroMixReportForm({
                       workflowReturnStatus: getWorkflowReturnStatus(
                         status as ReportStatus,
                       ),
+                      recipientSide:
+                        correctionRecipientSide === "AUTO"
+                          ? undefined
+                          : correctionRecipientSide,
                     },
                   );
 
@@ -4282,6 +4307,7 @@ export default function MicroMixReportForm({
                   setSelectingCorrections(false);
                   setPendingCorrections([]);
                   setPendingStatus(null);
+                  setCorrectionRecipientSide("AUTO");
                   setIsDirty(false);
 
                   onStatusChanged?.({
@@ -4319,6 +4345,49 @@ export default function MicroMixReportForm({
               placeholder="Describe what needs to be corrected"
               className="w-full rounded-lg border px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
             />
+
+            {["QA", "ADMIN", "SYSTEMADMIN"].includes(role ?? "") && (
+              <div className="mt-3 rounded-lg border bg-slate-50 p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-700">
+                  Send this change/correction to
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  {[
+                    ["AUTO", "Auto"],
+                    ["CLIENT", "Client"],
+                    ["LAB", "Lab"],
+                    ["BOTH", "Both"],
+                  ].map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center justify-center rounded-lg border px-2 py-1.5 ${
+                        correctionRecipientSide === value
+                          ? "border-blue-600 bg-blue-50 text-blue-700"
+                          : "bg-white text-slate-700"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="mr-1"
+                        checked={correctionRecipientSide === value}
+                        onChange={() =>
+                          setCorrectionRecipientSide(
+                            value as CorrectionRecipientSide,
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Auto uses field type. For mixed fields, choose Client, Lab, or
+                  Both.
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex justify-end gap-2">
               <button
                 className="rounded-lg border px-3 py-1.5 text-sm"
@@ -4334,6 +4403,10 @@ export default function MicroMixReportForm({
                 disabled={!addMessage.trim()}
                 onClick={() =>
                   runBusy("ADD_CORRECTION", async () => {
+                    const selectedSide =
+                      correctionRecipientSide === "AUTO"
+                        ? null
+                        : correctionRecipientSide;
                     setPendingCorrections((prev) => {
                       const fields = getCorrectionFieldKeys(addForField!);
 
@@ -4346,6 +4419,7 @@ export default function MicroMixReportForm({
                           fieldKey,
                           message: addMessage.trim(),
                           oldValue: getFieldDisplayValue(fieldKey),
+                          recipientSide: selectedSide,
                         }));
 
                       return [...prev, ...newCorrections];

@@ -291,12 +291,15 @@ export function FieldErrorBadge({
 
 // const API_BASE = "http://localhost:3000";
 
+export type CorrectionRecipientSide = "CLIENT" | "LAB" | "BOTH";
+
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
   message: string;
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
+  recipientSide: CorrectionRecipientSide;
   createdAt: string;
 
   // ✅ add
@@ -328,6 +331,7 @@ export async function createCorrections(
     kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
     previousStatus?: string;
     workflowReturnStatus?: string;
+    recipientSide?: CorrectionRecipientSide;
   },
 ) {
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {

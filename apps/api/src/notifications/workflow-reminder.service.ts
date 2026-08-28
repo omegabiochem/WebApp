@@ -44,11 +44,7 @@ const REMINDER_STATUSES = new Set([
   'UNDER_CHANGE_UPDATE',
 ]);
 
-const APPROVAL_ROLES: UserRole[] = [
-  'ADMIN',
-  'SYSTEMADMIN',
-  'QA',
-];
+const APPROVAL_ROLES: UserRole[] = ['ADMIN', 'SYSTEMADMIN', 'QA'];
 
 const WEEKDAY_MAP: Record<string, number> = {
   Mon: 1,
@@ -64,9 +60,7 @@ function normalizeEmails(values: string[]) {
   return [
     ...new Set(
       (values ?? [])
-        .flatMap((value) =>
-          String(value ?? '').split(/[;,]/),
-        )
+        .flatMap((value) => String(value ?? '').split(/[;,]/))
         .map((value) => value.trim().toLowerCase())
         .filter((value) => value.includes('@')),
     ),
@@ -83,12 +77,7 @@ function parseClock(value: string | undefined, fallback: number) {
   const hour = Number(match[1]);
   const minute = Number(match[2]);
 
-  if (
-    hour < 0 ||
-    hour > 23 ||
-    minute < 0 ||
-    minute > 59
-  ) {
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
     return fallback;
   }
 
@@ -101,16 +90,9 @@ function parseWorkingDays(value?: string): number[] {
   const days = value
     .split(',')
     .map((x) => Number(x.trim()))
-    .filter(
-      (x) =>
-        Number.isInteger(x) &&
-        x >= 1 &&
-        x <= 7,
-    );
+    .filter((x) => Number.isInteger(x) && x >= 1 && x <= 7);
 
-  return days.length
-    ? [...new Set(days)]
-    : [1, 2, 3, 4, 5];
+  return days.length ? [...new Set(days)] : [1, 2, 3, 4, 5];
 }
 
 function isValidTimeZone(timeZone: string) {
@@ -125,10 +107,7 @@ function isValidTimeZone(timeZone: string) {
   }
 }
 
-function getZonedDayAndMinute(
-  date: Date,
-  timeZone: string,
-) {
+function getZonedDayAndMinute(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
     weekday: 'short',
@@ -139,17 +118,11 @@ function getZonedDayAndMinute(
 
   const parts = formatter.formatToParts(date);
 
-  const weekday =
-    parts.find((x) => x.type === 'weekday')?.value ??
-    'Mon';
+  const weekday = parts.find((x) => x.type === 'weekday')?.value ?? 'Mon';
 
-  const hour = Number(
-    parts.find((x) => x.type === 'hour')?.value ?? 0,
-  );
+  const hour = Number(parts.find((x) => x.type === 'hour')?.value ?? 0);
 
-  const minute = Number(
-    parts.find((x) => x.type === 'minute')?.value ?? 0,
-  );
+  const minute = Number(parts.find((x) => x.type === 'minute')?.value ?? 0);
 
   return {
     weekday: WEEKDAY_MAP[weekday] ?? 1,
@@ -157,14 +130,8 @@ function getZonedDayAndMinute(
   };
 }
 
-function isWorkingInstant(
-  date: Date,
-  schedule: WorkSchedule,
-) {
-  const local = getZonedDayAndMinute(
-    date,
-    schedule.timeZone,
-  );
+function isWorkingInstant(date: Date, schedule: WorkSchedule) {
+  const local = getZonedDayAndMinute(date, schedule.timeZone);
 
   return (
     schedule.workingDays.includes(local.weekday) &&
@@ -198,9 +165,7 @@ function addWorkingMinutes(
       remaining -= 1;
     }
 
-    cursor = new Date(
-      cursor.getTime() + 60_000,
-    );
+    cursor = new Date(cursor.getTime() + 60_000);
 
     iterations += 1;
 
@@ -214,51 +179,192 @@ function addWorkingMinutes(
   return cursor;
 }
 
-function nextWorkingInstant(
-  start: Date,
-  schedule: WorkSchedule,
-) {
+function nextWorkingInstant(start: Date, schedule: WorkSchedule) {
   let cursor = new Date(start);
 
   const maximumIterations = 60 * 24 * 14;
 
-  for (
-    let i = 0;
-    i < maximumIterations;
-    i += 1
-  ) {
+  for (let i = 0; i < maximumIterations; i += 1) {
     if (isWorkingInstant(cursor, schedule)) {
       return cursor;
     }
 
-    cursor = new Date(
-      cursor.getTime() + 60_000,
-    );
+    cursor = new Date(cursor.getTime() + 60_000);
   }
 
-  throw new Error(
-    `Unable to find next working time for ${schedule.timeZone}`,
-  );
+  throw new Error(`Unable to find next working time for ${schedule.timeZone}`);
 }
 
-function workingLabRoles(
-  formType: FormType,
-): UserRole[] {
-  if (
-    formType === 'CHEMISTRY_MIX' ||
-    formType === 'COA'
-  ) {
+function workingLabRoles(formType: FormType): UserRole[] {
+  if (formType === 'CHEMISTRY_MIX' || formType === 'COA') {
     return ['CHEMISTRY', 'MC'];
   }
 
   return ['MICRO', 'MC'];
 }
 
+type FieldRoutingSide = 'CLIENT' | 'LAB' | 'BOTH';
+
+type CorrectionLike = {
+  fieldKey?: string | null;
+  status?: string | null;
+  recipientSide?: FieldRoutingSide | null;
+};
+
+function normalizeCorrectionFieldKey(fieldKey: string) {
+  return String(fieldKey ?? '')
+    .trim()
+    .replace(/\[\d+\]/g, '')
+    .split(':')[0]
+    .split('.')[0];
+}
+
+function isClientCorrectionField(formType: FormType, fieldKey: string) {
+  const raw = String(fieldKey ?? '').trim();
+  const key = normalizeCorrectionFieldKey(raw);
+
+  const commonClientFields = new Set([
+    'client',
+    'dateSent',
+    'typeOfTest',
+    'sampleType',
+    'formulaNo',
+    'idNo',
+    'description',
+    'sampleDescription',
+    'lotNo',
+    'lotBatchNo',
+    'manufactureDate',
+    'samplingDate',
+    'formulaId',
+    'sampleSize',
+    'numberOfActives',
+    'sampleTypes',
+    'testTypes',
+    'sampleCollected',
+    'stabilityNote',
+    'organisms',
+  ]);
+
+  if (commonClientFields.has(key)) return true;
+
+  if (key === 'tbc_spec' || key === 'tmy_spec') return true;
+
+  if (key === 'pathogens') {
+    if (raw.includes('spec')) return true;
+    if (raw.includes('result') || raw.includes('grams')) return false;
+    return false;
+  }
+
+  if (key === 'actives') {
+    if (raw.includes('formulaContent')) return true;
+
+    if (
+      raw.includes('result') ||
+      raw.includes('sopNo') ||
+      raw.includes('dateTestedInitial') ||
+      raw.includes('bulkActiveLot')
+    ) {
+      return false;
+    }
+
+    return false;
+  }
+
+  if (key === 'coaRows') {
+    if (raw.includes('Specification') || raw.includes('item')) return true;
+
+    if (
+      raw.includes('result') ||
+      raw.includes('sopValidatedTm') ||
+      raw.includes('dateTestedInitial')
+    ) {
+      return false;
+    }
+
+    return false;
+  }
+
+  return false;
+}
+
+function getOpenCorrectionFieldKeysFromDetails(details: any) {
+  const corrections = Array.isArray(details?.corrections)
+    ? (details.corrections as CorrectionLike[])
+    : [];
+
+  return corrections
+    .filter((c) => String(c?.status ?? 'OPEN') === 'OPEN')
+    .map((c) => String(c?.fieldKey ?? '').trim())
+    .filter(Boolean);
+}
+
+function resolveFieldRoutingSide(
+  formType: FormType,
+  fieldKeys: string[],
+): FieldRoutingSide {
+  const keys = [
+    ...new Set(
+      fieldKeys
+        .map(String)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (keys.length === 0) return 'LAB';
+
+  const clientKeys = keys.filter((key) =>
+    isClientCorrectionField(formType, key),
+  );
+
+  const labKeys = keys.filter((key) => !isClientCorrectionField(formType, key));
+
+  if (clientKeys.length > 0 && labKeys.length > 0) return 'BOTH';
+  if (clientKeys.length > 0) return 'CLIENT';
+
+  return 'LAB';
+}
+
+function normalizeManualRecipientSide(value: any): FieldRoutingSide | null {
+  const v = String(value ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (v === 'CLIENT') return 'CLIENT';
+  if (v === 'LAB') return 'LAB';
+  if (v === 'BOTH') return 'BOTH';
+
+  return null;
+}
+
+function resolveManualRecipientSide(
+  corrections: CorrectionLike[],
+): FieldRoutingSide | null {
+  const sides = corrections
+    .map((c) => normalizeManualRecipientSide(c.recipientSide))
+    .filter((x): x is FieldRoutingSide => Boolean(x));
+
+  if (sides.length === 0) return null;
+  if (sides.includes('BOTH')) return 'BOTH';
+
+  const unique = [...new Set(sides)];
+  if (unique.length > 1) return 'BOTH';
+
+  return unique[0];
+}
+
+function getOpenCorrectionItemsFromDetails(details: any): CorrectionLike[] {
+  const corrections = Array.isArray(details?.corrections)
+    ? (details.corrections as CorrectionLike[])
+    : [];
+
+  return corrections.filter((c) => String(c?.status ?? 'OPEN') === 'OPEN');
+}
+
 @Injectable()
 export class WorkflowReminderService {
-  private readonly log = new Logger(
-    WorkflowReminderService.name,
-  );
+  private readonly log = new Logger(WorkflowReminderService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -267,47 +373,26 @@ export class WorkflowReminderService {
   ) {}
 
   private omegaSchedule(): WorkSchedule {
-    const timeZone =
-      process.env.OMEGA_TIME_ZONE ??
-      'America/New_York';
+    const timeZone = process.env.OMEGA_TIME_ZONE ?? 'America/New_York';
 
     return {
       enabled: true,
 
-      timeZone: isValidTimeZone(timeZone)
-        ? timeZone
-        : 'America/New_York',
+      timeZone: isValidTimeZone(timeZone) ? timeZone : 'America/New_York',
 
-      startMinutes: parseClock(
-        process.env.OMEGA_WORKDAY_START,
-        540,
-      ),
+      startMinutes: parseClock(process.env.OMEGA_WORKDAY_START, 540),
 
-      endMinutes: parseClock(
-        process.env.OMEGA_WORKDAY_END,
-        1020,
-      ),
+      endMinutes: parseClock(process.env.OMEGA_WORKDAY_END, 1020),
 
-      workingDays: parseWorkingDays(
-        process.env.OMEGA_WORKING_DAYS,
-      ),
+      workingDays: parseWorkingDays(process.env.OMEGA_WORKING_DAYS),
 
       intervalMinutes: Number(
-        process.env
-          .WORKFLOW_REMINDER_INTERVAL_MINUTES ??
-          60,
+        process.env.WORKFLOW_REMINDER_INTERVAL_MINUTES ?? 60,
       ),
 
       maxCount: Math.min(
         10,
-        Math.max(
-          1,
-          Number(
-            process.env
-              .WORKFLOW_REMINDER_MAX_COUNT ??
-              10,
-          ),
-        ),
+        Math.max(1, Number(process.env.WORKFLOW_REMINDER_MAX_COUNT ?? 10)),
       ),
     };
   }
@@ -321,14 +406,11 @@ export class WorkflowReminderService {
       return fallback;
     }
 
-    const client =
-      await this.prisma.clientDetails.findUnique({
-        where: {
-          clientCode: clientCode
-            .trim()
-            .toUpperCase(),
-        },
-      });
+    const client = await this.prisma.clientDetails.findUnique({
+      where: {
+        clientCode: clientCode.trim().toUpperCase(),
+      },
+    });
 
     if (!client) {
       this.log.warn(
@@ -347,29 +429,17 @@ export class WorkflowReminderService {
 
       timeZone,
 
-      startMinutes:
-        client.workdayStartMinutes,
+      startMinutes: client.workdayStartMinutes,
 
-      endMinutes:
-        client.workdayEndMinutes,
+      endMinutes: client.workdayEndMinutes,
 
-      workingDays:
-        client.workingDays?.length
-          ? client.workingDays
-          : fallback.workingDays,
+      workingDays: client.workingDays?.length
+        ? client.workingDays
+        : fallback.workingDays,
 
-      intervalMinutes: Math.max(
-        1,
-        client.workflowReminderIntervalMinutes,
-      ),
+      intervalMinutes: Math.max(1, client.workflowReminderIntervalMinutes),
 
-      maxCount: Math.min(
-        10,
-        Math.max(
-          1,
-          client.workflowReminderMaxCount,
-        ),
-      ),
+      maxCount: Math.min(10, Math.max(1, client.workflowReminderMaxCount)),
     };
   }
 
@@ -384,83 +454,69 @@ export class WorkflowReminderService {
     return this.omegaSchedule();
   }
 
-  private determineReminder(args: StatusChangeArgs): {
+  private async determineReminder(args: StatusChangeArgs): Promise<{
     kind: WorkflowReminderKind;
-    targetSide: WorkflowReminderTargetSide;
-  } | null {
-    if (
-      args.newStatus === 'CORRECTION_REQUESTED'
-    ) {
+    targetSides: WorkflowReminderTargetSide[];
+  } | null> {
+    if (args.newStatus === 'CORRECTION_REQUESTED') {
       return {
         kind: 'CORRECTION',
-        targetSide: 'APPROVAL_TEAM',
+        targetSides: ['APPROVAL_TEAM'],
       };
     }
 
     if (args.newStatus === 'CHANGE_REQUESTED') {
       return {
         kind: 'CHANGE',
-        targetSide: 'APPROVAL_TEAM',
+        targetSides: ['APPROVAL_TEAM'],
       };
     }
 
-    const requestedByClient =
-      args.requestedByRole === 'CLIENT';
-
-    if (
-      args.newStatus === 'UNDER_CHANGE_UPDATE'
-    ) {
+    if (args.newStatus === 'UNDER_CHANGE_UPDATE') {
       if (!args.requestedByRole) return null;
+
+      if (args.requestedByRole === 'CLIENT') {
+        return {
+          kind: 'CHANGE',
+          targetSides: ['CLIENT'],
+        };
+      }
 
       return {
         kind: 'CHANGE',
-
-        // CHANGE:
-        // client -> client
-        // lab    -> lab
-        targetSide: requestedByClient
-          ? 'CLIENT'
-          : 'LAB',
+        targetSides: await this.getFieldBasedTargetSides(args),
       };
     }
 
-    if (
-      args.newStatus ===
-      'UNDER_CORRECTION_UPDATE'
-    ) {
+    if (args.newStatus === 'UNDER_CORRECTION_UPDATE') {
       if (!args.requestedByRole) return null;
+
+      if (args.requestedByRole === 'CLIENT') {
+        return {
+          kind: 'CORRECTION',
+          targetSides: ['LAB'],
+        };
+      }
 
       return {
         kind: 'CORRECTION',
-
-        // CORRECTION:
-        // client -> lab
-        // lab    -> client
-        targetSide: requestedByClient
-          ? 'LAB'
-          : 'CLIENT',
+        targetSides: await this.getFieldBasedTargetSides(args),
       };
     }
 
     return null;
   }
 
-  async handleStatusChange(
-    args: StatusChangeArgs,
-  ) {
+  async handleStatusChange(args: StatusChangeArgs) {
     // Cancel whatever timer belonged to the
     // previous state.
-    await this.resolveForSource(
-      args.sourceType,
-      args.sourceId,
-    );
+    await this.resolveForSource(args.sourceType, args.sourceId);
 
     if (!REMINDER_STATUSES.has(args.newStatus)) {
       return;
     }
 
-    const routing =
-      this.determineReminder(args);
+    const routing = await this.determineReminder(args);
 
     if (!routing) {
       this.log.error(
@@ -469,64 +525,65 @@ export class WorkflowReminderService {
       return;
     }
 
-    const schedule =
-      await this.scheduleForTarget(
-        routing.targetSide,
+    for (const targetSide of routing.targetSides) {
+      const schedule = await this.scheduleForTarget(
+        targetSide,
         args.clientCode,
       );
 
-    if (!schedule.enabled) {
-      this.log.log(
-        `Workflow reminders disabled for ${args.formNumber}`,
-      );
-      return;
-    }
+      if (!schedule.enabled) {
+        this.log.log(
+          `Workflow reminders disabled for ${args.formNumber} target=${targetSide}`,
+        );
+        continue;
+      }
 
-    const startedAt = new Date();
+      const startedAt = new Date();
 
-    const nextReminderAt =
-      addWorkingMinutes(
+      const nextReminderAt = addWorkingMinutes(
         startedAt,
         schedule.intervalMinutes,
         schedule,
       );
 
-    const activeKey =
-      `${args.sourceType}:${args.sourceId}`;
+      const activeKey = `${args.sourceType}:${args.sourceId}:${targetSide}`;
 
-    await this.prisma.workflowReminder.create({
-      data: {
-        sourceType: args.sourceType,
-        sourceId: args.sourceId,
+      await this.prisma.workflowReminder.create({
+        data: {
+          sourceType: args.sourceType,
+          sourceId: args.sourceId,
 
-        formType: args.formType,
-        formNumber: args.formNumber,
+          formType: args.formType,
+          formNumber: args.formNumber,
 
-        clientCode:
-          args.clientCode?.trim() || null,
+          clientCode: args.clientCode?.trim() || null,
 
-        expectedStatus: args.newStatus,
+          expectedStatus: args.newStatus,
 
-        requestKind: routing.kind,
+          requestKind: routing.kind,
 
-        requestedByRole:
-          args.requestedByRole ?? null,
+          requestedByRole: args.requestedByRole ?? null,
 
-        targetSide: routing.targetSide,
+          targetSide,
 
-        activeKey,
+          activeKey,
 
-        startedAt,
-        nextReminderAt,
+          startedAt,
+          nextReminderAt,
 
-        reminderCount: 0,
-        maxReminders: schedule.maxCount,
-      },
-    });
+          reminderCount: 0,
+          maxReminders: schedule.maxCount,
+        },
+      });
 
-    this.log.log(
-      `Reminder scheduled: ${args.formNumber} status=${args.newStatus} target=${routing.targetSide} next=${nextReminderAt.toISOString()} timezone=${schedule.timeZone}`,
-    );
+      this.log.log(
+        `Reminder scheduled: ${args.formNumber} ` +
+          `status=${args.newStatus} ` +
+          `target=${targetSide} ` +
+          `next=${nextReminderAt.toISOString()} ` +
+          `timezone=${schedule.timeZone}`,
+      );
+    }
   }
 
   async resolveForSource(
@@ -555,15 +612,11 @@ export class WorkflowReminderService {
     formType: FormType,
   ) {
     const base = String(
-      process.env.APP_URL ??
-        'https://www.omegabiochemlab.com',
+      process.env.APP_URL ?? 'https://www.omegabiochemlab.com',
     ).replace(/\/+$/, '');
 
     if (sourceType === 'CHEMISTRY_REPORT') {
-      const slug =
-        formType === 'COA'
-          ? 'coa'
-          : 'chemistry-mix';
+      const slug = formType === 'COA' ? 'coa' : 'chemistry-mix';
 
       return `${base}/chemistry-reports/${slug}/${sourceId}`;
     }
@@ -583,14 +636,9 @@ export class WorkflowReminderService {
   }
 
   private async getRecipients(reminder: any) {
-    if (
-      reminder.targetSide === 'APPROVAL_TEAM'
-    ) {
+    if (reminder.targetSide === 'APPROVAL_TEAM') {
       const configured = normalizeEmails(
-        await this.recipients
-          .getRoleNotificationEmails(
-            APPROVAL_ROLES,
-          ),
+        await this.recipients.getRoleNotificationEmails(APPROVAL_ROLES),
       );
 
       if (configured.length > 0) {
@@ -600,10 +648,8 @@ export class WorkflowReminderService {
       return normalizeEmails([
         process.env.ADMIN_NOTIFY_TO ?? '',
         process.env.QA_NOTIFY_TO ?? '',
-        process.env.SYSTEMADMIN_NOTIFY_TO ??
-          '',
-        process.env.LAB_NOTIFY_TO ??
-          'tech@omegabiochemlab.com',
+        process.env.SYSTEMADMIN_NOTIFY_TO ?? '',
+        process.env.LAB_NOTIFY_TO ?? 'tech@omegabiochemlab.com',
       ]);
     }
 
@@ -611,30 +657,21 @@ export class WorkflowReminderService {
       if (!reminder.clientCode) return [];
 
       return normalizeEmails(
-        await this.recipients
-          .getClientNotificationEmails(
-            reminder.clientCode,
-          ),
+        await this.recipients.getClientNotificationEmails(reminder.clientCode),
       );
     }
 
-    const roles = workingLabRoles(
-      reminder.formType,
-    );
+    const roles = workingLabRoles(reminder.formType);
 
     const configured = normalizeEmails(
-      await this.recipients
-        .getRoleNotificationEmails(roles),
+      await this.recipients.getRoleNotificationEmails(roles),
     );
 
     if (configured.length > 0) {
       return configured;
     }
 
-    if (
-      reminder.formType === 'CHEMISTRY_MIX' ||
-      reminder.formType === 'COA'
-    ) {
+    if (reminder.formType === 'CHEMISTRY_MIX' || reminder.formType === 'COA') {
       return normalizeEmails([
         process.env.CHEMISTRY_NOTIFY_TO ??
           process.env.LAB_NOTIFY_TO ??
@@ -649,12 +686,8 @@ export class WorkflowReminderService {
     ]);
   }
 
-  private async currentSourceStatus(
-    reminder: any,
-  ) {
-    if (
-      reminder.sourceType === 'CHEMISTRY_REPORT'
-    ) {
+  private async currentSourceStatus(reminder: any) {
+    if (reminder.sourceType === 'CHEMISTRY_REPORT') {
       return this.prisma.chemistryReport.findUnique({
         where: {
           id: reminder.sourceId,
@@ -682,43 +715,31 @@ export class WorkflowReminderService {
   }
 
   private async sendReminder(reminder: any) {
-    const recipients =
-      await this.getRecipients(reminder);
+    const recipients = await this.getRecipients(reminder);
 
     if (recipients.length === 0) {
-      throw new Error(
-        `No email recipients found for ${reminder.formNumber}`,
-      );
+      throw new Error(`No email recipients found for ${reminder.formNumber}`);
     }
 
-    const isCorrection =
-      reminder.requestKind === 'CORRECTION';
+    const isCorrection = reminder.requestKind === 'CORRECTION';
 
-    const marker = isCorrection
-      ? '🔴'
-      : '🟠';
+    const marker = isCorrection ? '🔴' : '🟠';
 
-    const tone = isCorrection
-      ? ('RED' as const)
-      : ('ORANGE' as const);
+    const tone = isCorrection ? ('RED' as const) : ('ORANGE' as const);
 
     let title: string;
     let badgeText: string;
     let priorityLine: string;
 
     if (
-      reminder.expectedStatus ===
-        'CORRECTION_REQUESTED' ||
-      reminder.expectedStatus ===
-        'CHANGE_REQUESTED'
+      reminder.expectedStatus === 'CORRECTION_REQUESTED' ||
+      reminder.expectedStatus === 'CHANGE_REQUESTED'
     ) {
       title = isCorrection
         ? 'Correction Request Awaiting Approval'
         : 'Change Request Awaiting Approval';
 
-      badgeText = isCorrection
-        ? 'CORRECTION REMINDER'
-        : 'CHANGE REMINDER';
+      badgeText = isCorrection ? 'CORRECTION REMINDER' : 'CHANGE REMINDER';
 
       priorityLine = isCorrection
         ? 'Action required: This correction request is still waiting for approval.'
@@ -739,14 +760,12 @@ export class WorkflowReminderService {
         'Action required: The approved change is still pending. Please complete the requested changes.';
     }
 
-    const nextNumber =
-      reminder.reminderCount + 1;
+    const nextNumber = reminder.reminderCount + 1;
 
     await this.mail.sendStatusNotificationEmail({
       to: recipients,
 
-      subject:
-        `${marker} Reminder — ${title} — Omega LIMS — ${reminder.formNumber}`,
+      subject: `${marker} Reminder — ${title} — Omega LIMS — ${reminder.formNumber}`,
 
       title,
 
@@ -758,9 +777,7 @@ export class WorkflowReminderService {
         `Form #: ${reminder.formNumber}`,
         `Client: ${reminder.clientCode ?? '-'}`,
         `Form Type: ${reminder.formType}`,
-        `Status: ${String(
-          reminder.expectedStatus,
-        ).replace(/_/g, ' ')}`,
+        `Status: ${String(reminder.expectedStatus).replace(/_/g, ' ')}`,
         `Reminder: ${nextNumber} of ${reminder.maxReminders}`,
       ],
 
@@ -771,14 +788,11 @@ export class WorkflowReminderService {
       ),
 
       actionLabel:
-        reminder.targetSide ===
-        'APPROVAL_TEAM'
+        reminder.targetSide === 'APPROVAL_TEAM'
           ? 'Review request'
           : 'Open report',
 
-      tag: `workflow-reminder-${String(
-        reminder.requestKind,
-      ).toLowerCase()}`,
+      tag: `workflow-reminder-${String(reminder.requestKind).toLowerCase()}`,
 
       metadata: {
         reminderId: reminder.id,
@@ -787,128 +801,97 @@ export class WorkflowReminderService {
         formNumber: reminder.formNumber,
         formType: reminder.formType,
         status: reminder.expectedStatus,
-        clientCode:
-          reminder.clientCode ?? '',
+        clientCode: reminder.clientCode ?? '',
         reminderNumber: nextNumber,
-        requestKind:
-          reminder.requestKind ?? '',
-        targetSide:
-          reminder.targetSide,
+        requestKind: reminder.requestKind ?? '',
+        targetSide: reminder.targetSide,
       },
     });
   }
 
   @Cron('* * * * *')
   async processDueReminders() {
-    const worker =
-      process.env.HOSTNAME ??
-      `pid-${process.pid}`;
+    const worker = process.env.HOSTNAME ?? `pid-${process.pid}`;
 
     const now = new Date();
 
-    const due =
-      await this.prisma.workflowReminder.findMany({
-        where: {
-          resolvedAt: null,
-          nextReminderAt: {
-            lte: now,
-          },
+    const due = await this.prisma.workflowReminder.findMany({
+      where: {
+        resolvedAt: null,
+        nextReminderAt: {
+          lte: now,
         },
+      },
 
-        orderBy: {
-          nextReminderAt: 'asc',
-        },
+      orderBy: {
+        nextReminderAt: 'asc',
+      },
 
-        take: 100,
-      });
+      take: 100,
+    });
 
     for (const reminder of due) {
-      if (
-        reminder.reminderCount >=
-        reminder.maxReminders
-      ) {
-        await this.resolveForSource(
-          reminder.sourceType,
-          reminder.sourceId,
-        );
+      if (reminder.reminderCount >= reminder.maxReminders) {
+        await this.resolveForSource(reminder.sourceType, reminder.sourceId);
         continue;
       }
 
       // prevent two API instances from
       // sending the same reminder
-      const staleClaim = new Date(
-        Date.now() - 10 * 60_000,
-      );
+      const staleClaim = new Date(Date.now() - 10 * 60_000);
 
-      const claim =
-        await this.prisma.workflowReminder.updateMany({
-          where: {
-            id: reminder.id,
-            resolvedAt: null,
+      const claim = await this.prisma.workflowReminder.updateMany({
+        where: {
+          id: reminder.id,
+          resolvedAt: null,
 
-            OR: [
-              {
-                claimedAt: null,
+          OR: [
+            {
+              claimedAt: null,
+            },
+            {
+              claimedAt: {
+                lt: staleClaim,
               },
-              {
-                claimedAt: {
-                  lt: staleClaim,
-                },
-              },
-            ],
-          },
+            },
+          ],
+        },
 
-          data: {
-            claimedAt: new Date(),
-            claimKey: worker,
-          },
-        });
+        data: {
+          claimedAt: new Date(),
+          claimKey: worker,
+        },
+      });
 
       if (claim.count !== 1) {
         continue;
       }
 
       try {
-        const current =
-          await this.currentSourceStatus(
-            reminder,
-          );
+        const current = await this.currentSourceStatus(reminder);
 
         if (!current) {
-          await this.resolveForSource(
-            reminder.sourceType,
-            reminder.sourceId,
-          );
+          await this.resolveForSource(reminder.sourceType, reminder.sourceId);
           continue;
         }
 
-        if (
-          String(current.status) !==
-          reminder.expectedStatus
-        ) {
+        if (String(current.status) !== reminder.expectedStatus) {
           this.log.log(
             `Stopping reminder for ${reminder.formNumber}: expected=${reminder.expectedStatus}, current=${current.status}`,
           );
 
-          await this.resolveForSource(
-            reminder.sourceType,
-            reminder.sourceId,
-          );
+          await this.resolveForSource(reminder.sourceType, reminder.sourceId);
 
           continue;
         }
 
-        const schedule =
-          await this.scheduleForTarget(
-            reminder.targetSide,
-            reminder.clientCode,
-          );
+        const schedule = await this.scheduleForTarget(
+          reminder.targetSide,
+          reminder.clientCode,
+        );
 
         if (!schedule.enabled) {
-          await this.resolveForSource(
-            reminder.sourceType,
-            reminder.sourceId,
-          );
+          await this.resolveForSource(reminder.sourceType, reminder.sourceId);
 
           continue;
         }
@@ -916,17 +899,8 @@ export class WorkflowReminderService {
         // If working hours/timezone were changed
         // after the reminder was created, don't send
         // outside the new schedule.
-        if (
-          !isWorkingInstant(
-            new Date(),
-            schedule,
-          )
-        ) {
-          const next =
-            nextWorkingInstant(
-              new Date(),
-              schedule,
-            );
+        if (!isWorkingInstant(new Date(), schedule)) {
+          const next = nextWorkingInstant(new Date(), schedule);
 
           await this.prisma.workflowReminder.update({
             where: {
@@ -947,12 +921,9 @@ export class WorkflowReminderService {
 
         const sentAt = new Date();
 
-        const newCount =
-          reminder.reminderCount + 1;
+        const newCount = reminder.reminderCount + 1;
 
-        if (
-          newCount >= reminder.maxReminders
-        ) {
+        if (newCount >= reminder.maxReminders) {
           await this.prisma.workflowReminder.update({
             where: {
               id: reminder.id,
@@ -979,12 +950,11 @@ export class WorkflowReminderService {
           continue;
         }
 
-        const nextReminderAt =
-          addWorkingMinutes(
-            sentAt,
-            schedule.intervalMinutes,
-            schedule,
-          );
+        const nextReminderAt = addWorkingMinutes(
+          sentAt,
+          schedule.intervalMinutes,
+          schedule,
+        );
 
         await this.prisma.workflowReminder.update({
           where: {
@@ -1022,17 +992,12 @@ export class WorkflowReminderService {
               increment: 1,
             },
 
-            lastError:
-              String(
-                error?.message ?? error,
-              ).slice(0, 2000),
+            lastError: String(error?.message ?? error).slice(0, 2000),
 
             // retry delivery in 5 minutes;
             // processDueReminders still checks
             // working hours before sending.
-            nextReminderAt: new Date(
-              Date.now() + 5 * 60_000,
-            ),
+            nextReminderAt: new Date(Date.now() + 5 * 60_000),
 
             claimedAt: null,
             claimKey: null,
@@ -1040,5 +1005,85 @@ export class WorkflowReminderService {
         });
       }
     }
+  }
+
+  private async getFieldBasedTargetSides(
+    args: StatusChangeArgs,
+  ): Promise<WorkflowReminderTargetSide[]> {
+    const openItems: CorrectionLike[] = [];
+    if (args.sourceType === 'CHEMISTRY_REPORT') {
+      const report = await this.prisma.chemistryReport.findUnique({
+        where: { id: args.sourceId },
+        include: {
+          chemistryMix: true,
+          coa: true,
+        },
+      });
+
+      openItems.push(
+        ...getOpenCorrectionItemsFromDetails(report?.chemistryMix),
+      );
+      openItems.push(...getOpenCorrectionItemsFromDetails(report?.coa));
+    } else {
+      const report = await this.prisma.report.findUnique({
+        where: { id: args.sourceId },
+        include: {
+          microMix: true,
+          microMixWater: true,
+          sterility: true,
+          ape: true,
+        },
+      });
+
+      openItems.push(...getOpenCorrectionItemsFromDetails(report?.microMix));
+      openItems.push(
+        ...getOpenCorrectionItemsFromDetails(report?.microMixWater),
+      );
+      openItems.push(...getOpenCorrectionItemsFromDetails(report?.sterility));
+      openItems.push(...getOpenCorrectionItemsFromDetails(report?.ape));
+
+      // APE parent may have correction fields stored on APE child reports.
+      if (args.formType === 'APE') {
+        const children = await this.prisma.report.findMany({
+          where: {
+            parentReportId: args.sourceId,
+            reportType: {
+              in: ['APE_VALIDATION_REPORT', 'APE_REPORT'],
+            },
+          },
+          include: {
+            apeValidationReport: true,
+            apeReport: true,
+          },
+        });
+
+        for (const child of children) {
+          openItems.push(
+            ...getOpenCorrectionItemsFromDetails(child.apeValidationReport),
+          );
+          openItems.push(...getOpenCorrectionItemsFromDetails(child.apeReport));
+        }
+      }
+    }
+
+    const fieldKeys = openItems
+      .map((c) => String(c?.fieldKey ?? '').trim())
+      .filter(Boolean);
+
+    const manualSide = resolveManualRecipientSide(openItems);
+
+    const side =
+      manualSide ?? resolveFieldRoutingSide(args.formType, fieldKeys);
+
+    this.log.warn(
+      `[REMINDER FIELD ROUTING] form=${args.formNumber} ` +
+        `status=${args.newStatus} ` +
+        `fields=${fieldKeys.join(',') || 'NONE'} ` +
+        `manualSide=${manualSide ?? 'AUTO'} ` +
+        `side=${side}`,
+    );
+
+    if (side === 'BOTH') return ['CLIENT', 'LAB'];
+    return [side];
   }
 }

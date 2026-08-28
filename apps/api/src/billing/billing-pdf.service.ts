@@ -690,6 +690,72 @@ export class BillingPdfService {
     return y - rowHeight;
   }
 
+
+  private drawManualTableHeader(
+    page: PDFPage,
+    y: number,
+    font: PDFFont,
+  ) {
+    const rowHeight = 22;
+
+    page.drawRectangle({
+      x: LEFT,
+      y: y - rowHeight + 4,
+
+      width:
+        PAGE_WIDTH -
+        LEFT -
+        RIGHT,
+
+      height: rowHeight,
+
+      color:
+        rgb(
+          0.94,
+          0.94,
+          0.94,
+        ),
+    });
+
+    page.drawText('Description', {
+      x: LEFT + 4,
+      y: y - 10,
+      size: 7.2,
+      font,
+    });
+
+    this.drawRight(
+      page,
+      'Qty',
+      385,
+      y - 10,
+      7.2,
+      font,
+    );
+
+    this.drawRight(
+      page,
+      'Unit Price',
+      470,
+      y - 10,
+      7.2,
+      font,
+    );
+
+    this.drawRight(
+      page,
+      'Amount',
+      PAGE_WIDTH -
+        RIGHT -
+        4,
+      y - 10,
+      7.2,
+      font,
+    );
+
+    return y - rowHeight;
+  }
+
   /* =========================================================
      BUILD PDF
   ========================================================= */
@@ -821,12 +887,16 @@ export class BillingPdfService {
 
       ['Invoice Date', this.formatDate(invoice.confirmedAt)],
 
-      [
-        'Billing Period',
-        `${this.formatDate(invoice.periodStart)} - ${this.formatDate(
-          endDisplay,
-        )}`,
-      ],
+      ...(invoice.invoiceKind === 'REPORT'
+        ? [
+            [
+              'Billing Period',
+              `${this.formatDate(invoice.periodStart)} - ${this.formatDate(
+                endDisplay,
+              )}`,
+            ],
+          ]
+        : []),
 
       [
         'Due Date',
@@ -941,13 +1011,153 @@ export class BillingPdfService {
        LINES
     ===================================================== */
 
-    y = this.drawTableHeader(page, y, bold);
-
     const reportRows =
-      this.groupInvoiceLines(
-        invoice.lines,
-        invoice.extraCharges ?? [],
+      invoice.invoiceKind === 'REPORT'
+        ? this.groupInvoiceLines(
+            invoice.lines,
+            invoice.extraCharges ?? [],
+          )
+        : [];
+
+    if (invoice.invoiceKind === 'MANUAL') {
+      y = this.drawManualTableHeader(
+        page,
+        y,
+        bold,
       );
+
+      for (const line of invoice.manualLines ?? []) {
+        const descriptionLines =
+          this.wrapText(
+            line.description || '—',
+            62,
+          );
+
+        const rowHeight =
+          Math.max(
+            28,
+            11 +
+              Math.max(
+                descriptionLines.length,
+                1,
+              ) *
+                9,
+          );
+
+        if (
+          y <
+          BOTTOM +
+            125 +
+            rowHeight
+        ) {
+          page =
+            pdf.addPage([
+              PAGE_WIDTH,
+              PAGE_HEIGHT,
+            ]);
+
+          y =
+            this.drawHeader(
+              page,
+              fonts,
+              invoice.invoiceNumber,
+              invoice.revisionNumber ?? 0,
+            );
+
+          y =
+            this.drawManualTableHeader(
+              page,
+              y,
+              bold,
+            );
+        }
+
+        const textTop =
+          y - 13;
+
+        descriptionLines.forEach(
+          (descriptionLine, index) => {
+            page.drawText(
+              descriptionLine,
+              {
+                x: LEFT + 4,
+
+                y:
+                  textTop -
+                  index * 9,
+
+                size: 7.2,
+                font: regular,
+              },
+            );
+          },
+        );
+
+        this.drawRight(
+          page,
+          String(line.quantity),
+          385,
+          textTop,
+          7.2,
+          regular,
+        );
+
+        this.drawRight(
+          page,
+          this.money(
+            Number(line.unitPrice),
+          ),
+          470,
+          textTop,
+          7.2,
+          regular,
+        );
+
+        this.drawRight(
+          page,
+          this.money(
+            Number(line.amount),
+          ),
+          PAGE_WIDTH -
+            RIGHT -
+            4,
+          textTop,
+          7.3,
+          regular,
+        );
+
+        page.drawLine({
+          start: {
+            x: LEFT,
+            y: y - rowHeight,
+          },
+
+          end: {
+            x:
+              PAGE_WIDTH -
+              RIGHT,
+            y: y - rowHeight,
+          },
+
+          thickness: 0.25,
+
+          color:
+            rgb(
+              0.75,
+              0.75,
+              0.75,
+            ),
+        });
+
+        y -= rowHeight;
+      }
+    } else {
+      y =
+        this.drawTableHeader(
+          page,
+          y,
+          bold,
+        );
 
     for (const row of reportRows) {
       /*
@@ -1160,6 +1370,7 @@ export class BillingPdfService {
       });
 
       y -= rowHeight;
+    }
     }
 
     /* =====================================================
@@ -1452,6 +1663,12 @@ export class BillingPdfService {
           ],
         },
 
+        manualLines: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+
         extraCharges: {
           orderBy: [
             {
@@ -1512,10 +1729,29 @@ export class BillingPdfService {
      * Never generate an official PDF with
      * unresolved pricing.
      */
-    const unresolved = invoice.lines.filter(
-      (line) =>
-        !!line.pricingIssue || line.unitPrice == null || line.amount == null,
-    );
+    if (
+      invoice.invoiceKind ===
+        'MANUAL' &&
+      invoice.manualLines.length ===
+        0
+    ) {
+      throw new BadRequestException(
+        'Manual invoice has no invoice items',
+      );
+    }
+
+    const unresolved =
+      invoice.invoiceKind ===
+      'REPORT'
+        ? invoice.lines.filter(
+            (line) =>
+              !!line.pricingIssue ||
+              line.unitPrice ==
+                null ||
+              line.amount ==
+                null,
+          )
+        : [];
 
     if (unresolved.length) {
       throw new BadRequestException(

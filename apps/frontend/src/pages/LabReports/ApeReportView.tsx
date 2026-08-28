@@ -1,53 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { api } from "../../lib/api";
-import {
-  createCorrections,
-  getCorrections,
-  resolveCorrection,
-} from "../../utils/sterilityReportValidation";
-import {
-  STERILITY_STATUS_TRANSITIONS,
-  type CorrectionItem,
-  type SterilityReportStatus,
-} from "../../utils/SterilityReportFormWorkflow";
-import {
-  JJL_SAMPLE_TYPE_OPTIONS,
-  JJL_TYPE_OF_TEST_OPTIONS,
-  todayISO,
-} from "../../utils/microMixReportFormWorkflow";
-
+import { useEffect, useMemo, useState } from "react";
 import * as QRCode from "qrcode";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
-
-type Role =
-  | "SYSTEMADMIN"
-  | "ADMIN"
-  | "FRONTDESK"
-  | "MICRO"
-  | "CHEMISTRY"
-  | "QA"
-  | "CLIENT"
-  | "MC";
+import { getCorrections } from "../../utils/apeReportValidation";
 
 type ReportStatus = string;
 
-type BusyAction =
-  | null
-  | "SAVE"
-  | "STATUS"
-  | "SEND_CORRECTIONS"
-  | "ADD_CORRECTION"
-  | "RESOLVE";
-
-type FieldErrors = Record<string, string>;
-
-type CorrectionFieldOption = {
-  key: string;
-  label: string;
-  value: string;
+type CorrectionItem = {
+  id: string;
+  fieldKey: string;
+  message: string;
+  status: string;
+  oldValue?: unknown;
+  recipientSide?: "CLIENT" | "LAB" | "BOTH" | null;
 };
 
 type ApeReportRow = {
@@ -64,7 +29,7 @@ type ApeReportDaySection = {
   rows: ApeReportRow[];
 };
 
-type ApeReportProps = {
+type ApeReportViewProps = {
   report?: any;
   onClose?: () => void;
   embedded?: boolean;
@@ -79,85 +44,6 @@ type ApeReportProps = {
     currentChild?: any,
   ) => boolean | Promise<boolean>;
 };
-
-const REPORT_TYPE = "APE_REPORT";
-const INITIAL_APE_CHILD_STATUS: ReportStatus = "UNDER_TESTING_REVIEW";
-
-const HIDE_SAVE_FOR = new Set<ReportStatus>([
-  "APPROVED",
-  "FINAL_APPROVED",
-  "LOCKED",
-]);
-
-const ALWAYS_SHOW_SIGNATURES = true;
-
-const EDIT_ROLES = new Set<Role>(["MICRO", "MC", "ADMIN", "SYSTEMADMIN"]);
-
-const statusButtons: Record<string, { label: string; color: string }> = {
-  UNDER_DRAFT_REVIEW: { label: "Review", color: "bg-slate-700" },
-  SUBMITTED_BY_CLIENT: { label: "Submit", color: "bg-green-600" },
-
-  UNDER_TESTING_REVIEW: { label: "Approve", color: "bg-green-600" },
-  TESTING_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  TESTING_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-
-  RESUBMISSION_BY_TESTING: {
-    label: "Resubmit",
-    color: "bg-blue-600",
-  },
-  UNDER_RESUBMISSION_TESTING_REVIEW: {
-    label: "Approve",
-    color: "bg-blue-600",
-  },
-
-  RECEIVED_BY_FRONTDESK: {
-    label: "Approve",
-    color: "bg-green-600",
-  },
-
-  FRONTDESK_ON_HOLD: { label: "Hold", color: "bg-red-500" },
-  FRONTDESK_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-
-  UNDER_QA_REVIEW: { label: "Approve", color: "bg-green-600" },
-  QA_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-500",
-  },
-  UNDER_CLIENT_REVIEW: { label: "Approve", color: "bg-green-600" },
-  CLIENT_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  UNDER_CLIENT_CORRECTION: {
-    label: "Correct",
-    color: "bg-blue-600",
-  },
-
-  UNDER_ADMIN_REVIEW: { label: "Approve", color: "bg-green-700" },
-  ADMIN_NEEDS_CORRECTION: {
-    label: "Needs Correction",
-    color: "bg-yellow-600",
-  },
-  ADMIN_REJECTED: { label: "Reject", color: "bg-red-700" },
-
-  APPROVED: { label: "Approve", color: "bg-green-700" },
-  LOCKED: { label: "Lock", color: "bg-slate-900" },
-
-  CHANGE_REQUESTED: { label: "Request Change", color: "bg-amber-600" },
-  UNDER_CHANGE_UPDATE: { label: "Approve", color: "bg-green-800" },
-  CORRECTION_REQUESTED: { label: "Request Correction", color: "bg-rose-600" },
-  UNDER_CORRECTION_UPDATE: { label: "Approve", color: "bg-green-800" },
-};
-
-function formatStatus(status: string) {
-  return status.replaceAll("_", " ");
-}
 
 type ParentApeOrganism = {
   key?: string;
@@ -177,6 +63,10 @@ const APE_ORGANISM_OPTIONS = [
 const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
   (item) => item.key !== "B_CEPACIA",
 ).map((item) => item.reportLabel);
+
+const CONTROL_GROWTH_MULTIPLIER = 10_000;
+const DAY_0_SAMPLE_GROWTH_MULTIPLIER = 10_000;
+const LATER_DAY_SAMPLE_GROWTH_MULTIPLIER = 100;
 
 function normalizeOrganismToken(value: unknown) {
   return String(value ?? "")
@@ -269,19 +159,6 @@ function makeDefaultApeReportSections(
   ];
 }
 
-const CONTROL_GROWTH_MULTIPLIER = 10_000;
-const DAY_0_SAMPLE_GROWTH_MULTIPLIER = 10_000;
-const LATER_DAY_SAMPLE_GROWTH_MULTIPLIER = 100;
-
-function sanitizeNumericInput(value: string) {
-  const cleaned = value.replace(/[^0-9.]/g, "");
-  const [whole = "", ...decimalParts] = cleaned.split(".");
-
-  return decimalParts.length > 0
-    ? `${whole}.${decimalParts.join("")}`
-    : whole;
-}
-
 function parseGrowthInput(value: unknown): number | null {
   const normalized = String(value ?? "")
     .replaceAll(",", "")
@@ -294,7 +171,6 @@ function parseGrowthInput(value: unknown): number | null {
     return directNumber;
   }
 
-  // Supports previously displayed values such as "171 × 10⁴" or "2% - OK".
   const firstNumber = normalized.match(/\d+(?:\.\d+)?/);
   if (!firstNumber) return null;
 
@@ -329,24 +205,15 @@ function calculatePercentDecrease(
     sampleGrowthMultiplier,
   );
 
-  if (
-    controlGrowth === null ||
-    sampleGrowth === null ||
-    controlGrowth <= 0
-  ) {
+  if (controlGrowth === null || sampleGrowth === null || controlGrowth <= 0) {
     return null;
   }
 
-  // %D = ((Control Growth - Sample Growth) / Control Growth) × 100
   return ((controlGrowth - sampleGrowth) / controlGrowth) * 100;
 }
 
-function formatPercentDecrease(
-  value: number | null,
-  decimalPlaces: 1 | 2,
-) {
+function formatPercentDecrease(value: number | null, decimalPlaces: 1 | 2) {
   if (value === null || !Number.isFinite(value)) return "";
-
   return `${value.toFixed(decimalPlaces)}%`;
 }
 
@@ -355,7 +222,6 @@ function getLogReductionFromDecrease(percentDecrease: number | null) {
 
   const value = percentDecrease + Number.EPSILON;
 
-  // Maximum supported result is 3 Log Reduction.
   if (value >= 99.9) return "3 Log Reduction";
   if (value >= 99) return "2 Log Reduction";
   if (value >= 90) return "1 Log Reduction";
@@ -369,8 +235,6 @@ function getInoculumResultFromDecrease(
 ) {
   if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
 
-  // DAY 0 inoculum result is determined directly from % decrease.
-  // Example: CG 174 and SG 171 gives 1.72%, therefore OK.
   const isNiger = organism.trim().toLowerCase().includes("niger");
   const isWithinRange = isNiger
     ? percentDecrease >= 2 && percentDecrease <= 3
@@ -391,10 +255,7 @@ function recalculateApeReportSections(
 ): ApeReportDaySection[] {
   const day0Section = sections.find((section) => section.key === "DAY_0");
   const day0ControlByOrganism = new Map(
-    (day0Section?.rows ?? []).map((row) => [
-      row.organism,
-      row.controlGrowth,
-    ]),
+    (day0Section?.rows ?? []).map((row) => [row.organism, row.controlGrowth]),
   );
 
   return sections.map((section) => ({
@@ -403,7 +264,7 @@ function recalculateApeReportSections(
       const controlGrowth =
         section.key === "DAY_0"
           ? row.controlGrowth
-          : day0ControlByOrganism.get(row.organism) ?? "";
+          : (day0ControlByOrganism.get(row.organism) ?? "");
 
       const sampleGrowthMultiplier =
         section.key === "DAY_0"
@@ -442,29 +303,29 @@ function normalizeApeReportSections(
 ): ApeReportDaySection[] {
   const normalized = makeDefaultApeReportSections(organismNames).map(
     (defaultSection) => {
-    const existingSection = Array.isArray(value)
-      ? value.find((section: any) => section?.key === defaultSection.key)
-      : undefined;
+      const existingSection = Array.isArray(value)
+        ? value.find((section: any) => section?.key === defaultSection.key)
+        : undefined;
 
-    return {
-      key: defaultSection.key,
-      dayLabel: existingSection?.dayLabel || defaultSection.dayLabel,
-      rows: defaultSection.rows.map((defaultRow) => {
-        const existingRow = existingSection?.rows?.find(
-          (row: any) => row?.organism === defaultRow.organism,
-        );
+      return {
+        key: defaultSection.key,
+        dayLabel: existingSection?.dayLabel || defaultSection.dayLabel,
+        rows: defaultSection.rows.map((defaultRow) => {
+          const existingRow = existingSection?.rows?.find(
+            (row: any) => row?.organism === defaultRow.organism,
+          );
 
-        return {
-          organism: defaultRow.organism,
-          controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
-          sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
-          decrease: String(existingRow?.decrease ?? ""),
-          // Calculated again below from % decrease for every section.
-          innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
-        };
-      }),
-    };
-  });
+          return {
+            organism: defaultRow.organism,
+            controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
+            sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
+            decrease: String(existingRow?.decrease ?? ""),
+            innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
+          };
+        }),
+      };
+    },
+  );
 
   return recalculateApeReportSections(normalized);
 }
@@ -479,65 +340,42 @@ function formatDateForInput(value?: string | null) {
   return d.toISOString().split("T")[0];
 }
 
+function formatFooterDate(value?: string | null) {
+  if (!value) return "03/10/2026";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+
+  return d.toLocaleDateString("en-US", { timeZone: "UTC" });
+}
+
 const PrintStyles = () => (
   <style>{`
     @media print {
-      /* Use almost the full sheet; leave a little bottom room for the QR */
-      @page { size: A4 portrait; margin: 4mm 10mm 4mm 8mm; } /* top right bottom left */
-
-      /* Remove UA margins/padding that add mystery whitespace */
+      @page { size: A4 portrait; margin: 4mm 10mm 4mm 8mm; }
       html, body { margin: 0 !important; padding: 0 !important; }
-
-      /* Make the sheet fill the printable area and remove internal padding */
       .sheet {
         width: 100% !important;
         box-shadow: none !important;
         border: none !important;
-        padding: 0 !important;           /* kills p-4 top/bottom */
-        max-height: none !important;     
-       overflow: visible !important;
+        padding: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
       }
-        .no-print { display: none !important; }
-
-      /* Pull the letterhead up & tighten its spacing */
+      .no-print { display: none !important; }
       .letterhead { margin-top: 0 !important; margin-bottom: 4px !important; }
-
-      /* Keep the last block on the same page and tighten its top gap */
       .print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 6px !important; }
-
-      /* Optional: slightly smaller line-height for dense tables */
-      .tight-row { line-height: 1.1 !important; }
-
-img, svg {
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-
-img {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
+      img, svg {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      img {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
     }
   `}</style>
 );
-
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <span
-      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white ${className}`}
-      aria-hidden="true"
-    />
-  );
-}
-
-function SpinnerDark({ className = "" }: { className?: string }) {
-  return (
-    <span
-      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black/70 ${className}`}
-      aria-hidden="true"
-    />
-  );
-}
 
 const DashStyles = () => (
   <style>{`
@@ -558,7 +396,6 @@ const DashStyles = () => (
       animation: dash-move 1.05s linear infinite;
     }
     .dash-red::after { --dash-color:#dc2626; opacity:1; }
-    .dash-green::after { --dash-color:#16a34a; opacity:1; }
     @keyframes dash-move {
       to {
         background-position: 16px 0, -16px 100%, 0 16px, 100% -16px;
@@ -569,57 +406,8 @@ const DashStyles = () => (
   `}</style>
 );
 
-function isBlank(value: unknown) {
-  return value === null || value === undefined || String(value).trim() === "";
-}
-
-function normalizeForCompare(value: unknown) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value.trim();
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value).trim();
-  }
-}
-
-function isNeedsCorrectionStatus(status: ReportStatus) {
-  return (
-    status === "FRONTDESK_NEEDS_CORRECTION" ||
-    status === "TESTING_NEEDS_CORRECTION" ||
-    status === "QA_NEEDS_CORRECTION" ||
-    status === "ADMIN_NEEDS_CORRECTION" ||
-    status === "CLIENT_NEEDS_CORRECTION" ||
-    status === "CHANGE_REQUESTED" ||
-    status === "CORRECTION_REQUESTED"
-  );
-}
-
-// function requiresReviewedSignature(targetStatus: ReportStatus) {
-//   return (
-//     targetStatus === "UNDER_CLIENT_REVIEW" ||
-//     targetStatus === "UNDER_ADMIN_REVIEW" ||
-//     targetStatus === "APPROVED" ||
-//     targetStatus === "LOCKED"
-//   );
-// }
-
-export default function ApeReportView({
-  report,
-  onClose,
-  embedded = false,
-  pageMode = "UPDATE",
-  hideTopActions = false,
-  hideBottomActions = false,
-  forcePageReadOnly = false,
-  onSaved,
-  onStatusChanged,
-  beforeParentStatusChange,
-}: ApeReportProps) {
-  const { user } = useAuth();
-  const role = user?.role as Role | undefined;
-  const navigate = useNavigate();
+export default function ApeReportView(props: ApeReportViewProps) {
+  const { report, onClose, embedded = false, hideTopActions = false } = props;
 
   const detail = report?.apeReport ?? report ?? {};
 
@@ -630,119 +418,39 @@ export default function ApeReportView({
       ),
     [(report as any)?.organisms, detail?.organisms],
   );
-  const selectedApeOrganismsKey = selectedApeOrganisms.join("|");
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [busy, setBusy] = useState<BusyAction>(null);
-  const busyRef = useRef(false);
-
-  const [errors, setErrors] = useState<FieldErrors>({});
+  const apeReportSections = useMemo(
+    () =>
+      normalizeApeReportSections(
+        detail?.apeReportSections,
+        selectedApeOrganisms,
+      ),
+    [detail?.apeReportSections, selectedApeOrganisms],
+  );
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [showCorrTray, setShowCorrTray] = useState(false);
+  const [qrSvg, setQrSvg] = useState<string>("");
+
   const openCorrections = useMemo(
-    () => corrections.filter((c) => c.status === "OPEN"),
+    () => corrections.filter((c) => String(c.status) === "OPEN"),
     [corrections],
   );
 
-  const [selectingCorrections, setSelectingCorrections] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
-  const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string; oldValue?: string | null }[]
-  >([]);
-  const [selectedCorrectionField, setSelectedCorrectionField] = useState("");
-  const [addMessage, setAddMessage] = useState("");
-  const [showCorrTray, setShowCorrTray] = useState(false);
-  const [status, setStatus] = useState<ReportStatus>(
-    report?.id
-      ? report?.status || detail?.status || INITIAL_APE_CHILD_STATUS
-      : INITIAL_APE_CHILD_STATUS,
-  );
-
-  const [reportId, setReportId] = useState<string | null>(report?.id || null);
-
-  const [reportNumber, setReportNumber] = useState<string>(
-    report?.reportNumber || "",
-  );
-
-  const [, setReportVersion] = useState<number>(
-    typeof report?.version === "number" ? report.version : 0,
-  );
-
-  const reportIdRef = useRef<string | null>(report?.id || null);
-  const reportVersionRef = useRef<number>(
-    typeof report?.version === "number" ? report.version : 0,
-  );
-
-  const workflowReportIdRef = useRef<string | null>(
-    (report as any)?.parentReportId ||
-      (report as any)?.workflowReportId ||
-      null,
-  );
-
-  const workflowVersionRef = useRef<number>(
-    typeof (report as any)?.parentVersion === "number"
-      ? (report as any).parentVersion
-      : typeof (report as any)?.workflowVersion === "number"
-        ? (report as any).workflowVersion
-        : 0,
-  );
-
-  const [client, setClient] = useState(detail?.client || "");
-  const [dateSent, setDateSent] = useState(() => {
-    if (report?.id) return formatDateForInput(detail?.dateSent) || todayISO();
-    return todayISO();
-  });
-
-  const [typeOfTest, setTypeOfTest] = useState(detail?.typeOfTest || "APE");
-  const [sampleType, setSampleType] = useState(detail?.sampleType || "");
-  const [formulaNo, setFormulaNo] = useState(detail?.formulaNo || "");
-  const [description, setDescription] = useState(detail?.description || "");
-  const [lotNo, setLotNo] = useState(detail?.lotNo || "");
-  const [manufactureDate, setManufactureDate] = useState(
-    formatDateForInput(detail?.manufactureDate),
-  );
-
-  const [testSopNo, setTestSopNo] = useState(detail?.testSopNo || "");
-  const [testReference, setTestReference] = useState(
-    detail?.testReference || "USP <51> CURRENT",
-  );
-  const [dateTested, setDateTested] = useState(
-    formatDateForInput(detail?.dateTested),
-  );
-  const [dateCompleted, setDateCompleted] = useState(
-    formatDateForInput(detail?.dateCompleted),
-  );
-
-  const [apeReportSections, setApeReportSections] = useState<
-    ApeReportDaySection[]
-  >(
-    normalizeApeReportSections(
-      detail?.apeReportSections,
-      selectedApeOrganisms,
-    ),
-  );
-  const [editingApeCell, setEditingApeCell] = useState<string | null>(null);
-
-  const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
-  const [testedDate, setTestedDate] = useState(
-    formatDateForInput(detail?.testedDate),
-  );
-  const [reviewedBy, setReviewedBy] = useState(detail?.reviewedBy || "");
-  const [reviewedDate, setReviewedDate] = useState(
-    formatDateForInput(detail?.reviewedDate),
-  );
+  const reportId = report?.id || null;
+  const reportNumber = report?.reportNumber || "";
+  const parentReportId =
+    report?.parentReportId || report?.workflowReportId || null;
 
   const qrValue =
-    report?.parentReportId || report?.id
+    parentReportId || reportId
       ? JSON.stringify({
           t: "ape-report",
-          id: report?.parentReportId || report?.id,
-          childId: report?.id || null,
+          id: parentReportId || reportId,
+          childId: reportId,
           reportType: report?.reportType || "APE_REPORT",
         })
       : "";
-
-  const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -766,443 +474,62 @@ export default function ApeReportView({
     };
   }, [qrValue]);
 
-  const FOOTER_IMAGES = [
+  useEffect(() => {
+    if (!reportId) {
+      setCorrections([]);
+      return;
+    }
+
+    getCorrections(reportId)
+      .then((list) => setCorrections(Array.isArray(list) ? list : []))
+      .catch(() => setCorrections([]));
+  }, [reportId]);
+
+  const hasOpenCorrection = (keyOrPrefix: string) =>
+    openCorrections.some(
+      (c) =>
+        c.fieldKey === keyOrPrefix ||
+        c.fieldKey.startsWith(`${keyOrPrefix}.`) ||
+        c.fieldKey.startsWith(`${keyOrPrefix}:`),
+    );
+
+  const dashClass = (keyOrPrefix: string) =>
+    hasOpenCorrection(keyOrPrefix) ? "dash dash-red" : "";
+
+  const inputClass =
+    "w-full input-editable py-0 text-[11px] leading-[13px] border border-black/70 bg-transparent px-1 outline-none disabled:cursor-not-allowed disabled:bg-transparent";
+  const tableInputClass =
+    "w-full input-editable border border-black/70 bg-transparent px-1 py-[1px] text-center text-[10px] leading-tight outline-none disabled:cursor-not-allowed disabled:bg-transparent";
+  const signatureInputClass =
+    "flex-1 border-0 border-b border-black/70 text-[12px] outline-none bg-transparent disabled:cursor-not-allowed disabled:bg-transparent";
+
+  const footerRevNo = report?.footerRevNo || "Rev-01";
+  const footerDateEffective = formatFooterDate(report?.footerDateEffective);
+  const footerNote = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
+
+  const footerImages = [
     { src: pjla, alt: "FDA Registered" },
     { src: ilacmra, alt: "ISO Certified" },
   ];
 
-  const footerRevNo = report?.footerRevNo || "Rev-01";
-
-  const footerDateEffective = report?.footerDateEffective
-    ? new Date(report.footerDateEffective).toLocaleDateString("en-US", {
-        timeZone: "UTC",
-      })
-    : "03/10/2026";
-
-  const FOOTER_NOTE = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
-
-  useEffect(() => {
-    if (!reportId) return;
-
-    getCorrections(reportId)
-      .then((list) => setCorrections(list))
-      .catch(() => {});
-  }, [reportId]);
-
-  function addRequiredError(
-    nextErrors: FieldErrors,
-    key: string,
-    label: string,
-    value: unknown,
-  ) {
-    if (isBlank(value)) nextErrors[key] = `${label} is required`;
-  }
-
-  function makeCorrectionFieldOptions(): CorrectionFieldOption[] {
-    const options: CorrectionFieldOption[] = [
-      { key: "client", label: "Client", value: client },
-      { key: "dateSent", label: "Date Sent", value: formatDateForInput(dateSent) },
-      { key: "typeOfTest", label: "Type of Test", value: typeOfTest },
-      { key: "sampleType", label: "Sample Type", value: sampleType },
-      { key: "formulaNo", label: "Formula #", value: formulaNo },
-      { key: "description", label: "Description", value: description },
-      { key: "lotNo", label: "Lot #", value: lotNo },
-      { key: "manufactureDate", label: "Manufacture Date", value: formatDateForInput(manufactureDate) },
-      { key: "testSopNo", label: "Test SOP #", value: testSopNo },
-      { key: "testReference", label: "Test Reference", value: testReference },
-      { key: "dateTested", label: "Date Tested", value: formatDateForInput(dateTested) },
-      { key: "dateCompleted", label: "Date Completed", value: formatDateForInput(dateCompleted) },
-      { key: "testedBy", label: "Tested By", value: testedBy },
-      { key: "testedDate", label: "Tested Date", value: formatDateForInput(testedDate) },
-      { key: "reviewedBy", label: "Reviewed By", value: reviewedBy },
-      { key: "reviewedDate", label: "Reviewed Date", value: formatDateForInput(reviewedDate) },
-    ];
-
-    apeReportSections.forEach((section) => {
-      section.rows.forEach((row, rowIndex) => {
-        const prefix = `${section.dayLabel} - ${row.organism}`;
-
-        if (section.key === "DAY_0") {
-          options.push({
-            key: `apeReportSections.${section.key}.${rowIndex}.controlGrowth`,
-            label: `${prefix} Control Growth`,
-            value: formatGrowthNotation(row.controlGrowth, 4),
-          });
-        }
-
-        options.push(
-          {
-            key: `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`,
-            label: `${prefix} Sample Growth`,
-            value: formatGrowthNotation(
-              row.sampleGrowth,
-              section.key === "DAY_0" ? 4 : 2,
-            ),
-          },
-          {
-            key: `apeReportSections.${section.key}.${rowIndex}.decrease`,
-            label: `${prefix} Decrease`,
-            value: row.decrease,
-          },
-          {
-            key: `apeReportSections.${section.key}.${rowIndex}.innoculumLevel`,
-            label:
-              section.key === "DAY_0"
-                ? `${prefix} Innoculum Level`
-                : `${prefix} Log Reduction`,
-            value: row.innoculumLevel,
-          },
-        );
-      });
-    });
-
-    return options;
-  }
-
-  const correctionFieldOptions = useMemo(
-    () => makeCorrectionFieldOptions(),
-    [
-      client,
-      dateSent,
-      typeOfTest,
-      sampleType,
-      formulaNo,
-      description,
-      lotNo,
-      manufactureDate,
-      testSopNo,
-      testReference,
-      dateTested,
-      dateCompleted,
-      apeReportSections,
-      testedBy,
-      testedDate,
-      reviewedBy,
-      reviewedDate,
-    ],
-  );
-
-  function getFieldDisplayValue(fieldKey: string) {
-    const direct = correctionFieldOptions.find((f) => f.key === fieldKey);
-    return direct?.value ?? "";
-  }
-
-  function validateForStatusChange(_targetStatus: ReportStatus) {
-    const nextErrors: FieldErrors = {};
-
-    addRequiredError(nextErrors, "client", "Client", client);
-    addRequiredError(nextErrors, "dateSent", "Date Sent", dateSent);
-    addRequiredError(nextErrors, "typeOfTest", "Type of Test", typeOfTest);
-    addRequiredError(nextErrors, "sampleType", "Sample Type", sampleType);
-    addRequiredError(nextErrors, "formulaNo", "Formula #", formulaNo);
-    addRequiredError(nextErrors, "description", "Description", description);
-    addRequiredError(nextErrors, "lotNo", "Lot #", lotNo);
-    addRequiredError(nextErrors, "testSopNo", "Test SOP #", testSopNo);
-    addRequiredError(nextErrors, "testReference", "Test Reference", testReference);
-    addRequiredError(nextErrors, "dateTested", "Date Tested", dateTested);
-    addRequiredError(nextErrors, "dateCompleted", "Date Completed", dateCompleted);
-
-    apeReportSections.forEach((section) => {
-      section.rows.forEach((row, rowIndex) => {
-        const controlGrowthKey =
-          `apeReportSections.${section.key}.${rowIndex}.controlGrowth`;
-        const sampleGrowthKey =
-          `apeReportSections.${section.key}.${rowIndex}.sampleGrowth`;
-
-        if (section.key === "DAY_0") {
-          addRequiredError(
-            nextErrors,
-            controlGrowthKey,
-            `${section.dayLabel} ${row.organism} Control Growth`,
-            row.controlGrowth,
-          );
-
-          const controlGrowthNumber = parseGrowthInput(row.controlGrowth);
-          if (
-            !isBlank(row.controlGrowth) &&
-            (controlGrowthNumber === null || controlGrowthNumber <= 0)
-          ) {
-            nextErrors[controlGrowthKey] =
-              `${section.dayLabel} ${row.organism} Control Growth must be greater than 0`;
-          }
-        }
-
-        addRequiredError(
-          nextErrors,
-          sampleGrowthKey,
-          `${section.dayLabel} ${row.organism} Sample Growth`,
-          row.sampleGrowth,
-        );
-
-        if (
-          !isBlank(row.sampleGrowth) &&
-          parseGrowthInput(row.sampleGrowth) === null
-        ) {
-          nextErrors[sampleGrowthKey] =
-            `${section.dayLabel} ${row.organism} Sample Growth must be 0 or greater`;
-        }
-      });
-    });
-
-    // addRequiredError(nextErrors, "testedBy", "Tested By", testedBy);
-    // addRequiredError(nextErrors, "testedDate", "Tested Date", testedDate);
-
-    // if (requiresReviewedSignature(targetStatus)) {
-    //   addRequiredError(nextErrors, "reviewedBy", "Reviewed By", reviewedBy);
-    //   addRequiredError(nextErrors, "reviewedDate", "Reviewed Date", reviewedDate);
-    // }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }
-
-  function clearFieldError(field: string) {
-    setErrors((prev) => {
-      if (!prev[field]) return prev;
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }
-
-  function fieldErrorClass(field: string) {
-    return errors[field] ? "border-red-500 ring-1 ring-red-500 bg-red-50" : "";
-  }
-
-  function signatureFieldErrorClass(field: string) {
-    return errors[field]
-      ? "border-b-red-500 ring-1 ring-red-500 bg-red-50"
-      : "";
-  }
-
-  function fieldHasChanged(c: CorrectionItem) {
-    return (
-      normalizeForCompare(getFieldDisplayValue(c.fieldKey)) !==
-      normalizeForCompare(c.oldValue)
-    );
-  }
-
-  function canResolveCorrection(c: CorrectionItem) {
-    if (role === "SYSTEMADMIN") return !isDirty;
-    return !isDirty && fieldHasChanged(c);
-  }
-
-  function shouldBlockStatusChangeForUnresolvedCorrections() {
-    const pending = openCorrections.filter((c) => fieldHasChanged(c));
-
-    if (pending.length > 0) {
-      alert(
-        `⚠️ You updated ${pending.length} corrected field(s), but they are still not resolved.\n\n` +
-          "Please resolve them from the Corrections tray before changing status.",
-      );
-      return true;
-    }
-
-    return false;
-  }
-
-  async function resolveOneCorrection(c: CorrectionItem) {
-    if (!reportIdRef.current) return;
-
-    return runBusy("RESOLVE", async () => {
-      await resolveCorrection(reportIdRef.current!, c.id, "Fixed");
-      const fresh = await getCorrections(reportIdRef.current!);
-      setCorrections(fresh);
-    });
-  }
-
-  function addPendingCorrection() {
-    const option = correctionFieldOptions.find(
-      (item) => item.key === selectedCorrectionField,
-    );
-
-    if (!option || !addMessage.trim()) return;
-
-    setPendingCorrections((prev) => [
-      ...prev,
-      {
-        fieldKey: option.key,
-        message: addMessage.trim(),
-        oldValue: option.value,
-      },
-    ]);
-    setSelectedCorrectionField("");
-    setAddMessage("");
-  }
-
-  async function sendPendingCorrections() {
-    if (!pendingStatus || !reportIdRef.current) return;
-
-    const parentIdForStatus = workflowReportIdRef.current;
-
-    if (!parentIdForStatus) {
-      alert("⚠️ Parent APE form id is missing. Cannot change workflow status.");
-      return;
-    }
-
-    const canChangeParentStatus =
-      await canChangeParentStatusWithDashboardGuard(pendingStatus);
-
-    if (!canChangeParentStatus) return;
-
-    return runBusy("SEND_CORRECTIONS", async () => {
-      try {
-        await createCorrections(
-          reportIdRef.current!,
-          pendingCorrections,
-          pendingStatus as SterilityReportStatus,
-          "Corrections requested",
-          reportVersionRef.current,
-          {
-            previousStatus: status as SterilityReportStatus,
-            workflowReturnStatus: status as SterilityReportStatus,
-          },
-        );
-
-        const updated: any = await api(`/reports/${parentIdForStatus}/status`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: pendingStatus,
-            reason: "Corrections requested from APE child report",
-            expectedVersion: workflowVersionRef.current,
-          }),
-        });
-
-        const nextStatus = updated?.status ?? pendingStatus;
-        const nextVersion =
-          typeof updated?.version === "number"
-            ? updated.version
-            : workflowVersionRef.current + 1;
-
-        workflowVersionRef.current = nextVersion;
-        setStatus(nextStatus);
-
-        const fresh = await getCorrections(reportIdRef.current!);
-        setCorrections(fresh);
-
-        setSelectingCorrections(false);
-        setPendingCorrections([]);
-        setPendingStatus(null);
-
-        onStatusChanged?.({
-          ...report,
-          ...updated,
-          id: parentIdForStatus,
-          parentReportId: parentIdForStatus,
-          status: nextStatus,
-          parentStatus: nextStatus,
-          workflowStatus: nextStatus,
-          parentVersion: nextVersion,
-          version: nextVersion,
-        });
-
-        alert(
-          `✅ Corrections sent and parent APE status changed to ${pendingStatus}`,
-        );
-      } catch (err: any) {
-        console.error(err);
-        alert(
-          "❌ Error sending corrections: " + (err?.message || "Unknown error"),
-        );
-      }
-    });
-  }
-
-  useEffect(() => {
-    const nextDetail =
-      report?.apeReport ?? report?.apeValidationReport ?? report ?? {};
-
-    const nextWorkflowId =
-      (report as any)?.parentReportId ||
-      (report as any)?.workflowReportId ||
-      null;
-
-    workflowReportIdRef.current = nextWorkflowId;
-
-    workflowVersionRef.current =
-      typeof (report as any)?.parentVersion === "number"
-        ? (report as any).parentVersion
-        : typeof (report as any)?.workflowVersion === "number"
-          ? (report as any).workflowVersion
-          : workflowVersionRef.current;
-
-    setReportId(report?.id || null);
-
-    setStatus(
-      (report as any)?.parentStatus ||
-        (report as any)?.workflowStatus ||
-        report?.status ||
-        nextDetail?.status ||
-        INITIAL_APE_CHILD_STATUS,
-    );
-    setReportNumber(report?.reportNumber ? String(report.reportNumber) : "");
-    setReportVersion(typeof report?.version === "number" ? report.version : 0);
-
-    setClient(nextDetail?.client || "");
-    setDateSent(formatDateForInput(nextDetail?.dateSent) || todayISO());
-    setTypeOfTest(nextDetail?.typeOfTest || "APE");
-    setSampleType(nextDetail?.sampleType || "");
-    setFormulaNo(nextDetail?.formulaNo || "");
-    setDescription(nextDetail?.description || "");
-    setLotNo(nextDetail?.lotNo || "");
-    setManufactureDate(formatDateForInput(nextDetail?.manufactureDate));
-
-    setTestSopNo(nextDetail?.testSopNo || "");
-    setTestReference(nextDetail?.testReference || "USP <51> CURRENT");
-    setDateTested(formatDateForInput(nextDetail?.dateTested));
-    setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
-
-    setApeReportSections(
-      normalizeApeReportSections(
-        nextDetail?.apeReportSections,
-        selectedApeOrganisms,
-      ),
-    );
-
-    setTestedBy(nextDetail?.testedBy || "");
-    setTestedDate(formatDateForInput(nextDetail?.testedDate));
-    setReviewedBy(nextDetail?.reviewedBy || "");
-    setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
-
-    setIsDirty(false);
-  }, [
-    report?.id,
-    report?.status,
-    report?.reportNumber,
-    report?.version,
-    (report as any)?.parentVersion,
-    selectedApeOrganismsKey,
-  ]);
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!isDirty) return;
-      e.preventDefault();
-      e.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
-
-  const canEditForm = useMemo(() => {
-    if (forcePageReadOnly || pageMode === "VIEW") return false;
-    if (!role || !EDIT_ROLES.has(role)) return false;
-    if (HIDE_SAVE_FOR.has(status)) return false;
-    return true;
-  }, [forcePageReadOnly, pageMode, role, status]);
-
-  const showSignatures = ALWAYS_SHOW_SIGNATURES;
-
-  const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
-
-  function markDirty() {
-    if (!isDirty) setIsDirty(true);
-  }
-
-  function lock(_field: string) {
-    return !canEditForm;
-  }
+  const fieldValue = {
+    client: detail?.client || "",
+    dateSent: formatDateForInput(detail?.dateSent),
+    typeOfTest: detail?.typeOfTest || "APE",
+    sampleType: detail?.sampleType || "",
+    formulaNo: detail?.formulaNo || "",
+    description: detail?.description || "",
+    lotNo: detail?.lotNo || "",
+    manufactureDate: formatDateForInput(detail?.manufactureDate),
+    testSopNo: detail?.testSopNo || "",
+    testReference: detail?.testReference || "USP <51> CURRENT",
+    dateTested: formatDateForInput(detail?.dateTested),
+    dateCompleted: formatDateForInput(detail?.dateCompleted),
+    testedBy: detail?.testedBy || "",
+    testedDate: formatDateForInput(detail?.testedDate),
+    reviewedBy: detail?.reviewedBy || "",
+    reviewedDate: formatDateForInput(detail?.reviewedDate),
+  };
 
   function apeReportFieldKey(
     sectionKey: string,
@@ -1212,390 +539,27 @@ export default function ApeReportView({
     return `apeReportSections.${sectionKey}.${rowIndex}.${field}`;
   }
 
-  function updateApeReportCell(
-    sectionIndex: number,
-    rowIndex: number,
-    field: "controlGrowth" | "sampleGrowth",
-    value: string,
-  ) {
-    setApeReportSections((prev) => {
-      const copy = [...prev];
-      const section = { ...copy[sectionIndex] };
-      const rows = [...section.rows];
-
-      rows[rowIndex] = {
-        ...rows[rowIndex],
-        [field]: sanitizeNumericInput(value),
-      };
-
-      section.rows = rows;
-      copy[sectionIndex] = section;
-
-      return recalculateApeReportSections(copy);
-    });
-
-    const sectionKey = apeReportSections[sectionIndex]?.key;
-    if (sectionKey) clearFieldError(apeReportFieldKey(sectionKey, rowIndex, field));
-
-    markDirty();
-  }
-
-  function makePayload() {
-    const calculatedApeReportSections =
-      recalculateApeReportSections(apeReportSections);
-
-    return {
-      client,
-      dateSent,
-      typeOfTest,
-      sampleType,
-      formulaNo,
-      description,
-      lotNo,
-      manufactureDate: manufactureDate?.trim() ? manufactureDate : null,
-      testSopNo,
-      testReference,
-      dateTested,
-      dateCompleted,
-      apeReportSections: calculatedApeReportSections,
-      testedBy,
-      testedDate,
-      reviewedBy,
-      reviewedDate,
-    };
-  }
-
-  async function runBusy<T>(
-    action: Exclude<BusyAction, null>,
-    fn: () => Promise<T>,
-  ): Promise<T | undefined> {
-    if (busyRef.current) return;
-
-    busyRef.current = true;
-    setBusy(action);
-
-    try {
-      return await fn();
-    } finally {
-      busyRef.current = false;
-      setBusy(null);
-    }
-  }
-
-  async function handleSave(): Promise<boolean> {
-    if (!canEditForm) return false;
-
-    // ✅ Show missing required fields in red even during normal Save/Update.
-    // Do NOT block save here; only status change blocks.
-    validateForStatusChange(status);
-
-    const result = await runBusy("SAVE", async () => {
-      try {
-        const payload = makePayload();
-        setApeReportSections(payload.apeReportSections);
-
-        let saved: any;
-
-        if (reportId) {
-          saved = await api(`/reports/${reportId}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              ...payload,
-              reason: "Saving APE Report",
-              expectedVersion: reportVersionRef.current,
-            }),
-          });
-        } else {
-          saved = await api(`/reports`, {
-            method: "POST",
-            body: JSON.stringify({
-              ...payload,
-
-              // ✅ required for APE child report create
-              parentReportId: (report as any)?.parentReportId ?? null,
-              clientCode: String(
-                (report as any)?.clientCode ||
-                  String((report as any)?.formNumber || "").split("-")[0] ||
-                  "",
-              ).trim(),
-
-              reportType: REPORT_TYPE,
-              status: INITIAL_APE_CHILD_STATUS,
-            }),
-          });
-        }
-
-        const nextReportId = saved?.id ?? reportIdRef.current;
-        const nextVersion =
-          typeof saved?.version === "number"
-            ? saved.version
-            : reportVersionRef.current + 1;
-        const nextStatus = saved?.status ?? INITIAL_APE_CHILD_STATUS;
-
-        setReportId(nextReportId);
-        reportIdRef.current = nextReportId;
-
-        setStatus(nextStatus);
-
-        if (saved?.reportNumber != null) {
-          setReportNumber(String(saved.reportNumber));
-        }
-
-        setReportVersion(nextVersion);
-        reportVersionRef.current = nextVersion;
-        setIsDirty(false);
-
-        onSaved?.({
-          ...report,
-          ...payload,
-          ...saved,
-          id: nextReportId,
-          reportType: REPORT_TYPE,
-          parentReportId:
-            saved?.parentReportId ?? (report as any)?.parentReportId ?? null,
-          clientCode:
-            saved?.clientCode ??
-            (report as any)?.clientCode ??
-            String((report as any)?.formNumber || "").split("-")[0] ??
-            "",
-          status: nextStatus,
-          version: nextVersion,
-        });
-
-        alert("✅ APE Report saved.");
-        return true;
-      } catch (err: any) {
-        console.error(err);
-
-        if (err?.status === 409 || err?.response?.status === 409) {
-          alert(
-            "⚠️ Someone else updated this report. Please reload and try again.",
-          );
-          return false;
-        }
-
-        alert(
-          "❌ Error saving APE Report: " + (err?.message || "Unknown error"),
-        );
-        return false;
-      }
-    });
-
-    return result ?? false;
-  }
-
-  function handleClose() {
-    if (isDirty) {
-      const ok = window.confirm("⚠️ You have unsaved changes. Leave anyway?");
-      if (!ok) return;
-    }
-
-    if (embedded) {
-      onClose?.();
-      return;
-    }
-
-    if (onClose) {
-      onClose();
-      return;
-    }
-
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    if (role === "MICRO") navigate("/microDashboard", { replace: true });
-    else if (role === "MC") navigate("/mcDashboard", { replace: true });
-    else if (role === "ADMIN") navigate("/adminDashboard", { replace: true });
-    else if (role === "SYSTEMADMIN")
-      navigate("/systemAdminDashboard", { replace: true });
-    else navigate("/", { replace: true });
-  }
-
-  const canUseStatusButtons = pageMode === "UPDATE" && !forcePageReadOnly;
-
-  function getNextStatuses() {
-    return (
-      STERILITY_STATUS_TRANSITIONS?.[status as SterilityReportStatus]?.next ??
-      []
-    );
-  }
-
-  async function canChangeParentStatusWithDashboardGuard(
-    targetStatus: ReportStatus,
-  ) {
-    if (!beforeParentStatusChange) return true;
-
-    return await beforeParentStatusChange(targetStatus, {
-      ...report,
-      ...makePayload(),
-      id: reportIdRef.current,
-      reportType: REPORT_TYPE,
-      parentReportId: workflowReportIdRef.current,
-      status,
-      version: reportVersionRef.current,
-    });
-  }
-
-  async function handleStatusChange(newStatus: ReportStatus) {
-    const parentIdForStatus = workflowReportIdRef.current;
-
-    if (!parentIdForStatus) {
-      alert("⚠️ Parent APE form id is missing. Cannot change workflow status.");
-      return;
-    }
-
-    const okFields = validateForStatusChange(newStatus);
-    if (!okFields) {
-      alert(
-        "⚠️ Please fill the highlighted/missing fields before changing status.",
-      );
-      return;
-    }
-
-    if (shouldBlockStatusChangeForUnresolvedCorrections()) {
-      return;
-    }
-
-    if (!reportId || isDirty) {
-      const saved = await handleSave();
-      if (!saved) return;
-    }
-
-    const canChangeParentStatus =
-      await canChangeParentStatusWithDashboardGuard(newStatus);
-
-    if (!canChangeParentStatus) return;
-
-    return runBusy("STATUS", async () => {
-      try {
-        const updated: any = await api(`/reports/${parentIdForStatus}/status`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: newStatus,
-            reason: "Changing APE parent workflow status from child report",
-            expectedVersion: workflowVersionRef.current,
-          }),
-        });
-
-        const nextStatus = updated?.status ?? newStatus;
-
-        const nextVersion =
-          typeof updated?.version === "number"
-            ? updated.version
-            : workflowVersionRef.current + 1;
-
-        workflowVersionRef.current = nextVersion;
-
-        setStatus(nextStatus);
-        setErrors({});
-
-        const mergedParentUpdate = {
-          ...report,
-          ...updated,
-
-          // ✅ important: this id is parent APE form id
-          id: parentIdForStatus,
-          parentReportId: parentIdForStatus,
-
-          status: nextStatus,
-          parentStatus: nextStatus,
-          workflowStatus: nextStatus,
-          parentVersion: nextVersion,
-          version: nextVersion,
-        };
-
-        onStatusChanged?.(mergedParentUpdate);
-
-        alert(`✅ Parent APE status changed to ${newStatus}`);
-      } catch (err: any) {
-        console.error(err);
-        alert(
-          "❌ Error changing parent APE status: " +
-            (err?.message || "Unknown error"),
-        );
-      }
-    });
-  }
-
-  function requestStatusChange(targetStatus: ReportStatus) {
-    if (!workflowReportIdRef.current) {
-      alert("⚠️ Parent APE form id is missing. Cannot change workflow status.");
-      return;
-    }
-
-    if (isNeedsCorrectionStatus(targetStatus)) {
-      if (!reportIdRef.current) {
-        alert("⚠️ Please save the report first before sending corrections.");
-        return;
-      }
-
-      if (isDirty) {
-        alert("⚠️ Please update/save the report before sending corrections.");
-        return;
-      }
-
-      setSelectingCorrections(true);
-      setPendingCorrections([]);
-      setPendingStatus(targetStatus);
-      return;
-    }
-
-    handleStatusChange(targetStatus);
-  }
-
-  const inputClass = (field: string) =>
-    `w-full input-editable py-0 text-[11px] leading-[13px] border border-black/70 bg-transparent px-1 outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
-  const tableInputClass = (field: string) =>
-    `w-full input-editable border border-black/70 bg-transparent px-1 py-[1px] text-center text-[10px] leading-tight outline-none focus:ring-1 focus:ring-blue-400 disabled:cursor-not-allowed disabled:bg-transparent ${fieldErrorClass(field)}`;
-
-  const signatureInputClass = (field: string) =>
-    `flex-1 border-0 border-b border-black/70 text-[12px] outline-none focus:border-blue-500 focus:ring-0 bg-transparent disabled:cursor-not-allowed disabled:bg-transparent ${signatureFieldErrorClass(field)}`;
-
   return (
     <>
-      <div className="sheet mx-auto max-w-[800px] bg-white text-black border border-black shadow print:shadow-none p-4">
+      <div className="sheet mx-auto max-w-[800px] border border-black bg-white p-4 text-black shadow print:shadow-none">
         <PrintStyles />
         <DashStyles />
 
-        {!hideTopActions && (
+        {!hideTopActions && !embedded && (
           <div className="no-print mb-4 flex justify-end gap-2">
-            {!embedded && (
-              <button
-                type="button"
-                className="px-3 py-1 rounded-md border bg-gray-600 text-white"
-                onClick={handleClose}
-                disabled={busy !== null}
-              >
-                {busy ? "Working..." : "Close"}
-              </button>
-            )}
-
-            {!HIDE_SAVE_FOR.has(status) && (
-              <button
-                className="px-3 py-1 rounded-md border bg-blue-600 text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                onClick={handleSave}
-                disabled={!canEditForm || busy !== null}
-              >
-                {busy === "SAVE" && <Spinner />}
-                {reportId ? "Update Report" : "Save Report"}
-              </button>
-            )}
+            <button
+              type="button"
+              className="rounded-md border bg-gray-600 px-3 py-1 text-white"
+              onClick={onClose}
+            >
+              Close
+            </button>
           </div>
         )}
 
-        {selectingCorrections && (
-          <div className="no-print mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Correction selection is active. Choose fields below and add
-            correction notes.
-          </div>
-        )}
-
-        {/* Letterhead - same as ApeReportForm */}
-        <div className="mb-0 text-center">
+        <div className="letterhead mb-0 text-center">
           <div
-            className="font-bold tracking-wide text-[22px]"
+            className="text-[22px] font-bold tracking-wide"
             style={{ color: "blue" }}
           >
             OMEGA / BIOCHEM LABORATORIES, INC.
@@ -1604,13 +568,11 @@ export default function ApeReportView({
             (FDA REG.)
           </div>
           <div className="text-[12px]">
-            56 PARK AVENUE, LYNDHURST, NJ 07071 <br></br>
+            56 PARK AVENUE, LYNDHURST, NJ 07071 <br />
             Tel: (201) 883 1222 • Fax: (201) 883 0449
           </div>
-          <div>
-            <div className="text-[12px]">
-              Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
-            </div>
+          <div className="text-[12px]">
+            Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
           </div>
 
           <div className="mt-0 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -1635,295 +597,200 @@ export default function ApeReportView({
               {(report as any)?.parentReportNumber || reportNumber ? (
                 <span className="whitespace-nowrap">
                   REPORT NO:{" "}
-                  {String(
-                    (report as any)?.parentReportNumber || reportNumber,
-                  )}
+                  {String((report as any)?.parentReportNumber || reportNumber)}
                 </span>
               ) : null}
             </div>
           </div>
         </div>
 
-        {/* Top meta block - same layout as ApeReportForm */}
         <div className="w-full border border-black text-[15px]">
-          {/* CLIENT / DATE SENT */}
           <div className="grid grid-cols-[67%_33%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "client",
+              )}`}
+            >
               <div className="whitespace-nowrap font-medium">CLIENT:</div>
-
-              {lock("client") ? (
-                <div className="flex-1 min-h-[14px]">{client}</div>
-              ) : (
-                <input
-                  className={inputClass("client")}
-                  value={client.toUpperCase()}
-                  onChange={(e) => {
-                    setClient(e.target.value.toUpperCase());
-                    clearFieldError("client");
-                    markDirty();
-                  }}
-                />
-              )}
-            </div>
-
-            <div className="px-2 flex items-center gap-1 relative">
-              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
-
-              {lock("dateSent") ? (
-                <div className="flex-1 min-h-[14px]">
-                  {formatDateForInput(dateSent)}
-                </div>
-              ) : (
-                <input
-                  className={inputClass("dateSent")}
-                  type="date"
-                  min={role !== "SYSTEMADMIN" ? todayISO() : undefined}
-                  value={formatDateForInput(dateSent)}
-                  onChange={(e) => {
-                    setDateSent(e.target.value);
-                    clearFieldError("dateSent");
-                    markDirty();
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* TYPE OF TEST / SAMPLE TYPE / FORMULA # */}
-          <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">TYPE OF TEST:</div>
-
-              {lock("typeOfTest") ? (
-                <div className="flex-1 min-h-[14px]">{typeOfTest}</div>
-              ) : (
-                <div className="flex-1 min-w-0">
-                  <input
-                    list="ape-report-typeOfTest-options"
-                    className={inputClass("typeOfTest")}
-                    value={typeOfTest}
-                    onChange={(e) => {
-                      setTypeOfTest(e.target.value);
-                      clearFieldError("typeOfTest");
-                      markDirty();
-                    }}
-                    placeholder={isJJL ? "Select or type..." : ""}
-                  />
-
-                  <datalist id="ape-report-typeOfTest-options">
-                    {(isJJL ? JJL_TYPE_OF_TEST_OPTIONS : []).map((opt) => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
-                </div>
-              )}
-            </div>
-
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">SAMPLE TYPE:</div>
-
-              {lock("sampleType") ? (
-                <div className="flex-1 min-h-[14px]">{sampleType}</div>
-              ) : (
-                <div className="flex-1 min-w-0">
-                  <input
-                    list="ape-report-sampleType-options"
-                    className={inputClass("sampleType")}
-                    value={sampleType}
-                    onChange={(e) => {
-                      setSampleType(e.target.value);
-                      clearFieldError("sampleType");
-                      markDirty();
-                    }}
-                    placeholder={isJJL ? "Select or type..." : ""}
-                  />
-
-                  <datalist id="ape-report-sampleType-options">
-                    {(isJJL ? JJL_SAMPLE_TYPE_OPTIONS : []).map((opt) => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
-                </div>
-              )}
-            </div>
-
-            <div className="px-2 flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">FORMULA #:</div>
-
-              {lock("formulaNo") ? (
-                <div className="flex-1 min-h-[14px]">{formulaNo}</div>
-              ) : (
-                <input
-                  className={inputClass("formulaNo")}
-                  value={formulaNo}
-                  onChange={(e) => {
-                    setFormulaNo(e.target.value);
-                    clearFieldError("formulaNo");
-                    markDirty();
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* DESCRIPTION */}
-          <div className="border-b border-black flex items-center gap-2 px-2 text-[12px] leading-snug relative">
-            <div className="w-28 font-medium">DESCRIPTION:</div>
-
-            {lock("description") ? (
-              <div className="flex-1 min-h-[14px]">{description}</div>
-            ) : (
               <input
-                className={inputClass("description")}
-                value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  clearFieldError("description");
-                  markDirty();
-                }}
+                className={inputClass}
+                value={fieldValue.client}
+                readOnly
+                disabled
               />
-            )}
-          </div>
-
-          {/* LOT # / MANUFACTURE DATE */}
-          <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">LOT #:</div>
-
-              {lock("lotNo") ? (
-                <div className="flex-1 min-h-[14px]">{lotNo}</div>
-              ) : (
-                <input
-                  className={inputClass("lotNo")}
-                  value={lotNo}
-                  onChange={(e) => {
-                    setLotNo(e.target.value);
-                    clearFieldError("lotNo");
-                    markDirty();
-                  }}
-                />
-              )}
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">
+            <div
+              className={`relative flex items-center gap-1 px-2 ${dashClass(
+                "dateSent",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">DATE SENT:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.dateSent}
+                readOnly
+                disabled
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[33%_33%_34%] border-b border-black text-[12px] leading-snug">
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "typeOfTest",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">TYPE OF TEST:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.typeOfTest}
+                readOnly
+                disabled
+              />
+            </div>
+
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "sampleType",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">SAMPLE TYPE:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.sampleType}
+                readOnly
+                disabled
+              />
+            </div>
+
+            <div
+              className={`relative flex items-center gap-1 px-2 ${dashClass(
+                "formulaNo",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">FORMULA #:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.formulaNo}
+                readOnly
+                disabled
+              />
+            </div>
+          </div>
+
+          <div
+            className={`relative flex items-center gap-2 border-b border-black px-2 text-[12px] leading-snug ${dashClass(
+              "description",
+            )}`}
+          >
+            <div className="w-28 font-medium">DESCRIPTION:</div>
+            <input
+              className={inputClass}
+              value={fieldValue.description}
+              readOnly
+              disabled
+            />
+          </div>
+
+          <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "lotNo",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">LOT #:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.lotNo}
+                readOnly
+                disabled
+              />
+            </div>
+
+            <div
+              className={`relative flex items-center gap-1 px-2 ${dashClass(
+                "manufactureDate",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">
                 MANUFACTURE DATE:
               </div>
-
-              {lock("manufactureDate") ? (
-                <div className="flex-1 min-h-[14px]">
-                  {manufactureDate ? formatDateForInput(manufactureDate) : "NA"}
-                </div>
-              ) : (
-                <input
-                  className={inputClass("manufactureDate")}
-                  type="date"
-                  value={formatDateForInput(manufactureDate)}
-                  onChange={(e) => {
-                    setManufactureDate(e.target.value);
-                    clearFieldError("manufactureDate");
-                    markDirty();
-                  }}
-                />
-              )}
+              <input
+                className={inputClass}
+                value={fieldValue.manufactureDate || "NA"}
+                readOnly
+                disabled
+              />
             </div>
           </div>
 
-          {/* TEST SOP # / DATE TESTED */}
           <div className="grid grid-cols-[55%_45%] border-b border-black text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">TEST SOP #:</div>
-
-              {lock("testSopNo") ? (
-                <div className="flex-1 min-h-[14px]">{testSopNo}</div>
-              ) : (
-                <input
-                  className={inputClass("testSopNo")}
-                  value={testSopNo}
-                  onChange={(e) => {
-                    setTestSopNo(e.target.value);
-                    clearFieldError("testSopNo");
-                    markDirty();
-                  }}
-                />
-              )}
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "testSopNo",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">TEST SOP #:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.testSopNo}
+                readOnly
+                disabled
+              />
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">DATE TESTED:</div>
-
-              {lock("dateTested") ? (
-                <div className="flex-1 min-h-[14px]">
-                  {formatDateForInput(dateTested)}
-                </div>
-              ) : (
-                <input
-                  className={inputClass("dateTested")}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(dateTested)}
-                  onChange={(e) => {
-                    setDateTested(e.target.value);
-                    clearFieldError("dateTested");
-                    markDirty();
-                  }}
-                />
-              )}
+            <div
+              className={`relative flex items-center gap-1 px-2 ${dashClass(
+                "dateTested",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">DATE TESTED:</div>
+              <input
+                className={inputClass}
+                value={fieldValue.dateTested}
+                readOnly
+                disabled
+              />
             </div>
           </div>
 
-          {/* TEST REFERENCE / DATE COMPLETED */}
           <div className="grid grid-cols-[55%_45%] text-[12px] leading-snug">
-            <div className="px-2 border-r border-black flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">
+            <div
+              className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass(
+                "testReference",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">
                 TEST REFERENCE:
               </div>
-
-              {lock("testReference") ? (
-                <div className="flex-1 min-h-[14px]">{testReference}</div>
-              ) : (
-                <input
-                  className={inputClass("testReference")}
-                  value={testReference}
-                  onChange={(e) => {
-                    setTestReference(e.target.value);
-                    clearFieldError("testReference");
-                    markDirty();
-                  }}
-                />
-              )}
+              <input
+                className={inputClass}
+                value={fieldValue.testReference}
+                readOnly
+                disabled
+              />
             </div>
 
-            <div className="px-2 flex items-center gap-1 relative">
-              <div className="font-medium whitespace-nowrap">
+            <div
+              className={`relative flex items-center gap-1 px-2 ${dashClass(
+                "dateCompleted",
+              )}`}
+            >
+              <div className="whitespace-nowrap font-medium">
                 DATE COMPLETED:
               </div>
-
-              {lock("dateCompleted") ? (
-                <div className="min-h-[14px] flex-1">
-                  {formatDateForInput(dateCompleted)}
-                </div>
-              ) : (
-                <input
-                  className={inputClass("dateCompleted")}
-                  type="date"
-                  min={todayISO()}
-                  value={formatDateForInput(dateCompleted)}
-                  onChange={(e) => {
-                    setDateCompleted(e.target.value);
-                    clearFieldError("dateCompleted");
-                    markDirty();
-                  }}
-                />
-              )}
+              <input
+                className={inputClass}
+                value={fieldValue.dateCompleted}
+                readOnly
+                disabled
+              />
             </div>
           </div>
         </div>
 
-        {/* APE Report Data Table */}
-        {/* APE Report Data Table */}
         <div className="mt-1 w-full border border-black text-[11px] leading-[13px]">
-          {/* Main header row */}
           <div className="grid grid-cols-[24%_19%_18%_18%_21%] border-b border-black text-center font-bold">
             <div className="border-r border-black px-1.5 py-[2px]" />
 
@@ -1950,7 +817,6 @@ export default function ApeReportView({
 
           {apeReportSections.map((section, sectionIndex) => (
             <div key={section.key}>
-              {/* Day / section row */}
               <div className="grid grid-cols-[24%_19%_18%_18%_21%] border-b border-black text-[11px] leading-[13px]">
                 <div className="border-r border-black px-1.5 py-[2px] font-bold">
                   <span className="inline-block w-full text-center tracking-[0.22em] whitespace-nowrap">
@@ -1975,6 +841,7 @@ export default function ApeReportView({
                 const isLastRow =
                   sectionIndex === apeReportSections.length - 1 &&
                   rowIndex === section.rows.length - 1;
+
                 const controlGrowthKey = apeReportFieldKey(
                   section.key,
                   rowIndex,
@@ -1985,6 +852,16 @@ export default function ApeReportView({
                   rowIndex,
                   "sampleGrowth",
                 );
+                const decreaseKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "decrease",
+                );
+                const inoculumKey = apeReportFieldKey(
+                  section.key,
+                  rowIndex,
+                  "innoculumLevel",
+                );
 
                 return (
                   <div
@@ -1994,87 +871,67 @@ export default function ApeReportView({
                     }`}
                   >
                     <div className="flex items-center border-r border-black px-1.5 py-[1px]">
-                      <span className="inline-block w-full  tracking-[0.03em]">
+                      <span className="inline-block w-full tracking-[0.03em]">
                         {row.organism}
                       </span>
                     </div>
 
-                    <div className="flex items-center border-r border-black px-1.5 py-[1px]">
+                    <div
+                      className={`relative flex items-center border-r border-black px-1.5 py-[1px] ${dashClass(
+                        controlGrowthKey,
+                      )}`}
+                    >
                       <input
-                        className={tableInputClass(controlGrowthKey)}
+                        className={tableInputClass}
                         value={
                           section.key !== "DAY_0"
                             ? ""
-                            : editingApeCell === controlGrowthKey
-                              ? row.controlGrowth
-                              : formatGrowthNotation(row.controlGrowth, 4)
+                            : formatGrowthNotation(row.controlGrowth, 4)
                         }
-                        onFocus={() => {
-                          if (section.key === "DAY_0") {
-                            setEditingApeCell(controlGrowthKey);
-                          }
-                        }}
-                        onBlur={() => setEditingApeCell(null)}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "controlGrowth",
-                            e.target.value,
-                          )
-                        }
-                        disabled={!canEditForm || section.key !== "DAY_0"}
+                        readOnly
+                        disabled
                       />
                     </div>
 
-                    <div className="flex items-center border-r border-black px-1.5 py-[1px]">
+                    <div
+                      className={`relative flex items-center border-r border-black px-1.5 py-[1px] ${dashClass(
+                        sampleGrowthKey,
+                      )}`}
+                    >
                       <input
-                        className={tableInputClass(sampleGrowthKey)}
-                        value={
-                          editingApeCell === sampleGrowthKey
-                            ? row.sampleGrowth
-                            : formatGrowthNotation(
-                                row.sampleGrowth,
-                                section.key === "DAY_0" ? 4 : 2,
-                              )
-                        }
-                        onFocus={() => setEditingApeCell(sampleGrowthKey)}
-                        onBlur={() => setEditingApeCell(null)}
-                        onChange={(e) =>
-                          updateApeReportCell(
-                            sectionIndex,
-                            rowIndex,
-                            "sampleGrowth",
-                            e.target.value,
-                          )
-                        }
-                        disabled={!canEditForm}
-                      />
-                    </div>
-
-                    <div className="flex items-center border-r border-black px-1.5 py-[1px]">
-                      <input
-                        className={tableInputClass(
-                          apeReportFieldKey(section.key, rowIndex, "decrease"),
+                        className={tableInputClass}
+                        value={formatGrowthNotation(
+                          row.sampleGrowth,
+                          section.key === "DAY_0" ? 4 : 2,
                         )}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+
+                    <div
+                      className={`relative flex items-center border-r border-black px-1.5 py-[1px] ${dashClass(
+                        decreaseKey,
+                      )}`}
+                    >
+                      <input
+                        className={tableInputClass}
                         value={row.decrease}
                         readOnly
-                        disabled={!canEditForm}
+                        disabled
                       />
                     </div>
 
-                    <div className="flex items-center px-1.5 py-[1px]">
+                    <div
+                      className={`relative flex items-center px-1.5 py-[1px] ${dashClass(
+                        inoculumKey,
+                      )}`}
+                    >
                       <input
-                        className={tableInputClass(
-                          apeReportFieldKey(
-                            section.key,
-                            rowIndex,
-                            "innoculumLevel",
-                          ),
-                        )}
+                        className={tableInputClass}
                         value={row.innoculumLevel}
                         readOnly
-                        disabled={!canEditForm}
+                        disabled
                       />
                     </div>
                   </div>
@@ -2084,7 +941,6 @@ export default function ApeReportView({
           ))}
         </div>
 
-        {/* Denotes */}
         <div className="mt-0 text-[10px] leading-snug whitespace-nowrap">
           <span className="font-bold">DENOTES:</span>
 
@@ -2097,97 +953,85 @@ export default function ApeReportView({
           </span>
         </div>
 
-        {/* Signatures */}
-        <div className=" grid grid-cols-2 gap-2 text-[11px]">
-          {showSignatures && (
-            <>
-              <div className="p-1 relative">
-                <div className="font-medium mb-1 flex items-center gap-2">
-                  TESTED BY:
-                  <input
-                    className={signatureInputClass("testedBy")}
-                    value={testedBy.toUpperCase()}
-                    onChange={(e) => {
-                      setTestedBy(e.target.value);
-                      clearFieldError("testedBy");
-                      markDirty();
-                    }}
-                    readOnly={lock("testedBy")}
-                    placeholder="Name"
-                  />
-                </div>
+        <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="relative p-1">
+            <div
+              className={`relative mb-1 flex items-center gap-2 font-medium ${dashClass(
+                "testedBy",
+              )}`}
+            >
+              TESTED BY:
+              <input
+                className={signatureInputClass}
+                value={fieldValue.testedBy}
+                readOnly
+                disabled
+              />
+            </div>
 
-                <div className="font-medium mt-1 flex items-center gap-2 relative">
-                  DATE:
-                  <input
-                    className={signatureInputClass("testedDate")}
-                    type="date"
-                    min={todayISO()}
-                    value={formatDateForInput(testedDate)}
-                    onChange={(e) => {
-                      setTestedDate(e.target.value);
-                      clearFieldError("testedDate");
-                      markDirty();
-                    }}
-                    readOnly={lock("testedDate")}
-                  />
-                </div>
-              </div>
+            <div
+              className={`relative mt-1 flex items-center gap-2 font-medium ${dashClass(
+                "testedDate",
+              )}`}
+            >
+              DATE:
+              <input
+                className={signatureInputClass}
+                value={fieldValue.testedDate}
+                readOnly
+                disabled
+              />
+            </div>
+          </div>
 
-              <div className="p-1 relative">
-                <div className="font-medium mb-1 flex items-center gap-2">
-                  REVIEWED BY:
-                  <input
-                    className={signatureInputClass("reviewedBy")}
-                    value={reviewedBy.toUpperCase()}
-                    onChange={(e) => {
-                      setReviewedBy(e.target.value);
-                      clearFieldError("reviewedBy");
-                      markDirty();
-                    }}
-                    readOnly={lock("reviewedBy")}
-                    placeholder="Name"
-                  />
-                </div>
+          <div className="relative p-1">
+            <div
+              className={`relative mb-1 flex items-center gap-2 font-medium ${dashClass(
+                "reviewedBy",
+              )}`}
+            >
+              REVIEWED BY:
+              <input
+                className={signatureInputClass}
+                value={fieldValue.reviewedBy}
+                readOnly
+                disabled
+              />
+            </div>
 
-                <div className="font-medium mt-1 flex items-center gap-2 relative">
-                  DATE:
-                  <input
-                    className={signatureInputClass("reviewedDate")}
-                    type="date"
-                    min={todayISO()}
-                    value={formatDateForInput(reviewedDate)}
-                    onChange={(e) => {
-                      setReviewedDate(e.target.value);
-                      clearFieldError("reviewedDate");
-                      markDirty();
-                    }}
-                    readOnly={lock("reviewedDate")}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+            <div
+              className={`relative mt-1 flex items-center gap-2 font-medium ${dashClass(
+                "reviewedDate",
+              )}`}
+            >
+              DATE:
+              <input
+                className={signatureInputClass}
+                value={fieldValue.reviewedDate}
+                readOnly
+                disabled
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Footer */}
         <div
-          className="mt-0 flex items-end justify-between print-footer"
+          className="print-footer mt-0 flex items-end justify-between"
           style={{ pageBreakInside: "avoid", breakInside: "avoid" }}
         >
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              {FOOTER_IMAGES.map((img, idx) => (
+              {footerImages.map((img, idx) => (
                 <img
                   key={idx}
                   src={img.src}
                   alt={img.alt}
-                  className="w-[60px] h-[60px] object-contain border border-black/10 rounded bg-white"
+                  className="h-[60px] w-[60px] rounded border border-black/10 bg-white object-contain"
                 />
               ))}
             </div>
 
-            <div className="text-[8px] leading-tight text-slate-700 font-bold text-center w-[136px]">
+            <div className="w-[136px] text-center text-[8px] font-bold leading-tight text-slate-700">
               Accreditation No: <span className="font-bold">109344</span>
             </div>
 
@@ -2195,7 +1039,7 @@ export default function ApeReportView({
               This report is confidential and intended only for the recipient.
             </div>
 
-            <div className="text-[8px] text-slate-600">{FOOTER_NOTE}</div>
+            <div className="text-[8px] text-slate-600">{footerNote}</div>
           </div>
 
           <div className="flex items-end gap-3">
@@ -2203,13 +1047,11 @@ export default function ApeReportView({
               <div className="text-[11px] font-semibold">Report ID</div>
 
               <div className="mono text-[11px]">
-                {report?.parentReportId || report?.id || ""}
+                {parentReportId || reportId || ""}
               </div>
 
-              {report?.reportNumber && (
-                <div className="text-[11px]">
-                  Report # {report.reportNumber}
-                </div>
+              {reportNumber && (
+                <div className="text-[11px]">Report # {reportNumber}</div>
               )}
 
               <div className="mt-1 text-[10px] text-slate-600">
@@ -2218,7 +1060,7 @@ export default function ApeReportView({
             </div>
 
             {qrSvg ? (
-              <div className="p-1 bg-white shrink-0" aria-label="Report QR">
+              <div className="shrink-0 bg-white p-1" aria-label="Report QR">
                 <div
                   style={{ width: "36mm", height: "36mm" }}
                   dangerouslySetInnerHTML={{ __html: qrSvg }}
@@ -2236,171 +1078,22 @@ export default function ApeReportView({
         </div>
       </div>
 
-      {!hideBottomActions && (
-        <div className="no-print mt-4 flex items-center justify-between gap-3">
-          {/* Left: status action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {canUseStatusButtons &&
-              getNextStatuses().map((targetStatus) => {
-                const transition =
-                  STERILITY_STATUS_TRANSITIONS[status as SterilityReportStatus];
-
-                if (!transition?.canSet?.includes(role as any)) return null;
-                if (!statusButtons[targetStatus]) return null;
-
-                const { label, color } = statusButtons[targetStatus];
-
-                return (
-                  <div key={targetStatus} className="relative group">
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
-                      onClick={() =>
-                        requestStatusChange(
-                          targetStatus as SterilityReportStatus,
-                        )
-                      }
-                      disabled={busy !== null}
-                    >
-                      {busy === "STATUS" && <Spinner />}
-                      {label}
-                    </button>
-
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
-                      {label} → {formatStatus(targetStatus)}
-                    </div>
-                  </div>
-                );
-              })}
-
-            <div className="flex items-center text-sm text-slate-500">
-              Status: <b className="ml-1">{formatStatus(status)}</b>
-            </div>
-          </div>
-
-          {/* Right side intentionally empty: top modal buttons handle close/save/print */}
-        </div>
-      )}
-
-      {selectingCorrections && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[560px] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border bg-white/95 p-4 shadow-xl">
-          <div className="text-sm font-semibold">Corrections picker</div>
-          <div className="text-xs text-slate-600">
-            Select a field, enter correction reason, then send corrections.
-          </div>
-
-          <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
-            <select
-              className="rounded-lg border px-2 py-1 text-xs"
-              value={selectedCorrectionField}
-              onChange={(e) => setSelectedCorrectionField(e.target.value)}
-            >
-              <option value="">Select field...</option>
-              {correctionFieldOptions.map((field) => (
-                <option key={field.key} value={field.key}>
-                  {field.label}
-                </option>
-              ))}
-            </select>
-
-            <input
-              className="rounded-lg border px-2 py-1 text-xs"
-              value={addMessage}
-              onChange={(e) => setAddMessage(e.target.value)}
-              placeholder="Correction note"
-            />
-
-            <button
-              type="button"
-              className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-              disabled={
-                !selectedCorrectionField || !addMessage.trim() || busy !== null
-              }
-              onClick={() =>
-                runBusy("ADD_CORRECTION", async () => addPendingCorrection())
-              }
-            >
-              Add
-            </button>
-          </div>
-
-          <ul className="mt-3 max-h-32 overflow-auto text-xs">
-            {pendingCorrections.map((c, i) => {
-              const option = correctionFieldOptions.find(
-                (f) => f.key === c.fieldKey,
-              );
-              return (
-                <li
-                  key={`${c.fieldKey}-${i}`}
-                  className="flex items-center justify-between gap-2 border-b py-1"
-                >
-                  <span className="truncate">
-                    <b>{option?.label ?? c.fieldKey}</b>: {c.message}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-rose-600 hover:underline"
-                    onClick={() =>
-                      setPendingCorrections((prev) =>
-                        prev.filter((_, idx) => idx !== i),
-                      )
-                    }
-                  >
-                    remove
-                  </button>
-                </li>
-              );
-            })}
-            {pendingCorrections.length === 0 && (
-              <li className="text-slate-400">No correction notes added yet.</li>
-            )}
-          </ul>
-
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-lg border px-3 py-1.5 text-sm"
-              onClick={() => {
-                setSelectingCorrections(false);
-                setPendingCorrections([]);
-                setPendingStatus(null);
-                setSelectedCorrectionField("");
-                setAddMessage("");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={
-                !pendingCorrections.length || !pendingStatus || busy !== null
-              }
-              onClick={sendPendingCorrections}
-            >
-              {busy === "SEND_CORRECTIONS" && <Spinner />}
-              Send corrections
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="no-print fixed bottom-20 right-6 z-40">
-        <button
-          type="button"
-          onClick={() => setShowCorrTray((s) => !s)}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-xl hover:bg-slate-50"
-        >
-          <span>📝 Corrections</span>
-          {openCorrections.length > 0 && (
+      {!embedded && openCorrections.length > 0 && (
+        <div className="no-print fixed bottom-20 right-6 z-40">
+          <button
+            type="button"
+            onClick={() => setShowCorrTray((s) => !s)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-xl hover:bg-slate-50"
+          >
+            <span>📝 Corrections</span>
             <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
               {openCorrections.length}
             </span>
-          )}
-        </button>
-      </div>
+          </button>
+        </div>
+      )}
 
-      {showCorrTray && (
+      {!embedded && showCorrTray && (
         <div className="no-print fixed bottom-20 right-6 z-40 w-[430px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5">
           <div className="border-b bg-slate-50 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
@@ -2409,7 +1102,7 @@ export default function ApeReportView({
                   Correction Review
                 </h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Resolve only after the field value has been updated and saved.
+                  Open corrections shown for this report.
                 </p>
               </div>
               <button
@@ -2429,66 +1122,40 @@ export default function ApeReportView({
               </div>
             ) : (
               <div className="space-y-3">
-                {openCorrections.map((c, index) => {
-                  const option = correctionFieldOptions.find(
-                    (f) => f.key === c.fieldKey,
-                  );
-                  const canResolve = canResolveCorrection(c);
-
-                  return (
-                    <div
-                      key={c.id}
-                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">
-                            {index + 1}. {option?.label ?? c.fieldKey}
-                          </div>
-                          <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                            <span className="font-semibold">Reason:</span>{" "}
-                            {c.message}
-                          </div>
-                          {c.oldValue != null &&
-                            String(c.oldValue).trim() !== "" && (
-                              <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                                <span className="font-semibold">
-                                  Old Value:
-                                </span>{" "}
-                                {typeof c.oldValue === "string"
-                                  ? c.oldValue
-                                  : JSON.stringify(c.oldValue)}
-                              </div>
-                            )}
-                        </div>
-                        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
-                          OPEN
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className={`mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                          canResolve
-                            ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                            : "cursor-not-allowed bg-slate-100 text-slate-400"
-                        }`}
-                        disabled={!canResolve || busy !== null}
-                        onClick={() => resolveOneCorrection(c)}
-                        title={
-                          isDirty
-                            ? "Save the report before resolving"
-                            : !fieldHasChanged(c) && role !== "SYSTEMADMIN"
-                              ? "Edit the field first before resolving"
-                              : "Mark resolved"
-                        }
-                      >
-                        {busy === "RESOLVE" ? <SpinnerDark /> : "✓"}
-                        Mark Resolved
-                      </button>
+                {openCorrections.map((c, index) => (
+                  <div
+                    key={c.id}
+                    className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                  >
+                    <div className="text-sm font-semibold text-slate-900">
+                      {index + 1}. {c.fieldKey}
                     </div>
-                  );
-                })}
+
+                    <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                      <span className="font-semibold">Reason:</span> {c.message}
+                    </div>
+
+                    {c.recipientSide && (
+                      <div className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                        <span className="font-semibold">To:</span>{" "}
+                        {c.recipientSide}
+                      </div>
+                    )}
+
+                    {c.oldValue != null && String(c.oldValue).trim() !== "" && (
+                      <div className="mt-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">Old Value:</span>{" "}
+                        {typeof c.oldValue === "string"
+                          ? c.oldValue
+                          : JSON.stringify(c.oldValue)}
+                      </div>
+                    )}
+
+                    <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                      OPEN
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

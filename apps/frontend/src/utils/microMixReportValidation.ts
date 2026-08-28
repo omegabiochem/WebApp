@@ -307,6 +307,8 @@ export function FieldErrorBadge({
 
 // const API_BASE = "http://localhost:3000";
 
+export type CorrectionRecipientSide = "CLIENT" | "LAB" | "BOTH";
+
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
@@ -316,6 +318,7 @@ export type CorrectionItem = {
   createdAt: string;
 
   // ✅ add
+  recipientSide?: CorrectionRecipientSide | null;
   oldValue?: string | null;
   resolvedAt?: string | null;
   resolvedByRole?: Role | null;
@@ -352,7 +355,12 @@ export type CorrectionLaunchKind = "REQUEST_CHANGE" | "RAISE_CORRECTION";
 
 export async function createCorrections(
   reportId: string,
-  items: { fieldKey: string; message: string; oldValue?: string | null }[],
+  items: {
+    fieldKey: string;
+    message: string;
+    oldValue?: string | null;
+    recipientSide?: CorrectionRecipientSide | null;
+  }[],
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
@@ -360,6 +368,7 @@ export async function createCorrections(
     kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
     previousStatus?: string;
     workflowReturnStatus?: string;
+    recipientSide?: CorrectionRecipientSide;
   },
 ) {
   return api<CorrectionItem[]>(`/reports/${reportId}/corrections`, {

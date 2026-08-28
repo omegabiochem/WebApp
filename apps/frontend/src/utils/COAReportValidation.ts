@@ -472,16 +472,19 @@ export function useCOAReportValidation(role?: Role, opts?: ValidationOpts) {
   return { errors, clearError, validateAndSetErrors };
 }
 
+export type CorrectionRecipientSide = "CLIENT" | "LAB" | "BOTH";
+
 export type CorrectionItem = {
   id: string;
   fieldKey: string;
-  message: "OPEN" | "RESOLVED" extends never ? never : string; // (keep)
+  message: string;
   status: "OPEN" | "RESOLVED";
   requestedByRole: Role;
   createdAt: string;
   resolvedAt?: string;
   resolvedByUserId?: string;
   oldValue?: any | null;
+  recipientSide?: CorrectionRecipientSide | null;
 };
 
 export async function getCorrections(reportId: string) {
@@ -492,7 +495,12 @@ export async function getCorrections(reportId: string) {
 
 export async function createCorrections(
   reportId: string,
-  items: { fieldKey: string; message: string }[],
+  items: {
+    fieldKey: string;
+    message: string;
+    oldValue?: any | null;
+    recipientSide?: CorrectionRecipientSide | null;
+  }[],
   targetStatus?: string,
   reason?: string,
   expectedVersion?: number,
@@ -500,6 +508,7 @@ export async function createCorrections(
     kinds?: ("REQUEST_CHANGE" | "RAISE_CORRECTION")[];
     previousStatus?: string;
     workflowReturnStatus?: string;
+    recipientSide?: CorrectionRecipientSide;
   },
 ) {
   return api<CorrectionItem[]>(`/chemistry-reports/${reportId}/corrections`, {

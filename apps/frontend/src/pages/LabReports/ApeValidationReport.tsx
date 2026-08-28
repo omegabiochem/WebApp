@@ -3,24 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 import {
-  createCorrections,
-  getCorrections,
-  resolveCorrection,
-} from "../../utils/sterilityReportValidation";
-import {
   JJL_SAMPLE_TYPE_OPTIONS,
   JJL_TYPE_OF_TEST_OPTIONS,
   todayISO,
 } from "../../utils/microMixReportFormWorkflow";
 import {
-  STERILITY_STATUS_TRANSITIONS,
-  type CorrectionItem,
-  type SterilityReportStatus,
-} from "../../utils/SterilityReportFormWorkflow";
-import {
+  APE_STATUS_TRANSITIONS,
   canRoleEditApeChildField,
   pickApeChildEditablePayload,
+  type ApeReportStatus,
+  type CorrectionItem,
 } from "../../utils/apeReportFormWorkflow";
+import {
+  createCorrections,
+  getCorrections,
+  resolveCorrection,
+} from "../../utils/apeReportValidation";
 
 type Role =
   | "SYSTEMADMIN"
@@ -233,9 +231,7 @@ function makeRows(organismNames: string[]): ValidationRow[] {
   }));
 }
 
-function makeDefaultSections(
-  organismNames: string[],
-): ValidationSection[] {
+function makeDefaultSections(organismNames: string[]): ValidationSection[] {
   return [
     {
       key: "NEUTRALIZER_WITH_PRODUCT",
@@ -437,8 +433,18 @@ export default function ApeValidationReport({
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
+  type CorrectionRecipientSide = "AUTO" | "CLIENT" | "LAB" | "BOTH";
+
+  const [correctionRecipientSide, setCorrectionRecipientSide] =
+    useState<CorrectionRecipientSide>("AUTO");
+
   const [pendingCorrections, setPendingCorrections] = useState<
-    { fieldKey: string; message: string; oldValue?: string | null }[]
+    {
+      fieldKey: string;
+      message: string;
+      oldValue?: string | null;
+      recipientSide?: Exclude<CorrectionRecipientSide, "AUTO"> | null;
+    }[]
   >([]);
   const [selectedCorrectionField, setSelectedCorrectionField] = useState("");
   const [addMessage, setAddMessage] = useState("");
@@ -507,12 +513,7 @@ export default function ApeValidationReport({
 
   const [validationSections, setValidationSections] = useState<
     ValidationSection[]
-  >(
-    normalizeSections(
-      detail?.validationSections,
-      selectedApeOrganisms,
-    ),
-  );
+  >(normalizeSections(detail?.validationSections, selectedApeOrganisms));
 
   const [, setComments] = useState(detail?.comments || "");
   const [testedBy, setTestedBy] = useState(detail?.testedBy || "");
@@ -749,13 +750,15 @@ export default function ApeValidationReport({
     );
 
     if (!option || !addMessage.trim()) return;
-
+    const selectedSide =
+      correctionRecipientSide === "AUTO" ? null : correctionRecipientSide;
     setPendingCorrections((prev) => [
       ...prev,
       {
         fieldKey: option.key,
         message: addMessage.trim(),
         oldValue: option.value,
+        recipientSide: selectedSide,
       },
     ]);
     setSelectedCorrectionField("");
@@ -782,12 +785,16 @@ export default function ApeValidationReport({
         await createCorrections(
           reportIdRef.current!,
           pendingCorrections,
-          pendingStatus as SterilityReportStatus,
+          pendingStatus as ApeReportStatus,
           "Corrections requested",
           reportVersionRef.current,
           {
-            previousStatus: status as SterilityReportStatus,
-            workflowReturnStatus: status as SterilityReportStatus,
+            previousStatus: status as ApeReportStatus,
+            workflowReturnStatus: status as ApeReportStatus,
+            recipientSide:
+              correctionRecipientSide === "AUTO"
+                ? undefined
+                : correctionRecipientSide,
           },
         );
 
@@ -815,6 +822,7 @@ export default function ApeValidationReport({
         setSelectingCorrections(false);
         setPendingCorrections([]);
         setPendingStatus(null);
+        setCorrectionRecipientSide("AUTO");
 
         onStatusChanged?.({
           ...report,
@@ -860,6 +868,10 @@ export default function ApeValidationReport({
 
     setReportId(report?.id || null);
 
+    reportIdRef.current = report?.id || null;
+    reportVersionRef.current =
+      typeof report?.version === "number" ? report.version : 0;
+
     setStatus(
       (report as any)?.parentStatus ||
         (report as any)?.workflowStatus ||
@@ -885,10 +897,7 @@ export default function ApeValidationReport({
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
     setValidationSections(
-      normalizeSections(
-        nextDetail?.validationSections,
-        selectedApeOrganisms,
-      ),
+      normalizeSections(nextDetail?.validationSections, selectedApeOrganisms),
     );
 
     setComments(nextDetail?.comments || "");
@@ -896,6 +905,13 @@ export default function ApeValidationReport({
     setTestedDate(formatDateForInput(nextDetail?.testedDate));
     setReviewedBy(nextDetail?.reviewedBy || "");
     setReviewedDate(formatDateForInput(nextDetail?.reviewedDate));
+
+    setSelectingCorrections(false);
+    setPendingCorrections([]);
+    setPendingStatus(null);
+    setCorrectionRecipientSide("AUTO");
+    setSelectedCorrectionField("");
+    setAddMessage("");
 
     setIsDirty(false);
   }, [
@@ -1163,10 +1179,7 @@ export default function ApeValidationReport({
   const canUseStatusButtons = pageMode === "UPDATE" && !forcePageReadOnly;
 
   function getNextStatuses() {
-    return (
-      STERILITY_STATUS_TRANSITIONS?.[status as SterilityReportStatus]?.next ??
-      []
-    );
+    return APE_STATUS_TRANSITIONS?.[status as ApeReportStatus]?.next ?? [];
   }
 
   async function canChangeParentStatusWithDashboardGuard(
@@ -1285,6 +1298,9 @@ export default function ApeValidationReport({
 
       setSelectingCorrections(true);
       setPendingCorrections([]);
+      setCorrectionRecipientSide("AUTO");
+      setSelectedCorrectionField("");
+      setAddMessage("");
       setPendingStatus(targetStatus);
       return;
     }
@@ -1376,9 +1392,7 @@ export default function ApeValidationReport({
               {(report as any)?.parentReportNumber || reportNumber ? (
                 <span className="whitespace-nowrap">
                   REPORT NO:{" "}
-                  {String(
-                    (report as any)?.parentReportNumber || reportNumber,
-                  )}
+                  {String((report as any)?.parentReportNumber || reportNumber)}
                 </span>
               ) : null}
             </div>
@@ -1829,7 +1843,7 @@ export default function ApeValidationReport({
             {canUseStatusButtons &&
               getNextStatuses().map((targetStatus) => {
                 const transition =
-                  STERILITY_STATUS_TRANSITIONS[status as SterilityReportStatus];
+                  APE_STATUS_TRANSITIONS[status as ApeReportStatus];
 
                 if (!transition?.canSet?.includes(role as any)) return null;
                 if (!statusButtons[targetStatus]) return null;
@@ -1842,9 +1856,7 @@ export default function ApeValidationReport({
                       type="button"
                       className={`px-4 py-2 rounded-md border text-white ${color} disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2`}
                       onClick={() =>
-                        requestStatusChange(
-                          targetStatus as SterilityReportStatus,
-                        )
+                        requestStatusChange(targetStatus as ApeReportStatus)
                       }
                       disabled={busy !== null}
                     >
@@ -1910,6 +1922,49 @@ export default function ApeValidationReport({
             </button>
           </div>
 
+          {["QA", "ADMIN", "SYSTEMADMIN"].includes(role ?? "") && (
+            <div className="mt-3 rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-semibold text-slate-700">
+                Send this change/correction to
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                {[
+                  ["AUTO", "Auto"],
+                  ["CLIENT", "Client"],
+                  ["LAB", "Lab"],
+                  ["BOTH", "Both"],
+                ].map(([value, label]) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-center justify-center rounded-lg border px-2 py-1.5 ${
+                      correctionRecipientSide === value
+                        ? "border-blue-600 bg-blue-50 text-blue-700"
+                        : "bg-white text-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      className="mr-1"
+                      checked={correctionRecipientSide === value}
+                      onChange={() =>
+                        setCorrectionRecipientSide(
+                          value as CorrectionRecipientSide,
+                        )
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-2 text-[11px] text-slate-500">
+                Auto uses field type. For mixed fields, choose Client, Lab, or
+                Both.
+              </div>
+            </div>
+          )}
+
           <ul className="mt-3 max-h-32 overflow-auto text-xs">
             {pendingCorrections.map((c, i) => {
               const option = correctionFieldOptions.find(
@@ -1922,6 +1977,16 @@ export default function ApeValidationReport({
                 >
                   <span className="truncate">
                     <b>{option?.label ?? c.fieldKey}</b>: {c.message}
+                    {c.recipientSide && (
+                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                        To: {c.recipientSide}
+                      </span>
+                    )}
+                    {!c.recipientSide && (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                        Auto
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -1950,6 +2015,7 @@ export default function ApeValidationReport({
                 setSelectingCorrections(false);
                 setPendingCorrections([]);
                 setPendingStatus(null);
+                setCorrectionRecipientSide("AUTO");
                 setSelectedCorrectionField("");
                 setAddMessage("");
               }}

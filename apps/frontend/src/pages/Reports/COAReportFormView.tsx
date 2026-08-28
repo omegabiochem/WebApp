@@ -252,9 +252,14 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
   );
 }
 
-function formatDateForInput(value: string | null) {
-  if (!value || value === "NA") return "";
-  return new Date(value).toISOString().split("T")[0];
+function formatDateForInput(value: string | null | undefined) {
+  if (!value) return "";
+  if (value === "NA") return "NA";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+  return d.toISOString().split("T")[0];
 }
 
 function splitDateInitial(value?: string | null) {
@@ -284,7 +289,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -578,7 +585,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
+  const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,
@@ -880,9 +887,11 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                     <div
                       className={`px-1 py-1 whitespace-pre-wrap break-words text-center relative ${dashClass(kDateInit)}`}
                     >
-                      {blankIfForm(date || initial
-                        ? `${date}${date && initial ? " / " : ""}${initial}`
-                        : "")}
+                      {blankIfForm(
+                        date || initial
+                          ? `${date}${date && initial ? " / " : ""}${initial}`
+                          : "",
+                      )}
                     </div>
                   </div>
                 );
@@ -986,12 +995,12 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
 
                 <div className="text-[10px] text-slate-600">{FOOTER_NOTE}</div>
 
-              {showJJLCreatedBy && (
-                <div className="text-left text-[10px] text-black">
-                  <span className="font-semibold">Created by:</span>{" "}
-                  <span>{createdByName}</span>
-                </div>
-              )}
+                {showJJLCreatedBy && (
+                  <div className="text-left text-[10px] text-black">
+                    <span className="font-semibold">Created by:</span>{" "}
+                    <span>{createdByName}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-end gap-3">
@@ -1070,7 +1079,11 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
-
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}

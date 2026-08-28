@@ -263,7 +263,6 @@ function AttachmentPreview({
   );
 }
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -280,7 +279,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -549,10 +550,14 @@ export default function MicroMixWaterReportFormView(
     return /\d$/.test(raw) ? `${raw}ml` : raw;
   };
 
-  function formatDateForInput(value: string | null) {
+  function formatDateForInput(value: string | null | undefined) {
     if (!value) return "";
-    // Convert ISO to yyyy-MM-dd
-    return new Date(value).toISOString().split("T")[0];
+    if (value === "NA") return "";
+
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+    return d.toISOString().split("T")[0];
   }
 
   //   const appBase =
@@ -718,31 +723,27 @@ export default function MicroMixWaterReportFormView(
     return "CFU/mL";
   };
 
-const rawTbcUnit = getSpecUnit(report?.tbc_spec);
-const rawTmyUnit = getSpecUnit(report?.tmy_spec);
+  const rawTbcUnit = getSpecUnit(report?.tbc_spec);
+  const rawTmyUnit = getSpecUnit(report?.tmy_spec);
 
-const hasTbcSpec =
-  String(report?.tbc_spec ?? "").trim().length > 0;
+  const hasTbcSpec = String(report?.tbc_spec ?? "").trim().length > 0;
 
-const hasTmySpec =
-  String(report?.tmy_spec ?? "").trim().length > 0;
+  const hasTmySpec = String(report?.tmy_spec ?? "").trim().length > 0;
 
-// One shared unit for both rows
-const sharedUnit =
-  rawTbcUnit === "CFU / device" ||
-  rawTmyUnit === "CFU / device"
-    ? "CFU / device"
-    : hasTbcSpec
-      ? rawTbcUnit
-      : hasTmySpec
-        ? rawTmyUnit
-        : rawTbcUnit;
+  // One shared unit for both rows
+  const sharedUnit =
+    rawTbcUnit === "CFU / device" || rawTmyUnit === "CFU / device"
+      ? "CFU / device"
+      : hasTbcSpec
+        ? rawTbcUnit
+        : hasTmySpec
+          ? rawTmyUnit
+          : rawTbcUnit;
 
-const isDeviceSpecification =
-  sharedUnit === "CFU / device";
+  const isDeviceSpecification = sharedUnit === "CFU / device";
 
-const tbcUnit = sharedUnit;
-const tmyUnit = sharedUnit;
+  const tbcUnit = sharedUnit;
+  const tmyUnit = sharedUnit;
 
   const sharedDeviceSpecValue =
     getSpecValue(report?.tbc_spec) || getSpecValue(report?.tmy_spec);
@@ -1076,7 +1077,9 @@ const tmyUnit = sharedUnit;
                     Total Bacterial Count:
                   </div>
                   <div className="px-1 py-0 border-r border-b border-black flex items-center justify-center">
-                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^0</div>
+                    <div className="px-0 py-0 text-center whitespace-nowrap">
+                      x 10^0
+                    </div>
                   </div>
                   <div
                     className={`px-1 py-0 border-r border-b border-black flex items-center relative ${dashClass("tbc_gram")}`}
@@ -1097,7 +1100,9 @@ const tmyUnit = sharedUnit;
                       readOnly
                       disabled
                     />
-                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tbcUnit}</div>
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">
+                      {tbcUnit}
+                    </div>
                   </div>
 
                   <div
@@ -1120,7 +1125,9 @@ const tmyUnit = sharedUnit;
                     Total Mold & Yeast Count:
                   </div>
                   <div className="px-1 py-0 border-r border-black flex items-center justify-center">
-                    <div className="px-0 py-0 text-center whitespace-nowrap">x 10^0</div>
+                    <div className="px-0 py-0 text-center whitespace-nowrap">
+                      x 10^0
+                    </div>
                   </div>
                   <div
                     className={`px-1 py-0 border-r border-black flex items-center relative ${dashClass("tmy_gram")}`}
@@ -1141,7 +1148,9 @@ const tmyUnit = sharedUnit;
                       readOnly
                       disabled
                     />
-                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">{tmyUnit}</div>
+                    <div className="min-w-0 flex-1 whitespace-nowrap px-0 py-0 text-center text-[9px] leading-none">
+                      {tmyUnit}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1527,7 +1536,11 @@ const tmyUnit = sharedUnit;
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
-
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}
