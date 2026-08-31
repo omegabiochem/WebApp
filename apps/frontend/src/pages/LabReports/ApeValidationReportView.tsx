@@ -347,7 +347,7 @@ export default function ApeValidationReportView(
   const footerDateEffective = formatFooterDate(report?.footerDateEffective);
   const footerNote = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
-  const footerImages = [
+  const footerImages = [ 
     { src: pjla, alt: "FDA Registered" },
     { src: ilacmra, alt: "ISO Certified" },
   ];

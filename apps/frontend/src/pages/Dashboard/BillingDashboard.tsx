@@ -205,6 +205,7 @@ type BillingLine = {
   formNumber: string;
   reportNumber: string;
   clientCode: string;
+  client?: string | null;
   billingReadyAt: string;
   testKey: string;
   testLabel?: string | null;
@@ -277,6 +278,7 @@ type UnbilledItem = {
   formNumber: string;
   reportNumber: string;
   clientCode: string;
+  client?: string | null;
   billingReadyAt: string;
   testKey: string;
   testLabel?: string | null;
@@ -311,6 +313,7 @@ type GroupedUnbilledReport = {
   formNumber: string;
   reportNumber: string;
   clientCode: string;
+  client: string | null;
   billingReadyAt: string;
   description: string | null;
   items: UnbilledItem[];
@@ -325,6 +328,7 @@ type GroupedUnbilledReport = {
 type PricingRule = {
   id: string;
   clientCode: string;
+  client?: string | null;
   department: "MICRO" | "CHEMISTRY";
   formType: string;
   testKey: string;
@@ -343,6 +347,18 @@ type PricingRule = {
 
 type PriceForm = {
   clientCode: string;
+
+  /*
+   * Exact report-level client/customer.
+   * Blank = DEFAULT rule for the entire clientCode.
+   */
+  client: string;
+
+  /*
+   * Used only when Client dropdown = "Other / Enter Manually".
+   */
+  customClientName: string;
+
   department: "MICRO" | "CHEMISTRY";
   formType: string;
 
@@ -378,6 +394,27 @@ type BillingClientOption = {
   billingEnabled?: boolean;
 };
 
+type ClientNameDirectoryRow = {
+  id: string;
+  clientCode: string;
+  name: string;
+  normalizedName: string;
+  active: boolean;
+  source: "AUTO" | "MANUAL" | string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ClientNameDirectoryResponse = {
+  clientCode: string;
+  clientCodeName?: string | null;
+  clientCodeActive?: boolean;
+  discoveredCount: number;
+  items: ClientNameDirectoryRow[];
+};
+
 const STATUS_OPTIONS: Array<"ALL" | BillingInvoiceStatus> = [
   "ALL",
   "DRAFT",
@@ -397,6 +434,7 @@ const FORM_OPTIONS = [
 
 const CUSTOM_TEST_VALUE = "__CUSTOM_TEST__";
 const CUSTOM_ITEM_VALUE = "__CUSTOM_ITEM__";
+const CUSTOM_CLIENT_VALUE = "__CUSTOM_CLIENT__";
 
 /*
  * Production Type-of-Test values collected from existing records.
@@ -668,6 +706,16 @@ function isMissingPricingRule(issue?: string | null) {
 }
 
 
+function unbilledClient(item: UnbilledItem) {
+  return String(
+    item.client ??
+      item.sourceSnapshot?.client ??
+      "",
+  )
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 function unbilledDescription(item: UnbilledItem) {
   const snapshot = item.sourceSnapshot ?? {};
 
@@ -708,6 +756,7 @@ function groupUnbilledByReport(
         formNumber: item.formNumber,
         reportNumber: item.reportNumber,
         clientCode: item.clientCode,
+        client: unbilledClient(item) || null,
         billingReadyAt: item.billingReadyAt,
         description: unbilledDescription(item) || null,
         items: [],
@@ -982,6 +1031,16 @@ export default function BillingDashboard() {
   const [prices, setPrices] = useState<PricingRule[]>([]);
   const [billingClients, setBillingClients] = useState<BillingClientOption[]>([]);
 
+  const [
+    pricingClientDirectory,
+    setPricingClientDirectory,
+  ] = useState<ClientNameDirectoryRow[]>([]);
+
+  const [
+    pricingClientDirectoryLoading,
+    setPricingClientDirectoryLoading,
+  ] = useState(false);
+
   /*
    * Common Billing filters.
    *
@@ -1027,6 +1086,8 @@ export default function BillingDashboard() {
 
   const [priceForm, setPriceForm] = useState<PriceForm>({
     clientCode: "",
+    client: "",
+    customClientName: "",
     department: "MICRO",
     formType: "MICRO_MIX",
 
@@ -1046,6 +1107,187 @@ export default function BillingDashboard() {
   const [pricingPrefillMessage, setPricingPrefillMessage] = useState<
     string | null
   >(null);
+
+  const loadPricingClientDirectory = useCallback(
+    async (clientCodeInput: string) => {
+      if (!isManager) {
+        return [] as ClientNameDirectoryRow[];
+      }
+
+      const code =
+        String(clientCodeInput ?? "")
+          .trim()
+          .toUpperCase();
+
+      if (!code) {
+        return [] as ClientNameDirectoryRow[];
+      }
+
+      const response =
+        await api<ClientNameDirectoryResponse>(
+          `/billing/client-names?clientCode=${encodeURIComponent(code)}`,
+        );
+
+      return Array.isArray(response?.items)
+        ? response.items
+        : [];
+    },
+    [isManager],
+  );
+
+  const refreshPricingClientDirectory =
+    useCallback(
+      async (
+        clientCodeInput =
+          priceForm.clientCode,
+      ) => {
+        const code =
+          String(clientCodeInput ?? "")
+            .trim()
+            .toUpperCase();
+
+        if (!code) {
+          setPricingClientDirectory([]);
+          return;
+        }
+
+        setPricingClientDirectoryLoading(
+          true,
+        );
+
+        try {
+          const rows =
+            await loadPricingClientDirectory(
+              code,
+            );
+
+          setPricingClientDirectory(
+            rows,
+          );
+        } catch (error: any) {
+          setPricingClientDirectory(
+            [],
+          );
+
+          toast.error(
+            extractMessage(error),
+          );
+        } finally {
+          setPricingClientDirectoryLoading(
+            false,
+          );
+        }
+      },
+      [
+        loadPricingClientDirectory,
+        priceForm.clientCode,
+      ],
+    );
+
+  /*
+   * Centralized client-name dropdown.
+   *
+   * GET /billing/client-names automatically syncs names from
+   * existing reports before returning this list.
+   */
+  useEffect(() => {
+    if (
+      !isManager ||
+      tab !== "PRICING"
+    ) {
+      return;
+    }
+
+    const code =
+      priceForm.clientCode
+        .trim()
+        .toUpperCase();
+
+    if (!code) {
+      setPricingClientDirectory(
+        [],
+      );
+      return;
+    }
+
+    refreshPricingClientDirectory(
+      code,
+    );
+  }, [
+    isManager,
+    tab,
+    priceForm.clientCode,
+    refreshPricingClientDirectory,
+  ]);
+
+  const pricingClientOptions =
+    useMemo(() => {
+      const byIdentity =
+        new Map<
+          string,
+          string
+        >();
+
+      const add = (
+        value?: string | null,
+      ) => {
+        const label =
+          String(value ?? "")
+            .trim()
+            .replace(/\s+/g, " ");
+
+        if (!label) {
+          return;
+        }
+
+        const identity =
+          label.toUpperCase();
+
+        if (
+          !byIdentity.has(
+            identity,
+          )
+        ) {
+          byIdentity.set(
+            identity,
+            label,
+          );
+        }
+      };
+
+      for (
+        const row of
+        pricingClientDirectory
+      ) {
+        add(
+          row.name,
+        );
+      }
+
+      /*
+       * Keep an Unbilled-prefilled client visible immediately
+       * while the backend directory request is still loading.
+       */
+      if (
+        priceForm.client &&
+        priceForm.client !==
+          CUSTOM_CLIENT_VALUE
+      ) {
+        add(
+          priceForm.client,
+        );
+      }
+
+      return [
+        ...byIdentity.values(),
+      ].sort(
+        (a, b) =>
+          a.localeCompare(b),
+      );
+    }, [
+      pricingClientDirectory,
+      priceForm.client,
+    ]);
 
   const pricingTestOptions = useMemo(
     () => getTestOptions(priceForm.formType),
@@ -2194,6 +2436,11 @@ export default function BillingDashboard() {
         .trim()
         .toUpperCase(),
 
+      client:
+        unbilledClient(item),
+
+      customClientName: "",
+
       department,
       formType: item.formType,
 
@@ -2249,7 +2496,11 @@ export default function BillingDashboard() {
     setItemFilter(item.itemKey || "ALL");
 
     setPricingPrefillMessage(
-      `Prefilled from ${item.formNumber} / ${item.reportNumber}. Enter the Unit Price and review Effective From before creating the rule.`,
+      `Prefilled from ${item.formNumber} / ${item.reportNumber}${
+        unbilledClient(item)
+          ? ` for ${unbilledClient(item)}`
+          : ""
+      }. Enter the Unit Price and review Effective From before creating the rule.`,
     );
 
     setTab("PRICING");
@@ -2276,6 +2527,27 @@ export default function BillingDashboard() {
 
     if (!priceForm.clientCode.trim()) {
       toast.error("Client code is required");
+      return;
+    }
+
+    let pricingClient =
+      priceForm.client ===
+      CUSTOM_CLIENT_VALUE
+        ? priceForm.customClientName
+            .trim()
+            .replace(/\s+/g, " ")
+        : priceForm.client
+            .trim()
+            .replace(/\s+/g, " ");
+
+    if (
+      priceForm.client ===
+        CUSTOM_CLIENT_VALUE &&
+      !pricingClient
+    ) {
+      toast.error(
+        "Enter the client name",
+      );
       return;
     }
 
@@ -2353,6 +2625,14 @@ export default function BillingDashboard() {
         method: "POST",
         body: JSON.stringify({
           clientCode: priceForm.clientCode.trim().toUpperCase(),
+
+          /*
+           * Blank client intentionally creates a DEFAULT
+           * price for the entire clientCode.
+           */
+          client:
+            pricingClient || null,
+
           department: priceForm.department,
           formType: priceForm.formType,
 
@@ -2383,8 +2663,22 @@ export default function BillingDashboard() {
 
       setPricingPrefillMessage(null);
 
+      /*
+       * A manually typed client was remembered by the backend
+       * while creating the price rule. Refresh so it becomes a
+       * normal dropdown option immediately.
+       */
+      await refreshPricingClientDirectory(
+        priceForm.clientCode,
+      );
+
       setPriceForm((prev) => ({
         ...prev,
+
+        client:
+          pricingClient || "",
+
+        customClientName: "",
 
         testKey: "",
         testLabel: "",
@@ -3424,9 +3718,9 @@ export default function BillingDashboard() {
               </div>
             </div>
 
-            <div className="max-h-[560px] overflow-auto">
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[1080px] text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Invoice #</th>
                     <th className="px-4 py-3">Client</th>
@@ -3619,9 +3913,9 @@ export default function BillingDashboard() {
               </div>
             )}
 
-            <div className="max-h-[560px] overflow-auto">
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[1080px] text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Form #</th>
                     <th className="px-4 py-3">Report #</th>
@@ -3661,7 +3955,12 @@ export default function BillingDashboard() {
                       </td>
 
                       <td className="max-w-[220px] px-4 py-3 text-xs leading-5 text-slate-600">
-                        {group.description || "-"}
+                        <div>{group.description || "-"}</div>
+                        {group.client && (
+                          <div className="mt-1 font-semibold text-slate-800">
+                            Client: {group.client}
+                          </div>
+                        )}
                       </td>
 
                       <td className="px-4 py-3">
@@ -3841,7 +4140,7 @@ export default function BillingDashboard() {
                     Create pricing rule
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Select the form, its Type of Test, and when applicable the exact Micro pathogen, Chemistry active, or COA item. Pricing is client-specific and date-effective.
+                    Client names are collected automatically from existing reports. Select a discovered client, use DEFAULT for the whole Client Code, or choose Other to enter a new client manually.
                   </p>
                 </div>
               </div>
@@ -3888,6 +4187,8 @@ export default function BillingDashboard() {
                       setPriceForm((p) => ({
                         ...p,
                         clientCode: e.target.value,
+                        client: "",
+                        customClientName: "",
                       }))
                     }
                     className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
@@ -3908,6 +4209,87 @@ export default function BillingDashboard() {
                     ))}
                   </select>
                 </label>
+
+                <label>
+                  <span className="mb-1 flex items-center justify-between gap-2 text-xs font-medium text-slate-600">
+                    <span>Client Name</span>
+
+                    {pricingClientDirectoryLoading && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-normal text-slate-400">
+                        <Spinner dark />
+                        Updating list
+                      </span>
+                    )}
+                  </span>
+
+                  <select
+                    value={priceForm.client}
+                    onChange={(e) =>
+                      setPriceForm((p) => ({
+                        ...p,
+                        client: e.target.value,
+                        customClientName:
+                          e.target.value === CUSTOM_CLIENT_VALUE
+                            ? p.customClientName
+                            : "",
+                      }))
+                    }
+                    disabled={!priceForm.clientCode}
+                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100"
+                  >
+                    <option value="">
+                      {priceForm.clientCode
+                        ? `DEFAULT — All ${priceForm.clientCode} Clients`
+                        : "Select Client Code first"}
+                    </option>
+
+                    {pricingClientOptions.map((client) => (
+                      <option
+                        key={client.toUpperCase()}
+                        value={client}
+                      >
+                        {client}
+                      </option>
+                    ))}
+
+                    {priceForm.clientCode && (
+                      <option value={CUSTOM_CLIENT_VALUE}>
+                        + Other / Enter Client Manually
+                      </option>
+                    )}
+                  </select>
+
+                  <div className="mt-1 text-[11px] leading-4 text-slate-500">
+                    Names are collected automatically from existing reports.
+                    DEFAULT keeps a fallback price for the whole Client Code.
+                  </div>
+                </label>
+
+                {priceForm.client === CUSTOM_CLIENT_VALUE && (
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">
+                      Other Client Name
+                    </span>
+
+                    <input
+                      autoFocus
+                      value={priceForm.customClientName}
+                      onChange={(e) =>
+                        setPriceForm((p) => ({
+                          ...p,
+                          customClientName: e.target.value,
+                        }))
+                      }
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                      placeholder="Enter exact client name"
+                    />
+
+                    <div className="mt-1 text-[11px] leading-4 text-slate-500">
+                      It will be saved to the client-name directory when this
+                      pricing rule is created.
+                    </div>
+                  </label>
+                )}
 
                 <label>
                   <span className="mb-1 block text-xs font-medium text-slate-600">
@@ -4237,10 +4619,11 @@ export default function BillingDashboard() {
                 </Button>
               </div>
 
-              <div className="max-h-[560px] overflow-auto">
-                <table className="w-full min-w-[980px] text-sm">
-                  <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1120px] text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                     <tr>
+                      <th className="px-4 py-3">Client Code</th>
                       <th className="px-4 py-3">Client</th>
                       <th className="px-4 py-3">Department</th>
                       <th className="px-4 py-3">Form</th>
@@ -4260,6 +4643,19 @@ export default function BillingDashboard() {
                         <td className="px-4 py-3 font-medium">
                           {rule.clientCode}
                         </td>
+
+                        <td className="px-4 py-3">
+                          {rule.client ? (
+                            <span className="font-medium text-slate-800">
+                              {rule.client}
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+                              DEFAULT
+                            </span>
+                          )}
+                        </td>
+
                         <td className="px-4 py-3">{nice(rule.department)}</td>
                         <td className="px-4 py-3">{nice(rule.formType)}</td>
                         <td className="px-4 py-3">
@@ -4353,7 +4749,7 @@ export default function BillingDashboard() {
                     {!pricesLoading && visiblePrices.length === 0 && (
                       <tr>
                         <td
-                          colSpan={10}
+                          colSpan={11}
                           className="px-4 py-12 text-center text-sm text-slate-500"
                         >
                           No pricing rules found.
@@ -4533,14 +4929,10 @@ export default function BillingDashboard() {
                             <tr>
                               <th className="px-4 py-3">Description</th>
                               <th className="px-4 py-3 text-right">Qty</th>
-                              <th className="px-4 py-3 text-right">
-                                Unit Price
-                              </th>
+                              <th className="px-4 py-3 text-right">Unit Price</th>
                               <th className="px-4 py-3 text-right">Amount</th>
                               {invoiceDetail.status === "DRAFT" && isManager && (
-                                <th className="px-4 py-3 text-right">
-                                  Action
-                                </th>
+                                <th className="px-4 py-3 text-right">Action</th>
                               )}
                             </tr>
                           </thead>
@@ -4551,15 +4943,12 @@ export default function BillingDashboard() {
                                 <td className="px-4 py-3 font-medium text-slate-900">
                                   {line.description}
                                 </td>
-
                                 <td className="px-4 py-3 text-right">
                                   {line.quantity}
                                 </td>
-
                                 <td className="px-4 py-3 text-right">
                                   {money(line.unitPrice)}
                                 </td>
-
                                 <td className="px-4 py-3 text-right font-semibold">
                                   {money(line.amount)}
                                 </td>
@@ -4570,24 +4959,18 @@ export default function BillingDashboard() {
                                       <div className="flex justify-end gap-1">
                                         <button
                                           type="button"
-                                          onClick={() =>
-                                            openEditManualLine(line)
-                                          }
+                                          onClick={() => openEditManualLine(line)}
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
                                           title="Edit invoice item"
-                                          aria-label="Edit invoice item"
                                         >
                                           <Pencil className="h-3.5 w-3.5" />
                                         </button>
 
                                         <button
                                           type="button"
-                                          onClick={() =>
-                                            openDeleteManualLine(line)
-                                          }
+                                          onClick={() => openDeleteManualLine(line)}
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
                                           title="Delete invoice item"
-                                          aria-label="Delete invoice item"
                                         >
                                           <Trash2 className="h-3.5 w-3.5" />
                                         </button>
@@ -4618,301 +5001,290 @@ export default function BillingDashboard() {
                     </>
                   ) : (
                     <>
-                      <div className="mb-3 flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-slate-900">
-                            Invoice Lines
-                          </h3>
-                          <p className="text-xs text-slate-500">
-                            {visibleInvoiceLines.length} charge
-                            {visibleInvoiceLines.length === 1 ? "" : "s"}
-                          </p>
-                        </div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        Invoice Lines
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {visibleInvoiceLines.length} charge
+                        {visibleInvoiceLines.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
 
-                        {unresolvedInSelected > 0 && (
-                          <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                            <AlertTriangle className="h-4 w-4" />
-                            {unresolvedInSelected} pricing issue
-                            {unresolvedInSelected === 1 ? "" : "s"}
-                          </div>
-                        )}
+                    {unresolvedInSelected > 0 && (
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                        <AlertTriangle className="h-4 w-4" />
+                        {unresolvedInSelected} pricing issue
+                        {unresolvedInSelected === 1 ? "" : "s"}
                       </div>
+                    )}
+                  </div>
 
-                      <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
-                        <table className="w-full min-w-[820px] text-sm">
-                          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
-                            <tr>
-                              <th className="px-4 py-3">Form #</th>
-                              <th className="px-4 py-3">Report #</th>
-                              <th className="px-4 py-3">Type</th>
-                              <th className="px-4 py-3">Test</th>
-                              <th className="px-4 py-3 text-right">
-                                Unit Price
-                              </th>
-                              <th className="px-4 py-3 text-right">Amount</th>
-                              <th className="px-4 py-3">Pricing</th>
-                              {invoiceDetail.status === "DRAFT" && isManager && (
-                                <th className="px-4 py-3 text-right">
-                                  Action
-                                </th>
-                              )}
-                            </tr>
-                          </thead>
+                  <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[820px] text-sm">
+                      <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                        <tr>
+                          <th className="px-4 py-3">Form #</th>
+                          <th className="px-4 py-3">Report #</th>
+                          <th className="px-4 py-3">Type</th>
+                          <th className="px-4 py-3">Test</th>
+                          <th className="px-4 py-3 text-right">Unit Price</th>
+                          <th className="px-4 py-3 text-right">Amount</th>
+                          <th className="px-4 py-3">Pricing</th>
+                          {invoiceDetail.status === "DRAFT" && isManager && (
+                            <th className="px-4 py-3 text-right">Action</th>
+                          )}
+                        </tr>
+                      </thead>
 
-                          <tbody className="divide-y divide-slate-100">
-                            {visibleInvoiceLines.map((line, lineIndex) => {
-                              const sourceKey =
-                                `${line.sourceType}:${line.sourceId}`;
+                      <tbody className="divide-y divide-slate-100">
+                        {visibleInvoiceLines.map((line, lineIndex) => {
+                          const sourceKey =
+                            `${line.sourceType}:${line.sourceId}`;
 
-                              const firstSourceLineIndex =
-                                visibleInvoiceLines.findIndex(
-                                  (candidate) =>
-                                    `${candidate.sourceType}:${candidate.sourceId}` ===
-                                    sourceKey,
-                                );
+                          const firstSourceLineIndex =
+                            visibleInvoiceLines.findIndex(
+                              (candidate) =>
+                                `${candidate.sourceType}:${candidate.sourceId}` ===
+                                sourceKey,
+                            );
 
-                              const isFirstSourceLine =
-                                firstSourceLineIndex === lineIndex;
+                          const isFirstSourceLine =
+                            firstSourceLineIndex === lineIndex;
 
-                              return (
-                                <tr key={line.id} className="align-top">
-                                  <td className="px-4 py-3 font-medium">
-                                    {line.formNumber}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    {line.reportNumber}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    {nice(line.formType)}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div>
-                                      {line.testLabel || nice(line.testKey)}
+                          return (
+                            <tr key={line.id} className="align-top">
+                              <td className="px-4 py-3 font-medium">
+                                {line.formNumber}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                {line.reportNumber}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                {nice(line.formType)}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <div>
+                                  {line.testLabel || nice(line.testKey)}
+                                </div>
+
+                                {(line.itemLabel || line.itemKey) && (
+                                  <div className="mt-0.5 text-xs font-medium text-slate-600">
+                                    {line.itemLabel || nice(line.itemKey!)}
+                                  </div>
+                                )}
+
+                                {!line.itemKey &&
+                                  line.activeCount != null && (
+                                    <div className="text-xs text-slate-500">
+                                      Legacy: {line.activeCount} active
+                                      {line.activeCount === 1 ? "" : "s"}
                                     </div>
+                                  )}
+                              </td>
 
-                                    {(line.itemLabel || line.itemKey) && (
-                                      <div className="mt-0.5 text-xs font-medium text-slate-600">
-                                        {line.itemLabel || nice(line.itemKey!)}
-                                      </div>
-                                    )}
+                              <td className="px-4 py-3 text-right">
+                                {line.unitPrice == null
+                                  ? "-"
+                                  : money(line.unitPrice)}
+                              </td>
 
-                                    {!line.itemKey &&
-                                      line.activeCount != null && (
-                                        <div className="text-xs text-slate-500">
-                                          Legacy: {line.activeCount} active
-                                          {line.activeCount === 1 ? "" : "s"}
-                                        </div>
-                                      )}
-                                  </td>
+                              <td className="px-4 py-3 text-right font-medium">
+                                {line.amount == null
+                                  ? "-"
+                                  : money(line.amount)}
+                              </td>
+
+                              <td className="px-4 py-3 text-xs">
+                                {line.pricingIssue ? (
+                                  <span className="text-amber-800">
+                                    {line.pricingIssue}
+                                  </span>
+                                ) : line.manualOverride ? (
+                                  <span
+                                    className="text-blue-700"
+                                    title={
+                                      line.manualOverrideReason || undefined
+                                    }
+                                  >
+                                    Manual Override
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-700">
+                                    Rule
+                                  </span>
+                                )}
+                              </td>
+
+                              {invoiceDetail.status === "DRAFT" &&
+                                isManager && (
                                   <td className="px-4 py-3 text-right">
-                                    {line.unitPrice == null
-                                      ? "-"
-                                      : money(line.unitPrice)}
-                                  </td>
-                                  <td className="px-4 py-3 text-right font-medium">
-                                    {line.amount == null
-                                      ? "-"
-                                      : money(line.amount)}
-                                  </td>
-                                  <td className="px-4 py-3 text-xs">
-                                    {line.pricingIssue ? (
-                                      <span className="text-amber-800">
-                                        {line.pricingIssue}
-                                      </span>
-                                    ) : line.manualOverride ? (
-                                      <span
-                                        className="text-blue-700"
-                                        title={
-                                          line.manualOverrideReason || undefined
+                                    <div className="flex justify-end gap-2">
+                                      <Button
+                                        variant="secondary"
+                                        disabled={
+                                          working === `LINE:${line.id}`
                                         }
+                                        onClick={() => overrideLine(line)}
                                       >
-                                        Manual Override
-                                      </span>
-                                    ) : (
-                                      <span className="text-emerald-700">
-                                        Rule
-                                      </span>
-                                    )}
+                                        {working === `LINE:${line.id}` ? (
+                                          <Spinner dark />
+                                        ) : null}
+                                        Override
+                                      </Button>
+
+                                      {isFirstSourceLine && (
+                                        <Button
+                                          variant="secondary"
+                                          onClick={() =>
+                                            openAddExtraCharge({
+                                              sourceType: line.sourceType,
+                                              sourceId: line.sourceId,
+                                              formNumber: line.formNumber,
+                                              reportNumber: line.reportNumber,
+                                            })
+                                          }
+                                          disabled={!!working}
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                          Additional Charge
+                                        </Button>
+                                      )}
+                                    </div>
                                   </td>
+                                )}
+                            </tr>
+                          );
+                        })}
 
-                                  {invoiceDetail.status === "DRAFT" &&
-                                    isManager && (
-                                      <td className="px-4 py-3 text-right">
-                                        <div className="flex justify-end gap-2">
-                                          <Button
-                                            variant="secondary"
-                                            disabled={
-                                              working === `LINE:${line.id}`
-                                            }
-                                            onClick={() => overrideLine(line)}
-                                          >
-                                            {working === `LINE:${line.id}` ? (
-                                              <Spinner dark />
-                                            ) : null}
-                                            Override
-                                          </Button>
+                        {visibleInvoiceLines.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={
+                                invoiceDetail.status === "DRAFT" && isManager
+                                  ? 8
+                                  : 7
+                              }
+                              className="px-4 py-10 text-center text-sm text-slate-500"
+                            >
+                              No invoice lines match the common filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
 
-                                          {isFirstSourceLine && (
-                                            <Button
-                                              variant="secondary"
-                                              onClick={() =>
-                                                openAddExtraCharge({
-                                                  sourceType: line.sourceType,
-                                                  sourceId: line.sourceId,
-                                                  formNumber: line.formNumber,
-                                                  reportNumber: line.reportNumber,
-                                                })
-                                              }
-                                              disabled={!!working}
-                                            >
-                                              <Plus className="h-4 w-4" />
-                                              Additional Charge
-                                            </Button>
+                  <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          Additional Charges by Form
+                        </h3>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Add named report-level charges such as rush processing or special handling.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] text-sm">
+                        <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3">Form #</th>
+                            <th className="px-4 py-3">Report #</th>
+                            <th className="px-4 py-3">Additional Charges</th>
+                            <th className="px-4 py-3 text-right">Extra Total</th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                          {invoiceSourceRows
+                            .filter((row) => row.charges.length > 0)
+                            .map((row) => {
+                            const extraTotal = row.charges.reduce(
+                              (sum, charge) => sum + Number(charge.amount || 0),
+                              0,
+                            );
+
+                            return (
+                              <tr key={row.key} className="align-top">
+                                <td className="px-4 py-3 font-medium text-slate-900">
+                                  {row.formNumber}
+                                </td>
+                                <td className="px-4 py-3 text-slate-600">
+                                  {row.reportNumber}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {row.charges.length ? (
+                                    <div className="space-y-2">
+                                      {row.charges.map((charge) => (
+                                        <div
+                                          key={charge.id}
+                                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                        >
+                                          <div className="min-w-0">
+                                            <div className="truncate text-sm font-medium text-slate-800">
+                                              {charge.name}
+                                            </div>
+                                            <div className="text-xs text-slate-500">
+                                              {money(charge.amount)}
+                                            </div>
+                                          </div>
+
+                                          {invoiceDetail.status === "DRAFT" && isManager && (
+                                            <div className="flex shrink-0 gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => openEditExtraCharge(charge)}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                                                title="Edit additional charge"
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => openDeleteExtraCharge(charge)}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                                                title="Delete additional charge"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
                                           )}
                                         </div>
-                                      </td>
-                                    )}
-                                </tr>
-                              );
-                            })}
-
-                            {visibleInvoiceLines.length === 0 && (
-                              <tr>
-                                <td
-                                  colSpan={
-                                    invoiceDetail.status === "DRAFT" && isManager
-                                      ? 8
-                                      : 7
-                                  }
-                                  className="px-4 py-10 text-center text-sm text-slate-500"
-                                >
-                                  No invoice lines match the common filters.
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                                  {money(extraTotal)}
                                 </td>
                               </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
+                            );
+                          })}
 
-                      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-                          <div>
-                            <h3 className="text-sm font-semibold text-slate-900">
-                              Additional Charges by Form
-                            </h3>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              Named report-level charges such as rush processing
-                              or special handling.
-                            </p>
-                          </div>
-                        </div>
+                          {invoiceSourceRows.every(
+                            (row) => row.charges.length === 0,
+                          ) && (
+                            <tr>
+                              <td
+                                colSpan={4}
+                                className="px-4 py-8 text-center text-sm text-slate-500"
+                              >
+                                No additional charges added.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-sm">
-                            <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
-                              <tr>
-                                <th className="px-4 py-3">Form #</th>
-                                <th className="px-4 py-3">Report #</th>
-                                <th className="px-4 py-3">
-                                  Additional Charges
-                                </th>
-                                <th className="px-4 py-3 text-right">
-                                  Extra Total
-                                </th>
-                              </tr>
-                            </thead>
-
-                            <tbody className="divide-y divide-slate-100">
-                              {invoiceSourceRows
-                                .filter((row) => row.charges.length > 0)
-                                .map((row) => {
-                                  const extraTotal = row.charges.reduce(
-                                    (sum, charge) =>
-                                      sum + Number(charge.amount || 0),
-                                    0,
-                                  );
-
-                                  return (
-                                    <tr key={row.key} className="align-top">
-                                      <td className="px-4 py-3 font-medium text-slate-900">
-                                        {row.formNumber}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-600">
-                                        {row.reportNumber}
-                                      </td>
-                                      <td className="px-4 py-3">
-                                        <div className="space-y-2">
-                                          {row.charges.map((charge) => (
-                                            <div
-                                              key={charge.id}
-                                              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                                            >
-                                              <div className="min-w-0">
-                                                <div className="truncate text-sm font-medium text-slate-800">
-                                                  {charge.name}
-                                                </div>
-                                                <div className="text-xs text-slate-500">
-                                                  {money(charge.amount)}
-                                                </div>
-                                              </div>
-
-                                              {invoiceDetail.status ===
-                                                "DRAFT" &&
-                                                isManager && (
-                                                  <div className="flex shrink-0 gap-1">
-                                                    <button
-                                                      type="button"
-                                                      onClick={() =>
-                                                        openEditExtraCharge(
-                                                          charge,
-                                                        )
-                                                      }
-                                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-                                                      title="Edit additional charge"
-                                                    >
-                                                      <Pencil className="h-3.5 w-3.5" />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() =>
-                                                        openDeleteExtraCharge(
-                                                          charge,
-                                                        )
-                                                      }
-                                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                                                      title="Delete additional charge"
-                                                    >
-                                                      <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
-                                                  </div>
-                                                )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </td>
-                                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                                        {money(extraTotal)}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-
-                              {invoiceSourceRows.every(
-                                (row) => row.charges.length === 0,
-                              ) && (
-                                <tr>
-                                  <td
-                                    colSpan={4}
-                                    className="px-4 py-8 text-center text-sm text-slate-500"
-                                  >
-                                    No additional charges added.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
                     </>
                   )}
 
@@ -5770,9 +6142,7 @@ export default function BillingDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  if (!working) {
-                    setManualInvoiceDialog(null);
-                  }
+                  if (!working) setManualInvoiceDialog(null);
                 }}
                 disabled={!!working}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
@@ -5802,16 +6172,13 @@ export default function BillingDashboard() {
                           clientCode: e.target.value,
                         })
                       }
-                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
                     >
                       <option value="">Select Client</option>
                       {billingClients
                         .filter((client) => client.active !== false)
                         .map((client) => (
-                          <option
-                            key={client.clientCode}
-                            value={client.clientCode}
-                          >
+                          <option key={client.clientCode} value={client.clientCode}>
                             {client.clientCode}
                             {client.name ? ` — ${client.name}` : ""}
                           </option>
@@ -5838,8 +6205,8 @@ export default function BillingDashboard() {
                           description: e.target.value,
                         })
                       }
+                      className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
                       placeholder="Example: Stability consultation service"
-                      className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </label>
 
@@ -5859,7 +6226,7 @@ export default function BillingDashboard() {
                             quantity: e.target.value,
                           })
                         }
-                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
                       />
                     </label>
 
@@ -5878,28 +6245,10 @@ export default function BillingDashboard() {
                             unitPrice: e.target.value,
                           })
                         }
+                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
                         placeholder="0.00"
-                        className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-medium text-slate-500">
-                      Line Amount
-                    </div>
-                    <div className="mt-1 text-xl font-bold text-slate-900">
-                      {money(
-                        Math.max(
-                          0,
-                          Number(manualInvoiceDialog.quantity || 0),
-                        ) *
-                          Math.max(
-                            0,
-                            Number(manualInvoiceDialog.unitPrice || 0),
-                          ),
-                      )}
-                    </div>
                   </div>
                 </>
               )}
@@ -5913,9 +6262,6 @@ export default function BillingDashboard() {
                     {manualInvoiceDialog.line.quantity} ×{" "}
                     {money(manualInvoiceDialog.line.unitPrice)} ={" "}
                     {money(manualInvoiceDialog.line.amount)}
-                  </div>
-                  <div className="mt-3 text-xs text-rose-700">
-                    Delete this item from the draft invoice?
                   </div>
                 </div>
               )}

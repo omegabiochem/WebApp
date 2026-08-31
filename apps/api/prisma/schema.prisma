@@ -1309,8 +1309,8 @@ enum BillingInvoiceKind {
 }
 
 model BillingPriceRule {
-  id String @id @default(cuid())
-
+  id         String  @id @default(cuid())
+  client     String?
   clientCode String
 
   department BillingDepartment
@@ -1393,10 +1393,13 @@ model BillingPriceRule {
   @@index([clientCode])
   @@index([clientCode, formType])
   @@index([clientCode, formType, testKey])
-  // New individual-item lookup.
   @@index([clientCode, formType, testKey, itemKey])
-  // Keep for old active-count rules.
   @@index([clientCode, formType, testKey, activeCount])
+  // Client-specific pricing lookup
+  @@index([clientCode, client])
+  @@index([clientCode, client, formType])
+  @@index([clientCode, client, formType, testKey])
+  @@index([clientCode, client, formType, testKey, itemKey])
   @@index([effectiveFrom])
   @@index([active])
 }
@@ -1594,8 +1597,8 @@ model BillingInvoiceLine {
   formNumber   String
   reportNumber String
 
-  clientCode String
-
+  clientCode           String
+  client               String?
   resultSentToClientAt DateTime?
   billingReadyAt       DateTime
 
@@ -1668,7 +1671,7 @@ model BillingInvoiceLine {
   @@index([invoiceId])
   @@index([sourceType, sourceId])
   @@index([chargeKey])
-  @@index([clientCode])
+  @@index([clientCode, client])
   @@index([formType])
   @@index([billingReadyAt])
   @@index([testKey, itemKey])
@@ -1709,6 +1712,42 @@ model BillingInvoiceEmail {
 model BillingInvoiceSequence {
   year       Int @id
   lastNumber Int @default(0)
+}
+
+model ClientNameDirectory {
+  id String @id @default(cuid())
+
+  // Parent client/account code.
+  // Example: JJL
+  clientCode String
+
+  // Actual client name appearing on reports.
+  // Example: Johnson Medical
+  name String
+
+  // Used for duplicate prevention.
+  // Example: JOHNSON MEDICAL
+  normalizedName String
+
+  active Boolean @default(true)
+
+  // AUTO   = discovered from reports
+  // MANUAL = added by Admin/SystemAdmin
+  source String @default("AUTO")
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientCode, normalizedName])
+  @@index([clientCode])
+  @@index([clientCode, active])
+  @@index([clientCode, name])
 }
 
 model ClientDetails {

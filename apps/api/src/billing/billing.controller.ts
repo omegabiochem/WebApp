@@ -67,16 +67,36 @@ export class BillingController {
      PRICING
   ========================================================= */
 
+  /*
+   * Client-name dropdown.
+   *
+   * The service first auto-discovers names from existing
+   * Micro/Chemistry reports for this clientCode and then
+   * returns the centralized directory.
+   */
+  @Get('client-names')
+  listClientNames(
+    @Req() req: Request,
+    @Query('clientCode') clientCode: string,
+  ) {
+    return this.pricing.listClientNames(
+      (req as any).user,
+      clientCode,
+    );
+  }
+
   @Get('prices')
   listPrices(
     @Req() req: Request,
     @Query('clientCode') clientCode?: string,
+    @Query('client') client?: string,
     @Query('department') department?: BillingDepartment,
     @Query('formType') formType?: FormType,
     @Query('active') active?: string,
   ) {
     return this.pricing.list((req as any).user, {
       clientCode,
+      client,
       department,
       formType,
       active,
