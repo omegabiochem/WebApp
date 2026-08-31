@@ -134,6 +134,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tmy_spec',
     'pathogens',
     'organisms',
+    'comments'
   ],
 };
 
@@ -1457,6 +1458,72 @@ export class ReportsService {
     return response;
   }
 
+  private async resolveCreateClientCode(
+    user: {
+      userId: string;
+      role: UserRole;
+      clientCode?: string;
+    },
+    body: any,
+  ) {
+    /*
+     * Normal CLIENT creation.
+     *
+     * Never trust a client-supplied createForClientCode.
+     */
+    if (user.role === 'CLIENT') {
+      const clientCode = String(user.clientCode ?? '')
+        .trim()
+        .toUpperCase();
+
+      if (!clientCode) {
+        throw new BadRequestException(
+          'Your account is not assigned to a client code',
+        );
+      }
+
+      return clientCode;
+    }
+
+    /*
+     * Internal creation on behalf of a client.
+     */
+    if (user.role === 'ADMIN' || user.role === 'SYSTEMADMIN') {
+      const clientCode = String(body?.createForClientCode ?? '')
+        .trim()
+        .toUpperCase();
+
+      if (!clientCode) {
+        throw new BadRequestException(
+          'createForClientCode is required when creating a form for a client',
+        );
+      }
+
+      const client = await this.prisma.clientDetails.findUnique({
+        where: {
+          clientCode,
+        },
+        select: {
+          clientCode: true,
+          name: true,
+          active: true,
+        },
+      });
+
+      if (!client) {
+        throw new BadRequestException(`Client ${clientCode} does not exist`);
+      }
+
+      if (!client.active) {
+        throw new BadRequestException(`Client ${clientCode} is inactive`);
+      }
+
+      return client.clientCode;
+    }
+
+    throw new ForbiddenException('Not allowed to create report');
+  }
+
   async createDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
@@ -1480,12 +1547,7 @@ export class ReportsService {
     if (!relationKey)
       throw new BadRequestException(`Unsupported formType: ${formType}`);
 
-    const clientCode = user.clientCode ?? body.clientCode;
-    if (!clientCode) {
-      throw new BadRequestException(
-        'Client code is required to create a report',
-      );
-    }
+    const clientCode = await this.resolveCreateClientCode(user, body);
 
     function yyyy(d: Date = new Date()): string {
       const yyyy = String(d.getFullYear());
@@ -1512,7 +1574,12 @@ export class ReportsService {
     const prefix = getDeptLetterForForm(formType); // "M" for MICRO_*
 
     // remove non-details keys from body that would collide with Report fields
-    const { formType: _ft, clientCode: _cc, ...rest } = body;
+    const {
+      formType: _ft,
+      clientCode: _cc,
+      createForClientCode: _createForClientCode,
+      ...rest
+    } = body;
 
     // const MICRO_FOOTER_REV_NO = 'Rev-02';
     // const MICRO_FOOTER_DATE_EFFECTIVE = new Date('2026-06-03T00:00:00.000Z');
@@ -1760,19 +1827,89 @@ export class ReportsService {
       throw new BadRequestException('expectedVersion is required');
     }
 
-    // field-level permissions (ignore 'status' here)
+    // ---------------------------------------------------------
+    // FIELD / DRAFT PERMISSIONS
+    // ---------------------------------------------------------
+
     const fieldKeys = Object.keys(patch).filter((f) => f !== 'status');
 
-    // Clients can edit any field while in DRAFT
-    const clientMayEditDraft =
-      user.role === 'CLIENT' &&
-      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
-    const SystemAdminMayEditDraft =
-      user.role === 'SYSTEMADMIN' &&
-      (current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW');
+    const isDraftLike =
+      current.status === 'DRAFT' || current.status === 'UNDER_DRAFT_REVIEW';
 
-    if (!clientMayEditDraft && !SystemAdminMayEditDraft) {
+    const clientMayEditDraft = user.role === 'CLIENT' && isDraftLike;
+
+    /*
+     * ---------------------------------------------------------
+     * INTERNAL "CREATE FOR CLIENT" DRAFT
+     * ---------------------------------------------------------
+     *
+     * When ADMIN / SYSTEMADMIN creates the form, createDraft()
+     * already writes a FORM_NUMBER_ASSIGNED audit record with
+     * the real internal role.
+     *
+     * Use that audit record to identify an internally-created
+     * client submission instead of relying only on createdBy.
+     */
+    let internallyCreatedClientDraft = false;
+
+    if (isDraftLike && (user.role === 'ADMIN' || user.role === 'SYSTEMADMIN')) {
+      const creationAudit = await this.prisma.auditTrail.findFirst({
+        where: {
+          entityId: current.id,
+          action: 'FORM_NUMBER_ASSIGNED',
+          role: {
+            in: ['ADMIN', 'SYSTEMADMIN'],
+          },
+        },
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+        },
+      });
+
+      internallyCreatedClientDraft = !!creationAudit;
+    }
+
+    /*
+     * ADMIN / SYSTEMADMIN may act with CLIENT submission
+     * permissions only for a draft originally created internally.
+     */
+    const internalCreatorMayActAsClient =
+      (user.role === 'ADMIN' || user.role === 'SYSTEMADMIN') &&
+      isDraftLike &&
+      internallyCreatedClientDraft;
+
+    /*
+     * Preserve your existing SYSTEMADMIN behavior.
+     */
+    const systemAdminMayEditDraft = user.role === 'SYSTEMADMIN' && isDraftLike;
+
+    /*
+     * Permission role is ONLY for the workflow permission check.
+     *
+     * Audit records still use the real authenticated role:
+     * ADMIN / SYSTEMADMIN.
+     */
+    const permissionRole: UserRole = internalCreatorMayActAsClient
+      ? 'CLIENT'
+      : user.role;
+
+    /*
+     * Internal create-for-client drafts must only accept
+     * CLIENT submission fields.
+     */
+    if (internalCreatorMayActAsClient) {
+      const bad = allowedForRole('CLIENT', fieldKeys);
+
+      if (bad.length) {
+        throw new ForbiddenException(
+          `You cannot edit client submission fields: ${bad.join(', ')}`,
+        );
+      }
+    } else if (!clientMayEditDraft && !systemAdminMayEditDraft) {
       const bad = allowedForRole(user.role, fieldKeys);
+
       if (bad.length) {
         throw new ForbiddenException(`You cannot edit: ${bad.join(', ')}`);
       }
@@ -1782,12 +1919,14 @@ export class ReportsService {
 
     if (fieldKeys.length > 0) {
       const transition = transitions[current.status];
+
       if (!transition) {
         throw new BadRequestException(
           `No transition config for status: ${current.status} (formType: ${current.formType})`,
         );
       }
-      if (!transition.canEdit.includes(user.role)) {
+
+      if (!transition.canEdit.includes(permissionRole)) {
         throw new ForbiddenException(
           `Role ${user.role} cannot edit report in status ${current.status}`,
         );
@@ -1894,7 +2033,7 @@ export class ReportsService {
         }
       } else {
         // ✅ normal workflow path
-        if (!trans.canSet.includes(user.role)) {
+        if (!trans.canSet.includes(permissionRole)) {
           throw new ForbiddenException(
             `Role ${user.role} cannot change status from ${current.status}`,
           );
@@ -2498,7 +2637,7 @@ export class ReportsService {
 
     await this.dashboardSync.syncMicroReportAndVerify(id);
 
-        // ✅ notify websocket
+    // ✅ notify websocket
     this.reportsGateway.notifyStatusChange(id, target);
 
     if (prevStatus !== target) {

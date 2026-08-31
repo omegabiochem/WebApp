@@ -327,12 +327,32 @@ export default function MicroMixWaterReportForm({
 
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
   // const initialData = JSON.stringify(report || {});
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
+
+  const isInternalCreateForClient =
+    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    !!createForClientCode &&
+    (!report?.id || status === "DRAFT" || status === "UNDER_DRAFT_REVIEW");
+
+  const effectiveFormRole: Role | undefined = isInternalCreateForClient
+    ? "CLIENT"
+    : role;
 
   const [reportNumber, setReportNumber] = useState<string>(
     report?.reportNumber || "",
@@ -452,10 +472,13 @@ export default function MicroMixWaterReportForm({
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
 
   // ---- local state (prefill from report if editing) ----
-  // const [client, setClient] = useState(initialClientValue);
   const [client, setClient] = useState(
     report?.client ??
-      (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+      (isInternalCreateForClient
+        ? createForClientName || createForClientCode
+        : role === "CLIENT"
+          ? (user?.clientCode ?? "")
+          : ""),
   );
   const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
@@ -726,10 +749,6 @@ export default function MicroMixWaterReportForm({
   >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
-
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !embedded && !!state?.correctionLaunch;
 
@@ -1034,20 +1053,22 @@ export default function MicroMixWaterReportForm({
         `pathogens:${p.key}:result`,
         "pathogens",
       );
-      if (resultFieldLocked) return true;
+
+      if (resultFieldLocked) {
+        return true;
+      }
     }
 
-    if (role === "MICRO" || role === "MC") {
-      // MICRO can edit only in FINAL phase
+    if (effectiveFormRole === "MICRO" || effectiveFormRole === "MC") {
       return phase !== "FINAL";
     }
 
-    if (role === "ADMIN" || role === "SYSTEMADMIN") {
-      // ADMIN and SYSTEMADMIN can always edit
+    if (effectiveFormRole === "ADMIN" || effectiveFormRole === "SYSTEMADMIN") {
       return false;
     }
 
-    // everyone else disabled
+    // CLIENT selects specification,
+    // not laboratory result.
     return true;
   }
 
@@ -1160,7 +1181,7 @@ export default function MicroMixWaterReportForm({
 
   function validatePathogenRows(
     rows: PathRow[],
-    who: Role | undefined = role,
+    who: Role | undefined = effectiveFormRole,
     phase: MicroPhase | undefined = deriveMicroPhaseFromStatus(status),
   ) {
     const rowErrs: PathogenRowError[] = rows.map(() => ({}));
@@ -1206,7 +1227,7 @@ export default function MicroMixWaterReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Clear the row error if we unchecked (no result required anymore)
@@ -1224,7 +1245,7 @@ export default function MicroMixWaterReportForm({
       if (!row.checked) return prev; // ignore if organism not selected
       const copy = [...prev];
       copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Clear the row error once result is set
@@ -1241,7 +1262,7 @@ export default function MicroMixWaterReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Keep/restore the row error because a checked row without result is invalid
@@ -1259,9 +1280,27 @@ export default function MicroMixWaterReportForm({
   function setPathogenSpec(idx: number, value: PathogenSpec) {
     setPathogens((prev) => {
       const copy = [...prev];
-      copy[idx] = { ...copy[idx], spec: value };
+      copy[idx] = {
+        ...copy[idx],
+        spec: value,
+      };
       return copy;
     });
+
+    // ✅ Clear only the Specification validation error
+    // Preserve any Result validation error for the same row.
+    setPathogenRowErrors((prev) => {
+      const copy = [...prev];
+
+      copy[idx] = {
+        ...(copy[idx] ?? {}),
+        spec: undefined,
+      };
+
+      return copy;
+    });
+
+    clearError("pathogens");
     markDirty();
   }
 
@@ -1298,11 +1337,10 @@ export default function MicroMixWaterReportForm({
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    // normal permission check first
-    const baseLocked = !canEdit(role, f, status as ReportStatus);
+    const baseLocked = !canEdit(effectiveFormRole, f, status as ReportStatus);
+
     if (baseLocked) return true;
 
-    // in correction mode, only requested fields are editable
     if (correctionModeActive) {
       return !isFieldRequestedForCorrection(f);
     }
@@ -1311,8 +1349,8 @@ export default function MicroMixWaterReportForm({
   };
 
   const { errors, clearError, validateAndSetErrors } =
-    useMicroMixWaterReportValidation(role, {
-      status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
+    useMicroMixWaterReportValidation(effectiveFormRole, {
+      status: status as ReportStatus,
     });
 
   function hydrateForm(data: Partial<MicroMixWaterReportFormValues> | any) {
@@ -1446,7 +1484,7 @@ export default function MicroMixWaterReportForm({
         const values = makeValues();
 
         validateAndSetErrors(values);
-        validatePathogenRows(values.pathogens, role, phase);
+        validatePathogenRows(values.pathogens, effectiveFormRole, phase);
 
         const sharedSpecUnit: Unit =
           tbcUnit === "CFU / device" || tmyUnit === "CFU / device"
@@ -1489,10 +1527,10 @@ export default function MicroMixWaterReportForm({
 
         const PHASE_WRITE_GUARD = (fields: string[]) => {
           if (
-            role === "MICRO" ||
-            role === "MC" ||
-            role === "ADMIN" ||
-            role === "SYSTEMADMIN"
+            effectiveFormRole === "MICRO" ||
+            effectiveFormRole === "MC" ||
+            effectiveFormRole === "ADMIN" ||
+            effectiveFormRole === "SYSTEMADMIN"
           ) {
             if (phase === "PRELIM") {
               // drop FINAL-only fields during PRELIM
@@ -1577,7 +1615,7 @@ export default function MicroMixWaterReportForm({
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : PHASE_WRITE_GUARD(allowedBase);
@@ -1615,6 +1653,10 @@ export default function MicroMixWaterReportForm({
         // New reports always start as DRAFT
         if (!reportId) {
           payload.status = "DRAFT";
+        }
+
+        if (!reportId && isInternalCreateForClient) {
+          payload.createForClientCode = createForClientCode;
         }
 
         try {
@@ -1681,6 +1723,12 @@ export default function MicroMixWaterReportForm({
               body: JSON.stringify({
                 ...payload,
                 formType: "MICRO_MIX_WATER",
+
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
               }),
             });
           }
@@ -1747,7 +1795,11 @@ export default function MicroMixWaterReportForm({
       if (!centralApproval) {
         const values = makeValues();
         okFields = validateAndSetErrors(values);
-        okRows = validatePathogenRows(values.pathogens, role, phase);
+        okRows = validatePathogenRows(
+          values.pathogens,
+          effectiveFormRole,
+          phase,
+        );
       }
 
       const requiresFullValidation =
@@ -2207,9 +2259,9 @@ export default function MicroMixWaterReportForm({
 
   const createdByClientCode = String(
     report?.clientCode ||
+      createForClientCode ||
       (role === "CLIENT" ? user?.clientCode : "") ||
       String(report?.formNumber || "").split("-")[0] ||
-      client ||
       "",
   )
     .trim()
@@ -2438,7 +2490,7 @@ export default function MicroMixWaterReportForm({
 
     const fieldForPermission = baseField ?? fieldKey.split(":")[0];
     const baseLocked = !canEdit(
-      role,
+      effectiveFormRole,
       fieldForPermission,
       status as ReportStatus,
     );
@@ -3601,7 +3653,7 @@ export default function MicroMixWaterReportForm({
                       lockCorrectionField(
                         `pathogens:${p.key}:checked`,
                         "pathogens",
-                      ) || role !== "CLIENT"
+                      ) || effectiveFormRole !== "CLIENT"
                     }
                   />
                   <span className="font-bold">{p.label}</span>
@@ -3625,7 +3677,7 @@ export default function MicroMixWaterReportForm({
                         lockCorrectionField(
                           `pathogens:${p.key}:label`,
                           "pathogens",
-                        ) || role !== "CLIENT"
+                        ) || effectiveFormRole !== "CLIENT"
                       }
                     />
                   )}
@@ -3702,7 +3754,7 @@ export default function MicroMixWaterReportForm({
                           lockCorrectionField(
                             `pathogens:${p.key}:grams`,
                             "pathogens",
-                          ) || role !== "CLIENT"
+                          ) || effectiveFormRole !== "CLIENT"
                         }
                       />
                       of sample
@@ -3748,7 +3800,7 @@ export default function MicroMixWaterReportForm({
                         `pathogens:${p.key}:spec`,
                         "pathogens",
                       ) ||
-                      role !== "CLIENT"
+                      effectiveFormRole !== "CLIENT"
                     }
                     aria-invalid={!!pathogenRowErrors[idx]?.spec}
                   >
@@ -4014,7 +4066,8 @@ export default function MicroMixWaterReportForm({
                   const nextStatuses = currentTransition?.next ?? [];
 
                   const canSetCurrentStatus =
-                    currentTransition?.canSet.includes(role!) ?? false;
+                    currentTransition?.canSet.includes(effectiveFormRole!) ??
+                    false;
 
                   // ✅ Central correction flow:
                   // Do NOT depend on QA_NEEDS_* being present in workflow.next.
@@ -4081,7 +4134,7 @@ export default function MicroMixWaterReportForm({
                         if (
                           STATUS_TRANSITIONS[
                             status as ReportStatus
-                          ].canSet.includes(role!) &&
+                          ].canSet.includes(effectiveFormRole!) &&
                           buttonConfig
                         ) {
                           const { label, color } = buttonConfig;

@@ -712,11 +712,69 @@ export class ChemistryReportsService {
     return raw as CorrectionItem[];
   }
 
+  private async resolveCreateClientCode(
+    user: {
+      userId: string;
+      role: UserRole;
+      clientCode?: string;
+    },
+    body: any,
+  ) {
+    if (user.role === 'CLIENT') {
+      const clientCode = String(user.clientCode ?? '')
+        .trim()
+        .toUpperCase();
+
+      if (!clientCode) {
+        throw new BadRequestException(
+          'Your account is not assigned to a client code',
+        );
+      }
+
+      return clientCode;
+    }
+
+    if (user.role === 'ADMIN' || user.role === 'SYSTEMADMIN') {
+      const clientCode = String(body?.createForClientCode ?? '')
+        .trim()
+        .toUpperCase();
+
+      if (!clientCode) {
+        throw new BadRequestException(
+          'createForClientCode is required when creating a form for a client',
+        );
+      }
+
+      const client = await this.prisma.clientDetails.findUnique({
+        where: {
+          clientCode,
+        },
+        select: {
+          clientCode: true,
+          name: true,
+          active: true,
+        },
+      });
+
+      if (!client) {
+        throw new BadRequestException(`Client ${clientCode} does not exist`);
+      }
+
+      if (!client.active) {
+        throw new BadRequestException(`Client ${clientCode} is inactive`);
+      }
+
+      return client.clientCode;
+    }
+
+    throw new ForbiddenException('Not allowed to create chemistry report');
+  }
+
   async createChemistryReportDraft(
     user: { userId: string; role: UserRole; clientCode?: string },
     body: any,
   ) {
-    if (!['ADMIN', 'CLIENT'].includes(user.role)) {
+    if (!['SYSTEMADMIN', 'ADMIN', 'CLIENT'].includes(user.role)) {
       throw new ForbiddenException('Not allowed to create report');
     }
 
@@ -728,7 +786,7 @@ export class ChemistryReportsService {
       throw new BadRequestException(`Unsupported formType: ${formType}`);
     }
 
-    const clientCode = user.clientCode ?? body.clientCode;
+    const clientCode = await this.resolveCreateClientCode(user, body);
     if (!clientCode) {
       throw new BadRequestException(
         'Client code is required to create a report',
@@ -756,7 +814,12 @@ export class ChemistryReportsService {
     const prefix = getDeptLetterForForm(formType);
 
     // remove non-details keys from body that would collide with Report fields
-    const { formType: _ft, clientCode: _cc, ...rest } = body;
+    const {
+      formType: _ft,
+      clientCode: _cc,
+      createForClientCode: _createForClientCode,
+      ...rest
+    } = body;
 
     // const MICRO_FOOTER_REV_NO = 'Rev-02';
     // const MICRO_FOOTER_DATE_EFFECTIVE = new Date('2026-06-03T00:00:00.000Z');
@@ -1350,11 +1413,10 @@ export class ChemistryReportsService {
       });
     }
 
-
     // Keep the dashboard copy aligned with the root report before returning.
     await this.dashboardSync.syncChemistryReportAndVerify(id);
 
-     if (patchIn.status) {
+    if (patchIn.status) {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
     } else {
       this.reportsGateway.notifyReportUpdate(updated);
@@ -1774,10 +1836,9 @@ export class ChemistryReportsService {
       });
     }
 
-
     await this.dashboardSync.syncChemistryReportAndVerify(id);
 
-      // ✅ websocket
+    // ✅ websocket
     this.reportsGateway.notifyStatusChange(id, target);
 
     if (prevStatus !== target) {

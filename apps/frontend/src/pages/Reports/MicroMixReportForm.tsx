@@ -362,10 +362,41 @@ export default function MicroMixReportForm({
 
   const navigate = useNavigate();
 
-  // const initialData = JSON.stringify(report || {});
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
+const isInternalCreateForClient =
+  (role === "ADMIN" ||
+    role === "SYSTEMADMIN") &&
+  !!createForClientCode &&
+  (
+    !report?.id ||
+    report?.status === "DRAFT" ||
+    report?.status ===
+      "UNDER_DRAFT_REVIEW"
+  );
+
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
+
+  const actsAsClientForSubmission =
+    role === "CLIENT" ||
+    (isInternalCreateForClient &&
+      (status === "DRAFT" || status === "UNDER_DRAFT_REVIEW"));
+
+  const effectiveFormRole: Role | undefined = actsAsClientForSubmission
+    ? "CLIENT"
+    : role;
+
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
 
@@ -471,10 +502,15 @@ export default function MicroMixReportForm({
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
 
   // ---- local state (prefill from report if editing) ----
-  // const [client, setClient] = useState(initialClientValue);
   const [client, setClient] = useState(
     report?.client ??
-      (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+      (!report?.id && role === "CLIENT"
+        ? (user?.clientCode ?? "")
+        : !report?.id &&
+            (role === "ADMIN" || role === "SYSTEMADMIN") &&
+            createForClientCode
+          ? createForClientName || createForClientCode
+          : ""),
   );
   const [dateSent, setDateSent] = useState(() => {
     // Existing saved report: keep saved date
@@ -712,15 +748,6 @@ export default function MicroMixReportForm({
     null,
   );
 
-  // function organismDisabled() {
-  //   // Only CLIENT decides which organisms to test
-  //   return role !== "CLIENT";
-  // }
-
-  // function resultDisabled(p: PathRow) {
-  //   // Only MICRO can set results, and only if the organism is checked
-  //   return !p.checked || (role !== "MICRO" && role !== "ADMIN" && phase !== "FINAL");
-  // }
   const phase = deriveMicroPhaseFromStatus(status);
 
   // --- E-Sign modal state (Admin-only) ---
@@ -770,10 +797,6 @@ export default function MicroMixReportForm({
   >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
-
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !!state?.correctionLaunch;
   const routeCorrectionKinds =
@@ -1026,6 +1049,10 @@ export default function MicroMixReportForm({
   function resultDisabled(p: PathRow) {
     if (!p.checked) return true;
 
+    if (actsAsClientForSubmission) {
+      return true;
+    }
+
     if (correctionModeActive) {
       const resultFieldLocked = lockCorrectionField(
         `pathogens:${p.key}:result`,
@@ -1211,7 +1238,7 @@ export default function MicroMixReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], checked, ...(checked ? {} : { result: "" }) };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Clear the row error if we unchecked (no result required anymore)
@@ -1229,7 +1256,7 @@ export default function MicroMixReportForm({
       if (!row.checked) return prev; // ignore if organism not selected
       const copy = [...prev];
       copy[idx] = { ...row, result: value };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Clear the row error once result is set
@@ -1246,7 +1273,7 @@ export default function MicroMixReportForm({
     setPathogens((prev) => {
       const copy = [...prev];
       copy[idx] = { ...prev[idx], result: "" };
-      validatePathogenRows(copy, role, phase);
+      validatePathogenRows(copy, effectiveFormRole, phase);
       return copy;
     });
     // Keep/restore the row error because a checked row without result is invalid
@@ -1264,9 +1291,27 @@ export default function MicroMixReportForm({
   function setPathogenSpec(idx: number, value: PathogenSpec) {
     setPathogens((prev) => {
       const copy = [...prev];
-      copy[idx] = { ...copy[idx], spec: value };
+      copy[idx] = {
+        ...copy[idx],
+        spec: value,
+      };
       return copy;
     });
+
+    // ✅ Clear only the specification validation error
+    // Keep any result error that may still exist.
+    setPathogenRowErrors((prev) => {
+      const copy = [...prev];
+
+      copy[idx] = {
+        ...(copy[idx] ?? {}),
+        spec: undefined,
+      };
+
+      return copy;
+    });
+
+    clearError("pathogens");
     markDirty();
   }
 
@@ -1303,11 +1348,10 @@ export default function MicroMixReportForm({
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    // normal permission check first
-    const baseLocked = !canEdit(role, f, status as ReportStatus);
+    const baseLocked = !canEdit(effectiveFormRole, f, status as ReportStatus);
+
     if (baseLocked) return true;
 
-    // in correction mode, only requested fields are editable
     if (correctionModeActive) {
       return !isFieldRequestedForCorrection(f);
     }
@@ -1316,9 +1360,9 @@ export default function MicroMixReportForm({
   };
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
-    role,
+    effectiveFormRole,
     {
-      status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
+      status: status as ReportStatus,
     },
   );
 
@@ -1445,7 +1489,7 @@ export default function MicroMixReportForm({
         const values = makeValues();
 
         validateAndSetErrors(values);
-        validatePathogenRows(values.pathogens, role, phase);
+        validatePathogenRows(values.pathogens, effectiveFormRole, phase);
 
         const sharedSpecUnit: Unit =
           tbcUnit === "CFU / device" || tmyUnit === "CFU / device"
@@ -1575,7 +1619,7 @@ export default function MicroMixReportForm({
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : PHASE_WRITE_GUARD(allowedBase);
@@ -1682,7 +1726,16 @@ export default function MicroMixReportForm({
           } else {
             saved = await api(`/reports`, {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "MICRO_MIX" }),
+              body: JSON.stringify({
+                ...payload,
+                formType: "MICRO_MIX",
+
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
+              }),
             });
           }
 
@@ -1747,7 +1800,11 @@ export default function MicroMixReportForm({
       if (!centralApproval) {
         const values = makeValues();
         okFields = validateAndSetErrors(values);
-        okRows = validatePathogenRows(values.pathogens, role, phase);
+        okRows = validatePathogenRows(
+          values.pathogens,
+          effectiveFormRole,
+          phase,
+        );
       }
 
       const requiresFullValidation =
@@ -2417,7 +2474,7 @@ export default function MicroMixReportForm({
 
     const fieldForPermission = baseField ?? fieldKey.split(":")[0];
     const baseLocked = !canEdit(
-      role,
+      effectiveFormRole,
       fieldForPermission,
       status as ReportStatus,
     );
@@ -3624,7 +3681,7 @@ export default function MicroMixReportForm({
                       lockCorrectionField(
                         `pathogens:${p.key}:checked`,
                         "pathogens",
-                      ) || role !== "CLIENT"
+                      ) || !actsAsClientForSubmission
                     }
                   />
                   <span className="font-bold">{p.label}</span>
@@ -3641,7 +3698,7 @@ export default function MicroMixReportForm({
                         lockCorrectionField(
                           `pathogens:${p.key}:checked`,
                           "pathogens",
-                        ) || role !== "CLIENT"
+                        ) || !actsAsClientForSubmission
                       }
                     />
                   )}
@@ -3718,7 +3775,7 @@ export default function MicroMixReportForm({
                           lockCorrectionField(
                             `pathogens:${p.key}:checked`,
                             "pathogens",
-                          ) || role !== "CLIENT"
+                          ) || !actsAsClientForSubmission
                         }
                       />
                       of sample
@@ -3766,7 +3823,7 @@ export default function MicroMixReportForm({
                         `pathogens:${p.key}:spec`,
                         "pathogens",
                       ) ||
-                      role !== "CLIENT"
+                      !actsAsClientForSubmission
                     }
                     aria-invalid={!!pathogenRowErrors[idx]?.spec}
                   >
@@ -4043,7 +4100,7 @@ export default function MicroMixReportForm({
 
                   const canSetCurrentStatus = STATUS_TRANSITIONS[
                     status as ReportStatus
-                  ]?.canSet.includes(role!);
+                  ]?.canSet.includes(effectiveFormRole!);
 
                   return (
                     <>

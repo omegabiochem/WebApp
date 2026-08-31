@@ -116,6 +116,9 @@ type Report = {
   coaRows?: unknown;
 
   _searchBlob?: string;
+
+  sourceCreatedBy?: string | null;
+  createdBy?: string | null;
 };
 
 // ---------------------------------
@@ -609,6 +612,26 @@ export default function AdminDashboard() {
     (user as any)?.userId ||
     (user as any)?.sub ||
     (user as any)?.uid;
+
+  function isInternalClientDraft(r: Report) {
+    const status = String(r.status);
+
+    const isDraftLike = status === "DRAFT" || status === "UNDER_DRAFT_REVIEW";
+
+    if (!isDraftLike) {
+      return false;
+    }
+
+    if (user?.role !== "ADMIN" && user?.role !== "SYSTEMADMIN") {
+      return false;
+    }
+
+    const creatorId = String(r.sourceCreatedBy ?? r.createdBy ?? "").trim();
+
+    const currentUserId = String(userKey ?? "").trim();
+
+    return !!creatorId && !!currentUserId && creatorId === currentUserId;
+  }
   const [reports, setReports] = useState<Report[]>([]);
 
   const [serverTotal, setServerTotal] = useState(0);
@@ -1832,6 +1855,17 @@ export default function AdminDashboard() {
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
+    /*
+     * Special case:
+     * ADMIN / SYSTEMADMIN created this client DRAFT.
+     */
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
+    /*
+     * Normal workflow behavior.
+     */
     return canShowUpdateButton(
       userObj?.role as Role,
       r.status as ReportStatus,
@@ -1840,6 +1874,10 @@ export default function AdminDashboard() {
   }
 
   function canUpdateThisSterility(r: Report, userObj?: any) {
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
     return canShowSterilityUpdateButton(
       userObj?.role as Role,
       r.status as SterilityReportStatus,
@@ -2515,6 +2553,49 @@ export default function AdminDashboard() {
   }
 
   function openUpdateTarget(clicked: Report) {
+    /*
+     * -------------------------------------------------------
+     * INTERNAL CREATE-FOR-CLIENT DRAFT
+     * -------------------------------------------------------
+     *
+     * Reopen the normal report editor and preserve the
+     * create-for-client context.
+     */
+    if (
+      (isInternalClientDraft(clicked) &&
+        (clicked.formType === "MICRO_MIX" ||
+          clicked.formType === "MICRO_MIX_WATER" ||
+          clicked.formType === "STERILITY") ||
+      clicked.formType === "APE")
+    ) {
+      const slug = formTypeToSlug[clicked.formType] || "micro-mix";
+
+      const clientCode = String(clicked.clientCode ?? "")
+        .trim()
+        .toUpperCase();
+
+      const clientName = String(clicked.client ?? "").trim();
+
+      if (!clientCode) {
+        toast.error("Client code is missing for this report");
+        return;
+      }
+
+      const params = new URLSearchParams();
+
+      params.set("createForClient", clientCode);
+
+      if (clientName) {
+        params.set("clientName", clientName);
+      }
+
+      params.set("returnTo", location.pathname + location.search);
+
+      navigate(`/reports/${slug}/${clicked.id}?${params.toString()}`);
+
+      return;
+    }
+
     const targets = getTargetsForAction(clicked).filter((r) =>
       canUpdateAnyReport(r, user),
     );

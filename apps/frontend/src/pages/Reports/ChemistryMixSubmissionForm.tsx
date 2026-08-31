@@ -245,6 +245,17 @@ export default function ChemistryMixSubmissionForm({
 
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
@@ -260,6 +271,16 @@ export default function ChemistryMixSubmissionForm({
   useConfirmOnLeave(!embedded && isDirty);
   // ---- core report identity ----
   const [reportId, setReportId] = useState<string | null>(report?.id ?? null);
+
+  const isInternalCreateForClient =
+    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    !!createForClientCode &&
+    (!report?.id || status === "DRAFT" || status === "UNDER_DRAFT_REVIEW");
+
+  const effectiveFormRole: Role | undefined = isInternalCreateForClient
+    ? "CLIENT"
+    : role;
+
   const [reportNumber, setReportNumber] = useState<string>(
     report?.reportNumber ?? "",
   );
@@ -376,7 +397,12 @@ export default function ChemistryMixSubmissionForm({
 
   // ---- header fields (same as micro) ----
   const [client, setClient] = useState(
-    report?.client ?? (user?.role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+    report?.client ??
+      (isInternalCreateForClient
+        ? createForClientName || createForClientCode
+        : role === "CLIENT"
+          ? (user?.clientCode ?? "")
+          : ""),
   );
   const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
 
@@ -478,12 +504,9 @@ export default function ChemistryMixSubmissionForm({
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
 
   const { errors, clearError, validateAndSetErrors } =
-    useChemistryReportValidation(role, {
+    useChemistryReportValidation(effectiveFormRole, {
       status: status as ChemistryReportStatus,
     });
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !!state?.correctionLaunch;
   const routeCorrectionKinds =
@@ -587,9 +610,9 @@ export default function ChemistryMixSubmissionForm({
 
   const createdByClientCode = String(
     report?.clientCode ||
+      createForClientCode ||
       (role === "CLIENT" ? user?.clientCode : "") ||
       String(report?.formNumber || "").split("-")[0] ||
-      client ||
       "",
   )
     .trim()
@@ -645,7 +668,14 @@ export default function ChemistryMixSubmissionForm({
 
   function hydrateForm(r?: any) {
     // header fields
-    setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
+    setClient(
+      r?.client ??
+        (isInternalCreateForClient
+          ? createForClientName || createForClientCode
+          : role === "CLIENT"
+            ? (user?.clientCode ?? "")
+            : ""),
+    );
     setDateSent(r?.dateSent ?? "");
     setSampleDescription(r?.sampleDescription ?? "");
     setTestTypes(r?.testTypes ?? []);
@@ -702,7 +732,15 @@ export default function ChemistryMixSubmissionForm({
       alive = false;
     };
     // include deps because hydrateForm uses role/user.clientCode
-  }, [isAnyTemplateMode, templateId, role, user?.clientCode]);
+  }, [
+    isAnyTemplateMode,
+    templateId,
+    role,
+    user?.clientCode,
+    isInternalCreateForClient,
+    createForClientCode,
+    createForClientName,
+  ]);
 
   const makeValues = (): ChemistryMixReportFormValues => ({
     client,
@@ -740,7 +778,12 @@ export default function ChemistryMixSubmissionForm({
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    const baseLocked = !canEdit(role, f, status as ChemistryReportStatus);
+    const baseLocked = !canEdit(
+      effectiveFormRole,
+      f,
+      status as ChemistryReportStatus,
+    );
+
     if (baseLocked) return true;
 
     if (correctionModeActive) {
@@ -771,12 +814,12 @@ export default function ChemistryMixSubmissionForm({
   }, [actives.length]);
 
   useEffect(() => {
-    validateActiveRows(actives, role);
-  }, [actives, role, status]);
+    validateActiveRows(actives, effectiveFormRole);
+  }, [actives, effectiveFormRole, status]);
 
   function validateActiveRows(
     rows: ChemActiveRow[],
-    who: Role | undefined = role,
+    who: Role | undefined = effectiveFormRole,
   ) {
     const rowErrs: ActiveRowError[] = rows.map(() => ({}));
     let tableErr: string | null = null;
@@ -861,7 +904,7 @@ export default function ChemistryMixSubmissionForm({
     setActives((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], checked };
-      validateActiveRows(copy, role);
+      validateActiveRows(copy, effectiveFormRole);
       return copy;
     });
 
@@ -879,7 +922,7 @@ export default function ChemistryMixSubmissionForm({
     setActives((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], ...patch };
-      validateActiveRows(copy, role);
+      validateActiveRows(copy, effectiveFormRole);
       return copy;
     });
 
@@ -1172,7 +1215,7 @@ export default function ChemistryMixSubmissionForm({
       (await runBusy("SAVE", async () => {
         const values = makeValues();
         validateAndSetErrors(values);
-        validateActiveRows(values.actives || [], role);
+        validateActiveRows(values.actives || [], effectiveFormRole);
 
         // if (!okFields) {
         //   alert("⚠️ Please fix the highlighted fields before saving.");
@@ -1250,7 +1293,7 @@ export default function ChemistryMixSubmissionForm({
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : allowedBase;
@@ -1340,7 +1383,16 @@ export default function ChemistryMixSubmissionForm({
           } else {
             saved = await api<SavedReport>("/chemistry-reports/chemistry-mix", {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "CHEMISTRY_MIX" }),
+              body: JSON.stringify({
+                ...payload,
+                formType: "CHEMISTRY_MIX",
+
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
+              }),
             });
           }
           setReportId(saved.id); // 👈 keep the new id
@@ -1402,7 +1454,7 @@ export default function ChemistryMixSubmissionForm({
       if (!centralApproval) {
         const values = makeValues();
         okFields = validateAndSetErrors(values);
-        okRows = validateActiveRows(values.actives || [], role);
+        okRows = validateActiveRows(values.actives || [], effectiveFormRole);
       }
 
       const requiresFullValidation =
@@ -1428,9 +1480,9 @@ export default function ChemistryMixSubmissionForm({
         }
 
         if (
-          role !== "QA" &&
-          role !== "ADMIN" &&
-          role !== "SYSTEMADMIN" &&
+          effectiveFormRole !== "QA" &&
+          effectiveFormRole !== "ADMIN" &&
+          effectiveFormRole !== "SYSTEMADMIN" &&
           !okRows
         ) {
           alert("⚠️ Please fix the highlighted rows before changing status.");
@@ -2907,11 +2959,11 @@ export default function ChemistryMixSubmissionForm({
                       }}
                       disabled={
                         lock("actives") ||
-                        role !== "CLIENT" ||
+                        effectiveFormRole !== "CLIENT" ||
                         selectingCorrections
                       }
                       className={
-                        lock("actives") || role !== "CLIENT"
+                        lock("actives") || effectiveFormRole !== "CLIENT"
                           ? "accent-black"
                           : "accent-blue-600"
                       }
@@ -2940,13 +2992,13 @@ export default function ChemistryMixSubmissionForm({
                               value={row.otherName ?? ""}
                               readOnly={
                                 lock("actives") ||
-                                role !== "CLIENT" ||
+                                effectiveFormRole !== "CLIENT" ||
                                 selectingCorrections
                               }
                               onChange={(e) => {
                                 if (
                                   lock("actives") ||
-                                  role !== "CLIENT" ||
+                                  effectiveFormRole !== "CLIENT" ||
                                   selectingCorrections
                                 )
                                   return;
@@ -2981,13 +3033,13 @@ export default function ChemistryMixSubmissionForm({
                       value={row.bulkActiveLot ?? ""}
                       readOnly={
                         lock("actives") ||
-                        role !== "CLIENT" ||
+                        effectiveFormRole !== "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(v) => {
                         if (
                           lock("actives") ||
-                          role !== "CLIENT" ||
+                          effectiveFormRole !== "CLIENT" ||
                           selectingCorrections
                         )
                           return;
@@ -3021,13 +3073,13 @@ export default function ChemistryMixSubmissionForm({
                       value={row.sopNo ?? ""}
                       readOnly={
                         lock("actives") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(v) => {
                         if (
                           lock("actives") ||
-                          role === "CLIENT" ||
+                          effectiveFormRole === "CLIENT" ||
                           selectingCorrections
                         )
                           return;
@@ -3053,13 +3105,13 @@ export default function ChemistryMixSubmissionForm({
                       value={row.formulaContent ?? ""}
                       readOnly={
                         lock("actives") ||
-                        role !== "CLIENT" ||
+                        effectiveFormRole !== "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(v) => {
                         if (
                           lock("actives") ||
-                          role !== "CLIENT" ||
+                          effectiveFormRole !== "CLIENT" ||
                           selectingCorrections
                         )
                           return;
@@ -3096,13 +3148,13 @@ export default function ChemistryMixSubmissionForm({
                       value={row.result ?? ""}
                       readOnly={
                         lock("actives") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(v) => {
                         if (
                           lock("actives") ||
-                          role === "CLIENT" ||
+                          effectiveFormRole === "CLIENT" ||
                           selectingCorrections
                         )
                           return;
@@ -3144,7 +3196,7 @@ export default function ChemistryMixSubmissionForm({
                       value={date}
                       readOnly={
                         lock("actives") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(e) =>
@@ -3167,7 +3219,7 @@ export default function ChemistryMixSubmissionForm({
                       value={initial}
                       readOnly={
                         lock("actives") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       }
                       onChange={(e) =>
@@ -3435,7 +3487,7 @@ export default function ChemistryMixSubmissionForm({
                       {correctionStatuses.length > 0 &&
                         STATUS_TRANSITIONS[
                           status as ChemistryReportStatus
-                        ].canSet.includes(role!) && (
+                        ].canSet.includes(effectiveFormRole!) && (
                           <div className="relative">
                             <button
                               type="button"
@@ -3486,7 +3538,7 @@ export default function ChemistryMixSubmissionForm({
                           if (
                             STATUS_TRANSITIONS[
                               status as ChemistryReportStatus
-                            ].canSet.includes(role!) &&
+                            ].canSet.includes(effectiveFormRole!) &&
                             buttonConfig
                           ) {
                             const { label, color } = buttonConfig;
