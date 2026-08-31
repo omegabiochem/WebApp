@@ -53,6 +53,7 @@ import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReport from "../LabReports/ApeReport";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
 import ApeReportView from "../LabReports/ApeReportView";
+import { socket } from "../../lib/socket";
 
 // ----------------------------------
 // Types
@@ -927,6 +928,9 @@ export default function MCDashboard() {
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+  const silentRefreshNextRef = React.useRef(false);
+
   // Filters
   type Category = "ALL" | "MICRO" | "CHEMISTRY";
   // const [category, setCategory] = useState<Category>("ALL");
@@ -1010,6 +1014,184 @@ export default function MCDashboard() {
     Record<string, UnifiedRow>
   >({});
 
+  const [selectedReport, setSelectedReport] =
+  useState<UnifiedRow | null>(null);
+
+const [apeChildReports, setApeChildReports] = useState<
+  Record<string, any>
+>({});
+
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) return;
+
+      console.log("📣 MC dashboard live status:", {
+        id,
+        status,
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * MICRO
+       * ---------------------------------------------------------
+       */
+      setMicroReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * ---------------------------------------------------------
+       * CHEMISTRY / COA
+       * ---------------------------------------------------------
+       *
+       * The socket payload currently doesn't tell us whether the
+       * report belongs to Micro or Chemistry, so safely check both
+       * stores.
+       */
+      setChemReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * ---------------------------------------------------------
+       * SELECTED REPORT CACHE
+       * ---------------------------------------------------------
+       *
+       * MC uses keys like:
+       *
+       * MICRO:<id>
+       * CHEMISTRY:<id>
+       *
+       * therefore prev[id] is not correct.
+       */
+      setSelectedReportsById((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const [key, report] of Object.entries(next)) {
+          if (report.id !== id) continue;
+
+          changed = true;
+
+          next[key] = {
+            ...report,
+            status,
+          } as UnifiedRow;
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * Keep currently open modal synchronized.
+       */
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? ({
+              ...prev,
+              status,
+            } as UnifiedRow)
+          : prev,
+      );
+
+      /*
+       * ---------------------------------------------------------
+       * APE CHILD REPORTS
+       * ---------------------------------------------------------
+       */
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) continue;
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * Refresh authoritative MC dashboard results so category,
+       * type, status filters, sorting, totals and pagination remain
+       * correct.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
+
+
   const PIN_STORAGE_KEY = userKey ? `mcDashboardPinned:user:${userKey}` : null;
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -1034,10 +1216,6 @@ export default function MCDashboard() {
     Record<string, ApeReportTab>
   >({});
 
-  const [apeChildReports, setApeChildReports] = useState<Record<string, any>>(
-    {},
-  );
-
   const [singlePrintJob, setSinglePrintJob] = useState<{
     report: UnifiedRow;
     pane: "FORM" | "REPORT";
@@ -1053,8 +1231,6 @@ export default function MCDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null); // `${kind}:${id}`
   const [modalUpdating, setModalUpdating] = useState(false);
-
-  const [selectedReport, setSelectedReport] = useState<UnifiedRow | null>(null);
 
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
@@ -1333,9 +1509,19 @@ export default function MCDashboard() {
   useEffect(() => {
     let abort = false;
 
+    /*
+     * Socket refreshes happen silently.
+     * Filter/page/manual actions can still show normal loading.
+     */
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadMCDashboardReports() {
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const res = await fetchMCDashboardReports();
@@ -1355,8 +1541,61 @@ export default function MCDashboard() {
 
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        /*
+         * ---------------------------------------------------------
+         * KEEP SELECTED REPORT COPIES FRESH
+         * ---------------------------------------------------------
+         */
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map<string, UnifiedRow>();
+
+          for (const row of res.rows) {
+            freshMap.set(`${row.kind}:${row.id}`, row);
+          }
+
+          let changed = false;
+          const next = { ...prev };
+
+          for (const key of Object.keys(next)) {
+            const fresh = freshMap.get(key);
+
+            if (!fresh) continue;
+
+            next[key] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        /*
+         * ---------------------------------------------------------
+         * KEEP OPEN MODAL FRESH
+         * ---------------------------------------------------------
+         */
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find(
+            (row) => row.id === prev.id && row.kind === prev.kind,
+          );
+
+          return fresh
+            ? ({
+                ...prev,
+                ...fresh,
+              } as UnifiedRow)
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch MC dashboard");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch MC dashboard");
+        }
       } finally {
         if (!abort) {
           setLoading(false);

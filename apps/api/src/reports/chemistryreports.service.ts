@@ -1350,14 +1350,15 @@ export class ChemistryReportsService {
       });
     }
 
-    if (patchIn.status) {
+
+    // Keep the dashboard copy aligned with the root report before returning.
+    await this.dashboardSync.syncChemistryReportAndVerify(id);
+
+     if (patchIn.status) {
       this.reportsGateway.notifyStatusChange(id, patchIn.status);
     } else {
       this.reportsGateway.notifyReportUpdate(updated);
     }
-
-    // Keep the dashboard copy aligned with the root report before returning.
-    await this.dashboardSync.syncChemistryReportAndVerify(id);
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
       await this.syncWorkflowReminderSafe({
@@ -1773,10 +1774,11 @@ export class ChemistryReportsService {
       });
     }
 
-    // ✅ websocket
-    this.reportsGateway.notifyStatusChange(id, target);
 
     await this.dashboardSync.syncChemistryReportAndVerify(id);
+
+      // ✅ websocket
+    this.reportsGateway.notifyStatusChange(id, target);
 
     if (prevStatus !== target) {
       await this.syncWorkflowReminderSafe({

@@ -32,6 +32,7 @@ import ApeReport from "../LabReports/ApeReport";
 import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReportView from "../LabReports/ApeReportView";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
+import { socket } from "../../lib/socket";
 
 // -----------------------------
 // Types
@@ -471,6 +472,9 @@ export default function MicroDashboard() {
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+  const silentRefreshNextRef = React.useRef(false);
+
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -806,6 +810,128 @@ export default function MicroDashboard() {
     {},
   );
 
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) return;
+
+      console.log("📣 Micro dashboard live status:", {
+        id,
+        status,
+      });
+
+      // Immediate status badge update.
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      // Keep selected reports synchronized.
+      setSelectedReportsById((prev) => {
+        const existing = prev[id];
+
+        if (!existing) return prev;
+
+        return {
+          ...prev,
+          [id]: {
+            ...existing,
+            status,
+          },
+        };
+      });
+
+      // Keep an open View / Update modal synchronized.
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      // APE Validation Report + APE Report use the parent workflow status.
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) continue;
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      // Server-side filters / pagination / totals must be recalculated.
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      // Recover anything missed during a temporary disconnect.
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
+
   const [singlePrintJob, setSinglePrintJob] = useState<{
     report: Report;
     pane: "FORM" | "REPORT";
@@ -907,9 +1033,19 @@ export default function MicroDashboard() {
   useEffect(() => {
     let abort = false;
 
+    /*
+     * WebSocket refreshes should not replace the table with
+     * loading skeletons.
+     */
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadMicroDashboardReports() {
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const res = await fetchMicroDashboardReports();
@@ -919,8 +1055,51 @@ export default function MicroDashboard() {
         setReports(res.rows);
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        /*
+         * Refresh selected copies with authoritative dashboard data.
+         */
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map(res.rows.map((r) => [r.id, r]));
+          let changed = false;
+          const next = { ...prev };
+
+          for (const id of Object.keys(next)) {
+            const fresh = freshMap.get(id);
+
+            if (!fresh) continue;
+
+            next[id] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        /*
+         * Keep an open report modal synchronized when that report
+         * is still in the current dashboard result.
+         */
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((r) => r.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch micro dashboard");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch micro dashboard");
+        }
       } finally {
         if (!abort) {
           setLoading(false);
@@ -3657,7 +3836,7 @@ export default function MicroDashboard() {
                         r.status === "PRELIMINARY_APPROVED");
 
                     const badgeClass =
-                      r.formType === "STERILITY"
+                      r.formType === "STERILITY" || r.formType === "APE"
                         ? (STERILITY_STATUS_COLORS[
                             r.status as SterilityReportStatus
                           ] ??

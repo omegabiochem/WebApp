@@ -2086,12 +2086,6 @@ export class ReportsService {
 
     const prevStatus = String(current.status);
 
-    if (patchIn.status) {
-      this.reportsGateway.notifyStatusChange(id, patchIn.status);
-    } else {
-      this.reportsGateway.notifyReportUpdate(updated);
-    }
-
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
       const ctx = getRequestContext() || {};
       const reason =
@@ -2113,6 +2107,12 @@ export class ReportsService {
 
     // Keep the dashboard copy aligned with the root report before returning.
     await this.dashboardSync.syncMicroReportAndVerify(id);
+
+    if (patchIn.status) {
+      this.reportsGateway.notifyStatusChange(id, patchIn.status);
+    } else {
+      this.reportsGateway.notifyReportUpdate(updated);
+    }
 
     if (patchIn.status && prevStatus !== String(patchIn.status)) {
       await this.syncWorkflowReminderSafe({
@@ -2496,10 +2496,10 @@ export class ReportsService {
       });
     }
 
-    // ✅ notify websocket
-    this.reportsGateway.notifyStatusChange(id, target);
-
     await this.dashboardSync.syncMicroReportAndVerify(id);
+
+        // ✅ notify websocket
+    this.reportsGateway.notifyStatusChange(id, target);
 
     if (prevStatus !== target) {
       await this.syncWorkflowReminderSafe({
