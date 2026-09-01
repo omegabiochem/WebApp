@@ -4,13 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       backup_s3_key:
-        description: "S3 key for .dump file, example: daily/2026/09/01/omega-lims-production-20260901-xxxxxxZ.dump"
-        required: true
+        description: "Optional: S3 key for .dump file"
+        required: false
         type: string
       checksum_s3_key:
-        description: "S3 key for .sha256 file, example: daily/2026/09/01/omega-lims-production-20260901-xxxxxxZ.dump.sha256"
-        required: true
+        description: "Optional: S3 key for .sha256 file"
+        required: false
         type: string
+
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/neon-db-restore-test.yml"
 
 jobs:
   restore-test:
@@ -41,6 +47,40 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Resolve backup keys
+        run: |
+          set -euo pipefail
+
+          INPUT_BACKUP_KEY="${{ inputs.backup_s3_key }}"
+          INPUT_CHECKSUM_KEY="${{ inputs.checksum_s3_key }}"
+
+          if [ -n "$INPUT_BACKUP_KEY" ] && [ -n "$INPUT_CHECKSUM_KEY" ]; then
+            echo "Using manually provided backup keys..."
+            BACKUP_S3_KEY="$INPUT_BACKUP_KEY"
+            CHECKSUM_S3_KEY="$INPUT_CHECKSUM_KEY"
+          else
+            echo "No manual keys provided. Finding latest daily backup from S3..."
+
+            BACKUP_S3_KEY="$(aws s3api list-objects-v2 \
+              --bucket "$DB_BACKUP_BUCKET" \
+              --prefix "daily/" \
+              --query "sort_by(Contents[?ends_with(Key, '.dump')], &LastModified)[-1].Key" \
+              --output text)"
+
+            if [ "$BACKUP_S3_KEY" = "None" ] || [ -z "$BACKUP_S3_KEY" ]; then
+              echo "No .dump backup file found under daily/"
+              exit 1
+            fi
+
+            CHECKSUM_S3_KEY="$BACKUP_S3_KEY.sha256"
+          fi
+
+          echo "Backup key: $BACKUP_S3_KEY"
+          echo "Checksum key: $CHECKSUM_S3_KEY"
+
+          echo "BACKUP_S3_KEY=$BACKUP_S3_KEY" >> "$GITHUB_ENV"
+          echo "CHECKSUM_S3_KEY=$CHECKSUM_S3_KEY" >> "$GITHUB_ENV"
+
       - name: Download backup from S3
         run: |
           set -euo pipefail
@@ -50,8 +90,8 @@ jobs:
           BACKUP_FILE="restore-input/backup.dump"
           CHECKSUM_FILE="restore-input/backup.dump.sha256"
 
-          aws s3 cp "s3://$DB_BACKUP_BUCKET/${{ inputs.backup_s3_key }}" "$BACKUP_FILE"
-          aws s3 cp "s3://$DB_BACKUP_BUCKET/${{ inputs.checksum_s3_key }}" "$CHECKSUM_FILE"
+          aws s3 cp "s3://$DB_BACKUP_BUCKET/$BACKUP_S3_KEY" "$BACKUP_FILE"
+          aws s3 cp "s3://$DB_BACKUP_BUCKET/$CHECKSUM_S3_KEY" "$CHECKSUM_FILE"
 
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
           echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> "$GITHUB_ENV"
