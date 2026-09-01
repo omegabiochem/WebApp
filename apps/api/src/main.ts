@@ -18,6 +18,7 @@ async function bootstrap() {
       'https://www.omegabiochemlab.com',
       'https://lims.omegabiochemlab.com',
       'https://omegabiochemlab.com',
+      'https://backup.omegabiochemlab.com',
       // 'https://omega-lims.fly.dev',
       // 'https://omega-lims-staging.fly.dev',
     ],
