@@ -76,11 +76,11 @@ jobs:
           S3_CHECKSUM_KEY="$S3_PREFIX/$(basename "$CHECKSUM_FILE")"
 
           aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$S3_BACKUP_KEY" \
-            --server-side-encryption aws:kms \
+            --sse aws:kms \
             --sse-kms-key-id "$AWS_KMS_KEY_ID"
 
           aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$S3_CHECKSUM_KEY" \
-            --server-side-encryption aws:kms \
+            --sse aws:kms \
             --sse-kms-key-id "$AWS_KMS_KEY_ID"
 
       - name: Verify uploaded backup exists
