@@ -1,0 +1,101 @@
+name: Neon Production DB Backup to S3
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs daily at 2:30 AM UTC
+    # 10:30 PM previous day Eastern during daylight saving time
+    - cron: "30 2 * * *"
+
+jobs:
+  backup-neon-db:
+    name: Backup Neon Production Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      DB_BACKUP_BUCKET: ${{ secrets.DB_BACKUP_BUCKET }}
+      AWS_KMS_KEY_ID: ${{ secrets.AWS_KMS_KEY_ID }}
+      NEON_PRODUCTION_DATABASE_URL: ${{ secrets.NEON_PRODUCTION_DATABASE_URL }}
+      PGSSLMODE: require
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Create database backup
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="$(date -u +'%Y%m%d-%H%M%SZ')"
+          BACKUP_DIR="backup-output"
+          BACKUP_FILE="$BACKUP_DIR/omega-lims-production-$TIMESTAMP.dump"
+          CHECKSUM_FILE="$BACKUP_FILE.sha256"
+
+          mkdir -p "$BACKUP_DIR"
+
+          echo "Starting Neon production database backup at $TIMESTAMP"
+
+          pg_dump "$NEON_PRODUCTION_DATABASE_URL" \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --verbose \
+            --file="$BACKUP_FILE"
+
+          sha256sum "$BACKUP_FILE" > "$CHECKSUM_FILE"
+
+          echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+          echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> "$GITHUB_ENV"
+          echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_ENV"
+
+      - name: Upload backup to S3 with SSE-KMS
+        run: |
+          set -euo pipefail
+
+          YEAR="$(date -u +'%Y')"
+          MONTH="$(date -u +'%m')"
+          DAY="$(date -u +'%d')"
+
+          S3_PREFIX="neon-production/$YEAR/$MONTH/$DAY"
+          S3_BACKUP_KEY="$S3_PREFIX/$(basename "$BACKUP_FILE")"
+          S3_CHECKSUM_KEY="$S3_PREFIX/$(basename "$CHECKSUM_FILE")"
+
+          echo "Uploading backup to S3 path: s3://$DB_BACKUP_BUCKET/$S3_BACKUP_KEY"
+
+          aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$S3_BACKUP_KEY" \
+            --server-side-encryption aws:kms \
+            --sse-kms-key-id "$AWS_KMS_KEY_ID"
+
+          aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$S3_CHECKSUM_KEY" \
+            --server-side-encryption aws:kms \
+            --sse-kms-key-id "$AWS_KMS_KEY_ID"
+
+          echo "Backup upload completed successfully."
+
+      - name: Verify uploaded backup exists
+        run: |
+          set -euo pipefail
+
+          YEAR="$(date -u +'%Y')"
+          MONTH="$(date -u +'%m')"
+          DAY="$(date -u +'%d')"
+
+          S3_PREFIX="neon-production/$YEAR/$MONTH/$DAY"
+
+          aws s3 ls "s3://$DB_BACKUP_BUCKET/$S3_PREFIX/"
+
+          echo "S3 backup verification completed."
