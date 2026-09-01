@@ -28,7 +28,6 @@ import {
   // toDateOnlyISO_UTC,
   type DatePreset,
 } from "../../utils/dashboardsSharedTypes";
-import { useLiveReportStatus } from "../../hooks/useLiveReportStatus";
 import { logUiEvent } from "../../lib/uiAudit";
 import SterilityReportFormView from "../Reports/SterilityReportFormView";
 
@@ -57,6 +56,7 @@ import {
   APE_STATUS_TRANSITIONS,
   type ApeReportStatus,
 } from "../../utils/apeReportFormWorkflow";
+import { socket } from "../../lib/socket";
 
 // -----------------------------
 // Types
@@ -720,6 +720,10 @@ export default function ClientDashboard() {
   const [serverTotal, setServerTotal] = useState(0);
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+  const silentRefreshNextRef = React.useRef(false);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -954,6 +958,138 @@ export default function ClientDashboard() {
   const [selectedReportsById, setSelectedReportsById] = useState<
     Record<string, Report>
   >({});
+
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) return;
+
+      console.log("📣 Client dashboard live status:", {
+        id,
+        status,
+      });
+
+      /*
+       * Immediate table update.
+       */
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * Keep selected reports synchronized.
+       */
+      setSelectedReportsById((prev) => {
+        const existing = prev[id];
+
+        if (!existing) return prev;
+
+        return {
+          ...prev,
+          [id]: {
+            ...existing,
+            status,
+          },
+        };
+      });
+
+      /*
+       * Keep currently-open modal synchronized.
+       */
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * APE children follow the parent workflow status.
+       */
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) continue;
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * Client Dashboard is server filtered/paginated.
+       * Re-fetch authoritative DashboardReport data.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
 
@@ -1249,11 +1385,17 @@ export default function ClientDashboard() {
   useEffect(() => {
     let abort = false;
 
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadClientDashboardReports() {
       if (!user?.clientCode) return;
 
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const startedAt = performance.now();
@@ -1264,6 +1406,7 @@ export default function ClientDashboard() {
           totalMs: Math.round(apiFinishedAt - startedAt),
           totalCount: res.total,
           pageCount: res.rows.length,
+          silentRefresh,
         });
 
         if (abort) return;
@@ -1271,8 +1414,54 @@ export default function ClientDashboard() {
         setReports(res.rows);
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        /*
+         * Keep selected report copies synchronized with
+         * authoritative server data.
+         */
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map(
+            res.rows.map((report) => [report.id, report]),
+          );
+
+          let changed = false;
+          const next = { ...prev };
+
+          for (const id of Object.keys(next)) {
+            const fresh = freshMap.get(id);
+
+            if (!fresh) continue;
+
+            next[id] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        /*
+         * Keep open View / Update modal synchronized.
+         */
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((report) => report.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch reports");
+        }
       } finally {
         if (!abort) {
           setLoading(false);
@@ -2052,12 +2241,6 @@ export default function ClientDashboard() {
     }
   }, [formFilter]); // (statusFilter optional, but this is ok)
 
-  useLiveReportStatus(setReports, {
-    acceptCreated: (r: Report) => {
-      // ✅ only show reports that belong to THIS logged-in client
-      return getFormPrefix(r.formNumber) === user?.clientCode;
-    },
-  });
 
   function niceFormType(ft?: string) {
     switch (ft) {

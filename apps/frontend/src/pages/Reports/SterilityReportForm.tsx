@@ -281,12 +281,32 @@ export default function SterilityReportForm({
 
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
   // const initialData = JSON.stringify(report || {});
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
+
+  const isInternalCreateForClient =
+    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    !!createForClientCode &&
+    (!report?.id || status === "DRAFT" || status === "UNDER_DRAFT_REVIEW");
+
+  const effectiveFormRole: Role | undefined = isInternalCreateForClient
+    ? "CLIENT"
+    : role;
 
   const [reportNumber, setReportNumber] = useState<string>(
     report?.reportNumber || "",
@@ -407,11 +427,15 @@ export default function SterilityReportForm({
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
 
   // ---- local state (prefill from report if editing) ----
-  // const [client, setClient] = useState(initialClientValue);
   const [client, setClient] = useState(
     report?.client ??
-      (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+      (isInternalCreateForClient
+        ? createForClientName || createForClientCode
+        : role === "CLIENT"
+          ? (user?.clientCode ?? "")
+          : ""),
   );
+
   const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
   const [typeOfTest, setTypeOfTest] = useState(report?.typeOfTest || "");
   const [sampleType, setSampleType] = useState(report?.sampleType || "");
@@ -502,10 +526,6 @@ export default function SterilityReportForm({
   >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
-
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !!state?.correctionLaunch;
   const routeCorrectionKinds =
@@ -840,7 +860,12 @@ export default function SterilityReportForm({
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    const baseLocked = !canEdit(role, f, status as SterilityReportStatus);
+    const baseLocked = !canEdit(
+      effectiveFormRole,
+      f,
+      status as SterilityReportStatus,
+    );
+
     if (baseLocked) return true;
 
     if (correctionModeActive) {
@@ -851,9 +876,9 @@ export default function SterilityReportForm({
   };
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
-    role,
+    effectiveFormRole,
     {
-      status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
+      status: status as ReportStatus,
     },
   );
 
@@ -872,7 +897,11 @@ export default function SterilityReportForm({
     // ---- header fields ----
     setClient(
       r?.client ??
-        (!r?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+        (isInternalCreateForClient
+          ? createForClientName || createForClientCode
+          : !r?.id && role === "CLIENT"
+            ? (user?.clientCode ?? "")
+            : ""),
     );
     setDateSent(r?.dateSent ?? "");
     setTypeOfTest(r?.typeOfTest ?? "");
@@ -1058,7 +1087,8 @@ export default function SterilityReportForm({
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
+
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : allowedBase;
@@ -1085,6 +1115,10 @@ export default function SterilityReportForm({
         // New reports always start as DRAFT
         if (!reportId) {
           payload.status = "DRAFT";
+        }
+
+        if (!reportId && isInternalCreateForClient) {
+          payload.createForClientCode = createForClientCode;
         }
 
         try {
@@ -1148,7 +1182,15 @@ export default function SterilityReportForm({
           } else {
             saved = await api(`/reports`, {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "STERILITY" }),
+              body: JSON.stringify({
+                ...payload,
+                formType: "STERILITY",
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
+              }),
             });
           }
 
@@ -1547,23 +1589,23 @@ export default function SterilityReportForm({
   // }
 
   // ✅ JJL-only dropdown behavior
-  const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
+  const createdByClientCode = String(
+    report?.clientCode ||
+      createForClientCode ||
+      (role === "CLIENT" ? user?.clientCode : "") ||
+      String(report?.formNumber || "").split("-")[0] ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  const isJJL = createdByClientCode === "JJL";
 
   const JJL_CREATED_BY_STATUSES = new Set<SterilityReportStatus>([
     "DRAFT",
     "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
-
-  const createdByClientCode = String(
-    report?.clientCode ||
-      (role === "CLIENT" ? user?.clientCode : "") ||
-      String(report?.formNumber || "").split("-")[0] ||
-      client ||
-      "",
-  )
-    .trim()
-    .toUpperCase();
 
   const showJJLCreatedBy =
     !isAnyTemplateMode &&
@@ -2928,7 +2970,7 @@ export default function SterilityReportForm({
 
                   const canSetCurrentStatus = STERILITY_STATUS_TRANSITIONS[
                     status as SterilityReportStatus
-                  ]?.canSet.includes(role!);
+                  ]?.canSet.includes(effectiveFormRole!);
 
                   return (
                     <>
@@ -2979,7 +3021,7 @@ export default function SterilityReportForm({
                           if (
                             STERILITY_STATUS_TRANSITIONS[
                               status as SterilityReportStatus
-                            ].canSet.includes(role!) &&
+                            ].canSet.includes(effectiveFormRole!) &&
                             buttonConfig
                           ) {
                             const { label, color } = buttonConfig;

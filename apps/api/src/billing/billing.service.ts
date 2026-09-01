@@ -46,6 +46,20 @@ type BillingCandidate = {
 
   clientCode: string;
 
+  /*
+   * Exact client/customer name selected on the source report.
+   *
+   * Example:
+   * clientCode = JJL
+   * client     = Client A
+   *
+   * Pricing resolution:
+   *   exact client rule
+   *   -> clientCode default rule (client=null)
+   *   -> pricing exception
+   */
+  client: string | null;
+
   resultSentToClientAt: Date | null;
 
   billingReadyAt: Date;
@@ -750,6 +764,8 @@ export class BillingService {
     const resolved = this.pricing.resolveFromRules(rules, {
       clientCode: candidate.clientCode,
 
+      client: candidate.client,
+
       formType: candidate.formType,
 
       testKey: candidate.testKey,
@@ -810,6 +826,11 @@ export class BillingService {
         report.sterility ??
         report.ape ??
         null;
+
+      const client =
+        this.pricing.normalizeClientName(
+          details?.client,
+        );
 
       const rawTypeOfTest =
         String(
@@ -879,6 +900,8 @@ export class BillingService {
                   report.reportNumber,
 
                 clientCode,
+
+                client,
 
                 resultSentToClientAt:
                   report.resultSentToClientAt ??
@@ -984,6 +1007,8 @@ export class BillingService {
 
             clientCode,
 
+            client,
+
             resultSentToClientAt:
               report.resultSentToClientAt ??
               null,
@@ -1078,6 +1103,11 @@ export class BillingService {
       if (report.formType === 'COA') {
         const details = report.coa;
 
+        const client =
+          this.pricing.normalizeClientName(
+            details?.client,
+          );
+
         const selectedItems =
           extractSelectedCoaItems(details?.coaRows);
 
@@ -1101,6 +1131,8 @@ export class BillingService {
             reportNumber: report.reportNumber,
 
             clientCode,
+
+            client,
 
             resultSentToClientAt:
               report.resultSentToClientAt ?? null,
@@ -1159,6 +1191,8 @@ export class BillingService {
 
             clientCode,
 
+            client,
+
             resultSentToClientAt:
               report.resultSentToClientAt ?? null,
 
@@ -1211,6 +1245,11 @@ export class BillingService {
       ===================================================== */
 
       const details = report.chemistryMix;
+
+      const client =
+        this.pricing.normalizeClientName(
+          details?.client,
+        );
 
       const rawTestTypes: unknown[] =
         Array.isArray(details?.testTypes)
@@ -1281,6 +1320,8 @@ export class BillingService {
 
           clientCode,
 
+          client,
+
           resultSentToClientAt:
             report.resultSentToClientAt ?? null,
 
@@ -1297,6 +1338,8 @@ export class BillingService {
           activeCount: null,
 
           sourceSnapshot: {
+            client,
+
             description:
               details?.sampleDescription ??
                 details?.description ??
@@ -1343,6 +1386,8 @@ export class BillingService {
 
             clientCode,
 
+            client,
+
             resultSentToClientAt:
               report.resultSentToClientAt ?? null,
 
@@ -1362,6 +1407,8 @@ export class BillingService {
             activeCount: null,
 
             sourceSnapshot: {
+              client,
+
               description:
                 details?.sampleDescription ??
                 details?.description ??
@@ -1416,6 +1463,8 @@ export class BillingService {
 
             clientCode,
 
+            client,
+
             resultSentToClientAt:
               report.resultSentToClientAt ?? null,
 
@@ -1442,6 +1491,8 @@ export class BillingService {
             activeCount: null,
 
             sourceSnapshot: {
+              client,
+
               description:
                 details?.sampleDescription ??
                 details?.description ??
@@ -2298,6 +2349,8 @@ export class BillingService {
 
           clientCode: line.clientCode,
 
+          client: line.client,
+
           resultSentToClientAt: line.resultSentToClientAt,
 
           billingReadyAt: line.billingReadyAt,
@@ -2341,6 +2394,76 @@ export class BillingService {
           : {
               count: 0,
             };
+
+        /*
+         * CLIENT-SPECIFIC PRICING ROLLOUT
+         * ---------------------------------------------------
+         * Existing DRAFT invoice lines created before the new
+         * BillingInvoiceLine.client column may already own the
+         * activeChargeKey, so createMany(skipDuplicates) will
+         * not recreate them.
+         *
+         * Backfill the exact report-level client by source so
+         * Refresh Pricing can immediately apply the correct
+         * client-specific rule to existing open drafts.
+         */
+        const clientBySource =
+          new Map<
+            string,
+            {
+              sourceType: BillingSourceType;
+              sourceId: string;
+              client: string;
+            }
+          >();
+
+        for (const line of lines) {
+          if (!line.client) {
+            continue;
+          }
+
+          const key =
+            `${line.sourceType}:${line.sourceId}`;
+
+          if (!clientBySource.has(key)) {
+            clientBySource.set(
+              key,
+              {
+                sourceType:
+                  line.sourceType,
+
+                sourceId:
+                  line.sourceId,
+
+                client:
+                  line.client,
+              },
+            );
+          }
+        }
+
+        for (const source of clientBySource.values()) {
+          await tx.billingInvoiceLine.updateMany({
+            where: {
+              invoiceId:
+                invoice.id,
+
+              sourceType:
+                source.sourceType,
+
+              sourceId:
+                source.sourceId,
+
+              client:
+                null,
+            },
+
+            data: {
+              client:
+                source.client,
+            },
+          });
+        }
 
         /*
          * Always recalculate totals from persisted lines.
@@ -2499,6 +2622,131 @@ export class BillingService {
       invoice.periodEnd,
     );
 
+    /*
+     * Recover client names for invoice lines created before
+     * BillingInvoiceLine.client existed.
+     *
+     * Micro/COA snapshots often already contain client, but
+     * older Chemistry Mix snapshots may not. Prefetch source
+     * details once instead of querying once per invoice line.
+     */
+    const missingReportSourceIds =
+      Array.from(
+        new Set(
+          invoice.lines
+            .filter(
+              (line) =>
+                line.client == null &&
+                line.sourceType ===
+                  'REPORT',
+            )
+            .map(
+              (line) =>
+                line.sourceId,
+            ),
+        ),
+      );
+
+    const missingChemistrySourceIds =
+      Array.from(
+        new Set(
+          invoice.lines
+            .filter(
+              (line) =>
+                line.client == null &&
+                line.sourceType ===
+                  'CHEMISTRY_REPORT',
+            )
+            .map(
+              (line) =>
+                line.sourceId,
+            ),
+        ),
+      );
+
+    const [
+      sourceReports,
+      sourceChemistryReports,
+    ] =
+      await Promise.all([
+        missingReportSourceIds.length
+          ? this.prisma.report.findMany({
+              where: {
+                id: {
+                  in:
+                    missingReportSourceIds,
+                },
+              },
+
+              include: {
+                microMix:
+                  true,
+
+                microMixWater:
+                  true,
+
+                sterility:
+                  true,
+
+                ape:
+                  true,
+              },
+            })
+          : Promise.resolve([]),
+
+        missingChemistrySourceIds.length
+          ? this.prisma.chemistryReport.findMany({
+              where: {
+                id: {
+                  in:
+                    missingChemistrySourceIds,
+                },
+              },
+
+              include: {
+                chemistryMix:
+                  true,
+
+                coa:
+                  true,
+              },
+            })
+          : Promise.resolve([]),
+      ]);
+
+    const sourceClientMap =
+      new Map<string, string | null>();
+
+    for (const report of sourceReports) {
+      const details =
+        report.microMix ??
+        report.microMixWater ??
+        report.sterility ??
+        report.ape ??
+        null;
+
+      sourceClientMap.set(
+        `REPORT:${report.id}`,
+        this.pricing.normalizeClientName(
+          details?.client,
+        ),
+      );
+    }
+
+    for (const report of sourceChemistryReports) {
+      const details =
+        report.chemistryMix ??
+        report.coa ??
+        null;
+
+      sourceClientMap.set(
+        `CHEMISTRY_REPORT:${report.id}`,
+        this.pricing.normalizeClientName(
+          details?.client,
+        ),
+      );
+    }
+
     let refreshedCount = 0;
     let manualOverrideCount = 0;
 
@@ -2529,8 +2777,34 @@ export class BillingService {
           continue;
         }
 
+        const snapshot =
+          line.sourceSnapshot &&
+          typeof line.sourceSnapshot ===
+            'object' &&
+          !Array.isArray(
+            line.sourceSnapshot,
+          )
+            ? (line.sourceSnapshot as Record<
+                string,
+                any
+              >)
+            : null;
+
+        const resolvedClient =
+          line.client ??
+          this.pricing.normalizeClientName(
+            snapshot?.client,
+          ) ??
+          sourceClientMap.get(
+            `${line.sourceType}:${line.sourceId}`,
+          ) ??
+          null;
+
         const resolved = this.pricing.resolveFromRules(rules, {
           clientCode: line.clientCode,
+
+          client:
+            resolvedClient,
 
           formType: line.formType,
 
@@ -2549,6 +2823,9 @@ export class BillingService {
           },
 
           data: {
+            client:
+              resolvedClient,
+
             priceBasis: resolved.priceBasis,
 
             quantity: resolved.quantity,
@@ -4733,6 +5010,9 @@ export class BillingService {
 
                       clientCode:
                         line.clientCode,
+
+                      client:
+                        line.client,
 
                       resultSentToClientAt:
                         line.resultSentToClientAt,

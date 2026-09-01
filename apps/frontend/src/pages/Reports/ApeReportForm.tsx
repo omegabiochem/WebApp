@@ -287,12 +287,32 @@ export default function ApeReportForm({
 
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
   // const initialData = JSON.stringify(report || {});
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
   // inside MicroMixReportForm
   const [reportId, setReportId] = useState(report?.id || null);
+
+  const isInternalCreateForClient =
+    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    !!createForClientCode &&
+    (!report?.id || status === "DRAFT" || status === "UNDER_DRAFT_REVIEW");
+
+  const effectiveFormRole: Role | undefined = isInternalCreateForClient
+    ? "CLIENT"
+    : role;
 
   const [reportNumber, setReportNumber] = useState<string>(
     report?.reportNumber || "",
@@ -412,11 +432,15 @@ export default function ApeReportForm({
   // const initialClientValue = report?.client || (role === "CLIENT" ? user?.clientCode || "" : "");
 
   // ---- local state (prefill from report if editing) ----
-  // const [client, setClient] = useState(initialClientValue);
   const [client, setClient] = useState(
     report?.client ??
-      (!report?.id && role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+      (isInternalCreateForClient
+        ? createForClientName || createForClientCode
+        : role === "CLIENT"
+          ? (user?.clientCode ?? "")
+          : ""),
   );
+
   const [dateSent, setDateSent] = useState(() => {
     // Existing saved report: keep saved date
     if (report?.id) {
@@ -521,10 +545,6 @@ export default function ApeReportForm({
   >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
-
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !!state?.correctionLaunch;
   const routeCorrectionKinds =
@@ -845,11 +865,10 @@ export default function ApeReportForm({
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    // normal permission check first
-    const baseLocked = !canEdit(role, f, status as ReportStatus);
+    const baseLocked = !canEdit(effectiveFormRole, f, status as ReportStatus);
+
     if (baseLocked) return true;
 
-    // in correction mode, only requested fields are editable
     if (correctionModeActive) {
       return !isFieldRequestedForCorrection(f);
     }
@@ -858,15 +877,21 @@ export default function ApeReportForm({
   };
 
   const { errors, clearError, validateAndSetErrors } = useReportValidation(
-    role,
+    effectiveFormRole,
     {
-      status: status as ReportStatus, // status-driven PRELIM vs FINAL validation
+      status: status as ReportStatus,
     },
   );
 
   function hydrateForm(data: Partial<ApeReportFormValues> | any) {
-    // data is what you stored in template.data (your payload)
-    setClient(data?.client ?? "");
+    setClient(
+      data?.client ||
+        (isInternalCreateForClient
+          ? createForClientName || createForClientCode
+          : role === "CLIENT"
+            ? (user?.clientCode ?? "")
+            : ""),
+    );
     setDateSent(isTemplateViewMode ? (data?.dateSent ?? "") : todayISO());
     setTypeOfTest(data?.typeOfTest ?? "");
     setSampleType(data?.sampleType ?? "");
@@ -1004,7 +1029,8 @@ export default function ApeReportForm({
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
+
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : allowedBase;
@@ -1029,8 +1055,8 @@ export default function ApeReportForm({
         }
 
         // New reports always start as DRAFT
-        if (!reportId) {
-          payload.status = "DRAFT";
+        if (!reportId && isInternalCreateForClient) {
+          payload.createForClientCode = createForClientCode;
         }
 
         try {
@@ -1094,7 +1120,16 @@ export default function ApeReportForm({
           } else {
             saved = await api(`/reports`, {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "APE" }),
+              body: JSON.stringify({
+                ...payload,
+                formType: "APE",
+
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
+              }),
             });
           }
 
@@ -1483,23 +1518,23 @@ export default function ApeReportForm({
   }
 
   // ✅ JJL-only dropdown behavior
-  const isJJL = (client ?? "").trim().toUpperCase() === "JJL";
+  const createdByClientCode = String(
+    report?.clientCode ||
+      createForClientCode ||
+      (role === "CLIENT" ? user?.clientCode : "") ||
+      String(report?.formNumber || "").split("-")[0] ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  const isJJL = createdByClientCode === "JJL";
 
   const JJL_CREATED_BY_STATUSES = new Set<ReportStatus>([
     "DRAFT",
     "UNDER_DRAFT_REVIEW",
     "SUBMITTED_BY_CLIENT",
   ]);
-
-  const createdByClientCode = String(
-    report?.clientCode ||
-      (role === "CLIENT" ? user?.clientCode : "") ||
-      String(report?.formNumber || "").split("-")[0] ||
-      client ||
-      "",
-  )
-    .trim()
-    .toUpperCase();
 
   const showJJLCreatedBy =
     !isAnyTemplateMode &&
@@ -2394,7 +2429,7 @@ export default function ApeReportForm({
                   className="thick-box"
                   checked={!!org.checked}
                   onChange={(e) => setOrganismChecked(idx, e.target.checked)}
-                  disabled={lock("organisms") || role !== "CLIENT"}
+                  disabled={lock("organisms") || effectiveFormRole !== "CLIENT"}
                 />
                 <span className="font-bold">{org.label}</span>
               </label>
@@ -2659,7 +2694,7 @@ export default function ApeReportForm({
 
                   const canSetCurrentStatus = APE_STATUS_TRANSITIONS[
                     status as ReportStatus
-                  ]?.canSet.includes(role!);
+                  ]?.canSet.includes(effectiveFormRole!);
 
                   return (
                     <>

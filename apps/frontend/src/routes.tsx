@@ -241,7 +241,7 @@ export const router = createBrowserRouter([
         path: "reports/micro-mix/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <MicroMixReportForm />
             </RequireRole>
           </RequireAuth>
@@ -251,7 +251,7 @@ export const router = createBrowserRouter([
         path: "reports/micro-mix-water/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <MicroMixWaterReportForm />
             </RequireRole>
           </RequireAuth>
@@ -261,7 +261,7 @@ export const router = createBrowserRouter([
         path: "reports/sterility/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <SterilityReportForm />
             </RequireRole>
           </RequireAuth>
@@ -272,7 +272,7 @@ export const router = createBrowserRouter([
         path: "reports/ape/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <ApeReportForm />
             </RequireRole>
           </RequireAuth>
@@ -392,7 +392,7 @@ export const router = createBrowserRouter([
         path: "reports/chemistry-mix/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <ChemistryMixSubmissionForm />
             </RequireRole>
           </RequireAuth>
@@ -402,7 +402,7 @@ export const router = createBrowserRouter([
         path: "reports/coa/new",
         element: (
           <RequireAuth>
-            <RequireRole roles={["CLIENT", "SYSTEMADMIN"]}>
+            <RequireRole roles={["CLIENT", "ADMIN", "SYSTEMADMIN"]}>
               <COAReportForm />
             </RequireRole>
           </RequireAuth>

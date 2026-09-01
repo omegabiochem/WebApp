@@ -53,6 +53,7 @@ import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReport from "../LabReports/ApeReport";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
 import ApeReportView from "../LabReports/ApeReportView";
+import { socket } from "../../lib/socket";
 
 // ---------------------------------
 // Types
@@ -115,6 +116,9 @@ type Report = {
   coaRows?: unknown;
 
   _searchBlob?: string;
+
+  sourceCreatedBy?: string | null;
+  createdBy?: string | null;
 };
 
 // ---------------------------------
@@ -608,11 +612,41 @@ export default function AdminDashboard() {
     (user as any)?.userId ||
     (user as any)?.sub ||
     (user as any)?.uid;
+
+  function isInternalClientDraft(r: Report) {
+    const status = String(r.status);
+
+    const isDraftLike = status === "DRAFT" || status === "UNDER_DRAFT_REVIEW";
+
+    if (!isDraftLike) {
+      return false;
+    }
+
+    if (user?.role !== "ADMIN" && user?.role !== "SYSTEMADMIN") {
+      return false;
+    }
+
+    const creatorId = String(r.sourceCreatedBy ?? r.createdBy ?? "").trim();
+
+    const currentUserId = String(userKey ?? "").trim();
+
+    return !!creatorId && !!currentUserId && creatorId === currentUserId;
+  }
   const [reports, setReports] = useState<Report[]>([]);
 
   const [serverTotal, setServerTotal] = useState(0);
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+
+  /*
+   * The next fetch was triggered by WebSocket activity.
+   *
+   * We don't want to replace the dashboard with loading skeletons
+   * every time another user changes a report.
+   */
+  const silentRefreshNextRef = React.useRef(false);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -1042,6 +1076,201 @@ export default function AdminDashboard() {
     return merged;
   }
 
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    /*
+     * Multiple status changes can happen almost together,
+     * especially during bulk operations.
+     *
+     * Wait briefly and perform one dashboard refresh instead
+     * of firing 10-50 API requests.
+     */
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) {
+        return;
+      }
+
+      console.log("📣 Admin dashboard live status:", {
+        id,
+        status,
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * 1. IMMEDIATE VISUAL UPDATE
+       * ---------------------------------------------------------
+       *
+       * Don't wait for the REST request before changing the badge.
+       */
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * If this report is selected, keep that cached copy current too.
+       */
+      setSelectedReportsById((prev) => {
+        const existing = prev[id];
+
+        if (!existing) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [id]: {
+            ...existing,
+            status,
+          },
+        };
+      });
+
+      /*
+       * Keep View/Update modal synchronized.
+       */
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * Keep Change Status modal synchronized.
+       */
+      setChangeStatusReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * Keep already-loaded APE child reports synchronized with
+       * the parent workflow status.
+       */
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) continue;
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * 2. SERVER RE-SYNC
+       * ---------------------------------------------------------
+       *
+       * Important because the Admin Dashboard is server filtered/
+       * paginated.
+       *
+       * Example:
+       *
+       * Filter = UNDER_QA_REVIEW
+       *
+       * Report changes:
+       * UNDER_QA_REVIEW -> RECEIVED_BY_FRONTDESK
+       *
+       * We must remove that report from the current result set and
+       * recalculate total/pages.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = (_payload: any) => {
+      /*
+       * report.updated may contain either a full report or just:
+       *
+       * { id }
+       *
+       * Therefore don't trust it as the complete dashboard row.
+       * Re-fetch the authoritative DashboardReport projection.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = (_payload: any) => {
+      /*
+       * Whether the newly created report belongs on this page depends
+       * on current form/status/date/search filters and pagination.
+       *
+       * Let the backend decide.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      /*
+       * A user could have missed events while their network/browser
+       * was disconnected.
+       *
+       * Whenever Socket.IO reconnects, silently synchronize again.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
+
   const fetchDashboardReports = async () => {
     const params = new URLSearchParams();
 
@@ -1081,9 +1310,21 @@ export default function AdminDashboard() {
   useEffect(() => {
     let abort = false;
 
+    /*
+     * Consume the flag immediately.
+     *
+     * If WebSocket caused this fetch, don't show the full-table
+     * loading skeleton.
+     */
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadDashboardReports() {
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const startedAt = performance.now();
@@ -1094,6 +1335,7 @@ export default function AdminDashboard() {
           totalMs: Math.round(apiFinishedAt - startedAt),
           totalCount: res.total,
           pageCount: res.rows.length,
+          silentRefresh,
         });
 
         if (abort) return;
@@ -1101,10 +1343,68 @@ export default function AdminDashboard() {
         setReports(res.rows);
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map(
+            res.rows.map((report) => [report.id, report]),
+          );
+
+          let changed = false;
+          const next = { ...prev };
+
+          for (const id of Object.keys(next)) {
+            const fresh = freshMap.get(id);
+
+            if (!fresh) continue;
+
+            next[id] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((report) => report.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
+
+        setChangeStatusReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((report) => report.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch reports");
+        }
       } finally {
         if (!abort) {
+          /*
+           * Always clear loading.
+           *
+           * This also handles the unusual case where an initial load
+           * was replaced by a realtime refresh.
+           */
           setLoading(false);
           setRefreshing(false);
         }
@@ -1555,6 +1855,17 @@ export default function AdminDashboard() {
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
+    /*
+     * Special case:
+     * ADMIN / SYSTEMADMIN created this client DRAFT.
+     */
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
+    /*
+     * Normal workflow behavior.
+     */
     return canShowUpdateButton(
       userObj?.role as Role,
       r.status as ReportStatus,
@@ -1563,6 +1874,10 @@ export default function AdminDashboard() {
   }
 
   function canUpdateThisSterility(r: Report, userObj?: any) {
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
     return canShowSterilityUpdateButton(
       userObj?.role as Role,
       r.status as SterilityReportStatus,
@@ -2238,6 +2553,49 @@ export default function AdminDashboard() {
   }
 
   function openUpdateTarget(clicked: Report) {
+    /*
+     * -------------------------------------------------------
+     * INTERNAL CREATE-FOR-CLIENT DRAFT
+     * -------------------------------------------------------
+     *
+     * Reopen the normal report editor and preserve the
+     * create-for-client context.
+     */
+    if (
+      (isInternalClientDraft(clicked) &&
+        (clicked.formType === "MICRO_MIX" ||
+          clicked.formType === "MICRO_MIX_WATER" ||
+          clicked.formType === "STERILITY") ||
+      clicked.formType === "APE")
+    ) {
+      const slug = formTypeToSlug[clicked.formType] || "micro-mix";
+
+      const clientCode = String(clicked.clientCode ?? "")
+        .trim()
+        .toUpperCase();
+
+      const clientName = String(clicked.client ?? "").trim();
+
+      if (!clientCode) {
+        toast.error("Client code is missing for this report");
+        return;
+      }
+
+      const params = new URLSearchParams();
+
+      params.set("createForClient", clientCode);
+
+      if (clientName) {
+        params.set("clientName", clientName);
+      }
+
+      params.set("returnTo", location.pathname + location.search);
+
+      navigate(`/reports/${slug}/${clicked.id}?${params.toString()}`);
+
+      return;
+    }
+
     const targets = getTargetsForAction(clicked).filter((r) =>
       canUpdateAnyReport(r, user),
     );

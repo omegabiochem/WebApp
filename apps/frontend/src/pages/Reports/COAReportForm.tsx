@@ -240,6 +240,17 @@ export default function COAReportForm({
 
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const { search, state } = location;
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
+  const createForClientCode = String(params.get("createForClient") ?? "")
+    .trim()
+    .toUpperCase();
+
+  const createForClientName = String(params.get("clientName") ?? "").trim();
+
   const [isDirty, setIsDirty] = useState(false);
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
@@ -259,6 +270,15 @@ export default function COAReportForm({
 
   // ---- core report identity ----
   const [reportId, setReportId] = useState<string | null>(report?.id ?? null);
+
+  const isInternalCreateForClient =
+    (role === "ADMIN" || role === "SYSTEMADMIN") &&
+    !!createForClientCode &&
+    (!report?.id || status === "DRAFT" || status === "UNDER_DRAFT_REVIEW");
+
+  const effectiveFormRole: Role | undefined = isInternalCreateForClient
+    ? "CLIENT"
+    : role;
   const [reportNumber, setReportNumber] = useState<string>(
     report?.reportNumber ?? "",
   );
@@ -375,7 +395,12 @@ export default function COAReportForm({
 
   // ---- header fields (same as micro) ----
   const [client, setClient] = useState(
-    report?.client ?? (user?.role === "CLIENT" ? (user?.clientCode ?? "") : ""),
+    report?.client ??
+      (isInternalCreateForClient
+        ? createForClientName || createForClientCode
+        : role === "CLIENT"
+          ? (user?.clientCode ?? "")
+          : ""),
   );
   // const [dateSent, setDateSent] = useState(report?.dateSent || todayISO());
 
@@ -417,14 +442,11 @@ export default function COAReportForm({
   const [reviewedDate, setReviewedDate] = useState(report?.reviewedDate || "");
 
   const { errors, clearError, validateAndSetErrors } = useCOAReportValidation(
-    role,
+    effectiveFormRole,
     {
       status: status as COAReportStatus,
     },
   );
-  const location = useLocation();
-  const { search, state } = location;
-  const params = useMemo(() => new URLSearchParams(search), [search]);
 
   const routeCorrectionLaunch = !!state?.correctionLaunch;
   const routeCorrectionKinds =
@@ -470,19 +492,19 @@ export default function COAReportForm({
   //   corrByField[field]?.map((c) => `• ${c.message}`).join("\n");
 
   const [selectingCorrections, setSelectingCorrections] = useState(false);
-type CorrectionRecipientSide = "AUTO" | "CLIENT" | "LAB" | "BOTH";
+  type CorrectionRecipientSide = "AUTO" | "CLIENT" | "LAB" | "BOTH";
 
-const [correctionRecipientSide, setCorrectionRecipientSide] =
-  useState<CorrectionRecipientSide>("AUTO");
+  const [correctionRecipientSide, setCorrectionRecipientSide] =
+    useState<CorrectionRecipientSide>("AUTO");
 
-const [pendingCorrections, setPendingCorrections] = useState<
-  {
-    fieldKey: string;
-    message: string;
-    oldValue?: string | null;
-    recipientSide?: Exclude<CorrectionRecipientSide, "AUTO"> | null;
-  }[]
->([]);
+  const [pendingCorrections, setPendingCorrections] = useState<
+    {
+      fieldKey: string;
+      message: string;
+      oldValue?: string | null;
+      recipientSide?: Exclude<CorrectionRecipientSide, "AUTO"> | null;
+    }[]
+  >([]);
 
   const [correctionActionOpen, setCorrectionActionOpen] = useState(false);
 
@@ -501,9 +523,9 @@ const [pendingCorrections, setPendingCorrections] = useState<
 
   const createdByClientCode = String(
     report?.clientCode ||
+      createForClientCode ||
       (role === "CLIENT" ? user?.clientCode : "") ||
       String(report?.formNumber || "").split("-")[0] ||
-      client ||
       "",
   )
     .trim()
@@ -571,7 +593,14 @@ const [pendingCorrections, setPendingCorrections] = useState<
 
   function hydrateForm(r?: any) {
     // header fields
-    setClient(r?.client ?? (role === "CLIENT" ? (user?.clientCode ?? "") : ""));
+    setClient(
+      r?.client ??
+        (isInternalCreateForClient
+          ? createForClientName || createForClientCode
+          : role === "CLIENT"
+            ? (user?.clientCode ?? "")
+            : ""),
+    );
     setDateSent(isTemplateViewMode ? (r?.dateSent ?? "") : todayISO());
     setSampleDescription(r?.sampleDescription ?? "");
     setCoaVerification(!!r?.coaVerification);
@@ -642,7 +671,15 @@ const [pendingCorrections, setPendingCorrections] = useState<
       alive = false;
     };
     // include deps because hydrateForm uses role/user.clientCode
-  }, [isAnyTemplateMode, templateId, role, user?.clientCode]);
+  }, [
+    isAnyTemplateMode,
+    templateId,
+    role,
+    user?.clientCode,
+    isInternalCreateForClient,
+    createForClientCode,
+    createForClientName,
+  ]);
 
   const makeValues = (): CoaReportFormValues => ({
     client,
@@ -682,7 +719,12 @@ const [pendingCorrections, setPendingCorrections] = useState<
   const lock = (f: string) => {
     if (forceReadOnly) return true;
 
-    const baseLocked = !canEdit(role, f, status as COAReportStatus);
+    const baseLocked = !canEdit(
+      effectiveFormRole,
+      f,
+      status as COAReportStatus,
+    );
+
     if (baseLocked) return true;
 
     if (correctionModeActive) {
@@ -1028,7 +1070,7 @@ const [pendingCorrections, setPendingCorrections] = useState<
           ],
         };
 
-        const allowedBase = BASE_ALLOWED[role || "CLIENT"] || [];
+        const allowedBase = BASE_ALLOWED[effectiveFormRole || "CLIENT"] || [];
         const allowed = allowedBase.includes("*")
           ? Object.keys(fullPayload)
           : allowedBase;
@@ -1126,7 +1168,16 @@ const [pendingCorrections, setPendingCorrections] = useState<
           } else {
             saved = await api<SavedReport>("/chemistry-reports/coa", {
               method: "POST",
-              body: JSON.stringify({ ...payload, formType: "COA" }),
+              body: JSON.stringify({
+                ...payload,
+                formType: "COA",
+
+                ...(isInternalCreateForClient
+                  ? {
+                      createForClientCode,
+                    }
+                  : {}),
+              }),
             });
           }
           setReportId(saved.id); // 👈 keep the new id
@@ -2242,7 +2293,7 @@ const [pendingCorrections, setPendingCorrections] = useState<
                   <FieldErrorBadge name={kItem} errors={errors} />
 
                   {!lock("coaRows") &&
-                  role === "CLIENT" &&
+                  effectiveFormRole === "CLIENT" &&
                   !selectingCorrections ? (
                     <input
                       className={`w-full border-0 bg-transparent outline-none text-[11px] ${
@@ -2290,13 +2341,13 @@ const [pendingCorrections, setPendingCorrections] = useState<
                     value={row.Specification ?? ""}
                     readOnly={
                       lock("coaRows") ||
-                      role !== "CLIENT" ||
+                      effectiveFormRole !== "CLIENT" ||
                       selectingCorrections
                     }
                     onChange={(v) => {
                       if (
                         lock("coaRows") ||
-                        role !== "CLIENT" ||
+                        effectiveFormRole !== "CLIENT" ||
                         selectingCorrections
                       )
                         return;
@@ -2334,13 +2385,13 @@ const [pendingCorrections, setPendingCorrections] = useState<
                     value={(row as any).sopValidatedTm ?? ""}
                     readOnly={
                       lock("coaRows") ||
-                      role === "CLIENT" ||
+                      effectiveFormRole === "CLIENT" ||
                       selectingCorrections
                     }
                     onChange={(v) => {
                       if (
                         lock("coaRows") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       )
                         return;
@@ -2378,13 +2429,13 @@ const [pendingCorrections, setPendingCorrections] = useState<
                     value={row.result ?? ""}
                     readOnly={
                       lock("coaRows") ||
-                      role === "CLIENT" ||
+                      effectiveFormRole === "CLIENT" ||
                       selectingCorrections
                     }
                     onChange={(v) => {
                       if (
                         lock("coaRows") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       )
                         return;
@@ -2414,13 +2465,13 @@ const [pendingCorrections, setPendingCorrections] = useState<
                     value={date}
                     readOnly={
                       lock("coaRows") ||
-                      role === "CLIENT" ||
+                      effectiveFormRole === "CLIENT" ||
                       selectingCorrections
                     }
                     onChange={(e) => {
                       if (
                         lock("coaRows") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       )
                         return;
@@ -2453,13 +2504,13 @@ const [pendingCorrections, setPendingCorrections] = useState<
                     value={initial}
                     readOnly={
                       lock("coaRows") ||
-                      role === "CLIENT" ||
+                      effectiveFormRole === "CLIENT" ||
                       selectingCorrections
                     }
                     onChange={(e) => {
                       if (
                         lock("coaRows") ||
-                        role === "CLIENT" ||
+                        effectiveFormRole === "CLIENT" ||
                         selectingCorrections
                       )
                         return;
@@ -2727,7 +2778,7 @@ const [pendingCorrections, setPendingCorrections] = useState<
                       {correctionStatuses.length > 0 &&
                         STATUS_TRANSITIONS[
                           status as COAReportStatus
-                        ].canSet.includes(role!) && (
+                        ].canSet.includes(effectiveFormRole!) && (
                           <div className="relative">
                             <button
                               type="button"
@@ -2777,7 +2828,7 @@ const [pendingCorrections, setPendingCorrections] = useState<
                         if (
                           STATUS_TRANSITIONS[
                             status as COAReportStatus
-                          ].canSet.includes(role!) &&
+                          ].canSet.includes(effectiveFormRole!) &&
                           buttonConfig
                         ) {
                           const { label, color } = buttonConfig;
@@ -2889,21 +2940,19 @@ const [pendingCorrections, setPendingCorrections] = useState<
           <ul className="mt-2 max-h-32 overflow-auto text-xs">
             {pendingCorrections.map((c, i) => (
               <li key={i} className="flex items-center justify-between gap-2">
-              <span className="truncate">
-  <b>{c.fieldKey}</b>: {c.message}
-
-  {c.recipientSide && (
-    <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-      To: {c.recipientSide}
-    </span>
-  )}
-
-  {!c.recipientSide && (
-    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-      Auto
-    </span>
-  )}
-</span>
+                <span className="truncate">
+                  <b>{c.fieldKey}</b>: {c.message}
+                  {c.recipientSide && (
+                    <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                      To: {c.recipientSide}
+                    </span>
+                  )}
+                  {!c.recipientSide && (
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      Auto
+                    </span>
+                  )}
+                </span>
                 <button
                   className="text-rose-600 hover:underline"
                   onClick={() =>
@@ -2955,10 +3004,11 @@ const [pendingCorrections, setPendingCorrections] = useState<
                       ),
                       workflowReturnStatus: getWorkflowReturnStatus(
                         status as COAReportStatus,
-                      ),recipientSide:
-    correctionRecipientSide === "AUTO"
-      ? undefined
-      : correctionRecipientSide,
+                      ),
+                      recipientSide:
+                        correctionRecipientSide === "AUTO"
+                          ? undefined
+                          : correctionRecipientSide,
                     },
                   );
 
@@ -3032,44 +3082,47 @@ const [pendingCorrections, setPendingCorrections] = useState<
             />
 
             {["QA", "ADMIN", "SYSTEMADMIN"].includes(role ?? "") && (
-  <div className="mt-3 rounded-lg border bg-slate-50 p-3">
-    <div className="mb-2 text-xs font-semibold text-slate-700">
-      Send this change/correction to
-    </div>
+              <div className="mt-3 rounded-lg border bg-slate-50 p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-700">
+                  Send this change/correction to
+                </div>
 
-    <div className="grid grid-cols-4 gap-2 text-xs">
-      {[
-        ["AUTO", "Auto"],
-        ["CLIENT", "Client"],
-        ["LAB", "Lab"],
-        ["BOTH", "Both"],
-      ].map(([value, label]) => (
-        <label
-          key={value}
-          className={`flex cursor-pointer items-center justify-center rounded-lg border px-2 py-1.5 ${
-            correctionRecipientSide === value
-              ? "border-blue-600 bg-blue-50 text-blue-700"
-              : "bg-white text-slate-700"
-          }`}
-        >
-          <input
-            type="radio"
-            className="mr-1"
-            checked={correctionRecipientSide === value}
-            onChange={() =>
-              setCorrectionRecipientSide(value as CorrectionRecipientSide)
-            }
-          />
-          {label}
-        </label>
-      ))}
-    </div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  {[
+                    ["AUTO", "Auto"],
+                    ["CLIENT", "Client"],
+                    ["LAB", "Lab"],
+                    ["BOTH", "Both"],
+                  ].map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center justify-center rounded-lg border px-2 py-1.5 ${
+                        correctionRecipientSide === value
+                          ? "border-blue-600 bg-blue-50 text-blue-700"
+                          : "bg-white text-slate-700"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="mr-1"
+                        checked={correctionRecipientSide === value}
+                        onChange={() =>
+                          setCorrectionRecipientSide(
+                            value as CorrectionRecipientSide,
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
 
-    <div className="mt-2 text-[11px] text-slate-500">
-      Auto uses field type. For mixed fields, choose Client, Lab, or Both.
-    </div>
-  </div>
-)}
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Auto uses field type. For mixed fields, choose Client, Lab, or
+                  Both.
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex justify-end gap-2">
               <button
                 className="rounded-lg border px-3 py-1.5 text-sm"
@@ -3087,7 +3140,9 @@ const [pendingCorrections, setPendingCorrections] = useState<
                 onClick={() =>
                   runBusy("ADD_CORRECTION", async () => {
                     const selectedSide =
-  correctionRecipientSide === "AUTO" ? null : correctionRecipientSide;
+                      correctionRecipientSide === "AUTO"
+                        ? null
+                        : correctionRecipientSide;
                     setPendingCorrections((prev) => [
                       ...prev,
                       {

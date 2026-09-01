@@ -53,6 +53,7 @@ import ApeReport from "../LabReports/ApeReport";
 import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
 import ApeReportView from "../LabReports/ApeReportView";
+import { socket } from "../../lib/socket";
 
 // ---------------------------------
 // Types
@@ -115,6 +116,9 @@ type Report = {
   coaRows?: unknown;
 
   _searchBlob?: string;
+
+  sourceCreatedBy?: string | null;
+  createdBy?: string | null;
 };
 
 // ---------------------------------
@@ -608,12 +612,35 @@ export default function SystemAdminDashboard() {
     (user as any)?.userId ||
     (user as any)?.sub ||
     (user as any)?.uid;
+
+  function isInternalClientDraft(r: Report) {
+    const status = String(r.status);
+
+    const isDraftLike = status === "DRAFT" || status === "UNDER_DRAFT_REVIEW";
+
+    if (!isDraftLike) {
+      return false;
+    }
+
+    if (user?.role !== "ADMIN" && user?.role !== "SYSTEMADMIN") {
+      return false;
+    }
+
+    const creatorId = String(r.sourceCreatedBy ?? r.createdBy ?? "").trim();
+
+    const currentUserId = String(userKey ?? "").trim();
+
+    return !!creatorId && !!currentUserId && creatorId === currentUserId;
+  }
   // const [reports, setReports] = useState<Report[]>([]);
 
   const [reports, setReports] = useState<Report[]>([]);
   const [serverTotal, setServerTotal] = useState(0);
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+  const silentRefreshNextRef = React.useRef(false);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -797,6 +824,196 @@ export default function SystemAdminDashboard() {
   const [selectedReportsById, setSelectedReportsById] = useState<
     Record<string, Report>
   >({});
+
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    /*
+     * Debounce socket-triggered reloads.
+     *
+     * This is especially important when several reports are
+     * updated together.
+     */
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) {
+        return;
+      }
+
+      console.log("📣 SystemAdmin dashboard live status:", {
+        id,
+        status,
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * IMMEDIATE TABLE UPDATE
+       * ---------------------------------------------------------
+       */
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * Keep selected reports synchronized.
+       */
+      setSelectedReportsById((prev) => {
+        const existing = prev[id];
+
+        if (!existing) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [id]: {
+            ...existing,
+            status,
+          },
+        };
+      });
+
+      /*
+       * Keep View / Update modal synchronized.
+       */
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * Keep Change Status modal synchronized.
+       */
+      setChangeStatusReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * ---------------------------------------------------------
+       * APE PARENT -> CHILD WORKFLOW STATUS
+       * ---------------------------------------------------------
+       *
+       * APE Validation and APE Report use the parent workflow
+       * status. Update any already-loaded child tabs too.
+       */
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) {
+            continue;
+          }
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * AUTHORITATIVE SERVER REFRESH
+       * ---------------------------------------------------------
+       *
+       * The QA dashboard is server filtered and paginated.
+       *
+       * Therefore changing the local status alone isn't enough:
+       * the report may need to disappear from the current filter,
+       * another report may enter the page, and totals/pages may
+       * change.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = (_payload: any) => {
+      /*
+       * A normal report update can change fields involved in:
+       *
+       * - search
+       * - sorting
+       * - date filters
+       * - displayed columns
+       *
+       * Reload DashboardReport rather than trying to reconstruct
+       * its server-side projection here.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = (_payload: any) => {
+      /*
+       * The new report may or may not belong on this QA page
+       * depending on current filters.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      /*
+       * Re-sync after reconnect in case events were missed while
+       * the browser/network was disconnected.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
 
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [singlePrintJob, setSinglePrintJob] = useState<{
@@ -1084,13 +1301,18 @@ export default function SystemAdminDashboard() {
       totalPages: number;
     }>(`/system-admin-dashboard/reports?${params.toString()}`);
   };
-
   useEffect(() => {
     let abort = false;
 
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadDashboardReports() {
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const startedAt = performance.now();
@@ -1101,6 +1323,7 @@ export default function SystemAdminDashboard() {
           totalMs: Math.round(apiFinishedAt - startedAt),
           totalCount: res.total,
           pageCount: res.rows.length,
+          silentRefresh,
         });
 
         if (abort) return;
@@ -1108,8 +1331,71 @@ export default function SystemAdminDashboard() {
         setReports(res.rows);
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        /*
+         * Keep selected reports synchronized with the
+         * authoritative DashboardReport rows.
+         */
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map(
+            res.rows.map((report) => [report.id, report]),
+          );
+
+          let changed = false;
+          const next = { ...prev };
+
+          for (const id of Object.keys(next)) {
+            const fresh = freshMap.get(id);
+
+            if (!fresh) continue;
+
+            next[id] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        /*
+         * Keep the View / Update modal synchronized.
+         */
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((report) => report.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
+
+        /*
+         * SystemAdmin has a Change Status modal too,
+         * so keep its report/version/status synchronized.
+         */
+        setChangeStatusReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((report) => report.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch reports");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch reports");
+        }
       } finally {
         if (!abort) {
           setLoading(false);
@@ -1571,6 +1857,10 @@ export default function SystemAdminDashboard() {
 
   // Permissions
   function canUpdateThisMicro(r: Report, userObj?: any) {
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
     return canShowUpdateButton(
       userObj?.role as Role,
       r.status as ReportStatus,
@@ -1579,6 +1869,10 @@ export default function SystemAdminDashboard() {
   }
 
   function canUpdateThisSterility(r: Report, userObj?: any) {
+    if (isInternalClientDraft(r)) {
+      return true;
+    }
+
     return canShowSterilityUpdateButton(
       userObj?.role as Role,
       r.status as SterilityReportStatus,
@@ -2255,6 +2549,49 @@ export default function SystemAdminDashboard() {
   }
 
   function openUpdateTarget(clicked: Report) {
+    /*
+     * -------------------------------------------------------
+     * INTERNAL CREATE-FOR-CLIENT DRAFT
+     * -------------------------------------------------------
+     */
+    if (
+      isInternalClientDraft(clicked) &&
+      (clicked.formType === "MICRO_MIX" ||
+        clicked.formType === "MICRO_MIX_WATER" ||
+        clicked.formType === "STERILITY" ||
+        clicked.formType === "APE")
+    ) {
+      const slug = formTypeToSlug[clicked.formType] || "micro-mix";
+
+      const clientCode = String(clicked.clientCode ?? "")
+        .trim()
+        .toUpperCase();
+
+      const clientName = String(clicked.client ?? "").trim();
+
+      if (!clientCode) {
+        toast.error("Client code is missing for this report");
+        return;
+      }
+
+      const params = new URLSearchParams();
+
+      params.set("createForClient", clientCode);
+
+      if (clientName) {
+        params.set("clientName", clientName);
+      }
+
+      params.set("returnTo", location.pathname + location.search);
+
+      navigate(`/reports/${slug}/${clicked.id}?${params.toString()}`);
+
+      return;
+    }
+
+    /*
+     * Normal workflow Update
+     */
     const targets = getTargetsForAction(clicked).filter((r) =>
       canUpdateAnyReport(r, user),
     );
@@ -2264,7 +2601,8 @@ export default function SystemAdminDashboard() {
       return;
     }
 
-    // APE should open normal modal with APE Validation Report / APE Report tabs
+    // APE should open normal modal with
+    // APE Validation Report / APE Report tabs
     if (targets.length === 1 && targets[0].formType === "APE") {
       const target = targets[0];
 

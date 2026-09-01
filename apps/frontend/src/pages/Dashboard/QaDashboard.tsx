@@ -44,6 +44,7 @@ import ApeValidationReport from "../LabReports/ApeValidationReport";
 import ApeReport from "../LabReports/ApeReport";
 import ApeValidationReportView from "../LabReports/ApeValidationReportView";
 import ApeReportView from "../LabReports/ApeReportView";
+import { socket } from "../../lib/socket";
 
 // ---------------------------------
 // Types
@@ -560,6 +561,9 @@ export default function QaDashboard() {
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const liveRefreshTimerRef = React.useRef<number | null>(null);
+  const silentRefreshNextRef = React.useRef(false);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -771,6 +775,196 @@ export default function QaDashboard() {
   const [selectedReportsById, setSelectedReportsById] = useState<
     Record<string, Report>
   >({});
+
+  const scheduleLiveDashboardRefresh = React.useCallback(() => {
+    /*
+     * Debounce socket-triggered reloads.
+     *
+     * This is especially important when several reports are
+     * updated together.
+     */
+    if (liveRefreshTimerRef.current !== null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+    }
+
+    liveRefreshTimerRef.current = window.setTimeout(() => {
+      silentRefreshNextRef.current = true;
+      setRefreshKey((x) => x + 1);
+
+      liveRefreshTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    const onStatusChanged = (payload: {
+      reportId?: string;
+      id?: string;
+      status?: string;
+    }) => {
+      const id = payload?.reportId ?? payload?.id;
+      const status = payload?.status;
+
+      if (!id || !status) {
+        return;
+      }
+
+      console.log("📣 QA dashboard live status:", {
+        id,
+        status,
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * IMMEDIATE TABLE UPDATE
+       * ---------------------------------------------------------
+       */
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? {
+                ...report,
+                status,
+              }
+            : report,
+        ),
+      );
+
+      /*
+       * Keep selected reports synchronized.
+       */
+      setSelectedReportsById((prev) => {
+        const existing = prev[id];
+
+        if (!existing) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [id]: {
+            ...existing,
+            status,
+          },
+        };
+      });
+
+      /*
+       * Keep View / Update modal synchronized.
+       */
+      setSelectedReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * Keep Change Status modal synchronized.
+       */
+      setChangeStatusReport((prev) =>
+        prev?.id === id
+          ? {
+              ...prev,
+              status,
+            }
+          : prev,
+      );
+
+      /*
+       * ---------------------------------------------------------
+       * APE PARENT -> CHILD WORKFLOW STATUS
+       * ---------------------------------------------------------
+       *
+       * APE Validation and APE Report use the parent workflow
+       * status. Update any already-loaded child tabs too.
+       */
+      setApeChildReports((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const key of Object.keys(next)) {
+          if (!key.startsWith(`${id}:`)) {
+            continue;
+          }
+
+          changed = true;
+
+          next[key] = {
+            ...next[key],
+            parentStatus: status,
+            workflowStatus: status,
+            status,
+          };
+        }
+
+        return changed ? next : prev;
+      });
+
+      /*
+       * ---------------------------------------------------------
+       * AUTHORITATIVE SERVER REFRESH
+       * ---------------------------------------------------------
+       *
+       * The QA dashboard is server filtered and paginated.
+       *
+       * Therefore changing the local status alone isn't enough:
+       * the report may need to disappear from the current filter,
+       * another report may enter the page, and totals/pages may
+       * change.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportUpdated = (_payload: any) => {
+      /*
+       * A normal report update can change fields involved in:
+       *
+       * - search
+       * - sorting
+       * - date filters
+       * - displayed columns
+       *
+       * Reload DashboardReport rather than trying to reconstruct
+       * its server-side projection here.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onReportCreated = (_payload: any) => {
+      /*
+       * The new report may or may not belong on this QA page
+       * depending on current filters.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    const onSocketConnect = () => {
+      /*
+       * Re-sync after reconnect in case events were missed while
+       * the browser/network was disconnected.
+       */
+      scheduleLiveDashboardRefresh();
+    };
+
+    socket.on("report.statusChanged", onStatusChanged);
+    socket.on("report.updated", onReportUpdated);
+    socket.on("report.created", onReportCreated);
+    socket.on("connect", onSocketConnect);
+
+    return () => {
+      socket.off("report.statusChanged", onStatusChanged);
+      socket.off("report.updated", onReportUpdated);
+      socket.off("report.created", onReportCreated);
+      socket.off("connect", onSocketConnect);
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, [scheduleLiveDashboardRefresh]);
 
   const PIN_STORAGE_KEY = userKey ? `qaDashboardPinned:user:${userKey}` : null;
 
@@ -1135,9 +1329,21 @@ export default function QaDashboard() {
   useEffect(() => {
     let abort = false;
 
+    /*
+     * A WebSocket refresh should happen quietly.
+     *
+     * Normal user filter/page changes can still display the normal
+     * loading state.
+     */
+    const silentRefresh = silentRefreshNextRef.current;
+    silentRefreshNextRef.current = false;
+
     async function loadQaDashboardReports() {
       try {
-        setLoading(true);
+        if (!silentRefresh) {
+          setLoading(true);
+        }
+
         setError(null);
 
         const res = await fetchQaDashboardReports();
@@ -1147,8 +1353,67 @@ export default function QaDashboard() {
         setReports(res.rows);
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
+
+        /*
+         * Synchronize selected reports with the fresh authoritative
+         * dashboard rows whenever those reports are still present.
+         */
+        setSelectedReportsById((prev) => {
+          if (!Object.keys(prev).length) {
+            return prev;
+          }
+
+          const freshMap = new Map(res.rows.map((r) => [r.id, r]));
+          let changed = false;
+          const next = { ...prev };
+
+          for (const id of Object.keys(next)) {
+            const fresh = freshMap.get(id);
+
+            if (!fresh) {
+              continue;
+            }
+
+            next[id] = fresh;
+            changed = true;
+          }
+
+          return changed ? next : prev;
+        });
+
+        /*
+         * Keep an open modal fresh if the report still exists in
+         * the current server result.
+         */
+        setSelectedReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((r) => r.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
+
+        setChangeStatusReport((prev) => {
+          if (!prev) return prev;
+
+          const fresh = res.rows.find((r) => r.id === prev.id);
+
+          return fresh
+            ? {
+                ...prev,
+                ...fresh,
+              }
+            : prev;
+        });
       } catch (e: any) {
-        if (!abort) setError(e?.message ?? "Failed to fetch QA dashboard");
+        if (!abort) {
+          setError(e?.message ?? "Failed to fetch QA dashboard");
+        }
       } finally {
         if (!abort) {
           setLoading(false);
@@ -1183,7 +1448,6 @@ export default function QaDashboard() {
     refreshKey,
     pinnedIds,
   ]);
-
   // ✅ Reset invalid status when switching formFilter
   useEffect(() => {
     const opts = statusOptions.map(String);

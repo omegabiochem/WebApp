@@ -19,6 +19,20 @@ export class CreatePriceRuleDto {
   @IsString()
   clientCode!: string;
 
+  /*
+   * Exact client/customer name selected on the report.
+   *
+   * Leave null/blank to create a default rule for the
+   * entire clientCode.
+   *
+   * Example:
+   * clientCode = JJL
+   * client     = Client A
+   */
+  @IsOptional()
+  @IsString()
+  client?: string | null;
+
   @IsEnum(BillingDepartment)
   department!: BillingDepartment;
 
@@ -32,22 +46,6 @@ export class CreatePriceRuleDto {
   @IsString()
   testLabel?: string | null;
 
-  /*
-   * Individual pricing item.
-   *
-   * MICRO:
-   *   null
-   *
-   * CHEMISTRY_MIX examples:
-   *   AVOBENZONE
-   *   DIMETHICONE
-   *   SALICYLIC_ACID
-   *
-   * COA examples:
-   *   IDENTIFICATION
-   *   WATER
-   *   ASSAY
-   */
   @IsOptional()
   @IsString()
   itemKey?: string | null;

@@ -87,6 +87,29 @@ export class BillingPricingService {
       .toUpperCase();
   }
 
+  /*
+   * Exact report-level client/customer name.
+   *
+   * We preserve readable casing in the database while
+   * matching case-insensitively.
+   */
+  normalizeClientName(value: unknown): string | null {
+    const client =
+      String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ');
+
+    return client || null;
+  }
+
+  private clientIdentity(value: unknown) {
+    return (
+      this.normalizeClientName(value)
+        ?.toUpperCase() ??
+      null
+    );
+  }
+
   normalizeTestKey(value: unknown) {
     return String(value ?? '')
       .trim()
@@ -261,6 +284,7 @@ export class BillingPricingService {
     db: PriceDb,
     args: {
       clientCode: string;
+      client: string | null;
       department: BillingDepartment;
       formType: FormType;
       testKey: string;
@@ -273,6 +297,19 @@ export class BillingPricingService {
   ) {
     const where: Prisma.BillingPriceRuleWhereInput = {
       clientCode: args.clientCode,
+
+      /*
+       * A default clientCode rule (client=null) and an
+       * exact-client rule are separate pricing identities.
+       */
+      client:
+        args.client == null
+          ? null
+          : {
+              equals: args.client,
+              mode: 'insensitive',
+            },
+
       department: args.department,
       formType: args.formType,
       testKey: args.testKey,
@@ -327,7 +364,7 @@ export class BillingPricingService {
 
     if (conflict) {
       throw new BadRequestException(
-        `An overlapping pricing rule already exists for ${args.clientCode} / ${args.formType} / ${args.testKey}${args.itemKey ? ` / ${args.itemKey}` : ''}`,
+        `An overlapping pricing rule already exists for ${args.clientCode} / ${args.client ?? 'DEFAULT'} / ${args.formType} / ${args.testKey}${args.itemKey ? ` / ${args.itemKey}` : ''}`,
       );
     }
   }
@@ -372,6 +409,402 @@ export class BillingPricingService {
   }
 
   /* =========================================================
+     CLIENT NAME DIRECTORY
+  ========================================================= */
+
+  /*
+   * Collect every distinct report-level client name for one
+   * clientCode and merge it into ClientNameDirectory.
+   *
+   * This is intentionally scoped to ONE clientCode so opening
+   * the Pricing dropdown never scans the entire database.
+   *
+   * Existing MANUAL entries keep their source. AUTO sync only
+   * refreshes the display name / lastSeenAt / active state.
+   */
+  private async syncClientNamesForCode(
+    clientCodeInput: string,
+  ) {
+    const clientCode =
+      this.normalizeClientCode(
+        clientCodeInput,
+      );
+
+    if (!clientCode) {
+      return {
+        clientCode,
+        discoveredCount: 0,
+      };
+    }
+
+    const [
+      microReports,
+      chemistryReports,
+    ] =
+      await Promise.all([
+        this.prisma.report.findMany({
+          where: {
+            clientCode,
+          },
+
+          select: {
+            microMix: {
+              select: {
+                client: true,
+              },
+            },
+
+            microMixWater: {
+              select: {
+                client: true,
+              },
+            },
+
+            sterility: {
+              select: {
+                client: true,
+              },
+            },
+
+            ape: {
+              select: {
+                client: true,
+              },
+            },
+          },
+        }),
+
+        this.prisma.chemistryReport.findMany({
+          where: {
+            clientCode,
+          },
+
+          select: {
+            chemistryMix: {
+              select: {
+                client: true,
+              },
+            },
+
+            coa: {
+              select: {
+                client: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    const discovered =
+      new Map<
+        string,
+        string
+      >();
+
+    const add = (
+      value: unknown,
+    ) => {
+      const name =
+        this.normalizeClientName(
+          value,
+        );
+
+      if (!name) {
+        return;
+      }
+
+      const normalizedName =
+        this.clientIdentity(
+          name,
+        );
+
+      if (!normalizedName) {
+        return;
+      }
+
+      /*
+       * First readable spelling wins during this sync.
+       * Case/spacing variants map to the same normalized key.
+       */
+      if (
+        !discovered.has(
+          normalizedName,
+        )
+      ) {
+        discovered.set(
+          normalizedName,
+          name,
+        );
+      }
+    };
+
+    for (
+      const report of
+      microReports
+    ) {
+      add(
+        report.microMix?.client,
+      );
+
+      add(
+        report.microMixWater?.client,
+      );
+
+      add(
+        report.sterility?.client,
+      );
+
+      add(
+        report.ape?.client,
+      );
+    }
+
+    for (
+      const report of
+      chemistryReports
+    ) {
+      add(
+        report.chemistryMix?.client,
+      );
+
+      add(
+        report.coa?.client,
+      );
+    }
+
+    const now =
+      new Date();
+
+    /*
+     * Usually this is only a few names per clientCode.
+     * Individual upserts keep the logic simple and preserve
+     * MANUAL/AUTO provenance correctly.
+     */
+    for (
+      const [
+        normalizedName,
+        name,
+      ] of
+      discovered.entries()
+    ) {
+      await this.prisma.clientNameDirectory.upsert({
+        where: {
+          clientCode_normalizedName: {
+            clientCode,
+            normalizedName,
+          },
+        },
+
+        update: {
+          name,
+
+          active:
+            true,
+
+          lastSeenAt:
+            now,
+        },
+
+        create: {
+          clientCode,
+
+          name,
+
+          normalizedName,
+
+          active:
+            true,
+
+          source:
+            'AUTO',
+
+          firstSeenAt:
+            now,
+
+          lastSeenAt:
+            now,
+        },
+      });
+    }
+
+    return {
+      clientCode,
+      discoveredCount:
+        discovered.size,
+    };
+  }
+
+  /*
+   * Pricing dropdown API.
+   *
+   * Calling this route automatically syncs current report data
+   * first, then returns the directory. Therefore new client names
+   * appear automatically the next time the user opens/selects
+   * that clientCode in Pricing.
+   */
+  async listClientNames(
+    user: AuthUser,
+    clientCodeInput: string,
+  ) {
+    this.assertManager(
+      user,
+    );
+
+    const clientCode =
+      this.normalizeClientCode(
+        clientCodeInput,
+      );
+
+    if (!clientCode) {
+      throw new BadRequestException(
+        'clientCode is required',
+      );
+    }
+
+    const clientDetails =
+      await this.prisma.clientDetails.findUnique({
+        where: {
+          clientCode,
+        },
+
+        select: {
+          clientCode:
+            true,
+
+          name:
+            true,
+
+          active:
+            true,
+        },
+      });
+
+    if (!clientDetails) {
+      throw new BadRequestException(
+        `Unknown clientCode: ${clientCode}`,
+      );
+    }
+
+    const sync =
+      await this.syncClientNamesForCode(
+        clientCode,
+      );
+
+    const rows =
+      await this.prisma.clientNameDirectory.findMany({
+        where: {
+          clientCode,
+
+          active:
+            true,
+        },
+
+        orderBy: [
+          {
+            name:
+              'asc',
+          },
+        ],
+      });
+
+    return {
+      clientCode,
+
+      clientCodeName:
+        clientDetails.name ??
+        null,
+
+      clientCodeActive:
+        clientDetails.active,
+
+      discoveredCount:
+        sync.discoveredCount,
+
+      items:
+        rows,
+    };
+  }
+
+  /*
+   * When an admin manually types a client while creating a
+   * pricing rule, remember it permanently in the same directory.
+   *
+   * If that name was already AUTO-discovered, its original source
+   * is preserved because the update does not overwrite `source`.
+   */
+  private async rememberManualClientName(
+    user: AuthUser,
+    clientCode: string,
+    client: string | null,
+  ) {
+    if (!client) {
+      return;
+    }
+
+    const normalizedName =
+      this.clientIdentity(
+        client,
+      );
+
+    if (!normalizedName) {
+      return;
+    }
+
+    const now =
+      new Date();
+
+    await this.prisma.clientNameDirectory.upsert({
+      where: {
+        clientCode_normalizedName: {
+          clientCode,
+          normalizedName,
+        },
+      },
+
+      update: {
+        name:
+          client,
+
+        active:
+          true,
+
+        lastSeenAt:
+          now,
+
+        updatedBy:
+          user.userId,
+      },
+
+      create: {
+        clientCode,
+
+        name:
+          client,
+
+        normalizedName,
+
+        active:
+          true,
+
+        source:
+          'MANUAL',
+
+        firstSeenAt:
+          now,
+
+        lastSeenAt:
+          now,
+
+        createdBy:
+          user.userId,
+
+        updatedBy:
+          user.userId,
+      },
+    });
+  }
+
+  /* =========================================================
      LIST
   ========================================================= */
 
@@ -379,6 +812,7 @@ export class BillingPricingService {
     user: AuthUser,
     query: {
       clientCode?: string;
+      client?: string;
       department?: BillingDepartment;
       formType?: FormType;
       active?: string | boolean;
@@ -391,6 +825,20 @@ export class BillingPricingService {
     if (query.clientCode) {
       where.clientCode =
         this.normalizeClientCode(query.clientCode);
+    }
+
+    if (query.client) {
+      const client =
+        this.normalizeClientName(
+          query.client,
+        );
+
+      if (client) {
+        where.client = {
+          equals: client,
+          mode: 'insensitive',
+        };
+      }
     }
 
     if (query.department) {
@@ -422,6 +870,9 @@ export class BillingPricingService {
         orderBy: [
           {
             clientCode: 'asc',
+          },
+          {
+            client: 'asc',
           },
           {
             formType: 'asc',
@@ -465,7 +916,12 @@ export class BillingPricingService {
       );
     }
 
-    const client =
+    const pricingClient =
+      this.normalizeClientName(
+        dto.client,
+      );
+
+    const clientDetails =
       await this.prisma.clientDetails.findUnique({
         where: {
           clientCode,
@@ -475,11 +931,21 @@ export class BillingPricingService {
         },
       });
 
-    if (!client) {
+    if (!clientDetails) {
       throw new BadRequestException(
         `Unknown clientCode: ${clientCode}`,
       );
     }
+
+    /*
+     * A typed client name becomes a permanent dropdown option.
+     * DEFAULT rules keep client=null and are not added.
+     */
+    await this.rememberManualClientName(
+      user,
+      clientCode,
+      pricingClient,
+    );
 
     let testKey =
       this.normalizeTestKey(dto.testKey);
@@ -539,6 +1005,7 @@ export class BillingPricingService {
       this.prisma,
       {
         clientCode,
+        client: pricingClient,
         department: dto.department,
         formType: dto.formType,
         testKey,
@@ -553,6 +1020,8 @@ export class BillingPricingService {
       await this.prisma.billingPriceRule.create({
         data: {
           clientCode,
+
+          client: pricingClient,
 
           department: dto.department,
 
@@ -595,6 +1064,7 @@ export class BillingPricingService {
       created,
       {
         clientCode,
+        client: created.client,
         department: created.department,
         formType: created.formType,
         testKey: created.testKey,
@@ -841,6 +1311,9 @@ export class BillingPricingService {
               clientCode:
                 existing.clientCode,
 
+              client:
+                existing.client,
+
               department:
                 existing.department,
 
@@ -871,6 +1344,9 @@ export class BillingPricingService {
             data: {
               clientCode:
                 existing.clientCode,
+
+              client:
+                existing.client,
 
               department:
                 existing.department,
@@ -1019,6 +1495,9 @@ export class BillingPricingService {
         clientCode:
           existing.clientCode,
 
+        client:
+          existing.client,
+
         department:
           existing.department,
 
@@ -1125,6 +1604,14 @@ export class BillingPricingService {
     rules: BillingPriceRule[],
     args: {
       clientCode: string;
+
+      /*
+       * Optional during rollout so older callers still compile.
+       * Once BillingService is replaced, every new report
+       * candidate supplies its exact report-level client.
+       */
+      client?: string | null;
+
       formType: FormType;
       testKey: string;
       itemKey?: string | null;
@@ -1141,6 +1628,16 @@ export class BillingPricingService {
   } {
     const clientCode =
       this.normalizeClientCode(args.clientCode);
+
+    const client =
+      this.normalizeClientName(
+        args.client,
+      );
+
+    const clientIdentity =
+      this.clientIdentity(
+        client,
+      );
 
     const testKey =
       this.normalizeTestKey(args.testKey);
@@ -1182,28 +1679,79 @@ export class BillingPricingService {
       });
 
     /*
-     * Legacy active-count rules remain supported when
-     * itemKey is null.
+     * CLIENT-SPECIFIC PRICE PRIORITY
+     * -------------------------------------------------------
+     *
+     * 1. Exact client:
+     *      JJL + Client A
+     *
+     * 2. Client-code default:
+     *      JJL + client=null
+     *
+     * Existing rules created before this feature all have
+     * client=null and therefore remain valid defaults.
      */
-    const exact =
-      args.activeCount != null
-        ? applicable.find(
+    const exactClientRules =
+      clientIdentity == null
+        ? []
+        : applicable.filter(
             (rule) =>
-              rule.activeCount === args.activeCount,
-          )
-        : undefined;
+              rule.client != null &&
+              this.clientIdentity(
+                rule.client,
+              ) ===
+                clientIdentity,
+          );
 
-    const generic =
-      applicable.find(
+    const defaultClientRules =
+      applicable.filter(
         (rule) =>
-          rule.activeCount == null,
+          rule.client == null,
       );
 
+    const pickRule = (
+      pool: BillingPriceRule[],
+    ) => {
+      /*
+       * Legacy active-count rules remain supported when
+       * itemKey is null.
+       */
+      const exactActiveCount =
+        args.activeCount != null
+          ? pool.find(
+              (rule) =>
+                rule.activeCount ===
+                  args.activeCount,
+            )
+          : undefined;
+
+      const generic =
+        pool.find(
+          (rule) =>
+            rule.activeCount ==
+            null,
+        );
+
+      return (
+        exactActiveCount ??
+        generic
+      );
+    };
+
     const rule =
-      exact ?? generic;
+      pickRule(
+        exactClientRules,
+      ) ??
+      pickRule(
+        defaultClientRules,
+      );
 
     const identity =
-      `${clientCode} / ${args.formType} / ${testKey}` +
+      `${clientCode}` +
+      (client
+        ? ` / ${client}`
+        : ' / DEFAULT') +
+      ` / ${args.formType} / ${testKey}` +
       (itemKey ? ` / ${itemKey}` : '');
 
     if (!rule) {
