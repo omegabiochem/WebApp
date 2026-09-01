@@ -1,0 +1,101 @@
+name: Neon DB Restore Test from S3
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_s3_key:
+        description: "S3 key for .dump file, example: daily/2026/09/01/omega-lims-production-20260901-xxxxxxZ.dump"
+        required: true
+        type: string
+      checksum_s3_key:
+        description: "S3 key for .sha256 file, example: daily/2026/09/01/omega-lims-production-20260901-xxxxxxZ.dump.sha256"
+        required: true
+        type: string
+
+jobs:
+  restore-test:
+    name: Restore Backup Into Neon Test Branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      DB_BACKUP_BUCKET: ${{ secrets.DB_BACKUP_BUCKET }}
+      NEON_RESTORE_TEST_DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+      PGSSLMODE: require
+
+    steps:
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_restore --version
+          /usr/lib/postgresql/17/bin/psql --version
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Download backup from S3
+        run: |
+          set -euo pipefail
+
+          mkdir -p restore-input
+
+          BACKUP_FILE="restore-input/backup.dump"
+          CHECKSUM_FILE="restore-input/backup.dump.sha256"
+
+          aws s3 cp "s3://$DB_BACKUP_BUCKET/${{ inputs.backup_s3_key }}" "$BACKUP_FILE"
+          aws s3 cp "s3://$DB_BACKUP_BUCKET/${{ inputs.checksum_s3_key }}" "$CHECKSUM_FILE"
+
+          echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+          echo "CHECKSUM_FILE=$CHECKSUM_FILE" >> "$GITHUB_ENV"
+
+      - name: Verify checksum
+        run: |
+          set -euo pipefail
+
+          EXPECTED_HASH="$(awk '{print $1}' "$CHECKSUM_FILE")"
+          ACTUAL_HASH="$(sha256sum "$BACKUP_FILE" | awk '{print $1}')"
+
+          echo "Expected: $EXPECTED_HASH"
+          echo "Actual:   $ACTUAL_HASH"
+
+          if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+            echo "Checksum verification failed"
+            exit 1
+          fi
+
+          echo "Checksum verification passed"
+
+      - name: Restore backup into Neon restore-test database
+        run: |
+          set -euo pipefail
+
+          /usr/lib/postgresql/17/bin/pg_restore \
+            --clean \
+            --if-exists \
+            --no-owner \
+            --no-privileges \
+            --verbose \
+            --dbname="$NEON_RESTORE_TEST_DATABASE_URL" \
+            "$BACKUP_FILE"
+
+      - name: Verify restored database
+        run: |
+          set -euo pipefail
+
+          /usr/lib/postgresql/17/bin/psql "$NEON_RESTORE_TEST_DATABASE_URL" -c "
+            SELECT current_database() AS database_name, now() AS verified_at;
+          "
+
+          /usr/lib/postgresql/17/bin/psql "$NEON_RESTORE_TEST_DATABASE_URL" -c "
+            SELECT COUNT(*) AS table_count
+            FROM information_schema.tables
+            WHERE table_schema = 'public';
+          "
