@@ -70,18 +70,58 @@ jobs:
           YEAR="$(date -u +'%Y')"
           MONTH="$(date -u +'%m')"
           DAY="$(date -u +'%d')"
+          WEEK="$(date -u +'%V')"
+          DAY_OF_WEEK="$(date -u +'%u')"
+          DAY_OF_MONTH="$(date -u +'%d')"
 
-          S3_PREFIX="neon-production/$YEAR/$MONTH/$DAY"
-          S3_BACKUP_KEY="$S3_PREFIX/$(basename "$BACKUP_FILE")"
-          S3_CHECKSUM_KEY="$S3_PREFIX/$(basename "$CHECKSUM_FILE")"
+          BACKUP_BASENAME="$(basename "$BACKUP_FILE")"
+          CHECKSUM_BASENAME="$(basename "$CHECKSUM_FILE")"
 
-          aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$S3_BACKUP_KEY" \
+          DAILY_PREFIX="daily/$YEAR/$MONTH/$DAY"
+          DAILY_BACKUP_KEY="$DAILY_PREFIX/$BACKUP_BASENAME"
+          DAILY_CHECKSUM_KEY="$DAILY_PREFIX/$CHECKSUM_BASENAME"
+
+          echo "Uploading daily backup..."
+
+          aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$DAILY_BACKUP_KEY" \
             --sse aws:kms \
             --sse-kms-key-id "$AWS_KMS_KEY_ID"
 
-          aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$S3_CHECKSUM_KEY" \
+          aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$DAILY_CHECKSUM_KEY" \
             --sse aws:kms \
             --sse-kms-key-id "$AWS_KMS_KEY_ID"
+
+          if [ "$DAY_OF_WEEK" = "7" ]; then
+            WEEKLY_PREFIX="weekly/$YEAR/week-$WEEK"
+            WEEKLY_BACKUP_KEY="$WEEKLY_PREFIX/$BACKUP_BASENAME"
+            WEEKLY_CHECKSUM_KEY="$WEEKLY_PREFIX/$CHECKSUM_BASENAME"
+
+            echo "Uploading weekly backup..."
+
+            aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$WEEKLY_BACKUP_KEY" \
+              --sse aws:kms \
+              --sse-kms-key-id "$AWS_KMS_KEY_ID"
+
+            aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$WEEKLY_CHECKSUM_KEY" \
+              --sse aws:kms \
+              --sse-kms-key-id "$AWS_KMS_KEY_ID"
+          fi
+
+          if [ "$DAY_OF_MONTH" = "01" ]; then
+            MONTHLY_PREFIX="monthly/$YEAR/$MONTH"
+            MONTHLY_BACKUP_KEY="$MONTHLY_PREFIX/$BACKUP_BASENAME"
+            MONTHLY_CHECKSUM_KEY="$MONTHLY_PREFIX/$CHECKSUM_BASENAME"
+
+            echo "Uploading monthly backup..."
+
+            aws s3 cp "$BACKUP_FILE" "s3://$DB_BACKUP_BUCKET/$MONTHLY_BACKUP_KEY" \
+              --sse aws:kms \
+              --sse-kms-key-id "$AWS_KMS_KEY_ID"
+
+            aws s3 cp "$CHECKSUM_FILE" "s3://$DB_BACKUP_BUCKET/$MONTHLY_CHECKSUM_KEY" \
+              --sse aws:kms \
+              --sse-kms-key-id "$AWS_KMS_KEY_ID"
+          fi
 
       - name: Verify uploaded backup exists
         run: |
@@ -91,6 +131,7 @@ jobs:
           MONTH="$(date -u +'%m')"
           DAY="$(date -u +'%d')"
 
-          S3_PREFIX="neon-production/$YEAR/$MONTH/$DAY"
+          DAILY_PREFIX="daily/$YEAR/$MONTH/$DAY"
 
-          aws s3 ls "s3://$DB_BACKUP_BUCKET/$S3_PREFIX/"
+          echo "Verifying daily backup..."
+          aws s3 ls "s3://$DB_BACKUP_BUCKET/$DAILY_PREFIX/"
