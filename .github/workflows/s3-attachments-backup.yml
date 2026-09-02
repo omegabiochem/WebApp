@@ -43,7 +43,8 @@ jobs:
 
           aws s3 sync "s3://$SOURCE_BUCKET/$SOURCE_PREFIX/" "s3://$DEST_BUCKET/attachments/$SOURCE_PREFIX/" \
             --sse aws:kms \
-            --sse-kms-key-id "$AWS_KMS_KEY_ID"
+            --sse-kms-key-id "$AWS_KMS_KEY_ID" \
+            --only-show-errors
 
       - name: Backup docs prefix
         run: |
@@ -54,7 +55,8 @@ jobs:
 
           aws s3 sync "s3://$SOURCE_BUCKET/$DOCS_PREFIX/" "s3://$DEST_BUCKET/attachments/$DOCS_PREFIX/" \
             --sse aws:kms \
-            --sse-kms-key-id "$AWS_KMS_KEY_ID"
+            --sse-kms-key-id "$AWS_KMS_KEY_ID" \
+            --only-show-errors
 
       - name: Verify backup destination
         run: |
