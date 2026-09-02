@@ -1,0 +1,5 @@
+push:
+  branches:
+    - local
+  paths:
+    - ".github/workflows/s3-attachments-backup.yml"
