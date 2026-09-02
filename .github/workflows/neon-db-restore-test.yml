@@ -12,11 +12,11 @@ on:
         required: false
         type: string
 
-  push:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/neon-db-restore-test.yml"
+  # push:
+  #   branches:
+  #     - master
+  #   paths:
+  #     - ".github/workflows/neon-db-restore-test.yml"
 
 jobs:
   restore-test:
