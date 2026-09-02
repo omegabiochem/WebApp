@@ -1,0 +1,69 @@
+name: OMEGA S3 Attachments Backup
+
+on:
+  workflow_dispatch:
+
+  # push:
+  #   branches:
+  #     - local
+  #   paths:
+  #     - ".github/workflows/s3-attachments-backup.yml"
+
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  backup-s3-attachments:
+    name: Backup S3 Attachments
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      SOURCE_BUCKET: ${{ secrets.ATTACHMENTS_SOURCE_BUCKET }}
+      SOURCE_PREFIX: ${{ secrets.ATTACHMENTS_SOURCE_PREFIX }}
+      DOCS_PREFIX: ${{ secrets.ATTACHMENTS_DOCS_PREFIX }}
+      DEST_BUCKET: ${{ secrets.DB_BACKUP_BUCKET }}
+      AWS_KMS_KEY_ID: ${{ secrets.AWS_KMS_KEY_ID }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Backup production attachments prefix
+        run: |
+          set -euo pipefail
+
+          echo "Backing up s3://$SOURCE_BUCKET/$SOURCE_PREFIX/"
+          echo "Destination: s3://$DEST_BUCKET/attachments/$SOURCE_PREFIX/"
+
+          aws s3 sync "s3://$SOURCE_BUCKET/$SOURCE_PREFIX/" "s3://$DEST_BUCKET/attachments/$SOURCE_PREFIX/" \
+            --sse aws:kms \
+            --sse-kms-key-id "$AWS_KMS_KEY_ID" \
+            --only-show-errors
+
+      - name: Backup docs prefix
+        run: |
+          set -euo pipefail
+
+          echo "Backing up s3://$SOURCE_BUCKET/$DOCS_PREFIX/"
+          echo "Destination: s3://$DEST_BUCKET/attachments/$DOCS_PREFIX/"
+
+          aws s3 sync "s3://$SOURCE_BUCKET/$DOCS_PREFIX/" "s3://$DEST_BUCKET/attachments/$DOCS_PREFIX/" \
+            --sse aws:kms \
+            --sse-kms-key-id "$AWS_KMS_KEY_ID" \
+            --only-show-errors
+
+      - name: Verify backup destination
+        run: |
+          set -euo pipefail
+
+          echo "Production attachment backup objects:"
+          aws s3 ls "s3://$DEST_BUCKET/attachments/$SOURCE_PREFIX/" --recursive --summarize | tail -20
+
+          echo "Docs backup objects:"
+          aws s3 ls "s3://$DEST_BUCKET/attachments/$DOCS_PREFIX/" --recursive --summarize | tail -20
