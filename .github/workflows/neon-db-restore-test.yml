@@ -12,11 +12,11 @@ on:
         required: false
         type: string
 
-  push:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/neon-db-restore-test.yml"
+  # push:
+  #   branches:
+  #     - master
+  #   paths:
+  #     - ".github/workflows/neon-db-restore-test.yml"
 
 jobs:
   restore-test:
@@ -112,6 +112,20 @@ jobs:
           fi
 
           echo "Checksum verification passed"
+
+
+      - name: Clean restore-test database before restore
+        run: |
+          set -euo pipefail
+
+          echo "Cleaning restore-test database public schema..."
+
+          /usr/lib/postgresql/17/bin/psql "$NEON_RESTORE_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            DROP SCHEMA IF EXISTS public CASCADE;
+            CREATE SCHEMA public;
+          "
+
+          echo "Restore-test database cleaned."
 
       - name: Restore backup into Neon restore-test database
         run: |
