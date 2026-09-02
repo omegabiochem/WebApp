@@ -3,11 +3,11 @@ name: OMEGA S3 Attachments Backup
 on:
   workflow_dispatch:
 
-  push:
-    branches:
-      - local
-    paths:
-      - ".github/workflows/s3-attachments-backup.yml"
+  # push:
+  #   branches:
+  #     - local
+  #   paths:
+  #     - ".github/workflows/s3-attachments-backup.yml"
 
   schedule:
     - cron: "0 3 * * *"
