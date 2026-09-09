@@ -61,7 +61,7 @@ export const router = createBrowserRouter([
       // Public legal pages (Twilio A2P)
       { path: "privacy-policy", element: <PrivacyPolicy /> },
       { path: "terms-and-conditions", element: <TermsAndConditions /> },
-      { index: true, element: <Root /> },
+      { index: true, element: <Home /> },
       { path: "publicsupport", element: <PublicSupport /> },
 
       // Public
@@ -82,11 +82,7 @@ export const router = createBrowserRouter([
       // Optional: make home private if it shows user data
       {
         path: "home",
-        element: (
-          <RequireAuth>
-            <Home />
-          </RequireAuth>
-        ),
+        element: <Home />,
       },
 
       // Admin tools
@@ -188,7 +184,7 @@ export const router = createBrowserRouter([
         path: "billing",
         element: (
           <RequireAuth>
-            <RequireRole roles={[ "ADMIN", "SYSTEMADMIN"]}>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
               <BillingDashboard />
             </RequireRole>
           </RequireAuth>
