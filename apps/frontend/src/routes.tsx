@@ -4,7 +4,6 @@ import App from "./App";
 import Login from "./pages/Auth/Login";
 import Home from "./pages/Home";
 import ChangePassword from "./pages/Auth/ChangePassword";
-import Root from "./Routes/Root";
 import SystemAdminDashboard from "./pages/Dashboard/SystemAdminDashboard";
 import ClientDashboard from "./pages/Dashboard/ClientDashboard";
 import MicroDashboard from "./pages/Dashboard/MicroDashboard";
