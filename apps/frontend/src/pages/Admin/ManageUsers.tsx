@@ -39,6 +39,8 @@ import {
   Settings2,
   Eye,
   EyeOff,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { socket } from "../../lib/socket";
@@ -301,6 +303,7 @@ export default function UsersAdmin() {
   const [copiedField, setCopiedField] = useState<"password" | "userId" | null>(
     null,
   );
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
 
   /* -------------------- manage filters -------------------- */
   const [q, setQ] = useState("");
@@ -394,6 +397,7 @@ export default function UsersAdmin() {
       setCreatedTempPassword(res.tempPassword);
       setCreateModalOpen(true);
       resetCreateForm();
+      setCreateAccountOpen(false);
       toast.success("User created");
       await loadUsers();
     } catch (e: any) {
@@ -625,17 +629,41 @@ export default function UsersAdmin() {
       {tab === "USERS" && (
         <>
           {/* Create user card */}
-          {/* Users list */}
           <div className={cx(card, "overflow-hidden flex flex-col")}>
             <div
-              className={cx(cardHeader, "flex items-center justify-between")}
+              className={cx(
+                cardHeader,
+                "flex items-center justify-between gap-3",
+              )}
             >
-              <div className="flex items-center gap-2">
-                <Plus size={18} className="text-slate-600" />
-                <div className="font-semibold text-slate-900">
-                  Create account
+              <button
+                type="button"
+                onClick={() => setCreateAccountOpen((prev) => !prev)}
+                className="flex flex-1 items-center justify-between gap-3 text-left"
+                aria-expanded={createAccountOpen}
+              >
+                <div className="flex items-center gap-2">
+                  <Plus size={18} className="text-indigo-600" />
+
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      Create account
+                    </div>
+
+                    <div className="mt-0.5 text-xs font-normal text-slate-500">
+                      Add a new Omega LIMS user account
+                    </div>
+                  </div>
                 </div>
-              </div>
+
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">
+                  {createAccountOpen ? (
+                    <ChevronUp size={17} />
+                  ) : (
+                    <ChevronDown size={17} />
+                  )}
+                </div>
+              </button>
 
               <button onClick={loadUsers} className={btn.outline} type="button">
                 <RefreshCw size={16} />
@@ -643,118 +671,132 @@ export default function UsersAdmin() {
               </button>
             </div>
 
-            <form
-              onSubmit={handleSubmit(onCreateSubmit)}
-              className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3"
-            >
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Email
-                </label>
-                <input
-                  className={inputBase}
-                  {...register("email")}
-                  placeholder="user@omegabiochemlab.com"
-                />
-                {createErrors.email && (
-                  <p className="text-rose-600 text-xs mt-1">
-                    {createErrors.email.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Name (optional)
-                </label>
-                <input
-                  className={inputBase}
-                  {...register("name")}
-                  placeholder="Jane Doe"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  User ID
-                </label>
-                <input
-                  className={inputBase}
-                  {...register("userId")}
-                  placeholder="frontdesk01"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  8–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
-                </p>
-                {createErrors.userId && (
-                  <p className="text-rose-600 text-xs mt-1">
-                    {createErrors.userId.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Role
-                </label>
-                <select
-                  className={cx(inputBase, "cursor-pointer")}
-                  {...register("role")}
-                >
-                  {roles.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                {createErrors.role && (
-                  <p className="text-rose-600 text-xs mt-1">
-                    {createErrors.role.message}
-                  </p>
-                )}
-              </div>
-
-              {watch("role") === "CLIENT" && (
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Client Code
+            {createAccountOpen && (
+              <form
+                onSubmit={handleSubmit(onCreateSubmit)}
+                className="grid grid-cols-1 gap-3 border-t border-slate-100 p-4 md:grid-cols-2"
+              >
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">
+                    Email
                   </label>
+
                   <input
                     className={inputBase}
-                    maxLength={3}
-                    {...clientCodeReg}
-                    onChange={(e) => {
-                      const cleaned = e.target.value
-                        .replace(/[^a-zA-Z]/g, "") // ❌ remove numbers/symbols
-                        .toUpperCase() // ✅ uppercase
-                        .slice(0, 3); // ✅ limit to 3
-
-                      e.target.value = cleaned;
-                      clientCodeReg.onChange(e); // ✅ sync with react-hook-form
-                    }}
-                    placeholder="ABC"
+                    {...register("email")}
+                    placeholder="user@omegabiochemlab.com"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    3 chars; uppercase A–Z only.
-                  </p>
-                  {createErrors.clientCode && (
-                    <p className="text-rose-600 text-xs mt-1">
-                      {createErrors.clientCode.message}
+
+                  {createErrors.email && (
+                    <p className="mt-1 text-xs text-rose-600">
+                      {createErrors.email.message}
                     </p>
                   )}
                 </div>
-              )}
 
-              <div className="md:col-span-2 flex justify-end pt-1">
-                <button
-                  disabled={creating}
-                  className={btn.primary}
-                  type="submit"
-                >
-                  {creating ? "Creating..." : "Create account"}
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">
+                    Name (optional)
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    {...register("name")}
+                    placeholder="Jane Doe"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">
+                    User ID
+                  </label>
+
+                  <input
+                    className={inputBase}
+                    {...register("userId")}
+                    placeholder="frontdesk01"
+                  />
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    8–20 chars; lowercase a–z, 0–9, dot, underscore, hyphen.
+                  </p>
+
+                  {createErrors.userId && (
+                    <p className="mt-1 text-xs text-rose-600">
+                      {createErrors.userId.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">
+                    Role
+                  </label>
+
+                  <select
+                    className={cx(inputBase, "cursor-pointer")}
+                    {...register("role")}
+                  >
+                    {roles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+
+                  {createErrors.role && (
+                    <p className="mt-1 text-xs text-rose-600">
+                      {createErrors.role.message}
+                    </p>
+                  )}
+                </div>
+
+                {watch("role") === "CLIENT" && (
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-600">
+                      Client Code
+                    </label>
+
+                    <input
+                      className={inputBase}
+                      maxLength={3}
+                      {...clientCodeReg}
+                      onChange={(e) => {
+                        const cleaned = e.target.value
+                          .replace(/[^a-zA-Z]/g, "")
+                          .toUpperCase()
+                          .slice(0, 3);
+
+                        e.target.value = cleaned;
+
+                        clientCodeReg.onChange(e);
+                      }}
+                      placeholder="ABC"
+                    />
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      3 chars; uppercase A–Z only.
+                    </p>
+
+                    {createErrors.clientCode && (
+                      <p className="mt-1 text-xs text-rose-600">
+                        {createErrors.clientCode.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-1 md:col-span-2">
+                  <button
+                    disabled={creating}
+                    className={btn.primary}
+                    type="submit"
+                  >
+                    {creating ? "Creating..." : "Create account"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Stats */}
