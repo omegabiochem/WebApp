@@ -3,6 +3,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { ReportStatus, UserRole } from '@prisma/client';
@@ -50,7 +51,9 @@ const ACTIVE_REPORT_STATUSES: ReportStatus[] = [
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeEmail(email: string) {
-  return String(email ?? '').trim().toLowerCase();
+  return String(email ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 @Injectable()
@@ -72,6 +75,44 @@ export class UsersService {
   }) {
     const email = input.email.trim().toLowerCase();
     const desiredUserId = (input.userId ?? '').trim().toLowerCase();
+
+    const normalizedName = String(input.name ?? '').trim() || null;
+
+    if (!email || !EMAIL_RE.test(email)) {
+      throw new BadRequestException('Valid email is required');
+    }
+
+    const [emailExists, nameExists] = await Promise.all([
+      this.prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: 'insensitive',
+          },
+        },
+        select: { id: true },
+      }),
+
+      normalizedName
+        ? this.prisma.user.findFirst({
+            where: {
+              name: {
+                equals: normalizedName,
+                mode: 'insensitive',
+              },
+            },
+            select: { id: true },
+          })
+        : null,
+    ]);
+
+    if (emailExists) {
+      throw new ConflictException('Email already exists');
+    }
+
+    if (nameExists) {
+      throw new ConflictException('Name already exists');
+    }
 
     if (!desiredUserId) throw new BadRequestException('User ID is required');
     if (!USERID_RE.test(desiredUserId)) {
@@ -105,7 +146,7 @@ export class UsersService {
     const user = await this.prisma.user.create({
       data: {
         email,
-        name: input.name ?? null,
+        name: normalizedName,
         role: input.role,
         userId: desiredUserId,
         userIdSetAt: new Date(),
@@ -310,88 +351,124 @@ export class UsersService {
     return { ok: true };
   }
 
-
   async updateName(id: string, name: string | null) {
-  const found = await this.prisma.user.findUnique({
-    where: { id },
-    select: { id: true },
-  });
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true },
+    });
 
-  if (!found) {
-    throw new NotFoundException('User not found');
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+
+    const nextName = String(name ?? '').trim() || null;
+
+    if (nextName) {
+      const duplicate = await this.prisma.user.findFirst({
+        where: {
+          id: {
+            not: id,
+          },
+
+          name: {
+            equals: nextName,
+            mode: 'insensitive',
+          },
+        },
+
+        select: {
+          id: true,
+        },
+      });
+
+      if (duplicate) {
+        throw new ConflictException('Name already exists');
+      }
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+
+      data: {
+        name: nextName,
+      },
+
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+        userId: true,
+        clientCode: true,
+      },
+    });
+
+    return {
+      ok: true,
+      user: updated,
+    };
   }
 
-  const nextName = String(name ?? '').trim() || null;
+  async updateEmail(id: string, email: string) {
+    const nextEmail = normalizeEmail(email);
 
-  const updated = await this.prisma.user.update({
-    where: { id },
-    data: { name: nextName },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      active: true,
-      userId: true,
-      clientCode: true,
-    },
-  });
+    if (!nextEmail || !EMAIL_RE.test(nextEmail)) {
+      throw new BadRequestException('Valid email is required');
+    }
 
-  return {
-    ok: true,
-    user: updated,
-  };
-}
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true },
+    });
 
-async updateEmail(id: string, email: string) {
-  const nextEmail = normalizeEmail(email);
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
 
-  if (!nextEmail || !EMAIL_RE.test(nextEmail)) {
-    throw new BadRequestException('Valid email is required');
+    const duplicate = await this.prisma.user.findFirst({
+      where: {
+        id: {
+          not: id,
+        },
+
+        email: {
+          equals: nextEmail,
+          mode: 'insensitive',
+        },
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (duplicate) {
+      throw new ConflictException('Email already exists');
+    }
+
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        email: nextEmail,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+        userId: true,
+        clientCode: true,
+      },
+    });
+
+    return {
+      ok: true,
+      user: updated,
+    };
   }
-
-  const found = await this.prisma.user.findUnique({
-    where: { id },
-    select: { id: true, email: true },
-  });
-
-  if (!found) {
-    throw new NotFoundException('User not found');
-  }
-
-  const duplicate = await this.prisma.user.findFirst({
-    where: {
-      email: nextEmail,
-      NOT: { id },
-    },
-    select: { id: true },
-  });
-
-  if (duplicate) {
-    throw new BadRequestException('Email already exists');
-  }
-
-  const updated = await this.prisma.user.update({
-    where: { id },
-    data: {
-      email: nextEmail,
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      active: true,
-      userId: true,
-      clientCode: true,
-    },
-  });
-
-  return {
-    ok: true,
-    user: updated,
-  };
-}
 
   // async resetPasswordAdmin(id: string) {
   //   const u = await this.prisma.user.findUnique({ where: { id } });

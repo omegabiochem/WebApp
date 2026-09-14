@@ -326,6 +326,14 @@ export default function UsersAdmin() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
 
+  type ManageErrors = {
+    name?: string;
+    email?: string;
+    clientCode?: string;
+  };
+
+  const [manageErrors, setManageErrors] = useState<ManageErrors>({});
+
   /* -------------------- reset password modal -------------------- */
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const [pwUserLabel, setPwUserLabel] = useState("");
@@ -409,27 +417,105 @@ export default function UsersAdmin() {
 
   const openManage = (u: UserRow) => {
     setSelected(u);
+
     setEditRole(u.role);
     setEditClientCode(u.clientCode ?? "");
     setEditName(u.name ?? "");
     setEditEmail(u.email ?? "");
+
+    // clear previous validation errors
+    setManageErrors({});
+
     setManageModalOpen(true);
   };
 
   const saveManage = async () => {
     if (!selected) return;
 
-    try {
-      const nextName = editName.trim() || null;
-      const nextEmail = editEmail.trim().toLowerCase();
+    const nextName = editName.trim();
+    const nextEmail = editEmail.trim().toLowerCase();
 
-      if (!nextEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
-        toast.error("Enter a valid email address");
-        return;
+    const nextClientCode =
+      editRole === "CLIENT" ? editClientCode.trim().toUpperCase() : null;
+
+    const errors: ManageErrors = {};
+
+    // -------------------------
+    // NAME
+    // -------------------------
+
+    if (!nextName) {
+      errors.name = "Name is required.";
+    }
+
+    // Immediate frontend duplicate check.
+    // Backend must also enforce this.
+    const duplicateName = items.some(
+      (u) =>
+        u.id !== selected.id &&
+        String(u.name ?? "")
+          .trim()
+          .toLowerCase() === nextName.toLowerCase(),
+    );
+
+    if (nextName && duplicateName) {
+      errors.name = "Another user already has this name.";
+    }
+
+    // -------------------------
+    // EMAIL
+    // -------------------------
+
+    if (!nextEmail) {
+      errors.email = "Email is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+      errors.email = "Enter a valid email address.";
+    } else {
+      const allowedEmail =
+        nextEmail.endsWith("@gmail.com") ||
+        nextEmail.endsWith("@omegabiochemlab.com");
+
+      if (!allowedEmail) {
+        errors.email = "Allowed domains: gmail.com or omegabiochemlab.com";
       }
+    }
 
-      if ((selected.name ?? null) !== nextName) {
-        await setUserName(selected.id, nextName);
+    const duplicateEmail = items.some(
+      (u) => u.id !== selected.id && u.email.trim().toLowerCase() === nextEmail,
+    );
+
+    if (nextEmail && duplicateEmail) {
+      errors.email = "This email is already assigned to another user.";
+    }
+
+    // -------------------------
+    // CLIENT CODE
+    // -------------------------
+
+    if (editRole === "CLIENT") {
+      if (!nextClientCode) {
+        errors.clientCode = "Client Code is required for CLIENT role.";
+      } else if (!/^[A-Z]{3}$/.test(nextClientCode)) {
+        errors.clientCode = "Client Code must be exactly 3 uppercase letters.";
+      }
+    }
+
+    // -------------------------
+    // STOP IF VALIDATION FAILED
+    // -------------------------
+
+    if (Object.keys(errors).length > 0) {
+      setManageErrors(errors);
+      return;
+    }
+
+    setManageErrors({});
+
+    try {
+      const normalizedName = nextName || null;
+
+      if ((selected.name ?? null) !== normalizedName) {
+        await setUserName(selected.id, normalizedName);
       }
 
       if (selected.email.toLowerCase() !== nextEmail) {
@@ -440,22 +526,50 @@ export default function UsersAdmin() {
         await setUserRole(selected.id, editRole);
       }
 
-      const nextClientCode =
-        editRole === "CLIENT"
-          ? editClientCode.trim()
-            ? editClientCode.trim().toUpperCase()
-            : null
-          : null;
-
       if ((selected.clientCode ?? null) !== nextClientCode) {
         await setUserClientCode(selected.id, nextClientCode);
       }
 
       toast.success("User updated");
+
       setManageModalOpen(false);
+
       await loadUsers();
     } catch (e: any) {
-      toast.error(e?.message ?? "Update failed");
+      const rawMessage =
+        e?.response?.data?.message ?? e?.message ?? "Update failed";
+
+      const message = Array.isArray(rawMessage)
+        ? rawMessage.join(", ")
+        : String(rawMessage);
+
+      const lower = message.toLowerCase();
+
+      if (lower.includes("email")) {
+        setManageErrors((prev) => ({
+          ...prev,
+          email: message,
+        }));
+        return;
+      }
+
+      if (lower.includes("name")) {
+        setManageErrors((prev) => ({
+          ...prev,
+          name: message,
+        }));
+        return;
+      }
+
+      if (lower.includes("client code")) {
+        setManageErrors((prev) => ({
+          ...prev,
+          clientCode: message,
+        }));
+        return;
+      }
+
+      toast.error(message);
     }
   };
 
@@ -509,15 +623,15 @@ export default function UsersAdmin() {
     setPageSize(20);
   };
 
-  const clientCodeReg = register("clientCode", {
-    setValueAs: (v) =>
-      typeof v === "string"
-        ? v
-            .replace(/[^a-zA-Z]/g, "")
-            .toUpperCase()
-            .slice(0, 3)
-        : v,
-  });
+  // const clientCodeReg = register("clientCode", {
+  //   setValueAs: (v) =>
+  //     typeof v === "string"
+  //       ? v
+  //           .replace(/[^a-zA-Z]/g, "")
+  //           .toUpperCase()
+  //           .slice(0, 3)
+  //       : v,
+  // });
 
   if (!user) return <p className="p-6 text-slate-700">Please log in.</p>;
   if (!isAdmin)
@@ -758,29 +872,37 @@ export default function UsersAdmin() {
                     </label>
 
                     <input
-                      className={inputBase}
+                      className={cx(
+                        inputBase,
+                        createErrors.clientCode &&
+                          "border-rose-400 focus:border-rose-400 focus:ring-rose-200",
+                      )}
                       maxLength={3}
-                      {...clientCodeReg}
-                      onChange={(e) => {
-                        const cleaned = e.target.value
+                      {...register("clientCode", {
+                        setValueAs: (value) =>
+                          typeof value === "string"
+                            ? value
+                                .replace(/[^a-zA-Z]/g, "")
+                                .toUpperCase()
+                                .slice(0, 3)
+                            : value,
+                      })}
+                      onInput={(e) => {
+                        e.currentTarget.value = e.currentTarget.value
                           .replace(/[^a-zA-Z]/g, "")
                           .toUpperCase()
                           .slice(0, 3);
-
-                        e.target.value = cleaned;
-
-                        clientCodeReg.onChange(e);
                       }}
                       placeholder="ABC"
                     />
 
-                    <p className="mt-1 text-xs text-slate-500">
-                      3 chars; uppercase A–Z only.
-                    </p>
-
-                    {createErrors.clientCode && (
-                      <p className="mt-1 text-xs text-rose-600">
+                    {createErrors.clientCode ? (
+                      <p className="mt-1 text-xs font-medium text-rose-600">
                         {createErrors.clientCode.message}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Must be exactly 3 uppercase letters.
                       </p>
                     )}
                   </div>
@@ -1322,11 +1444,30 @@ export default function UsersAdmin() {
                   Name
                 </label>
                 <input
-                  className={inputBase}
+                  className={cx(
+                    inputBase,
+                    manageErrors.name &&
+                      "border-rose-400 focus:border-rose-400 focus:ring-rose-200",
+                  )}
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => {
+                    setEditName(e.target.value);
+
+                    if (manageErrors.name) {
+                      setManageErrors((prev) => ({
+                        ...prev,
+                        name: undefined,
+                      }));
+                    }
+                  }}
                   placeholder="Jane Doe"
                 />
+
+                {manageErrors.name && (
+                  <p className="mt-1 text-xs text-rose-600">
+                    {manageErrors.name}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1334,12 +1475,32 @@ export default function UsersAdmin() {
                   Email
                 </label>
                 <input
-                  className={inputBase}
+                  className={cx(
+                    inputBase,
+                    manageErrors.email &&
+                      "border-rose-400 focus:border-rose-400 focus:ring-rose-200",
+                  )}
                   value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEditEmail(e.target.value);
+
+                    if (manageErrors.email) {
+                      setManageErrors((prev) => ({
+                        ...prev,
+                        email: undefined,
+                      }));
+                    }
+                  }}
                   placeholder="user@omegabiochemlab.com"
                 />
-                <p className="text-xs text-slate-500 mt-1">
+
+                {manageErrors.email && (
+                  <p className="mt-1 text-xs text-rose-600">
+                    {manageErrors.email}
+                  </p>
+                )}
+
+                <p className="mt-1 text-xs text-slate-500">
                   Changing email may affect login + notifications.
                 </p>
               </div>
@@ -1350,7 +1511,20 @@ export default function UsersAdmin() {
                 <select
                   className={cx(inputBase, "cursor-pointer")}
                   value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as Role)}
+                  onChange={(e) => {
+                    const nextRole = e.target.value as Role;
+
+                    setEditRole(nextRole);
+
+                    setManageErrors((prev) => ({
+                      ...prev,
+                      clientCode: undefined,
+                    }));
+
+                    if (nextRole !== "CLIENT") {
+                      setEditClientCode("");
+                    }
+                  }}
                 >
                   {roleOptions
                     .filter((r) => r !== "ALL")
@@ -1366,12 +1540,18 @@ export default function UsersAdmin() {
                 <label className="block text-xs text-slate-600 mb-1">
                   Client Code
                 </label>
+
                 <input
                   disabled={editRole !== "CLIENT"}
                   className={cx(
                     inputBase,
+
                     editRole !== "CLIENT" &&
                       "opacity-60 cursor-not-allowed bg-slate-100",
+
+                    manageErrors.clientCode &&
+                      editRole === "CLIENT" &&
+                      "border-rose-400 focus:border-rose-400 focus:ring-rose-200",
                   )}
                   value={editClientCode}
                   maxLength={3}
@@ -1382,14 +1562,28 @@ export default function UsersAdmin() {
                       .slice(0, 3);
 
                     setEditClientCode(cleaned);
+
+                    if (manageErrors.clientCode) {
+                      setManageErrors((prev) => ({
+                        ...prev,
+                        clientCode: undefined,
+                      }));
+                    }
                   }}
                   placeholder={editRole === "CLIENT" ? "ABC" : "N/A"}
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  {editRole === "CLIENT"
-                    ? "Must be 3 uppercase letters."
-                    : "Client code only applies to CLIENT role."}
-                </p>
+
+                {manageErrors.clientCode && editRole === "CLIENT" ? (
+                  <p className="mt-1 text-xs font-medium text-rose-600">
+                    {manageErrors.clientCode}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {editRole === "CLIENT"
+                      ? "Must be exactly 3 uppercase letters."
+                      : "Client code only applies to CLIENT role."}
+                  </p>
+                )}
               </div>
             </div>
 
