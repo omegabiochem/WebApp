@@ -443,13 +443,86 @@ type ViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
 
 type ApeReportTab = "APE_VALIDATION_REPORT" | "APE_REPORT";
 
-const defaultViewPane = (): ViewPane => "REPORT";
+/*
+ * Statuses where the submission form should be the default view.
+ */
+const FORM_DEFAULT_STATUSES = new Set([
+  "DRAFT",
+  "UNDER_DRAFT_REVIEW",
+  "SUBMITTED_BY_CLIENT",
 
+  // Micro client correction flow
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
+
+  // Sterility / APE / Chemistry / COA client correction flow
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+
+  // Central change / correction flow
+  "CHANGE_REQUESTED",
+  "CORRECTION_REQUESTED",
+  "UNDER_CHANGE_UPDATE",
+  "UNDER_CORRECTION_UPDATE",
+]);
+
+/*
+ * Report is not generated yet for these statuses.
+ */
 const REPORT_NOT_GENERATED_STATUSES = new Set([
   "DRAFT",
   "SUBMITTED_BY_CLIENT",
   "UNDER_DRAFT_REVIEW",
 ]);
+
+function defaultViewPane(report: Report): ViewPane {
+  const status = String(report.status || "").toUpperCase();
+  const formType = String(report.formType || "").toUpperCase();
+
+  // -------------------------------------------------
+  // 1. Submission / correction stages → FORM
+  // -------------------------------------------------
+  if (FORM_DEFAULT_STATUSES.has(status)) {
+    return "FORM";
+  }
+
+  // -------------------------------------------------
+  // 2. MICRO final delivery stages → ATTACHMENTS
+  // -------------------------------------------------
+  if (formType === "MICRO_MIX" || formType === "MICRO_MIX_WATER") {
+    if (status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED") {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  // -------------------------------------------------
+  // 3. Sterility / APE / Chemistry / COA
+  //    client final delivery stages → ATTACHMENTS
+  // -------------------------------------------------
+  if (
+    formType === "STERILITY" ||
+    formType === "APE" ||
+    formType === "CHEMISTRY_MIX" ||
+    formType === "COA"
+  ) {
+    if (status === "UNDER_CLIENT_REVIEW" || status === "APPROVED") {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  // Unknown/new form type:
+  // Report is the safest default after submission.
+  return "REPORT";
+}
 
 function shouldShowReportNotGenerated(status?: string | null) {
   return REPORT_NOT_GENERATED_STATUSES.has(String(status || ""));
@@ -2241,7 +2314,6 @@ export default function ClientDashboard() {
     }
   }, [formFilter]); // (statusFilter optional, but this is ok)
 
-
   function niceFormType(ft?: string) {
     switch (ft) {
       case "MICRO_MIX":
@@ -3250,7 +3322,9 @@ export default function ClientDashboard() {
 
     if (targets.length <= 1) {
       setSelectedModalMode("VIEW");
-      setSelectedViewPane(defaultViewPane());
+
+      // ✅ Choose Form / Report / Attachments from report status
+      setSelectedViewPane(defaultViewPane(clicked));
 
       if (clicked.formType === "APE") {
         setApeReportTabs((prev) => ({
@@ -3265,7 +3339,6 @@ export default function ClientDashboard() {
 
     setSelectedReport(null);
     setSelectedModalMode("VIEW");
-    setSelectedViewPane("REPORT");
 
     setWorkspaceIds(targets.map((r) => r.id));
     setWorkspaceMode("VIEW");
