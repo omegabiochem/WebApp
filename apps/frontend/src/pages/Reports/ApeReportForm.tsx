@@ -558,26 +558,60 @@ export default function ApeReportForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-  // const backToDashboard = () => {
-  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  //   else navigate("/clientDashboard", { replace: true });
-  // };
+const backToDashboard = () => {
+  if (returnTo) {
+    return navigate(decodeURIComponent(returnTo), {
+      replace: true,
+    });
+  }
 
-  const backToDashboard = () => {
-    if (returnTo)
-      return navigate(decodeURIComponent(returnTo), { replace: true });
+  if (role === "CLIENT") {
+    return navigate("/clientDashboard", {
+      replace: true,
+    });
+  }
 
-    if (role === "FRONTDESK")
-      return navigate("/frontdeskDashboard", { replace: true });
-    if (role === "MICRO") return navigate("/microDashboard", { replace: true });
-    if (role === "MC") return navigate("/mcDashboard", { replace: true });
-    if (role === "QA") return navigate("/qaDashboard", { replace: true });
-    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
-    if (role === "SYSTEMADMIN")
-      return navigate("/systemAdminDashboard", { replace: true });
+  if (role === "FRONTDESK") {
+    return navigate("/frontdeskDashboard", {
+      replace: true,
+    });
+  }
 
-    return navigate("/", { replace: true });
-  };
+  if (role === "MICRO") {
+    return navigate("/microDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "MC") {
+    return navigate("/mcDashboard", {
+      replace: true,
+    });
+  }
+
+
+  if (role === "QA") {
+    return navigate("/qaDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "ADMIN") {
+    return navigate("/adminDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "SYSTEMADMIN") {
+    return navigate("/systemAdminDashboard", {
+      replace: true,
+    });
+  }
+
+  return navigate("/home", {
+    replace: true,
+  });
+};
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -1411,14 +1445,17 @@ export default function ApeReportForm({
   //   event.preventDefault();
   // });
 
-  const fallbackRoute = useMemo(() => {
-    if (role === "CLIENT") return "/clientDashboard";
-    if (role === "FRONTDESK") return "/frontdeskDashboard";
-    if (role === "QA") return "/qaDashboard";
-    if (role === "ADMIN") return "/adminDashboard";
-    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
-    return "/";
-  }, [role]);
+const fallbackRoute = useMemo(() => {
+  if (role === "CLIENT") return "/clientDashboard";
+  if (role === "FRONTDESK") return "/frontdeskDashboard";
+  if (role === "MICRO") return "/microDashboard";
+  if (role === "MC") return "/mcDashboard";
+  if (role === "QA") return "/qaDashboard";
+  if (role === "ADMIN") return "/adminDashboard";
+  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+
+  return "/home";
+}, [role]);
 
   const handleClose = () => {
     if (embedded) {

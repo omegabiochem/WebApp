@@ -520,45 +520,61 @@ export default function ChemistryMixSubmissionForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-  const backToDashboard = () => {
-    if (returnTo)
-      return navigate(decodeURIComponent(returnTo), { replace: true });
+const backToDashboard = () => {
+  if (returnTo) {
+    return navigate(decodeURIComponent(returnTo), {
+      replace: true,
+    });
+  }
 
-    if (role === "CLIENT")
-      return navigate("/clientDashboard", { replace: true });
-    if (role === "FRONTDESK")
-      return navigate("/frontdeskDashboard", { replace: true });
-    if (role === "CHEMISTRY")
-      return navigate("/chemistryDashboard", { replace: true });
-    if (role === "MC") return navigate("/mcDashboard", { replace: true });
-    if (role === "QA") return navigate("/qaDashboard", { replace: true });
-    if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
-    if (role === "SYSTEMADMIN")
-      return navigate("/systemAdminDashboard", { replace: true });
+  if (role === "CLIENT") {
+    return navigate("/clientDashboard", {
+      replace: true,
+    });
+  }
 
-    return navigate("/", { replace: true });
-  };
+  if (role === "FRONTDESK") {
+    return navigate("/frontdeskDashboard", {
+      replace: true,
+    });
+  }
 
-  // const backToDashboard = () => {
-  //   if (returnTo)
-  //     return navigate(decodeURIComponent(returnTo), { replace: true });
+ 
 
-  //   if (role === "FRONTDESK")
-  //     return navigate("/frontdeskDashboard", { replace: true });
-  //   if (role === "CHEMISTRY")
-  //     return navigate("/chemistryDashboard", { replace: true });
-  //   if (role === "MC") return navigate("/mcDashboard", { replace: true });
-  //   if (role === "QA") return navigate("/qaDashboard", { replace: true });
-  //   if (role === "ADMIN") return navigate("/adminDashboard", { replace: true });
-  //   if (role === "SYSTEMADMIN")
-  //     return navigate("/systemAdminDashboard", { replace: true });
+  if (role === "MC") {
+    return navigate("/mcDashboard", {
+      replace: true,
+    });
+  }
 
-  //   return navigate("/", { replace: true });
-  // };
-  // const backToDashboard = () => {
-  //   if (returnTo) navigate(decodeURIComponent(returnTo), { replace: true });
-  //   else navigate("/clientDashboard", { replace: true });
-  // };
+  if (role === "CHEMISTRY") {
+    return navigate("/chemistryDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "QA") {
+    return navigate("/qaDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "ADMIN") {
+    return navigate("/adminDashboard", {
+      replace: true,
+    });
+  }
+
+  if (role === "SYSTEMADMIN") {
+    return navigate("/systemAdminDashboard", {
+      replace: true,
+    });
+  }
+
+  return navigate("/home", {
+    replace: true,
+  });
+};
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1683,16 +1699,17 @@ export default function ChemistryMixSubmissionForm({
     });
   }
 
-  const fallbackRoute = useMemo(() => {
-    if (role === "CLIENT") return "/clientDashboard";
-    if (role === "FRONTDESK") return "/frontdeskDashboard";
-    if (role === "CHEMISTRY") return "/chemistryDashboard";
-    if (role === "MC") return "/mcDashboard";
-    if (role === "QA") return "/qaDashboard";
-    if (role === "ADMIN") return "/adminDashboard";
-    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
-    return "/";
-  }, [role]);
+const fallbackRoute = useMemo(() => {
+  if (role === "CLIENT") return "/clientDashboard";
+  if (role === "FRONTDESK") return "/frontdeskDashboard";
+  if (role === "MC") return "/mcDashboard";
+  if (role === "CHEMISTRY") return "/chemistryDashboard";
+  if (role === "QA") return "/qaDashboard";
+  if (role === "ADMIN") return "/adminDashboard";
+  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+
+  return "/home";
+}, [role]);
 
   const handleClose = () => {
     if (onClose) {
