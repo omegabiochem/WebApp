@@ -285,7 +285,7 @@ export default function Header() {
   ).length;
 
   return (
-    <header className="border-b bg-white">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white shadow-sm">
       <div className="mx-auto max-w-6xl p-4 flex items-center justify-between gap-4">
         <Link
           to="/"
@@ -513,7 +513,7 @@ export default function Header() {
                           Chemistry Login Book
                         </button>
 
-                         <button
+                        <button
                           type="button"
                           onClick={() => {
                             setMoreOpen(false);
