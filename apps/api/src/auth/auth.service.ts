@@ -202,30 +202,30 @@ export class AuthService {
     return m === 'SMS' ? 'SMS' : 'EMAIL';
   }
 
-  private shouldRequire2FA(user: {
-    role: any;
-    twoFactorEnabled?: boolean | null;
-  }) {
-    // global kill switch
-    const globalEnabled = this.envBool('TWO_FACTOR_ENABLED', true);
-    if (!globalEnabled) return false;
+  // private shouldRequire2FA(user: {
+  //   role: any;
+  //   twoFactorEnabled?: boolean | null;
+  // }) {
+  //   // global kill switch
+  //   const globalEnabled = this.envBool('TWO_FACTOR_ENABLED', true);
+  //   if (!globalEnabled) return false;
 
-    const role = String(user.role ?? '').toUpperCase();
+  //   const role = String(user.role ?? '').toUpperCase();
 
-    // role overrides (optional)
-    const disabledRoles = this.envList('TWO_FACTOR_DISABLE_ROLES').map((x) =>
-      x.toUpperCase(),
-    );
-    if (disabledRoles.includes(role)) return false;
+  //   // role overrides (optional)
+  //   const disabledRoles = this.envList('TWO_FACTOR_DISABLE_ROLES').map((x) =>
+  //     x.toUpperCase(),
+  //   );
+  //   if (disabledRoles.includes(role)) return false;
 
-    const forcedRoles = this.envList('TWO_FACTOR_FORCE_ROLES').map((x) =>
-      x.toUpperCase(),
-    );
-    if (forcedRoles.includes(role)) return true;
+  //   const forcedRoles = this.envList('TWO_FACTOR_FORCE_ROLES').map((x) =>
+  //     x.toUpperCase(),
+  //   );
+  //   if (forcedRoles.includes(role)) return true;
 
-    // default: per-user flag
-    return !!user.twoFactorEnabled;
-  }
+  //   // default: per-user flag
+  //   return !!user.twoFactorEnabled;
+  // }
 
   // private async start2FA(
   //   user: {
@@ -261,6 +261,18 @@ export class AuthService {
 
   //   return { method, expiresAt };
   // }
+
+  private shouldRequire2FA(user: { twoFactorEnabled?: boolean | null }) {
+    // Emergency global kill switch still works.
+    const globalEnabled = this.envBool('TWO_FACTOR_ENABLED', true);
+
+    if (!globalEnabled) {
+      return false;
+    }
+
+    // Individual user setting controls 2FA.
+    return user.twoFactorEnabled === true;
+  }
 
   private async start2FA(
     user: {
@@ -1330,6 +1342,9 @@ export class AuthService {
         mustChangePassword: true,
         userId: true,
         clientCode: true,
+
+        // ✅ Individual 2FA setting
+        twoFactorEnabled: true,
 
         twoFactorCodeHash: true,
         twoFactorExpiresAt: true,

@@ -21,6 +21,9 @@ export type UserRow = {
   role: Role;
   active: boolean;
   mustChangePassword: boolean;
+
+  twoFactorEnabled: boolean;
+
   userId: string | null;
   clientCode: string | null;
 
@@ -30,6 +33,19 @@ export type UserRow = {
 
   activeReportCount?: number;
 };
+
+export async function setUserTwoFactor(
+  id: string,
+  enabled: boolean,
+): Promise<{
+  ok: boolean;
+  twoFactorEnabled: boolean;
+}> {
+  return api(`/users/${id}/two-factor`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
 
 export type UsersListResponse = {
   items: UserRow[];
@@ -144,7 +160,6 @@ export async function forceUserSignout(id: string) {
 //     body: JSON.stringify(input),
 //   });
 // }
-
 
 export async function changeUserPassword(input: {
   currentPassword: string;

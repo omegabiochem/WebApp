@@ -65,14 +65,24 @@ export class UsersController {
   }
 
   // ---------------------------------------------------------
+  // PATCH /users/:id/two-factor
+  // ---------------------------------------------------------
+  @Patch(':id/two-factor')
+  @Roles('ADMIN', 'SYSTEMADMIN')
+  updateTwoFactor(@Param('id') id: string, @Body() body: { enabled: boolean }) {
+    if (typeof body.enabled !== 'boolean') {
+      throw new BadRequestException('enabled must be true or false');
+    }
+
+    return this.users.updateTwoFactor(id, body.enabled);
+  }
+
+  // ---------------------------------------------------------
   // PATCH /users/:id/role
   // ---------------------------------------------------------
   @Patch(':id/role')
   @Roles('ADMIN', 'SYSTEMADMIN')
-  changeRole(
-    @Param('id') id: string,
-    @Body() body: { role: UserRole },
-  ) {
+  changeRole(@Param('id') id: string, @Body() body: { role: UserRole }) {
     return this.users.changeRole(id, body.role);
   }
 
@@ -81,10 +91,7 @@ export class UsersController {
   // ---------------------------------------------------------
   @Patch(':id/active')
   @Roles('ADMIN', 'SYSTEMADMIN')
-  toggleActive(
-    @Param('id') id: string,
-    @Body() body: { active: boolean },
-  ) {
+  toggleActive(@Param('id') id: string, @Body() body: { active: boolean }) {
     return this.users.toggleActive(id, body.active);
   }
 
@@ -105,10 +112,7 @@ export class UsersController {
   // ---------------------------------------------------------
   @Patch(':id/name')
   @Roles('ADMIN', 'SYSTEMADMIN')
-  updateName(
-    @Param('id') id: string,
-    @Body() body: { name: string | null },
-  ) {
+  updateName(@Param('id') id: string, @Body() body: { name: string | null }) {
     return this.users.updateName(id, body.name ?? null);
   }
 
@@ -117,10 +121,7 @@ export class UsersController {
   // ---------------------------------------------------------
   @Patch(':id/email')
   @Roles('ADMIN', 'SYSTEMADMIN')
-  updateEmail(
-    @Param('id') id: string,
-    @Body() body: { email: string },
-  ) {
+  updateEmail(@Param('id') id: string, @Body() body: { email: string }) {
     return this.users.updateEmail(id, body.email);
   }
 
@@ -168,15 +169,7 @@ export class UsersController {
   // Staff lookup endpoint
   // ---------------------------------------------------------
   @Get('lookup')
-  @Roles(
-    'SYSTEMADMIN',
-    'ADMIN',
-    'QA',
-    'FRONTDESK',
-    'MICRO',
-    'MC',
-    'CHEMISTRY',
-  )
+  @Roles('SYSTEMADMIN', 'ADMIN', 'QA', 'FRONTDESK', 'MICRO', 'MC', 'CHEMISTRY')
   async lookup(@Query('ids') idsRaw: string) {
     if (!idsRaw || !idsRaw.trim()) {
       throw new BadRequestException('ids is required');
