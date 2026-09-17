@@ -165,6 +165,7 @@ export class UsersService {
         name: true,
         role: true,
         mustChangePassword: true,
+          twoFactorEnabled: true,
         userId: true,
         clientCode: true,
       },
@@ -233,6 +234,10 @@ export class UsersService {
           role: true,
           active: true,
           mustChangePassword: true,
+
+          // ✅ NEW
+          twoFactorEnabled: true,
+
           userId: true,
           clientCode: true,
           lastLoginAt: true,
@@ -447,7 +452,6 @@ export class UsersService {
       throw new ConflictException('Email already exists');
     }
 
-
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -622,5 +626,49 @@ export class UsersService {
       where: { id: { in: clean } },
       select: { id: true, name: true, email: true },
     });
+  }
+
+  async updateTwoFactor(id: string, enabled: boolean) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+
+      select: {
+        id: true,
+        email: true,
+        twoFactorEnabled: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+
+      data: {
+        twoFactorEnabled: enabled,
+
+        // If disabling 2FA, invalidate any OTP currently waiting.
+        ...(enabled
+          ? {}
+          : {
+              twoFactorCodeHash: null,
+              twoFactorExpiresAt: null,
+              twoFactorAttempts: 0,
+            }),
+      },
+
+      select: {
+        id: true,
+        email: true,
+        twoFactorEnabled: true,
+      },
+    });
+
+    return {
+      ok: true,
+      twoFactorEnabled: updated.twoFactorEnabled,
+    };
   }
 }

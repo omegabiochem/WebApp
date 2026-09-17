@@ -16,6 +16,7 @@ import {
   setUserEmail,
   type Role,
   type UserRow,
+  setUserTwoFactor,
 } from "../../services/usersService";
 
 import { useForm } from "react-hook-form";
@@ -326,6 +327,8 @@ export default function UsersAdmin() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
 
+  const [editTwoFactorEnabled, setEditTwoFactorEnabled] = useState(true);
+
   type ManageErrors = {
     name?: string;
     email?: string;
@@ -422,6 +425,8 @@ export default function UsersAdmin() {
     setEditClientCode(u.clientCode ?? "");
     setEditName(u.name ?? "");
     setEditEmail(u.email ?? "");
+
+    setEditTwoFactorEnabled(u.twoFactorEnabled);
 
     // clear previous validation errors
     setManageErrors({});
@@ -528,6 +533,10 @@ export default function UsersAdmin() {
 
       if ((selected.clientCode ?? null) !== nextClientCode) {
         await setUserClientCode(selected.id, nextClientCode);
+      }
+
+      if (editTwoFactorEnabled !== selected.twoFactorEnabled) {
+        await setUserTwoFactor(selected.id, editTwoFactorEnabled);
       }
 
       toast.success("User updated");
@@ -1121,6 +1130,19 @@ export default function UsersAdmin() {
                                 Must change password
                               </div>
                             )}
+
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span
+                                className={cx(
+                                  "inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1",
+                                  u.twoFactorEnabled
+                                    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                    : "bg-slate-100 text-slate-600 ring-slate-200",
+                                )}
+                              >
+                                {u.twoFactorEnabled ? "2FA ON" : "2FA OFF"}
+                              </span>
+                            </div>
                           </div>
 
                           <div>
@@ -1584,6 +1606,66 @@ export default function UsersAdmin() {
                       : "Client code only applies to CLIENT role."}
                   </p>
                 )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Shield
+                        size={17}
+                        className={
+                          editTwoFactorEnabled
+                            ? "text-emerald-600"
+                            : "text-slate-400"
+                        }
+                      />
+
+                      <div className="text-sm font-semibold text-slate-900">
+                        Two-Factor Authentication
+                      </div>
+                    </div>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Require a verification code during sign in. Changes apply
+                      on the user's next login.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editTwoFactorEnabled}
+                    onClick={() => setEditTwoFactorEnabled((prev) => !prev)}
+                    className={cx(
+                      "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
+                      "focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:ring-offset-2",
+                      editTwoFactorEnabled ? "bg-emerald-600" : "bg-slate-300",
+                    )}
+                  >
+                    <span
+                      className={cx(
+                        "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                        editTwoFactorEnabled
+                          ? "translate-x-6"
+                          : "translate-x-1",
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <span
+                    className={cx(
+                      "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                      editTwoFactorEnabled
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                        : "bg-slate-100 text-slate-600 ring-slate-200",
+                    )}
+                  >
+                    {editTwoFactorEnabled ? "2FA ENABLED" : "2FA DISABLED"}
+                  </span>
+                </div>
               </div>
             </div>
 
