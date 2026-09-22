@@ -1339,7 +1339,7 @@ export class AuthService {
         role: true,
         name: true,
         active: true,
-        mustChangePassword: true,
+        mustChangePassword: true, 
         userId: true,
         clientCode: true,
 

@@ -10,7 +10,13 @@ import { ChemistryAttachmentsService } from './chemistryattachments.service';
 import { Readable } from 'stream';
 import { PDFDocument } from 'pdf-lib';
 
-type ReportType = 'MICRO' | 'MICRO_WATER' | 'STERILITY' | 'CHEMISTRY' | 'COA';
+type ReportType =
+  | 'MICRO'
+  | 'MICRO_WATER'
+  | 'STERILITY'
+  | 'APE'
+  | 'CHEMISTRY'
+  | 'COA';
 
 type ListArgs = {
   q?: string;
@@ -54,10 +60,10 @@ function allowedTypesForRole(role: string | null): ReportType[] {
   return role === 'CHEMISTRY'
     ? ['CHEMISTRY', 'COA']
     : role === 'MICRO'
-      ? ['MICRO', 'MICRO_WATER', 'STERILITY']
+      ? ['MICRO', 'MICRO_WATER', 'STERILITY', 'APE']
       : role === 'CLIENT'
-        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'COA'] // or based on client ownership
-        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'COA']; // ADMIN/QA etc
+        ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA']
+        : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA'];
 }
 
 @Injectable()
@@ -88,16 +94,16 @@ export class AttachmentsGlobalService {
     const chemWhere =
       userRole === 'CLIENT' ? { report: { clientCode: userClientCode } } : {};
 
-    const role = userRole;
+    // const role = userRole;
 
-    const allowedReportTypes: ReportType[] =
-      role === 'CHEMISTRY'
-        ? ['CHEMISTRY']
-        : role === 'MICRO'
-          ? ['MICRO', 'MICRO_WATER', 'STERILITY']
-          : role === 'CLIENT'
-            ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY'] // or based on client ownership
-            : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY']; // ADMIN/QA etc
+    // const allowedReportTypes: ReportType[] =
+    //   role === 'CHEMISTRY'
+    //     ? ['CHEMISTRY']
+    //     : role === 'MICRO'
+    //       ? ['MICRO', 'MICRO_WATER', 'STERILITY', 'APE']
+    //       : role === 'CLIENT'
+    //         ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA']
+    //         : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA'];
 
     const canSeeMicro = userRole !== 'CHEMISTRY';
     const canSeeChem = userRole !== 'MICRO';
@@ -106,7 +112,7 @@ export class AttachmentsGlobalService {
       ...(reportWhere as any),
       report: {
         ...(reportWhere as any)?.report,
-        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'] }, // ✅ filter by report.formType
+        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY', 'APE'] }, // ✅ filter by report.formType
       },
     };
 
@@ -186,7 +192,9 @@ export class AttachmentsGlobalService {
             ? ('MICRO_WATER' as const)
             : a.report?.formType === 'STERILITY'
               ? ('STERILITY' as const)
-              : ('MICRO' as const),
+              : a.report?.formType === 'APE'
+                ? ('APE' as const)
+                : ('MICRO' as const),
         reportId: a.reportId,
         filename: a.filename,
         kind: a.kind,
@@ -312,7 +320,9 @@ export class AttachmentsGlobalService {
           ? 'MICRO_WATER'
           : micro.report?.formType === 'STERILITY'
             ? 'STERILITY'
-            : 'MICRO';
+            : micro.report?.formType === 'APE'
+              ? 'APE'
+              : 'MICRO';
 
       if (!allowed.includes(rt)) return null;
 
@@ -410,7 +420,7 @@ export class AttachmentsGlobalService {
         : {}),
       report: {
         ...(userRole === 'CLIENT' ? { clientCode: userClientCode } : {}),
-        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY'] },
+        formType: { in: ['MICRO_MIX', 'MICRO_MIX_WATER', 'STERILITY', 'APE'] },
       },
       createdAt: { gt: since },
     };
@@ -446,8 +456,12 @@ export class AttachmentsGlobalService {
   async deleteByAnyId(id: string, user?: UserLike) {
     const userRole = (user?.role || '').toUpperCase();
 
-    if (userRole !== 'SYSTEMADMIN') {
-      throw new ForbiddenException('Only SYSTEMADMIN can delete attachments');
+    const allowedRoles = ['SYSTEMADMIN', 'ADMIN', 'QA'];
+
+    if (!allowedRoles.includes(userRole)) {
+      throw new ForbiddenException(
+        'Only SYSTEMADMIN, ADMIN, or QA can delete attachments',
+      );
     }
 
     const micro = await this.prisma.attachment.findUnique({
@@ -468,8 +482,6 @@ export class AttachmentsGlobalService {
       return this.chem.remove(id);
     }
 
-    if (userRole !== 'SYSTEMADMIN') {
-      throw new ForbiddenException('Only SYSTEMADMIN can delete attachments');
-    }
+    throw new BadRequestException('Attachment not found');
   }
 }

@@ -128,7 +128,9 @@ function AttachmentPreview({
 
     (async () => {
       try {
-        const metaResp = await api<AttachmentItem>(`${attBase(reportId)}/${attId}`);
+        const metaResp = await api<AttachmentItem>(
+          `${attBase(reportId)}/${attId}`,
+        );
         setMeta(metaResp);
 
         const blob = await apiBlob(`${attBase(reportId)}/${attId}/file`);
@@ -145,9 +147,14 @@ function AttachmentPreview({
     };
   }, [reportId, attId]);
 
-  if (!meta) return <div className="p-4 text-sm text-slate-500">Loading…</div>;
   if (error) {
-    return <div className="p-4 text-sm text-rose-600">Preview failed: {error}</div>;
+    return (
+      <div className="p-4 text-sm text-rose-600">Preview failed: {error}</div>
+    );
+  }
+
+  if (!meta) {
+    return <div className="p-4 text-sm text-slate-500">Loading…</div>;
   }
   if (!objectUrl) {
     return <div className="p-4 text-sm text-slate-500">Loading file…</div>;
@@ -158,7 +165,11 @@ function AttachmentPreview({
   const isPdf = ext === "pdf";
 
   return isImage ? (
-    <img src={objectUrl} alt={meta.filename} className="h-full w-full object-contain" />
+    <img
+      src={objectUrl}
+      alt={meta.filename}
+      className="h-full w-full object-contain"
+    />
   ) : isPdf ? (
     <iframe src={objectUrl} title={meta.filename} className="h-full w-full" />
   ) : (
@@ -176,12 +187,34 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (loading) {
-    return <div className="no-print mt-4 text-sm text-slate-500">Loading attachments…</div>;
+    return (
+      <div className="no-print mt-4 text-sm text-slate-500">
+        Loading attachments…
+      </div>
+    );
   }
 
   if (!items.length) {
-    return <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>;
+    return (
+      <div className="no-print mt-4 text-sm text-slate-500">No attachments</div>
+    );
   }
+
+  const openAuthenticatedFile = async (path: string, filename: string) => {
+    try {
+      const blob = await apiBlob(path);
+      const url = URL.createObjectURL(blob);
+
+      window.open(url, "_blank", "noopener,noreferrer");
+
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 30_000);
+    } catch (error) {
+      console.error(error);
+      alert(`Unable to open ${filename}`);
+    }
+  };
 
   return (
     <div className="no-print mt-4">
@@ -201,7 +234,7 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
               onClick={() =>
                 isImage || isPdf
                   ? setOpenId(a.id)
-                  : window.open(`${API_URL}${filePath}`, "_blank")
+                  : openAuthenticatedFile(filePath, a.filename)
               }
               className="group rounded-lg border bg-white p-3 text-left transition hover:shadow-sm"
               title="Click to preview"
@@ -210,13 +243,20 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
                 {isImage ? (
                   <Thumb path={filePath} alt={a.filename} />
                 ) : isPdf ? (
-                  <div className="text-xs text-slate-600">PDF • click to preview</div>
+                  <div className="text-xs text-slate-600">
+                    PDF • click to preview
+                  </div>
                 ) : (
-                  <div className="text-xs uppercase text-slate-600">{ext || "file"}</div>
+                  <div className="text-xs uppercase text-slate-600">
+                    {ext || "file"}
+                  </div>
                 )}
               </div>
 
-              <div className="mt-2 truncate text-sm font-medium" title={a.filename}>
+              <div
+                className="mt-2 truncate text-sm font-medium"
+                title={a.filename}
+              >
                 {a.filename}
               </div>
               <div className="text-xs text-slate-500">
@@ -256,7 +296,6 @@ function AttachmentGallery({ reportId }: { reportId?: string }) {
   );
 }
 
-
 const JJL_CREATED_BY_STATUSES = new Set([
   "DRAFT",
   "UNDER_DRAFT_REVIEW",
@@ -273,7 +312,9 @@ function getJJLClientCode(report: any) {
   const prefix = formNumber.match(/^([A-Za-z]{3})-/)?.[1]?.toUpperCase();
   if (prefix) return prefix;
 
-  return String(report?.client || "").trim().toUpperCase();
+  return String(report?.client || "")
+    .trim()
+    .toUpperCase();
 }
 
 function looksLikeUuid(value?: string | null) {
@@ -460,7 +501,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
 
   const isBulk = isBulkPrint === true;
 
-  const qrValue = report?.id ? JSON.stringify({ t: "report", id: report.id }) : "";
+  const qrValue = report?.id
+    ? JSON.stringify({ t: "report", id: report.id })
+    : "";
   const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {
@@ -555,14 +598,18 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
     JJL_CREATED_BY_STATUSES.has(String(report?.status || "")) &&
     createdByName.trim().length > 0;
 
-  const showSignatures = !HIDE_SIGNATURES_FOR.has(report?.status) && !isSubmissionFormPane;
+  const showSignatures =
+    !HIDE_SIGNATURES_FOR.has(report?.status) && !isSubmissionFormPane;
 
   const blankIfForm = (value: any) => {
     if (isSubmissionFormPane) return "";
     return value ?? "";
   };
 
-  const organisms = useMemo(() => normalizeOrganisms(report?.organisms), [report?.organisms]);
+  const organisms = useMemo(
+    () => normalizeOrganisms(report?.organisms),
+    [report?.organisms],
+  );
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const [showCorrTray, setShowCorrTray] = useState(false);
@@ -582,7 +629,8 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
 
   const hasOpenCorrection = (keyOrPrefix: string) =>
     openCorrections.some(
-      (c) => c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
+      (c) =>
+        c.fieldKey === keyOrPrefix || c.fieldKey.startsWith(`${keyOrPrefix}:`),
     );
 
   const dashClass = (keyOrPrefix: string) =>
@@ -614,7 +662,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
                     : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
-                {p === "ATTACHMENTS" ? "Attachment" : p[0] + p.slice(1).toLowerCase()}
+                {p === "ATTACHMENTS"
+                  ? "Attachment"
+                  : p[0] + p.slice(1).toLowerCase()}
               </button>
             ))}
           </div>
@@ -689,7 +739,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
               <div
                 className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("typeOfTest")}`}
               >
-                <div className="whitespace-nowrap font-medium">TYPE OF TEST:</div>
+                <div className="whitespace-nowrap font-medium">
+                  TYPE OF TEST:
+                </div>
                 <input
                   className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.typeOfTest || ""}
@@ -701,7 +753,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
               <div
                 className={`relative flex items-center gap-1 border-r border-black px-2 ${dashClass("sampleType")}`}
               >
-                <div className="whitespace-nowrap font-medium">SAMPLE TYPE:</div>
+                <div className="whitespace-nowrap font-medium">
+                  SAMPLE TYPE:
+                </div>
                 <input
                   className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={report?.sampleType || ""}
@@ -751,7 +805,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
               <div
                 className={`relative flex items-center gap-1 px-2 ${dashClass("manufactureDate")}`}
               >
-                <div className="whitespace-nowrap font-medium">MANUFACTURE DATE:</div>
+                <div className="whitespace-nowrap font-medium">
+                  MANUFACTURE DATE:
+                </div>
                 <input
                   className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
                   value={formatDateForInput(report?.manufactureDate) || ""}
@@ -777,10 +833,14 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
               <div
                 className={`relative flex items-center gap-1 px-2 ${dashClass("dateTested")}`}
               >
-                <div className="whitespace-nowrap font-medium">DATE TESTED:</div>
+                <div className="whitespace-nowrap font-medium">
+                  DATE TESTED:
+                </div>
                 <input
                   className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
-                  value={blankIfForm(formatDateForInput(report?.dateTested)) || ""}
+                  value={
+                    blankIfForm(formatDateForInput(report?.dateTested)) || ""
+                  }
                   readOnly
                   disabled
                 />
@@ -790,10 +850,14 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
             <div
               className={`relative flex items-center gap-2 px-2 text-[12px] leading-snug ${dashClass("dateCompleted")}`}
             >
-              <div className="whitespace-nowrap font-medium">DATE COMPLETED:</div>
+              <div className="whitespace-nowrap font-medium">
+                DATE COMPLETED:
+              </div>
               <input
                 className="input-editable flex-1 py-[2px] text-[12px] leading-snug"
-                value={blankIfForm(formatDateForInput(report?.dateCompleted)) || ""}
+                value={
+                  blankIfForm(formatDateForInput(report?.dateCompleted)) || ""
+                }
                 readOnly
                 disabled
               />
@@ -844,7 +908,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
           <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
             <div className={`relative col-span-2 ${dashClass("comments")}`}>
               <div className="flex items-start gap-2">
-                <div className="whitespace-nowrap pt-[2px] font-medium">Comments :</div>
+                <div className="whitespace-nowrap pt-[2px] font-medium">
+                  Comments :
+                </div>
 
                 <div className="relative h-[48px] flex-1">
                   <div className="pointer-events-none absolute inset-0">
@@ -974,7 +1040,9 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
                 <div className="mono text-[11px]">{report?.id}</div>
 
                 {!isFormPane && report?.reportNumber && (
-                  <div className="text-[11px]">Report # {report.reportNumber}</div>
+                  <div className="text-[11px]">
+                    Report # {report.reportNumber}
+                  </div>
                 )}
 
                 <div className="mt-1 text-[10px] text-slate-600">
@@ -1042,16 +1110,18 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
                 </div>
 
                 <div className="mt-1">Reason: {c.message}</div>
-{c.recipientSide && (
-  <div className="mt-1 text-xs text-blue-700">
-    <span className="font-medium">To:</span> {c.recipientSide}
-  </div>
-)}
+                {c.recipientSide && (
+                  <div className="mt-1 text-xs text-blue-700">
+                    <span className="font-medium">To:</span> {c.recipientSide}
+                  </div>
+                )}
                 {c.oldValue != null && String(c.oldValue).trim() !== "" && (
                   <div className="mt-1 text-xs text-slate-600">
                     <span className="font-medium">Old Value:</span>{" "}
                     <span className="break-words">
-                      {typeof c.oldValue === "string" ? c.oldValue : JSON.stringify(c.oldValue)}
+                      {typeof c.oldValue === "string"
+                        ? c.oldValue
+                        : JSON.stringify(c.oldValue)}
                     </span>
                   </div>
                 )}

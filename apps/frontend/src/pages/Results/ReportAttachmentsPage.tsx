@@ -5,7 +5,13 @@ import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { logUiEvent } from "../../lib/uiAudit";
 
-type ReportType = "MICRO" | "MICRO_WATER" | "CHEMISTRY" | "STERILITY" | "COA"; // keep in sync with backend enum (and add new types there as needed)
+type ReportType =
+  | "MICRO"
+  | "MICRO_WATER"
+  | "STERILITY"
+  | "APE"
+  | "CHEMISTRY"
+  | "COA";
 type ReportTypeFilter = "ALL" | ReportType;
 
 type AttachmentItem = {
@@ -193,10 +199,26 @@ function matchesDateRange(createdAtISO: string, from?: string, to?: string) {
 
 // report links
 function reportLinkFor(type: ReportType, reportId: string) {
-  if (type === "CHEMISTRY") return `/reports/chemistry-mix/${reportId}`;
-  if (type === "MICRO_WATER") return `/reports/micro-mix-water/${reportId}`;
-  if (type === "STERILITY") return `/reports/sterility/${reportId}`;
-  if (type === "COA") return `/reports/coa/${reportId}`;
+  if (type === "CHEMISTRY") {
+    return `/reports/chemistry-mix/${reportId}`;
+  }
+
+  if (type === "MICRO_WATER") {
+    return `/reports/micro-mix-water/${reportId}`;
+  }
+
+  if (type === "STERILITY") {
+    return `/reports/sterility/${reportId}`;
+  }
+
+  if (type === "APE") {
+    return `/reports/ape/${reportId}`;
+  }
+
+  if (type === "COA") {
+    return `/reports/coa/${reportId}`;
+  }
+
   return `/reports/micro-mix/${reportId}`;
 }
 
@@ -205,8 +227,11 @@ function reportTypeLabel(t: ReportTypeFilter) {
   if (t === "MICRO") return "Micro";
   if (t === "MICRO_WATER") return "Micro Water";
   if (t === "STERILITY") return "Sterility";
+  if (t === "APE") return "APE";
+  if (t === "CHEMISTRY") return "Chemistry";
   if (t === "COA") return "COA";
-  return "Chemistry";
+
+  return t;
 }
 
 // -----------------------------
@@ -830,18 +855,32 @@ export default function ReportAttachmentsPage() {
     null,
   );
 
-  const isSystemAdmin =
-    role === "SYSTEMADMIN" || role === "ADMIN" || role === "QA";
+const canDeleteAttachments =
+  role === "SYSTEMADMIN" ||
+  role === "ADMIN" ||
+  role === "QA";
 
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [deletingBulk, setDeletingBulk] = useState(false);
 
-  const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
-    if (!role) return "ALL";
-    if (role === "CHEMISTRY") return ["CHEMISTRY", "COA"];
-    if (role === "MICRO") return ["MICRO", "MICRO_WATER", "STERILITY"];
-    return "ALL";
-  }, [role]);
+ const allowedTypes = useMemo<ReportType[] | "ALL">(() => {
+  if (!role) return "ALL";
+
+  if (role === "CHEMISTRY") {
+    return ["CHEMISTRY", "COA"];
+  }
+
+  if (role === "MICRO") {
+    return [
+      "MICRO",
+      "MICRO_WATER",
+      "STERILITY",
+      "APE",
+    ];
+  }
+
+  return "ALL";
+}, [role]);
 
   const [bulkPdfPreview, setBulkPdfPreview] = useState<{
     url: string;
@@ -1289,14 +1328,15 @@ export default function ReportAttachmentsPage() {
   };
 
   const visibleTabs = useMemo(() => {
-    const all: ReportTypeFilter[] = [
-      "ALL",
-      "MICRO",
-      "MICRO_WATER",
-      "CHEMISTRY",
-      "STERILITY",
-      "COA",
-    ];
+const all: ReportTypeFilter[] = [
+  "ALL",
+  "MICRO",
+  "MICRO_WATER",
+  "STERILITY",
+  "APE",
+  "CHEMISTRY",
+  "COA",
+];
     if (allowedTypes === "ALL") return all;
 
     return all.filter(
@@ -1371,7 +1411,7 @@ export default function ReportAttachmentsPage() {
   ]);
 
   const handleDeleteAttachments = async (ids: string[]) => {
-    if (!isSystemAdmin) return;
+    if (!canDeleteAttachments) return;
     if (!ids.length) return;
 
     const ok = window.confirm(
@@ -1504,7 +1544,7 @@ export default function ReportAttachmentsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isSystemAdmin && (
+          {canDeleteAttachments && (
             <button
               type="button"
               onClick={() => handleDeleteAttachments(selectedIds)}
@@ -1662,7 +1702,7 @@ export default function ReportAttachmentsPage() {
             </select>
           </div>
 
-          {isSystemAdmin && (
+          {canDeleteAttachments && (
             <div className="lg:col-span-3">
               <select
                 value={createdBy}
@@ -1687,7 +1727,7 @@ export default function ReportAttachmentsPage() {
             </div>
           )}
 
-          {isSystemAdmin && (
+          {canDeleteAttachments && (
             <div className="lg:col-span-3">
               <select
                 value={source}
@@ -2033,7 +2073,7 @@ export default function ReportAttachmentsPage() {
                           );
                         })()}
 
-                        {isSystemAdmin && (
+                        {canDeleteAttachments && (
                           <button
                             type="button"
                             onClick={async (e) => {
@@ -2269,7 +2309,7 @@ export default function ReportAttachmentsPage() {
                               Print
                             </button>
 
-                            {isSystemAdmin && (
+                            {canDeleteAttachments && (
                               <button
                                 type="button"
                                 onClick={async () => {

@@ -252,6 +252,116 @@ function normalizeBillingIdentity(value: unknown) {
     .replace(/^_+|_+$/g, '');
 }
 
+function buildCombinationIdentity(
+  items: BillingSourceItem[],
+) {
+  const ordered =
+    [...items]
+      .filter((item) => !!item.itemKey)
+      .sort((a, b) =>
+        a.itemKey.localeCompare(b.itemKey),
+      );
+
+  if (ordered.length < 2) {
+    return null;
+  }
+
+  /*
+   * Use a deterministic semantic key so selection order
+   * does not change the pricing identity.
+   *
+   * Example:
+   *   COMBO_E_COLI_PLUS_P_AER_PLUS_S_AUR
+   */
+  const itemKey =
+    `COMBO_${ordered
+      .map((item) => item.itemKey)
+      .join('_PLUS_')}`;
+
+  const itemLabel =
+    ordered
+      .map((item) => item.itemLabel)
+      .join(' + ');
+
+  return {
+    itemKey,
+    itemLabel,
+    items: ordered,
+  };
+}
+
+
+function pricingClientIdentity(value: unknown) {
+  const client = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+  return client || null;
+}
+
+/*
+ * Determine whether the selected Client + Form + Type of Test
+ * is configured as FIXED COMBINATION pricing.
+ *
+ * No extra database column is required:
+ *   - if the applicable pricing scope contains COMBO_* rules,
+ *     that scope is treated as fixed-combination pricing;
+ *   - otherwise it remains individual-item pricing.
+ *
+ * Exact report-level client rules have priority over the
+ * clientCode DEFAULT rules, matching BillingPricingService.
+ */
+function usesFixedCombinationPricing(
+  rules: BillingPriceRule[],
+  args: {
+    clientCode: string;
+    client: string | null;
+    formType: FormType;
+    testKey: string;
+    at: Date;
+  },
+) {
+  const clientCode = String(args.clientCode ?? '')
+    .trim()
+    .toUpperCase();
+
+  const testKey = normalizeBillingIdentity(args.testKey);
+
+  const applicable = rules.filter((rule) => {
+    if (rule.clientCode !== clientCode) return false;
+    if (rule.formType !== args.formType) return false;
+    if (normalizeBillingIdentity(rule.testKey) !== testKey) return false;
+    if (rule.effectiveFrom > args.at) return false;
+    if (rule.effectiveTo && rule.effectiveTo <= args.at) return false;
+    return true;
+  });
+
+  const requestedClient = pricingClientIdentity(args.client);
+
+  const exactClientRules =
+    requestedClient == null
+      ? []
+      : applicable.filter(
+          (rule) =>
+            rule.client != null &&
+            pricingClientIdentity(rule.client) === requestedClient,
+        );
+
+  /*
+   * If this exact client has any rules for the scope, those
+   * rules define its method. Otherwise use clientCode DEFAULT.
+   */
+  const scopeRules =
+    exactClientRules.length > 0
+      ? exactClientRules
+      : applicable.filter((rule) => rule.client == null);
+
+  return scopeRules.some((rule) =>
+    String(rule.itemKey ?? '').startsWith('COMBO_'),
+  );
+}
+
 function extractSelectedActives(actives: any): BillingSourceItem[] {
   if (!Array.isArray(actives)) {
     return [];
@@ -860,20 +970,145 @@ export class BillingService {
       /*
        * MICRO_MIX / MICRO_MIX_WATER
        *
-       * If pathogens were selected, price each exact
-       * Type-of-Test + Pathogen combination individually.
+       * Pricing method is inferred from the configured rules
+       * for the exact Client + Form + Type of Test:
        *
-       * Example:
+       *   no COMBO_* rules -> INDIVIDUAL pricing
+       *   COMBO_* rules    -> FIXED COMBINATION pricing
        *
-       * USP_61_62 + E_COLI
-       * USP_61_62 + P_AER
-       *
-       * This mirrors Chemistry's Test Type + Active pricing.
+       * Once a scope is configured for fixed combinations,
+       * an unconfigured exact combination becomes a billing
+       * exception. It MUST NOT silently fall back to the
+       * individual pathogen prices.
        */
       if (
         supportsPathogens &&
         selectedPathogens.length > 0
       ) {
+        const combination =
+          buildCombinationIdentity(
+            selectedPathogens,
+          );
+
+        const fixedCombinationPricing =
+          rawTypeOfTest
+            ? usesFixedCombinationPricing(
+                rules,
+                {
+                  clientCode,
+                  client,
+                  formType:
+                    report.formType,
+                  testKey,
+                  at:
+                    report.billingReadyAt,
+                },
+              )
+            : false;
+
+        if (
+          fixedCombinationPricing &&
+          combination &&
+          rawTypeOfTest
+        ) {
+          const combinationCandidate =
+            this.priceCandidate(
+              rules,
+              {
+                sourceType:
+                  'REPORT',
+
+                sourceId:
+                  report.id,
+
+                chargeKey:
+                  `REPORT:${report.id}:${report.formType}:${testKey}:COMBINATION:${combination.itemKey}`,
+
+                formType:
+                  report.formType,
+
+                formNumber:
+                  report.formNumber,
+
+                reportNumber:
+                  report.reportNumber,
+
+                clientCode,
+
+                client,
+
+                resultSentToClientAt:
+                  report.resultSentToClientAt ??
+                  null,
+
+                billingReadyAt:
+                  report.billingReadyAt,
+
+                testKey,
+
+                testLabel:
+                  rawTypeOfTest,
+
+                itemKey:
+                  combination.itemKey,
+
+                itemLabel:
+                  combination.itemLabel,
+
+                activeCount:
+                  null,
+
+                sourceSnapshot: {
+                  pricingMethod:
+                    'COMBINATION',
+
+                  typeOfTest:
+                    rawTypeOfTest,
+
+                  client:
+                    details?.client ??
+                    null,
+
+                  description:
+                    details?.description ??
+                    null,
+
+                  combinationKey:
+                    combination.itemKey,
+
+                  combinationLabel:
+                    combination.itemLabel,
+
+                  selectedPathogens:
+                    combination.items.map(
+                      (item) => ({
+                        itemKey:
+                          item.itemKey,
+
+                        itemLabel:
+                          item.itemLabel,
+                      }),
+                    ),
+                },
+
+                dataIssue:
+                  null,
+              },
+            );
+
+          /*
+           * FIXED COMBINATION means the combination candidate
+           * is authoritative even when the exact price is
+           * missing. A missing price remains visible as a
+           * pricing exception in Unbilled.
+           */
+          items.push(
+            combinationCandidate,
+          );
+
+          continue;
+        }
+
         for (
           const pathogen of selectedPathogens
         ) {
@@ -926,6 +1161,9 @@ export class BillingService {
                   null,
 
                 sourceSnapshot: {
+                  pricingMethod:
+                    'INDIVIDUAL',
+
                   typeOfTest:
                     rawTypeOfTest ||
                     null,
@@ -1441,11 +1679,153 @@ export class BillingService {
       /*
        * The selected rows are the billing source of truth.
        *
-       * numberOfActives is kept in sourceSnapshot only.
-       * A mismatch no longer changes quantity or blocks the
-       * charge because pricing is now per exact selected item.
+       * For each Type of Test:
+       *   - scopes without COMBO_* rules use individual actives;
+       *   - scopes with COMBO_* rules use one exact fixed
+       *     combination charge.
+       *
+       * A fixed-combination scope does NOT fall back to
+       * individual prices when an exact combination is missing.
+       * The missing combination is surfaced as a pricing
+       * exception instead.
+       *
+       * numberOfActives remains informational only.
        */
+      const activeCombination =
+        buildCombinationIdentity(
+          selectedActives,
+        );
+
       for (const testType of testTypes) {
+        const fixedCombinationPricing =
+          usesFixedCombinationPricing(
+            rules,
+            {
+              clientCode,
+              client,
+              formType:
+                report.formType,
+              testKey:
+                testType.testKey,
+              at:
+                report.billingReadyAt,
+            },
+          );
+
+        if (
+          fixedCombinationPricing &&
+          activeCombination
+        ) {
+          const combinationCandidate =
+            this.priceCandidate(
+              rules,
+              {
+                sourceType:
+                  'CHEMISTRY_REPORT',
+
+                sourceId:
+                  report.id,
+
+                chargeKey:
+                  `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:COMBINATION:${activeCombination.itemKey}`,
+
+                formType:
+                  report.formType,
+
+                formNumber:
+                  report.formNumber,
+
+                reportNumber:
+                  report.reportNumber,
+
+                clientCode,
+
+                client,
+
+                resultSentToClientAt:
+                  report.resultSentToClientAt ??
+                  null,
+
+                billingReadyAt:
+                  report.billingReadyAt,
+
+                testKey:
+                  testType.testKey,
+
+                testLabel:
+                  niceTestLabel(
+                    testType.rawValue,
+                  ),
+
+                itemKey:
+                  activeCombination.itemKey,
+
+                itemLabel:
+                  activeCombination.itemLabel,
+
+                activeCount:
+                  null,
+
+                sourceSnapshot: {
+                  pricingMethod:
+                    'COMBINATION',
+
+                  client,
+
+                  description:
+                    details?.sampleDescription ??
+                      details?.description ??
+                      null,
+
+                  testType:
+                    testType.rawValue,
+
+                  combinationKey:
+                    activeCombination.itemKey,
+
+                  combinationLabel:
+                    activeCombination.itemLabel,
+
+                  selectedActives:
+                    activeCombination.items.map(
+                      (active) => ({
+                        itemKey:
+                          active.itemKey,
+
+                        itemLabel:
+                          active.itemLabel,
+                      }),
+                    ),
+
+                  declaredActiveCount:
+                    declaredCount,
+
+                  numberOfActives:
+                    details?.numberOfActives ??
+                    null,
+
+                  selectedActiveCount:
+                    selectedActives.length,
+
+                  declaredCountMatchesSelection:
+                    declaredCount == null
+                      ? null
+                      : declaredCount ===
+                        selectedActives.length,
+                },
+
+                dataIssue:
+                  null,
+              },
+            );
+
+          items.push(
+            combinationCandidate,
+          );
+
+          continue;
+        }
+
         for (const selectedActive of selectedActives) {
           const candidate = this.priceCandidate(rules, {
             sourceType: 'CHEMISTRY_REPORT',
@@ -1484,13 +1864,12 @@ export class BillingService {
             itemLabel:
               selectedActive.itemLabel,
 
-            /*
-             * New item pricing is FLAT quantity 1.
-             * activeCount remains null.
-             */
             activeCount: null,
 
             sourceSnapshot: {
+              pricingMethod:
+                'INDIVIDUAL',
+
               client,
 
               description:
@@ -1546,6 +1925,7 @@ export class BillingService {
           items.push(candidate);
         }
       }
+
     }
 
     return items;
@@ -2330,6 +2710,181 @@ export class BillingService {
           }
         }
 
+        /*
+         * PRICING-STRUCTURE RECONCILIATION
+         * ---------------------------------------------------
+         * Combination pricing changes the number of lines that
+         * represent one source report:
+         *
+         *   individual:
+         *     E_COLI + P_AER = two invoice lines
+         *
+         *   combination:
+         *     E_COLI + P_AER = one invoice line
+         *
+         * A report may already exist on the current DRAFT when
+         * a new combination rule is added. Remove obsolete
+         * auto-captured lines for that source before inserting
+         * the newly discovered pricing shape. This prevents an
+         * old individual set and a new combination line from
+         * being billed together.
+         *
+         * As with the existing legacy-itemization migration,
+         * a manual override attached to an obsolete structure
+         * cannot be mapped safely to the new structure, so it
+         * is explicitly counted and replaced during Generate
+         * Drafts.
+         */
+        const desiredChargeKeysBySource =
+          new Map<string, Set<string>>();
+
+        const desiredSourcePairs =
+          new Map<
+            string,
+            {
+              sourceType:
+                BillingSourceType;
+              sourceId: string;
+            }
+          >();
+
+        for (const line of lines) {
+          const sourceKey =
+            `${line.sourceType}:${line.sourceId}`;
+
+          const desired =
+            desiredChargeKeysBySource.get(
+              sourceKey,
+            ) ??
+            new Set<string>();
+
+          desired.add(
+            line.chargeKey,
+          );
+
+          desiredChargeKeysBySource.set(
+            sourceKey,
+            desired,
+          );
+
+          desiredSourcePairs.set(
+            sourceKey,
+            {
+              sourceType:
+                line.sourceType,
+
+              sourceId:
+                line.sourceId,
+            },
+          );
+        }
+
+        let pricingStructureLinesReplaced =
+          0;
+
+        let pricingStructureManualOverridesReplaced =
+          0;
+
+        if (
+          desiredSourcePairs.size >
+          0
+        ) {
+          const existingSourceLines =
+            await tx.billingInvoiceLine.findMany({
+              where: {
+                invoiceId:
+                  invoice.id,
+
+                OR: Array.from(
+                  desiredSourcePairs.values(),
+                ).map(
+                  (source) => ({
+                    sourceType:
+                      source.sourceType,
+
+                    sourceId:
+                      source.sourceId,
+                  }),
+                ),
+              },
+
+              select: {
+                id: true,
+
+                sourceType: true,
+
+                sourceId: true,
+
+                chargeKey: true,
+
+                activeChargeKey:
+                  true,
+
+                manualOverride:
+                  true,
+              },
+            });
+
+          const staleSourceLines =
+            existingSourceLines.filter(
+              (existing) => {
+                /*
+                 * Historical/revision ownership lines use a
+                 * null activeChargeKey and are not part of this
+                 * monthly DRAFT replacement path.
+                 */
+                if (
+                  existing.activeChargeKey ==
+                  null
+                ) {
+                  return false;
+                }
+
+                const sourceKey =
+                  `${existing.sourceType}:${existing.sourceId}`;
+
+                const desired =
+                  desiredChargeKeysBySource.get(
+                    sourceKey,
+                  );
+
+                return (
+                  !!desired &&
+                  !desired.has(
+                    existing.chargeKey,
+                  )
+                );
+              },
+            );
+
+          pricingStructureManualOverridesReplaced =
+            staleSourceLines.filter(
+              (line) =>
+                line.manualOverride,
+            ).length;
+
+          if (
+            staleSourceLines.length >
+            0
+          ) {
+            const deleted =
+              await tx.billingInvoiceLine.deleteMany({
+                where: {
+                  id: {
+                    in:
+                      staleSourceLines.map(
+                        (line) =>
+                          line.id,
+                      ),
+                  },
+                },
+              });
+
+            pricingStructureLinesReplaced =
+              deleted.count;
+          }
+        }
+
         const createData = lines.map((line) => ({
           invoiceId: invoice.id,
 
@@ -2513,6 +3068,10 @@ export class BillingService {
 
           legacyManualOverridesReplaced,
 
+          pricingStructureLinesReplaced,
+
+          pricingStructureManualOverridesReplaced,
+
           releasedClosedInvoiceId,
         };
       });
@@ -2538,6 +3097,12 @@ export class BillingService {
             legacyManualOverridesReplaced:
               transactionResult.legacyManualOverridesReplaced,
 
+            pricingStructureLinesReplaced:
+              transactionResult.pricingStructureLinesReplaced,
+
+            pricingStructureManualOverridesReplaced:
+              transactionResult.pricingStructureManualOverridesReplaced,
+
             releasedClosedInvoiceId:
               transactionResult.releasedClosedInvoiceId,
           },
@@ -2560,6 +3125,12 @@ export class BillingService {
 
         legacyManualOverridesReplaced:
           transactionResult.legacyManualOverridesReplaced,
+
+        pricingStructureLinesReplaced:
+          transactionResult.pricingStructureLinesReplaced,
+
+        pricingStructureManualOverridesReplaced:
+          transactionResult.pricingStructureManualOverridesReplaced,
 
         releasedClosedInvoiceId:
           transactionResult.releasedClosedInvoiceId,
