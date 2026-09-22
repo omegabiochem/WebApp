@@ -25,6 +25,7 @@ import { api, apiBlob } from "../../lib/api";
 type BillingInvoiceStatus = "DRAFT" | "CONFIRMED" | "SENT" | "VOID";
 type BillingInvoiceKind = "REPORT" | "MANUAL";
 type BillingTab = "OVERVIEW" | "INVOICES" | "UNBILLED" | "PRICING";
+type PricingMethod = "INDIVIDUAL" | "COMBINATION";
 type BillingActionDialog =
   | {
       kind: "OVERRIDE";
@@ -346,6 +347,14 @@ type PricingRule = {
 };
 
 type PriceForm = {
+  pricingMethod: PricingMethod;
+
+  /*
+   * Used only for Combination Pricing.
+   * Values are stable pathogen/active keys.
+   */
+  combinationItemKeys: string[];
+
   clientCode: string;
 
   /*
@@ -699,6 +708,33 @@ function pricingItemName(formType: string) {
 }
 
 
+function supportsCombinationPricing(formType: string) {
+  return (
+    formType === "MICRO_MIX" ||
+    formType === "MICRO_MIX_WATER" ||
+    formType === "CHEMISTRY_MIX"
+  );
+}
+
+function buildCombinationItemKey(itemKeys: string[]) {
+  const normalized = Array.from(
+    new Set(
+      itemKeys
+        .map((value) => normalizePricingKey(value))
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+
+  if (normalized.length < 2) return "";
+
+  return `COMBO_${normalized.join("_PLUS_")}`;
+}
+
+function isCombinationItemKey(value?: string | null) {
+  return String(value ?? "").startsWith("COMBO_");
+}
+
+
 function isMissingPricingRule(issue?: string | null) {
   return String(issue ?? "")
     .toLowerCase()
@@ -725,6 +761,32 @@ function unbilledDescription(item: UnbilledItem) {
       snapshot.sampleDescription ??
       "",
   ).trim();
+}
+
+
+function unbilledCombinationItemKeys(item: UnbilledItem) {
+  const snapshot = item.sourceSnapshot ?? {};
+
+  const rows = Array.isArray(snapshot.selectedPathogens)
+    ? snapshot.selectedPathogens
+    : Array.isArray(snapshot.selectedActives)
+      ? snapshot.selectedActives
+      : [];
+
+  return Array.from(
+    new Set(
+      rows
+        .map((row: any) =>
+          String(
+            row?.itemKey ??
+              row?.key ??
+              row?.value ??
+              "",
+          ).trim(),
+        )
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
@@ -1085,6 +1147,9 @@ export default function BillingDashboard() {
     useState<ManualInvoiceDialog>(null);
 
   const [priceForm, setPriceForm] = useState<PriceForm>({
+    pricingMethod: "INDIVIDUAL",
+    combinationItemKeys: [],
+
     clientCode: "",
     client: "",
     customClientName: "",
@@ -1305,6 +1370,276 @@ export default function BillingDashboard() {
   const pricingRequiresItem =
     requiresPricingItem(priceForm.formType);
 
+  const pricingSupportsCombination =
+    supportsCombinationPricing(priceForm.formType);
+
+  const combinationPricingPreview = useMemo(() => {
+    if (
+      priceForm.pricingMethod !== "COMBINATION" ||
+      !pricingSupportsCombination
+    ) {
+      return null;
+    }
+
+    const selectedOptions = pricingItemOptions
+      .filter(
+        (option) =>
+          option.value !== "OTHER" &&
+          priceForm.combinationItemKeys.includes(option.value),
+      )
+      .sort((a, b) => a.value.localeCompare(b.value));
+
+    const itemKeys = selectedOptions.map((option) => option.value);
+    const itemKey = buildCombinationItemKey(itemKeys);
+    const itemLabel = selectedOptions
+      .map((option) => option.label)
+      .join(" + ");
+
+    let testKey = priceForm.testKey;
+    if (testKey === CUSTOM_TEST_VALUE) {
+      testKey = normalizePricingKey(priceForm.customTestLabel);
+    }
+
+    const clientCodeValue =
+      priceForm.clientCode.trim().toUpperCase();
+
+    const clientValue =
+      priceForm.client === CUSTOM_CLIENT_VALUE
+        ? priceForm.customClientName.trim().replace(/\s+/g, " ")
+        : priceForm.client.trim().replace(/\s+/g, " ");
+
+    const effectiveAt = new Date(
+      `${priceForm.effectiveFrom || todayDateInput()}T00:00:00`,
+    );
+
+    const isEffective = (rule: PricingRule) => {
+      const from = new Date(rule.effectiveFrom);
+      const to = rule.effectiveTo
+        ? new Date(rule.effectiveTo)
+        : null;
+
+      if (
+        Number.isNaN(effectiveAt.getTime()) ||
+        Number.isNaN(from.getTime())
+      ) {
+        return true;
+      }
+
+      if (from > effectiveAt) return false;
+      if (to && to <= effectiveAt) return false;
+
+      return true;
+    };
+
+    const resolveRule = (ruleItemKey: string) => {
+      const matching = prices
+        .filter(
+          (rule) =>
+            rule.active &&
+            rule.clientCode === clientCodeValue &&
+            rule.formType === priceForm.formType &&
+            rule.testKey === testKey &&
+            rule.itemKey === ruleItemKey &&
+            isEffective(rule),
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.effectiveFrom).getTime() -
+            new Date(a.effectiveFrom).getTime(),
+        );
+
+      if (clientValue) {
+        const exact = matching.find(
+          (rule) =>
+            String(rule.client ?? "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .toUpperCase() === clientValue.toUpperCase(),
+        );
+
+        if (exact) return exact;
+      }
+
+      return matching.find((rule) => !rule.client) ?? null;
+    };
+
+    const individual = selectedOptions.map((option) => ({
+      option,
+      rule: resolveRule(option.value),
+    }));
+
+    const individualTotal = individual.reduce(
+      (sum, row) =>
+        row.rule
+          ? sum + Number(row.rule.unitPrice ?? 0)
+          : sum,
+      0,
+    );
+
+    const missingIndividual = individual
+      .filter((row) => !row.rule)
+      .map((row) => row.option.label);
+
+    const combinationRule =
+      itemKey ? resolveRule(itemKey) : null;
+
+    return {
+      selectedOptions,
+      itemKey,
+      itemLabel,
+      individualTotal,
+      missingIndividual,
+      combinationRule,
+    };
+  }, [
+    priceForm.pricingMethod,
+    priceForm.combinationItemKeys,
+    priceForm.clientCode,
+    priceForm.client,
+    priceForm.customClientName,
+    priceForm.formType,
+    priceForm.testKey,
+    priceForm.customTestLabel,
+    priceForm.effectiveFrom,
+    pricingSupportsCombination,
+    pricingItemOptions,
+    prices,
+  ]);
+
+
+  const individualPricingPreview = useMemo(() => {
+    if (
+      priceForm.pricingMethod !== "INDIVIDUAL" ||
+      !priceForm.clientCode.trim()
+    ) {
+      return null;
+    }
+
+    let testKey = priceForm.testKey;
+
+    if (testKey === CUSTOM_TEST_VALUE) {
+      testKey = normalizePricingKey(priceForm.customTestLabel);
+    }
+
+    if (!testKey) {
+      return null;
+    }
+
+    let itemKey = priceForm.itemKey || "";
+
+    if (itemKey === CUSTOM_ITEM_VALUE) {
+      const customLabel =
+        priceForm.customItemLabel.trim();
+
+      itemKey = customLabel
+        ? `OTHER_${normalizePricingKey(customLabel)}`
+        : "";
+    }
+
+    if (
+      pricingRequiresItem &&
+      !itemKey
+    ) {
+      return null;
+    }
+
+    const clientCodeValue =
+      priceForm.clientCode
+        .trim()
+        .toUpperCase();
+
+    const clientValue =
+      priceForm.client ===
+      CUSTOM_CLIENT_VALUE
+        ? priceForm.customClientName
+            .trim()
+            .replace(/\s+/g, " ")
+        : priceForm.client
+            .trim()
+            .replace(/\s+/g, " ");
+
+    const effectiveAt =
+      new Date(
+        `${priceForm.effectiveFrom || todayDateInput()}T00:00:00`,
+      );
+
+    const matching = prices
+      .filter((rule) => {
+        if (!rule.active) return false;
+        if (rule.clientCode !== clientCodeValue) return false;
+        if (rule.formType !== priceForm.formType) return false;
+        if (rule.testKey !== testKey) return false;
+
+        const ruleItemKey =
+          rule.itemKey ?? "";
+
+        if (ruleItemKey !== itemKey) return false;
+
+        const from =
+          new Date(rule.effectiveFrom);
+
+        const to =
+          rule.effectiveTo
+            ? new Date(rule.effectiveTo)
+            : null;
+
+        if (
+          !Number.isNaN(effectiveAt.getTime()) &&
+          !Number.isNaN(from.getTime())
+        ) {
+          if (from > effectiveAt) return false;
+          if (to && to <= effectiveAt) return false;
+        }
+
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.effectiveFrom).getTime() -
+          new Date(a.effectiveFrom).getTime(),
+      );
+
+    let rule: PricingRule | null = null;
+
+    if (clientValue) {
+      rule =
+        matching.find(
+          (candidate) =>
+            String(candidate.client ?? "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .toUpperCase() ===
+            clientValue.toUpperCase(),
+        ) ?? null;
+    }
+
+    if (!rule) {
+      rule =
+        matching.find(
+          (candidate) =>
+            !candidate.client,
+        ) ?? null;
+    }
+
+    return {
+      rule,
+      itemKey,
+    };
+  }, [
+    priceForm.pricingMethod,
+    priceForm.clientCode,
+    priceForm.client,
+    priceForm.customClientName,
+    priceForm.formType,
+    priceForm.testKey,
+    priceForm.customTestLabel,
+    priceForm.itemKey,
+    priceForm.customItemLabel,
+    priceForm.effectiveFrom,
+    pricingRequiresItem,
+    prices,
+  ]);
+
   const managerTabs: BillingTab[] = isManager
     ? ["OVERVIEW", "UNBILLED", "INVOICES", "PRICING"]
     : ["OVERVIEW", "UNBILLED", "INVOICES"];
@@ -1423,11 +1758,20 @@ export default function BillingDashboard() {
   useEffect(() => {
     if (!isManager) return;
 
-    if (tab === "PRICING") {
+    if (
+      tab === "PRICING" ||
+      tab === "OVERVIEW" ||
+      tab === "UNBILLED"
+    ) {
       refreshPrices();
     }
 
-    if (tab === "PRICING" || tab === "INVOICES") {
+    if (
+      tab === "PRICING" ||
+      tab === "INVOICES" ||
+      tab === "OVERVIEW" ||
+      tab === "UNBILLED"
+    ) {
       refreshBillingClients();
     }
   }, [tab, isManager, refreshPrices, refreshBillingClients]);
@@ -2413,13 +2757,26 @@ export default function BillingDashboard() {
       (option) => option.value === item.testKey,
     );
 
-    const formSupportsItem =
-      supportsPricingItem(item.formType);
+    const formSupportsItem = supportsPricingItem(item.formType);
+    const formSupportsCombination =
+      supportsCombinationPricing(item.formType);
 
-    const itemOptions =
-      getItemOptions(item.formType);
+    const combinationItemKeys = formSupportsCombination
+      ? unbilledCombinationItemKeys(item)
+      : [];
+
+    const sourcePricingMethod: PricingMethod =
+      formSupportsCombination &&
+      (isCombinationItemKey(item.itemKey) ||
+        String(item.sourceSnapshot?.pricingMethod ?? "").toUpperCase() ===
+          "COMBINATION")
+        ? "COMBINATION"
+        : "INDIVIDUAL";
+
+    const itemOptions = getItemOptions(item.formType);
 
     const knownItem =
+      sourcePricingMethod === "INDIVIDUAL" &&
       !!item.itemKey &&
       itemOptions.some(
         (option) => option.value === item.itemKey,
@@ -2432,13 +2789,22 @@ export default function BillingDashboard() {
         : "");
 
     setPriceForm({
+      pricingMethod: sourcePricingMethod,
+
+      /*
+       * IMPORTANT:
+       * Keep the complete selected pathogen / active list from
+       * the source report even when Set Price initially opens in
+       * Individual mode. If the user changes to Combination,
+       * these checkboxes are already selected automatically.
+       */
+      combinationItemKeys,
+
       clientCode: String(item.clientCode ?? "")
         .trim()
         .toUpperCase(),
 
-      client:
-        unbilledClient(item),
-
+      client: unbilledClient(item),
       customClientName: "",
 
       department,
@@ -2452,24 +2818,27 @@ export default function BillingDashboard() {
         ? item.testLabel || nice(item.testKey)
         : "",
 
-      itemKey: !formSupportsItem
-        ? ""
-        : knownItem
-          ? item.itemKey || ""
-          : item.itemKey
-            ? CUSTOM_ITEM_VALUE
-            : "",
+      itemKey:
+        sourcePricingMethod === "COMBINATION" || !formSupportsItem
+          ? ""
+          : knownItem
+            ? item.itemKey || ""
+            : item.itemKey
+              ? CUSTOM_ITEM_VALUE
+              : "",
 
-      itemLabel: knownItem
-        ? item.itemLabel ||
-          (item.itemKey ? nice(item.itemKey) : "")
-        : "",
+      itemLabel:
+        sourcePricingMethod === "INDIVIDUAL" && knownItem
+          ? item.itemLabel ||
+            (item.itemKey ? nice(item.itemKey) : "")
+          : "",
 
       customTestLabel: knownTest
         ? ""
         : item.testLabel || nice(item.testKey),
 
       customItemLabel:
+        sourcePricingMethod === "INDIVIDUAL" &&
         formSupportsItem &&
         item.itemKey &&
         !knownItem
@@ -2493,14 +2862,25 @@ export default function BillingDashboard() {
     setDepartmentFilter(department);
     setFormTypeFilter(item.formType);
     setTestFilter(item.testKey || "ALL");
-    setItemFilter(item.itemKey || "ALL");
+    setItemFilter(
+      sourcePricingMethod === "COMBINATION"
+        ? "ALL"
+        : item.itemKey || "ALL",
+    );
+
+    const selectionLabel =
+      combinationItemKeys.length > 0
+        ? ` Selected ${
+            department === "MICRO" ? "pathogens" : "actives"
+          } from the report are also prefilled for Combination Pricing.`
+        : "";
 
     setPricingPrefillMessage(
       `Prefilled from ${item.formNumber} / ${item.reportNumber}${
         unbilledClient(item)
           ? ` for ${unbilledClient(item)}`
           : ""
-      }. Enter the Unit Price and review Effective From before creating the rule.`,
+      }.${selectionLabel} Enter the price and review Effective From before creating the rule.`,
     );
 
     setTab("PRICING");
@@ -2521,6 +2901,54 @@ export default function BillingDashboard() {
     }, 0);
   }
 
+  async function openExistingPriceFromUnbilled(item: UnbilledItem) {
+    if (!isManager) {
+      toast.error("Only ADMIN or SYSTEMADMIN can edit pricing rules");
+      return;
+    }
+
+    if (!item.pricingRuleId) {
+      if (isMissingPricingRule(item.pricingIssue)) {
+        openPricingFromUnbilled(item);
+        return;
+      }
+
+      toast.error("This Ready line does not have a pricing rule to edit");
+      return;
+    }
+
+    let availableRules = prices;
+    let rule = availableRules.find(
+      (candidate) => candidate.id === item.pricingRuleId,
+    );
+
+    /*
+     * Overview / Unbilled may be opened before the pricing list
+     * has finished loading. Fetch once so Edit Price always opens
+     * the exact rule used by this Ready charge.
+     */
+    if (!rule) {
+      try {
+        availableRules = await loadPriceRules();
+        setPrices(availableRules);
+
+        rule = availableRules.find(
+          (candidate) => candidate.id === item.pricingRuleId,
+        );
+      } catch (error: any) {
+        toast.error(extractMessage(error));
+        return;
+      }
+    }
+
+    if (!rule) {
+      toast.error("The pricing rule used by this line could not be found");
+      return;
+    }
+
+    openEditPriceRule(rule);
+  }
+
   async function createPriceRule(event: React.FormEvent) {
     event.preventDefault();
     if (!isManager) return;
@@ -2530,24 +2958,16 @@ export default function BillingDashboard() {
       return;
     }
 
-    let pricingClient =
-      priceForm.client ===
-      CUSTOM_CLIENT_VALUE
-        ? priceForm.customClientName
-            .trim()
-            .replace(/\s+/g, " ")
-        : priceForm.client
-            .trim()
-            .replace(/\s+/g, " ");
+    const pricingClient =
+      priceForm.client === CUSTOM_CLIENT_VALUE
+        ? priceForm.customClientName.trim().replace(/\s+/g, " ")
+        : priceForm.client.trim().replace(/\s+/g, " ");
 
     if (
-      priceForm.client ===
-        CUSTOM_CLIENT_VALUE &&
+      priceForm.client === CUSTOM_CLIENT_VALUE &&
       !pricingClient
     ) {
-      toast.error(
-        "Enter the client name",
-      );
+      toast.error("Enter the client name");
       return;
     }
 
@@ -2567,7 +2987,39 @@ export default function BillingDashboard() {
     let itemKey: string | undefined;
     let itemLabel: string | undefined;
 
-    if (pricingSupportsItem) {
+    if (priceForm.pricingMethod === "COMBINATION") {
+      if (!pricingSupportsCombination) {
+        toast.error(
+          "Combination Pricing is available only for Micro Mix, Micro Mix Water, and Chemistry Mix",
+        );
+        return;
+      }
+
+      const selectedOptions = pricingItemOptions
+        .filter(
+          (option) =>
+            option.value !== "OTHER" &&
+            priceForm.combinationItemKeys.includes(option.value),
+        )
+        .sort((a, b) => a.value.localeCompare(b.value));
+
+      if (selectedOptions.length < 2) {
+        toast.error(
+          `Select at least two ${
+            priceForm.department === "MICRO" ? "pathogens" : "actives"
+          } for Combination Pricing`,
+        );
+        return;
+      }
+
+      itemKey = buildCombinationItemKey(
+        selectedOptions.map((option) => option.value),
+      );
+
+      itemLabel = selectedOptions
+        .map((option) => option.label)
+        .join(" + ");
+    } else if (pricingSupportsItem) {
       itemKey = priceForm.itemKey || undefined;
       itemLabel = priceForm.itemLabel || undefined;
 
@@ -2590,13 +3042,6 @@ export default function BillingDashboard() {
         itemKey = `OTHER_${normalizePricingKey(itemLabel)}`;
       }
 
-      /*
-       * Chemistry and COA always require an individual item.
-       *
-       * Micro pathogen selection is optional because a Micro
-       * report may legitimately contain only Type-of-Test/TBC-TFC
-       * work with no pathogen selected.
-       */
       if (pricingRequiresItem && !itemKey) {
         toast.error(
           `${pricingItemName(priceForm.formType)} is required`,
@@ -2610,7 +3055,11 @@ export default function BillingDashboard() {
     }
 
     if (!priceForm.unitPrice.trim()) {
-      toast.error("Unit price is required");
+      toast.error(
+        priceForm.pricingMethod === "COMBINATION"
+          ? "Combination price is required"
+          : "Unit price is required",
+      );
       return;
     }
 
@@ -2626,12 +3075,7 @@ export default function BillingDashboard() {
         body: JSON.stringify({
           clientCode: priceForm.clientCode.trim().toUpperCase(),
 
-          /*
-           * Blank client intentionally creates a DEFAULT
-           * price for the entire clientCode.
-           */
-          client:
-            pricingClient || null,
+          client: pricingClient || null,
 
           department: priceForm.department,
           formType: priceForm.formType,
@@ -2639,18 +3083,13 @@ export default function BillingDashboard() {
           testKey,
           testLabel: testLabel || undefined,
 
-          ...(pricingSupportsItem && itemKey
+          ...(itemKey
             ? {
                 itemKey,
                 itemLabel: itemLabel || undefined,
               }
             : {}),
 
-          /*
-           * All new item-level rules are one flat charge.
-           * Legacy PER_ACTIVE rules remain visible in the table,
-           * but this form no longer creates them.
-           */
           priceBasis: "FLAT",
 
           unitPrice: priceForm.unitPrice,
@@ -2659,15 +3098,14 @@ export default function BillingDashboard() {
         }),
       });
 
-      toast.success("Pricing rule created");
+      toast.success(
+        priceForm.pricingMethod === "COMBINATION"
+          ? "Combination pricing rule created"
+          : "Pricing rule created",
+      );
 
       setPricingPrefillMessage(null);
 
-      /*
-       * A manually typed client was remembered by the backend
-       * while creating the price rule. Refresh so it becomes a
-       * normal dropdown option immediately.
-       */
       await refreshPricingClientDirectory(
         priceForm.clientCode,
       );
@@ -2675,8 +3113,7 @@ export default function BillingDashboard() {
       setPriceForm((prev) => ({
         ...prev,
 
-        client:
-          pricingClient || "",
+        client: pricingClient || "",
 
         customClientName: "",
 
@@ -2685,6 +3122,8 @@ export default function BillingDashboard() {
 
         itemKey: "",
         itemLabel: "",
+
+        combinationItemKeys: [],
 
         customTestLabel: "",
         customItemLabel: "",
@@ -2700,6 +3139,7 @@ export default function BillingDashboard() {
       setWorking(null);
     }
   }
+
 
   function openEditPriceRule(rule: PricingRule) {
     if (!isManager) return;
@@ -3397,7 +3837,7 @@ export default function BillingDashboard() {
 
                 <label className="block min-w-0">
                   <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Client
+                    Client Code
                   </span>
 
                   <select
@@ -3408,7 +3848,7 @@ export default function BillingDashboard() {
                     }}
                     className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   >
-                    <option value="">All Clients</option>
+                    <option value="">All Client Codes</option>
 
                     {commonClientOptions.map((client) => (
                       <option
@@ -3671,6 +4111,323 @@ export default function BillingDashboard() {
                 </div>
               </div>
             </section>
+
+            {isManager && visibleUnbilled.length > 0 && (
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="font-semibold text-slate-900">
+                      Current Report Pricing
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ready lines can be edited directly here. Edit Price opens
+                      the exact pricing rule currently used by that report line.
+                      Missing prices continue to show Set Price.
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    onClick={() => setTab("UNBILLED")}
+                  >
+                    View All Unbilled
+                  </Button>
+                </div>
+
+                <div className="max-h-[420px] overflow-auto">
+                  <table className="w-full min-w-[1120px] text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                      <tr>
+                        <th className="px-4 py-3">Form #</th>
+                        <th className="px-4 py-3">Report #</th>
+                        <th className="px-4 py-3">Client</th>
+                        <th className="px-4 py-3">Form</th>
+                        <th className="px-4 py-3">Type of Test</th>
+                        <th className="px-4 py-3">Item / Combination</th>
+                        <th className="px-4 py-3 text-right">Price</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleUnbilled.map((item) => {
+                        const contextLabel =
+                          item.itemLabel ||
+                          (item.itemKey
+                            ? nice(item.itemKey)
+                            : item.testLabel || nice(item.testKey));
+
+                        const ready =
+                          !item.pricingIssue &&
+                          item.unitPrice != null &&
+                          item.amount != null;
+
+                        return (
+                          <tr
+                            key={`overview-report-price-${item.chargeKey}`}
+                            className={
+                              ready
+                                ? "hover:bg-slate-50/70"
+                                : "bg-amber-50/30"
+                            }
+                          >
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              {item.formNumber}
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.reportNumber}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium">
+                                {item.clientCode}
+                              </div>
+                              {unbilledClient(item) && (
+                                <div className="text-xs text-slate-500">
+                                  {unbilledClient(item)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {nice(item.formType)}
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.testLabel || nice(item.testKey)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-slate-800">
+                                {contextLabel}
+                              </div>
+                              {isCombinationItemKey(item.itemKey) && (
+                                <div className="mt-0.5 text-[11px] font-medium text-violet-600">
+                                  Fixed Combination
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {item.unitPrice == null
+                                ? "—"
+                                : money(item.unitPrice)}
+                            </td>
+                            <td className="px-4 py-3">
+                              {ready ? (
+                                <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                  Ready
+                                </span>
+                              ) : (
+                                <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                  Pricing Needed
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {ready && item.pricingRuleId ? (
+                                <Button
+                                  variant="secondary"
+                                  onClick={() =>
+                                    openExistingPriceFromUnbilled(item)
+                                  }
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Edit Price
+                                </Button>
+                              ) : isMissingPricingRule(item.pricingIssue) ? (
+                                <Button
+                                  variant="secondary"
+                                  onClick={() =>
+                                    openPricingFromUnbilled(item)
+                                  }
+                                >
+                                  <CircleDollarSign className="h-4 w-4" />
+                                  Set Price
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-slate-400">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {isManager && (
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="font-semibold text-slate-900">
+                      Existing Client Pricing
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Review and edit existing prices directly from Overview.
+                      The common Billing filters above also filter this list.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                      {visiblePrices.length} rule
+                      {visiblePrices.length === 1 ? "" : "s"}
+                    </span>
+
+                    <Button
+                      variant="secondary"
+                      onClick={() => setTab("PRICING")}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Pricing
+                    </Button>
+
+                    <Button
+                      variant="secondary"
+                      onClick={refreshPrices}
+                      disabled={pricesLoading}
+                    >
+                      {pricesLoading ? (
+                        <Spinner dark />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="max-h-[460px] overflow-auto">
+                  <table className="w-full min-w-[1240px] text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                      <tr>
+                        <th className="px-4 py-3">Client Code</th>
+                        <th className="px-4 py-3">Client</th>
+                        <th className="px-4 py-3">Department</th>
+                        <th className="px-4 py-3">Form</th>
+                        <th className="px-4 py-3">Test</th>
+                        <th className="px-4 py-3">Method</th>
+                        <th className="px-4 py-3">Item / Combination</th>
+                        <th className="px-4 py-3 text-right">Price</th>
+                        <th className="px-4 py-3">Effective</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Edit</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {visiblePrices.map((rule) => (
+                        <tr
+                          key={`overview-price-${rule.id}`}
+                          className="hover:bg-slate-50/70"
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {rule.clientCode}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {rule.client || "DEFAULT"}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {nice(rule.department)}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {nice(rule.formType)}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {rule.testLabel || nice(rule.testKey)}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                isCombinationItemKey(rule.itemKey)
+                                  ? "bg-violet-50 text-violet-700"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {isCombinationItemKey(rule.itemKey)
+                                ? "Fixed Combination"
+                                : "Individual"}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-800">
+                              {rule.itemLabel ||
+                                (rule.itemKey
+                                  ? nice(rule.itemKey)
+                                  : "Type of Test only")}
+                            </div>
+                            {rule.itemKey && (
+                              <div className="mt-0.5 text-[11px] text-slate-400">
+                                {rule.itemKey}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-semibold">
+                            {money(rule.unitPrice)}
+                          </td>
+
+                          <td className="px-4 py-3 text-xs">
+                            <div>
+                              {formatDate(rule.effectiveFrom)}
+                            </div>
+                            {rule.effectiveTo && (
+                              <div className="text-slate-500">
+                                to {formatDate(rule.effectiveTo)}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                                rule.active
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {rule.active ? "ACTIVE" : "INACTIVE"}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              variant="secondary"
+                              onClick={() =>
+                                openEditPriceRule(rule)
+                              }
+                              disabled={!!working}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {!pricesLoading &&
+                        visiblePrices.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={11}
+                              className="px-4 py-12 text-center text-sm text-slate-500"
+                            >
+                              No pricing rules found for the selected filters.
+                            </td>
+                          </tr>
+                        )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -4101,9 +4858,49 @@ export default function BillingDashboard() {
                             })}
                           </div>
                         ) : (
-                          <span className="font-medium text-emerald-700">
-                            Ready
-                          </span>
+                          <div className="space-y-2">
+                            <div className="font-medium text-emerald-700">
+                              Ready
+                            </div>
+
+                            {isManager &&
+                              group.items.map((item) => {
+                                const contextLabel =
+                                  item.itemLabel ||
+                                  (item.itemKey
+                                    ? nice(item.itemKey)
+                                    : item.testLabel ||
+                                      nice(item.testKey));
+
+                                return (
+                                  <button
+                                    key={`ready-price-${item.chargeKey}`}
+                                    type="button"
+                                    onClick={() =>
+                                      openExistingPriceFromUnbilled(item)
+                                    }
+                                    className="group flex w-full items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100"
+                                    title={`Edit existing price for ${contextLabel}`}
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block max-w-[170px] truncate text-[11px] font-medium">
+                                        {contextLabel}
+                                      </span>
+                                      <span className="mt-0.5 block text-[11px] text-emerald-700">
+                                        {item.unitPrice == null
+                                          ? "Price unavailable"
+                                          : money(item.unitPrice)}
+                                      </span>
+                                    </span>
+
+                                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--brand)] group-hover:underline">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Edit Price
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -4173,6 +4970,95 @@ export default function BillingDashboard() {
                   </button>
                 </div>
               )}
+
+              <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Pricing Method
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    Choose how this Client + Form + Type of Test is priced.
+                    Individual pricing charges selected items separately.
+                    Once a fixed combination rule is configured for the scope,
+                    billing requires an exact combination price and does not
+                    fall back to individual prices.
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPriceForm((p) => ({
+                        ...p,
+                        pricingMethod: "INDIVIDUAL",
+                      }))
+                    }
+                    className={`rounded-xl border p-4 text-left transition ${
+                      priceForm.pricingMethod === "INDIVIDUAL"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-4 w-4 rounded-full border-4 ${
+                          priceForm.pricingMethod === "INDIVIDUAL"
+                            ? "border-blue-600 bg-white"
+                            : "border-slate-300 bg-white"
+                        }`}
+                      />
+                      <span className="font-semibold text-slate-900">
+                        Individual Item Pricing
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-xs leading-5 text-slate-500">
+                      Set one price for each pathogen, active, or COA item.
+                      Existing pricing continues to work exactly as it does now.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!pricingSupportsCombination}
+                    onClick={() =>
+                      setPriceForm((p) => ({
+                        ...p,
+                        pricingMethod: "COMBINATION",
+                        itemKey: "",
+                        itemLabel: "",
+                        customItemLabel: "",
+                      }))
+                    }
+                    className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      priceForm.pricingMethod === "COMBINATION"
+                        ? "border-violet-500 bg-violet-50 ring-2 ring-violet-100"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-4 w-4 rounded-full border-4 ${
+                          priceForm.pricingMethod === "COMBINATION"
+                            ? "border-violet-600 bg-white"
+                            : "border-slate-300 bg-white"
+                        }`}
+                      />
+                      <span className="font-semibold text-slate-900">
+                        Combination Pricing
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-xs leading-5 text-slate-500">
+                      Set one fixed price for an exact Type of Test +
+                      pathogen/active combination. Missing combinations become
+                      pricing exceptions. Available for Micro Mix, Micro Mix
+                      Water, and Chemistry Mix.
+                    </div>
+                  </button>
+                </div>
+              </div>
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <label>
@@ -4311,6 +5197,11 @@ export default function BillingDashboard() {
                         ...p,
                         department,
                         formType,
+                        pricingMethod:
+                          supportsCombinationPricing(formType)
+                            ? p.pricingMethod
+                            : "INDIVIDUAL",
+                        combinationItemKeys: [],
 
                         testKey: "",
                         testLabel: "",
@@ -4341,6 +5232,11 @@ export default function BillingDashboard() {
                       setPriceForm((p) => ({
                         ...p,
                         formType,
+                        pricingMethod:
+                          supportsCombinationPricing(formType)
+                            ? p.pricingMethod
+                            : "INDIVIDUAL",
+                        combinationItemKeys: [],
 
                         testKey: "",
                         testLabel: "",
@@ -4443,66 +5339,68 @@ export default function BillingDashboard() {
                   </label>
                 )}
 
-                {pricingSupportsItem && (
-                  <label>
-                    <span className="mb-1 block text-xs font-medium text-slate-600">
-                      {pricingItemName(priceForm.formType)}
-                    </span>
-
-                    <select
-                      required={pricingRequiresItem}
-                      value={priceForm.itemKey}
-                      onChange={(e) => {
-                        const itemKey = e.target.value;
-
-                        const selected =
-                          pricingItemOptions.find(
-                            (option) => option.value === itemKey,
-                          );
-
-                        setPriceForm((p) => ({
-                          ...p,
-
-                          itemKey,
-
-                          itemLabel:
-                            selected?.label ?? "",
-
-                          customItemLabel:
-                            itemKey === CUSTOM_ITEM_VALUE
-                              ? p.customItemLabel
-                              : "",
-                        }));
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
-                    >
-                      <option value="">
-                        {priceForm.formType === "MICRO_MIX" ||
-                        priceForm.formType === "MICRO_MIX_WATER"
-                          ? "No Pathogen / Type of Test only"
-                          : `Select ${pricingItemName(
-                              priceForm.formType,
-                            )}`}
-                      </option>
-
-                      {pricingItemOptions.map((option) => (
-                        <option
-                          key={option.value}
-                          value={option.value}
-                        >
-                          {option.label}
-                        </option>
-                      ))}
-
-                      <option value={CUSTOM_ITEM_VALUE}>
-                        Other / Custom{" "}
+                {priceForm.pricingMethod === "INDIVIDUAL" &&
+                  pricingSupportsItem && (
+                    <label>
+                      <span className="mb-1 block text-xs font-medium text-slate-600">
                         {pricingItemName(priceForm.formType)}
-                      </option>
-                    </select>
-                  </label>
-                )}
+                      </span>
 
-                {pricingSupportsItem &&
+                      <select
+                        required={pricingRequiresItem}
+                        value={priceForm.itemKey}
+                        onChange={(e) => {
+                          const itemKey = e.target.value;
+
+                          const selected =
+                            pricingItemOptions.find(
+                              (option) => option.value === itemKey,
+                            );
+
+                          setPriceForm((p) => ({
+                            ...p,
+
+                            itemKey,
+
+                            itemLabel:
+                              selected?.label ?? "",
+
+                            customItemLabel:
+                              itemKey === CUSTOM_ITEM_VALUE
+                                ? p.customItemLabel
+                                : "",
+                          }));
+                        }}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                      >
+                        <option value="">
+                          {priceForm.formType === "MICRO_MIX" ||
+                          priceForm.formType === "MICRO_MIX_WATER"
+                            ? "No Pathogen / Type of Test only"
+                            : `Select ${pricingItemName(
+                                priceForm.formType,
+                              )}`}
+                        </option>
+
+                        {pricingItemOptions.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                          >
+                            {option.label}
+                          </option>
+                        ))}
+
+                        <option value={CUSTOM_ITEM_VALUE}>
+                          Other / Custom{" "}
+                          {pricingItemName(priceForm.formType)}
+                        </option>
+                      </select>
+                    </label>
+                  )}
+
+                {priceForm.pricingMethod === "INDIVIDUAL" &&
+                  pricingSupportsItem &&
                   priceForm.itemKey === CUSTOM_ITEM_VALUE && (
                     <label>
                       <span className="mb-1 block text-xs font-medium text-slate-600">
@@ -4533,9 +5431,245 @@ export default function BillingDashboard() {
                     </label>
                   )}
 
+                {priceForm.pricingMethod === "COMBINATION" &&
+                  pricingSupportsCombination && (
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <div className="mb-1 flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-slate-600">
+                          Select{" "}
+                          {priceForm.department === "MICRO"
+                            ? "Pathogen Combination"
+                            : "Active Combination"}
+                        </span>
+
+                        <span className="text-[11px] text-slate-400">
+                          Select at least 2
+                        </span>
+                      </div>
+
+                      <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {pricingItemOptions
+                            .filter((option) => option.value !== "OTHER")
+                            .map((option) => {
+                              const checked =
+                                priceForm.combinationItemKeys.includes(
+                                  option.value,
+                                );
+
+                              return (
+                                <label
+                                  key={option.value}
+                                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+                                    checked
+                                      ? "border-violet-300 bg-violet-50 text-violet-950"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) =>
+                                      setPriceForm((p) => ({
+                                        ...p,
+                                        combinationItemKeys: e.target.checked
+                                          ? Array.from(
+                                              new Set([
+                                                ...p.combinationItemKeys,
+                                                option.value,
+                                              ]),
+                                            )
+                                          : p.combinationItemKeys.filter(
+                                              (value) =>
+                                                value !== option.value,
+                                            ),
+                                      }))
+                                    }
+                                    className="h-4 w-4 rounded border-slate-300"
+                                  />
+
+                                  <span>{option.label}</span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      <div className="mt-1 text-[11px] leading-4 text-slate-500">
+                        The order does not matter. The same selected items always
+                        create the same combination pricing identity.
+                      </div>
+                    </div>
+                  )}
+
+                {priceForm.pricingMethod === "COMBINATION" &&
+                  combinationPricingPreview && (
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <div className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4 md:grid-cols-3">
+                        <div className="md:col-span-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+                            Selected Combination
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {combinationPricingPreview.itemLabel ||
+                              "Select at least two items"}
+                          </div>
+
+                          {combinationPricingPreview.itemKey && (
+                            <div className="mt-1 break-all text-[11px] text-slate-500">
+                              {combinationPricingPreview.itemKey}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Existing Individual Total
+                          </div>
+                          <div className="mt-1 text-lg font-bold text-slate-900">
+                            {money(
+                              combinationPricingPreview.individualTotal,
+                            )}
+                          </div>
+
+                          {combinationPricingPreview.missingIndividual.length >
+                          0 ? (
+                            <div className="mt-1 text-[11px] leading-4 text-amber-700">
+                              Missing individual price:{" "}
+                              {combinationPricingPreview.missingIndividual.join(
+                                ", ",
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              All selected individual prices are configured.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Existing Combination Price
+                          </div>
+                          <div className="mt-1 text-lg font-bold text-slate-900">
+                            {combinationPricingPreview.combinationRule
+                              ? money(
+                                  combinationPricingPreview.combinationRule
+                                    .unitPrice,
+                                )
+                              : "Not Set"}
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Exact client rule is used first, then Client Code
+                            DEFAULT.
+                          </div>
+
+                          {combinationPricingPreview.combinationRule && (
+                            <Button
+                              variant="secondary"
+                              className="mt-3 w-full"
+                              onClick={() =>
+                                openEditPriceRule(
+                                  combinationPricingPreview.combinationRule!,
+                                )
+                              }
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Edit Existing Price
+                            </Button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-3">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Suggested Starting Price
+                            </div>
+                            <div className="mt-1 text-lg font-bold text-slate-900">
+                              {money(
+                                combinationPricingPreview.individualTotal,
+                              )}
+                            </div>
+                          </div>
+
+                          <Button
+                            variant="secondary"
+                            className="mt-3 w-full"
+                            disabled={
+                              combinationPricingPreview.selectedOptions.length <
+                                2 ||
+                              combinationPricingPreview.missingIndividual
+                                .length > 0
+                            }
+                            onClick={() =>
+                              setPriceForm((p) => ({
+                                ...p,
+                                unitPrice:
+                                  combinationPricingPreview.individualTotal.toFixed(
+                                    2,
+                                  ),
+                              }))
+                            }
+                          >
+                            Use Existing Total
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {priceForm.pricingMethod === "INDIVIDUAL" &&
+                  individualPricingPreview && (
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                            Existing Set Price
+                          </div>
+
+                          {individualPricingPreview.rule ? (
+                            <>
+                              <div className="mt-1 text-xl font-bold text-slate-900">
+                                {money(
+                                  individualPricingPreview.rule.unitPrice,
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                Effective{" "}
+                                {formatDate(
+                                  individualPricingPreview.rule.effectiveFrom,
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="mt-1 text-sm font-medium text-slate-600">
+                              No existing price is configured for this exact selection.
+                            </div>
+                          )}
+                        </div>
+
+                        {individualPricingPreview.rule && (
+                          <Button
+                            variant="secondary"
+                            onClick={() =>
+                              openEditPriceRule(
+                                individualPricingPreview.rule!,
+                              )
+                            }
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit Existing Price
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 <label>
                   <span className="mb-1 block text-xs font-medium text-slate-600">
-                    Unit Price
+                    {priceForm.pricingMethod === "COMBINATION"
+                      ? "Combination Price"
+                      : "Unit Price"}
                   </span>
                   <input
                     id="billing-pricing-unit-price"
@@ -4620,7 +5754,7 @@ export default function BillingDashboard() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1120px] text-sm">
+                <table className="w-full min-w-[1240px] text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Client Code</th>
@@ -4628,6 +5762,7 @@ export default function BillingDashboard() {
                       <th className="px-4 py-3">Department</th>
                       <th className="px-4 py-3">Form</th>
                       <th className="px-4 py-3">Test</th>
+                      <th className="px-4 py-3">Pricing Method</th>
                       <th className="px-4 py-3">Pathogen / Active / COA Item</th>
                       <th className="px-4 py-3">Basis</th>
                       <th className="px-4 py-3 text-right">Price</th>
@@ -4661,6 +5796,21 @@ export default function BillingDashboard() {
                         <td className="px-4 py-3">
                           {rule.testLabel || nice(rule.testKey)}
                         </td>
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              isCombinationItemKey(rule.itemKey)
+                                ? "bg-violet-50 text-violet-700"
+                                : "bg-blue-50 text-blue-700"
+                            }`}
+                          >
+                            {isCombinationItemKey(rule.itemKey)
+                              ? "Fixed Combination"
+                              : "Individual"}
+                          </span>
+                        </td>
+
                         <td className="px-4 py-3">
                           {rule.itemLabel ? (
                             <div>
@@ -4749,7 +5899,7 @@ export default function BillingDashboard() {
                     {!pricesLoading && visiblePrices.length === 0 && (
                       <tr>
                         <td
-                          colSpan={11}
+                          colSpan={12}
                           className="px-4 py-12 text-center text-sm text-slate-500"
                         >
                           No pricing rules found.
