@@ -21,11 +21,32 @@ import {
 
 import { useAuth } from "../../context/AuthContext";
 import { api, apiBlob } from "../../lib/api";
+import MicroMixReportFormView from "../Reports/MicroMixReportFormView";
+import MicroMixWaterReportFormView from "../Reports/MicroMixWaterReportFormView";
+import SterilityReportFormView from "../Reports/SterilityReportFormView";
+import ChemistryMixReportFormView from "../Reports/ChemistryMixReportFormView";
+import COAReportFormView from "../Reports/COAReportFormView";
+import ApeReportFormView from "../Reports/ApeReportFormView";
+import ApeValidationReportView from "../LabReports/ApeValidationReportView";
+import ApeReportView from "../LabReports/ApeReportView";
 
 type BillingInvoiceStatus = "DRAFT" | "CONFIRMED" | "SENT" | "VOID";
 type BillingInvoiceKind = "REPORT" | "MANUAL";
 type BillingTab = "OVERVIEW" | "INVOICES" | "UNBILLED" | "PRICING";
 type PricingMethod = "INDIVIDUAL" | "COMBINATION";
+type BillingViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
+type BillingApeReportTab = "APE_VALIDATION_REPORT" | "APE_REPORT";
+
+type BillingViewedReport = {
+  id: string;
+  formType: string;
+  formNumber: string;
+  reportNumber?: string | null;
+  status?: string | null;
+  version?: number | null;
+  clientCode?: string | null;
+  [key: string]: any;
+};
 type BillingActionDialog =
   | {
       kind: "OVERRIDE";
@@ -223,6 +244,7 @@ type BillingLine = {
   manualOverrideReason?: string | null;
   manualOverrideBy?: string | null;
   manualOverrideAt?: string | null;
+  sourceSnapshot?: Record<string, any> | null;
 };
 
 type BillingEmailHistory = {
@@ -317,6 +339,7 @@ type GroupedUnbilledReport = {
   client: string | null;
   billingReadyAt: string;
   description: string | null;
+  sampleTypes: string[];
   items: UnbilledItem[];
   testLabels: string[];
   itemLabels: string[];
@@ -789,6 +812,147 @@ function unbilledCombinationItemKeys(item: UnbilledItem) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+
+function billingSampleTypesFromSnapshot(
+  snapshot?: Record<string, any> | null,
+) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return [] as string[];
+  }
+
+  const raw =
+    Array.isArray(snapshot.sampleTypes)
+      ? snapshot.sampleTypes
+      : snapshot.sampleType != null
+        ? [snapshot.sampleType]
+        : [];
+
+  return uniqueNonEmpty(
+    raw.map((value: any) => {
+      const text = String(value ?? "").trim();
+
+      if (!text) {
+        return "";
+      }
+
+      return text.replace(/_/g, " ");
+    }),
+  );
+}
+
+const BILLING_FORM_DEFAULT_STATUSES = new Set([
+  "DRAFT",
+  "UNDER_DRAFT_REVIEW",
+  "SUBMITTED_BY_CLIENT",
+  "CLIENT_NEEDS_PRELIMINARY_CORRECTION",
+  "CLIENT_NEEDS_FINAL_CORRECTION",
+  "UNDER_CLIENT_PRELIMINARY_CORRECTION",
+  "UNDER_CLIENT_FINAL_CORRECTION",
+  "PRELIMINARY_RESUBMISSION_BY_CLIENT",
+  "FINAL_RESUBMISSION_BY_CLIENT",
+  "CLIENT_NEEDS_CORRECTION",
+  "UNDER_CLIENT_CORRECTION",
+  "RESUBMISSION_BY_CLIENT",
+  "CHANGE_REQUESTED",
+  "CORRECTION_REQUESTED",
+  "UNDER_CHANGE_UPDATE",
+  "UNDER_CORRECTION_UPDATE",
+]);
+
+const BILLING_REPORT_NOT_GENERATED_STATUSES = new Set([
+  "DRAFT",
+  "SUBMITTED_BY_CLIENT",
+  "UNDER_DRAFT_REVIEW",
+]);
+
+function billingDefaultViewPane(
+  report: BillingViewedReport,
+): BillingViewPane {
+  const status = String(report.status || "").toUpperCase();
+  const formType = String(report.formType || "").toUpperCase();
+
+  if (BILLING_FORM_DEFAULT_STATUSES.has(status)) {
+    return "FORM";
+  }
+
+  if (formType === "MICRO_MIX" || formType === "MICRO_MIX_WATER") {
+    if (
+      status === "UNDER_CLIENT_FINAL_REVIEW" ||
+      status === "FINAL_APPROVED"
+    ) {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  if (formType === "APE") {
+    if (status === "UNDER_CLIENT_REVIEW" || status === "APPROVED") {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  if (
+    formType === "STERILITY" ||
+    formType === "CHEMISTRY_MIX" ||
+    formType === "COA"
+  ) {
+    if (status === "UNDER_CLIENT_REVIEW" || status === "APPROVED") {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  return "REPORT";
+}
+
+function billingReportNotGenerated(status?: string | null) {
+  return BILLING_REPORT_NOT_GENERATED_STATUSES.has(
+    String(status || ""),
+  );
+}
+
+function billingClassNames(
+  ...values: Array<string | false | null | undefined>
+) {
+  return values.filter(Boolean).join(" ");
+}
+
+function BillingReportNotGeneratedMessage({
+  report,
+}: {
+  report: BillingViewedReport;
+}) {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center">
+      <div className="max-w-md rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-8 py-10 text-center shadow-sm">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-2xl">
+          📄
+        </div>
+
+        <h3 className="text-lg font-semibold text-slate-800">
+          Report not generated
+        </h3>
+
+        <p className="mt-2 text-sm text-slate-600">
+          This report is not available yet because the form is currently in{" "}
+          <span className="font-semibold">
+            {nice(String(report.status || ""))}
+          </span>
+          .
+        </p>
+
+        <p className="mt-3 text-xs text-slate-500">
+          Form #{report.formNumber || "-"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
   return Array.from(
     new Set(
@@ -821,6 +985,7 @@ function groupUnbilledByReport(
         client: unbilledClient(item) || null,
         billingReadyAt: item.billingReadyAt,
         description: unbilledDescription(item) || null,
+        sampleTypes: [],
         items: [],
         testLabels: [],
         itemLabels: [],
@@ -857,6 +1022,14 @@ function groupUnbilledByReport(
   }
 
   for (const group of groups.values()) {
+    group.sampleTypes = uniqueNonEmpty(
+      group.items.flatMap((item) =>
+        billingSampleTypesFromSnapshot(
+          item.sourceSnapshot,
+        ),
+      ),
+    );
+
     group.testLabels = uniqueNonEmpty(
       group.items.map(
         (item) => item.testLabel || nice(item.testKey),
@@ -1086,6 +1259,22 @@ export default function BillingDashboard() {
   const [invoiceStatus, setInvoiceStatus] = useState<
     "ALL" | BillingInvoiceStatus
   >("ALL");
+
+  // Dashboard-style read-only report viewer used by Billing View.
+  const [billingViewedReport, setBillingViewedReport] =
+    useState<BillingViewedReport | null>(null);
+
+  const [billingViewPane, setBillingViewPane] =
+    useState<BillingViewPane>("REPORT");
+
+  const [billingViewLoadingKey, setBillingViewLoadingKey] =
+    useState<string | null>(null);
+
+  const [billingApeReportTab, setBillingApeReportTab] =
+    useState<BillingApeReportTab>("APE_VALIDATION_REPORT");
+
+  const [billingApeChildReports, setBillingApeChildReports] =
+    useState<Record<string, any>>({});
 
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [invoices, setInvoices] = useState<InvoiceListResponse | null>(null);
@@ -1718,6 +1907,319 @@ export default function BillingDashboard() {
     }
   }, [isManager, loadBillingClients]);
 
+  function closeBillingReportView() {
+    setBillingViewedReport(null);
+    setBillingViewPane("REPORT");
+    setBillingApeReportTab("APE_VALIDATION_REPORT");
+  }
+
+  async function openBillingReport(row: {
+    sourceType?: string;
+    sourceId: string;
+    formType: string;
+    formNumber?: string;
+    reportNumber?: string;
+  }) {
+    const sourceId = String(row.sourceId ?? "").trim();
+
+    if (!sourceId) {
+      toast.error("Report ID is unavailable");
+      return;
+    }
+
+    const loadingKey = `${row.sourceType ?? ""}:${sourceId}`;
+    setBillingViewLoadingKey(loadingKey);
+
+    try {
+      const isChemistry =
+        row.sourceType === "CHEMISTRY_REPORT" ||
+        row.formType === "CHEMISTRY_MIX" ||
+        row.formType === "COA";
+
+      const fullReport = await api<any>(
+        isChemistry
+          ? `/chemistry-reports/${encodeURIComponent(sourceId)}`
+          : `/reports/${encodeURIComponent(sourceId)}`,
+        {
+          method: "GET",
+        },
+      );
+
+      const report: BillingViewedReport = {
+        ...fullReport,
+        id: fullReport?.id || sourceId,
+        formType: fullReport?.formType || row.formType,
+        formNumber: fullReport?.formNumber || row.formNumber || "",
+        reportNumber:
+          fullReport?.reportNumber ??
+          row.reportNumber ??
+          "",
+      };
+
+      setBillingViewPane(billingDefaultViewPane(report));
+
+      if (report.formType === "APE") {
+        setBillingApeReportTab("APE_VALIDATION_REPORT");
+      }
+
+      setBillingViewedReport(report);
+    } catch (error: any) {
+      console.error("Failed to open billing report viewer", error);
+
+      toast.error(
+        error?.message ||
+          "Failed to load report",
+      );
+    } finally {
+      setBillingViewLoadingKey(null);
+    }
+  }
+
+  function billingApeChildKey(
+    parentId: string,
+    reportType: BillingApeReportTab,
+  ) {
+    return `${parentId}:${reportType}`;
+  }
+
+  function makeBillingApeChildReport(
+    parent: BillingViewedReport,
+    reportType: BillingApeReportTab,
+  ) {
+    const saved =
+      billingApeChildReports[
+        billingApeChildKey(parent.id, reportType)
+      ];
+
+    if (saved) {
+      return {
+        ...parent,
+        ...saved,
+        id: saved.id,
+        reportType,
+        parentReportId: parent.id,
+        parentFormNumber: parent.formNumber,
+        parentReportNumber: parent.reportNumber,
+        parentStatus: parent.status,
+        workflowStatus: parent.status,
+        parentVersion: parent.version ?? 0,
+        childStatus: saved.status,
+        childVersion: saved.version,
+        status: parent.status,
+      };
+    }
+
+    return {
+      ...parent,
+      id: null,
+      parentReportId: parent.id,
+      reportType,
+      parentFormNumber: parent.formNumber,
+      parentReportNumber: parent.reportNumber,
+      parentStatus: parent.status,
+      workflowStatus: parent.status,
+      parentVersion: parent.version ?? 0,
+      childStatus: "DRAFT",
+      childVersion: 0,
+      status: parent.status || "UNDER_TESTING_REVIEW",
+      reportNumber: "",
+      formType: undefined,
+      clientCode:
+        parent.clientCode ||
+        String(parent.formNumber || "").split("-")[0] ||
+        "",
+      dateSent: parent.dateSent ?? "",
+      typeOfTest: parent.typeOfTest ?? "APE",
+      sampleType: parent.sampleType ?? "",
+      formulaNo: parent.formulaNo ?? "",
+      description: parent.description ?? "",
+      lotNo: parent.lotNo ?? "",
+      manufactureDate: parent.manufactureDate ?? "",
+      testSopNo: parent.testSopNo ?? "",
+      testReference: parent.testReference ?? "USP <51> CURRENT",
+      dateTested: parent.dateTested ?? "",
+      dateCompleted: parent.dateCompleted ?? "",
+    };
+  }
+
+  function renderBillingApeReportTabs(
+    parent: BillingViewedReport,
+  ) {
+    const validationChild =
+      makeBillingApeChildReport(
+        parent,
+        "APE_VALIDATION_REPORT",
+      );
+
+    const apeChild =
+      makeBillingApeChildReport(
+        parent,
+        "APE_REPORT",
+      );
+
+    const tabClass = (tab: BillingApeReportTab) =>
+      billingClassNames(
+        "rounded-lg px-3 py-1.5 text-sm font-semibold border transition",
+        billingApeReportTab === tab
+          ? "bg-slate-900 text-white border-slate-900"
+          : "bg-white text-slate-700 hover:bg-slate-50",
+      );
+
+    return (
+      <div>
+        <div className="no-print mx-auto mb-4 rounded-xl border bg-white px-3 py-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              className={tabClass("APE_VALIDATION_REPORT")}
+              onClick={() =>
+                setBillingApeReportTab("APE_VALIDATION_REPORT")
+              }
+            >
+              APE Validation Report
+            </button>
+
+            <button
+              type="button"
+              className={tabClass("APE_REPORT")}
+              onClick={() =>
+                setBillingApeReportTab("APE_REPORT")
+              }
+            >
+              APE Report
+            </button>
+          </div>
+        </div>
+
+        {billingApeReportTab === "APE_VALIDATION_REPORT" && (
+          <ApeValidationReportView
+            key={
+              validationChild.id ??
+              `${parent.id}:APE_VALIDATION_REPORT:view`
+            }
+            report={validationChild}
+            embedded={true}
+            pageMode="VIEW"
+            forcePageReadOnly={true}
+            hideTopActions={true}
+            hideBottomActions={true}
+            onClose={() => {}}
+          />
+        )}
+
+        {billingApeReportTab === "APE_REPORT" && (
+          <ApeReportView
+            key={
+              apeChild.id ??
+              `${parent.id}:APE_REPORT:view`
+            }
+            report={apeChild}
+            embedded={true}
+            pageMode="VIEW"
+            forcePageReadOnly={true}
+            hideTopActions={true}
+            hideBottomActions={true}
+            onClose={() => {}}
+          />
+        )}
+      </div>
+    );
+  }
+
+  function renderBillingViewedReport(
+    report: BillingViewedReport,
+  ) {
+    if (
+      billingViewPane === "REPORT" &&
+      billingReportNotGenerated(report.status)
+    ) {
+      return (
+        <BillingReportNotGeneratedMessage
+          report={report}
+        />
+      );
+    }
+
+    if (report.formType === "MICRO_MIX") {
+      return (
+        <MicroMixReportFormView
+          report={report}
+          onClose={closeBillingReportView}
+          showSwitcher={false}
+          pane={billingViewPane}
+        />
+      );
+    }
+
+    if (report.formType === "MICRO_MIX_WATER") {
+      return (
+        <MicroMixWaterReportFormView
+          report={report}
+          onClose={closeBillingReportView}
+          showSwitcher={false}
+          pane={billingViewPane}
+        />
+      );
+    }
+
+    if (report.formType === "STERILITY") {
+      return (
+        <SterilityReportFormView
+          report={report}
+          onClose={closeBillingReportView}
+          showSwitcher={false}
+          pane={billingViewPane}
+        />
+      );
+    }
+
+    if (report.formType === "APE") {
+      if (
+        billingViewPane === "FORM" ||
+        billingViewPane === "ATTACHMENTS"
+      ) {
+        return (
+          <ApeReportFormView
+            report={report}
+            onClose={closeBillingReportView}
+            showSwitcher={false}
+            pane={billingViewPane}
+          />
+        );
+      }
+
+      return renderBillingApeReportTabs(report);
+    }
+
+    if (report.formType === "CHEMISTRY_MIX") {
+      return (
+        <ChemistryMixReportFormView
+          report={report}
+          onClose={closeBillingReportView}
+          showSwitcher={false}
+          pane={billingViewPane}
+        />
+      );
+    }
+
+    if (report.formType === "COA") {
+      return (
+        <COAReportFormView
+          report={report}
+          onClose={closeBillingReportView}
+          showSwitcher={false}
+          pane={billingViewPane}
+        />
+      );
+    }
+
+    return (
+      <div className="text-sm text-slate-600">
+        This form type ({report.formType}) does not have a viewer yet.
+      </div>
+    );
+  }
+
   const refreshAll = useCallback(async () => {
     setLoading(true);
 
@@ -1750,6 +2252,99 @@ export default function BillingDashboard() {
       setPricesLoading(false);
     }
   }, [isManager, loadPriceRules]);
+
+  useEffect(() => {
+    const parent = billingViewedReport;
+
+    if (!parent || parent.formType !== "APE") {
+      return;
+    }
+
+    const safeParent = parent;
+
+    let cancelled = false;
+
+    async function loadApeChildren() {
+      try {
+        const [validationReport, apeReport] = await Promise.all([
+          api<any>(
+            `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+              safeParent.id,
+            )}&reportType=APE_VALIDATION_REPORT`,
+          ),
+          api<any>(
+            `/reports/ape-child/by-parent?parentReportId=${encodeURIComponent(
+              safeParent.id,
+            )}&reportType=APE_REPORT`,
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        setBillingApeChildReports((prev) => {
+          const next = { ...prev };
+
+          if (validationReport?.id) {
+            next[
+              billingApeChildKey(
+                safeParent.id,
+                "APE_VALIDATION_REPORT",
+              )
+            ] = {
+              ...safeParent,
+              ...validationReport,
+              reportType: "APE_VALIDATION_REPORT",
+              parentReportId: safeParent.id,
+              parentFormNumber: safeParent.formNumber,
+              parentReportNumber: safeParent.reportNumber,
+              clientCode:
+                validationReport.clientCode ||
+                safeParent.clientCode ||
+                String(safeParent.formNumber || "").split("-")[0] ||
+                "",
+            };
+          }
+
+          if (apeReport?.id) {
+            next[
+              billingApeChildKey(
+                safeParent.id,
+                "APE_REPORT",
+              )
+            ] = {
+              ...safeParent,
+              ...apeReport,
+              reportType: "APE_REPORT",
+              parentReportId: safeParent.id,
+              parentFormNumber: safeParent.formNumber,
+              parentReportNumber: safeParent.reportNumber,
+              clientCode:
+                apeReport.clientCode ||
+                safeParent.clientCode ||
+                String(safeParent.formNumber || "").split("-")[0] ||
+                "",
+            };
+          }
+
+          return next;
+        });
+      } catch (error) {
+        console.error(
+          "Failed to load APE child reports in Billing viewer",
+          error,
+        );
+      }
+    }
+
+    loadApeChildren();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    billingViewedReport?.id,
+    billingViewedReport?.formType,
+  ]);
 
   useEffect(() => {
     refreshAll();
@@ -4135,13 +4730,14 @@ export default function BillingDashboard() {
                 </div>
 
                 <div className="max-h-[420px] overflow-auto">
-                  <table className="w-full min-w-[1120px] text-sm">
+                  <table className="w-full min-w-[1280px] text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                       <tr>
                         <th className="px-4 py-3">Form #</th>
                         <th className="px-4 py-3">Report #</th>
                         <th className="px-4 py-3">Client</th>
                         <th className="px-4 py-3">Form</th>
+                        <th className="px-4 py-3">Sample Type</th>
                         <th className="px-4 py-3">Type of Test</th>
                         <th className="px-4 py-3">Item / Combination</th>
                         <th className="px-4 py-3 text-right">Price</th>
@@ -4191,6 +4787,30 @@ export default function BillingDashboard() {
                             <td className="px-4 py-3">
                               {nice(item.formType)}
                             </td>
+
+                            <td className="px-4 py-3">
+                              {billingSampleTypesFromSnapshot(
+                                item.sourceSnapshot,
+                              ).length > 0 ? (
+                                <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                                  {billingSampleTypesFromSnapshot(
+                                    item.sourceSnapshot,
+                                  ).map((sampleType) => (
+                                    <span
+                                      key={sampleType}
+                                      className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                    >
+                                      {sampleType}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400">
+                                  -
+                                </span>
+                              )}
+                            </td>
+
                             <td className="px-4 py-3">
                               {item.testLabel || nice(item.testKey)}
                             </td>
@@ -4221,31 +4841,51 @@ export default function BillingDashboard() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              {ready && item.pricingRuleId ? (
+                              <div className="flex justify-end gap-2">
                                 <Button
                                   variant="secondary"
+                                  disabled={
+                                    billingViewLoadingKey ===
+                                    `${item.sourceType}:${item.sourceId}`
+                                  }
                                   onClick={() =>
-                                    openExistingPriceFromUnbilled(item)
+                                    openBillingReport(item)
                                   }
                                 >
-                                  <Pencil className="h-4 w-4" />
-                                  Edit Price
+                                  {billingViewLoadingKey ===
+                                  `${item.sourceType}:${item.sourceId}` ? (
+                                    <Spinner dark />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
+                                  {billingViewLoadingKey ===
+                                  `${item.sourceType}:${item.sourceId}`
+                                    ? "Opening..."
+                                    : "View"}
                                 </Button>
-                              ) : isMissingPricingRule(item.pricingIssue) ? (
-                                <Button
-                                  variant="secondary"
-                                  onClick={() =>
-                                    openPricingFromUnbilled(item)
-                                  }
-                                >
-                                  <CircleDollarSign className="h-4 w-4" />
-                                  Set Price
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-slate-400">
-                                  —
-                                </span>
-                              )}
+
+                                {ready && item.pricingRuleId ? (
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() =>
+                                      openExistingPriceFromUnbilled(item)
+                                    }
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                    Edit Price
+                                  </Button>
+                                ) : isMissingPricingRule(item.pricingIssue) ? (
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() =>
+                                      openPricingFromUnbilled(item)
+                                    }
+                                  >
+                                    <CircleDollarSign className="h-4 w-4" />
+                                    Set Price
+                                  </Button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -4671,12 +5311,13 @@ export default function BillingDashboard() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-sm">
+              <table className="w-full min-w-[1320px] text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Form #</th>
                     <th className="px-4 py-3">Report #</th>
                     <th className="px-4 py-3">Form Type</th>
+                    <th className="px-4 py-3">Sample Type</th>
                     <th className="px-4 py-3">Description</th>
                     <th className="px-4 py-3">Type of Test</th>
                     <th className="px-4 py-3">
@@ -4686,6 +5327,7 @@ export default function BillingDashboard() {
                     <th className="px-4 py-3 text-right">Amount</th>
                     <th className="px-4 py-3">Billing Ready</th>
                     <th className="px-4 py-3">Issue</th>
+                    <th className="px-4 py-3 text-right">View</th>
                   </tr>
                 </thead>
 
@@ -4709,6 +5351,25 @@ export default function BillingDashboard() {
 
                       <td className="px-4 py-3">
                         {nice(group.formType)}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {group.sampleTypes.length > 0 ? (
+                          <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                            {group.sampleTypes.map((sampleType) => (
+                              <span
+                                key={sampleType}
+                                className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                              >
+                                {sampleType}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">
+                            -
+                          </span>
+                        )}
                       </td>
 
                       <td className="max-w-[220px] px-4 py-3 text-xs leading-5 text-slate-600">
@@ -4903,6 +5564,36 @@ export default function BillingDashboard() {
                           </div>
                         )}
                       </td>
+
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="secondary"
+                          disabled={
+                            billingViewLoadingKey ===
+                            `${group.sourceType}:${group.sourceId}`
+                          }
+                          onClick={() =>
+                            openBillingReport({
+                              sourceType: group.sourceType,
+                              sourceId: group.sourceId,
+                              formType: group.formType,
+                              formNumber: group.formNumber,
+                              reportNumber: group.reportNumber,
+                            })
+                          }
+                        >
+                          {billingViewLoadingKey ===
+                          `${group.sourceType}:${group.sourceId}` ? (
+                            <Spinner dark />
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
+                          {billingViewLoadingKey ===
+                          `${group.sourceType}:${group.sourceId}`
+                            ? "Opening..."
+                            : "View"}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
 
@@ -4910,7 +5601,7 @@ export default function BillingDashboard() {
                     groupedVisibleUnbilled.length === 0 && (
                       <tr>
                         <td
-                          colSpan={10}
+                          colSpan={12}
                           className="px-4 py-12 text-center text-sm text-slate-500"
                         >
                           No unbilled forms for this month.
@@ -6172,16 +6863,18 @@ export default function BillingDashboard() {
                   </div>
 
                   <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[820px] text-sm">
+                    <table className="w-full min-w-[1040px] text-sm">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                         <tr>
                           <th className="px-4 py-3">Form #</th>
                           <th className="px-4 py-3">Report #</th>
                           <th className="px-4 py-3">Type</th>
+                          <th className="px-4 py-3">Sample Type</th>
                           <th className="px-4 py-3">Test</th>
                           <th className="px-4 py-3 text-right">Unit Price</th>
                           <th className="px-4 py-3 text-right">Amount</th>
                           <th className="px-4 py-3">Pricing</th>
+                          <th className="px-4 py-3 text-right">View</th>
                           {invoiceDetail.status === "DRAFT" && isManager && (
                             <th className="px-4 py-3 text-right">Action</th>
                           )}
@@ -6215,6 +6908,29 @@ export default function BillingDashboard() {
 
                               <td className="px-4 py-3">
                                 {nice(line.formType)}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                {billingSampleTypesFromSnapshot(
+                                  line.sourceSnapshot,
+                                ).length > 0 ? (
+                                  <div className="flex max-w-[200px] flex-wrap gap-1.5">
+                                    {billingSampleTypesFromSnapshot(
+                                      line.sourceSnapshot,
+                                    ).map((sampleType) => (
+                                      <span
+                                        key={sampleType}
+                                        className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                      >
+                                        {sampleType}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400">
+                                    -
+                                  </span>
+                                )}
                               </td>
 
                               <td className="px-4 py-3">
@@ -6270,6 +6986,36 @@ export default function BillingDashboard() {
                                 )}
                               </td>
 
+                              <td className="px-4 py-3 text-right">
+                                {isFirstSourceLine ? (
+                                  <Button
+                                    variant="secondary"
+                                    disabled={
+                                      billingViewLoadingKey ===
+                                      `${line.sourceType}:${line.sourceId}`
+                                    }
+                                    onClick={() =>
+                                      openBillingReport(line)
+                                    }
+                                  >
+                                    {billingViewLoadingKey ===
+                                    `${line.sourceType}:${line.sourceId}` ? (
+                                      <Spinner dark />
+                                    ) : (
+                                      <FileText className="h-4 w-4" />
+                                    )}
+                                    {billingViewLoadingKey ===
+                                    `${line.sourceType}:${line.sourceId}`
+                                      ? "Opening..."
+                                      : "View"}
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-slate-300">
+                                    —
+                                  </span>
+                                )}
+                              </td>
+
                               {invoiceDetail.status === "DRAFT" &&
                                 isManager && (
                                   <td className="px-4 py-3 text-right">
@@ -6316,8 +7062,8 @@ export default function BillingDashboard() {
                             <td
                               colSpan={
                                 invoiceDetail.status === "DRAFT" && isManager
-                                  ? 8
-                                  : 7
+                                  ? 10
+                                  : 9
                               }
                               className="px-4 py-10 text-center text-sm text-slate-500"
                             >
@@ -6874,6 +7620,80 @@ export default function BillingDashboard() {
           </div>
         </div>
       )}
+      {billingViewedReport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Report details"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeBillingReportView();
+            }
+          }}
+        >
+          <div className="flex h-[90vh] max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="sticky top-0 z-10 border-b bg-white px-6 py-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                <h2 className="text-lg font-semibold">
+                  {billingViewPane === "FORM"
+                    ? "Form"
+                    : billingViewPane === "ATTACHMENTS"
+                      ? "Attachments"
+                      : "Report"}{" "}
+                  ({billingViewedReport.formNumber})
+                </h2>
+
+                <div className="flex justify-center">
+                  <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                    {(
+                      [
+                        "FORM",
+                        "REPORT",
+                        "ATTACHMENTS",
+                      ] as BillingViewPane[]
+                    ).map((pane) => (
+                      <button
+                        key={pane}
+                        type="button"
+                        onClick={() =>
+                          setBillingViewPane(pane)
+                        }
+                        className={billingClassNames(
+                          "rounded-full px-4 py-1.5 text-xs font-semibold transition",
+                          billingViewPane === pane
+                            ? "bg-blue-600 text-white"
+                            : "text-slate-600 hover:bg-slate-100 hover:text-blue-600",
+                        )}
+                      >
+                        {pane === "ATTACHMENTS"
+                          ? "Attachments"
+                          : pane[0] + pane.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    className="rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+                    onClick={closeBillingReportView}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-body min-h-0 flex-1 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
+              {renderBillingViewedReport(
+                billingViewedReport,
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {actionDialog && (
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
           <div

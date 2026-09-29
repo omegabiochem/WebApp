@@ -1102,6 +1102,10 @@ export class BillingService {
                     details?.description ??
                     null,
 
+                  sampleType:
+                    details?.sampleType ??
+                    null,
+
                   combinationKey:
                     combination.itemKey,
 
@@ -1203,6 +1207,10 @@ export class BillingService {
 
                   description:
                     details?.description ??
+                    null,
+
+                  sampleType:
+                    details?.sampleType ??
                     null,
 
                   pathogenKey:
@@ -1310,6 +1318,10 @@ export class BillingService {
               description:
                 details?.description ??
                 null,
+
+                  sampleType:
+                    details?.sampleType ??
+                    null,
 
               selectedPathogens:
                 selectedPathogens.map(
@@ -1424,6 +1436,11 @@ export class BillingService {
                 details?.description ??
                 null,
 
+              sampleTypes:
+                Array.isArray(details?.sampleTypes)
+                  ? details.sampleTypes
+                  : [],
+
               coaRows: Array.isArray(details?.coaRows)
                 ? details.coaRows
                 : [],
@@ -1482,6 +1499,11 @@ export class BillingService {
                 details?.sampleDescription ??
                 details?.description ??
                 null,
+
+              sampleTypes:
+                Array.isArray(details?.sampleTypes)
+                  ? details.sampleTypes
+                  : [],
 
               coaItemKey:
                 selectedItem.itemKey,
@@ -1612,6 +1634,11 @@ export class BillingService {
                 details?.description ??
                 null,
 
+            sampleTypes:
+              Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
+
             testTypes: [],
             selectedActives,
             declaredActiveCount: declaredCount,
@@ -1680,6 +1707,11 @@ export class BillingService {
                 details?.sampleDescription ??
                 details?.description ??
                 null,
+
+            sampleTypes:
+              Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
 
               testType:
                 testType.rawValue,
@@ -1806,6 +1838,11 @@ export class BillingService {
                       details?.description ??
                       null,
 
+            sampleTypes:
+              Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
+
                   testType:
                     testType.rawValue,
 
@@ -1905,6 +1942,11 @@ export class BillingService {
                 details?.sampleDescription ??
                 details?.description ??
                 null,
+
+            sampleTypes:
+              Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
 
               testType:
                 testType.rawValue,
@@ -6390,6 +6432,137 @@ export class BillingService {
       throw new NotFoundException('Invoice not found');
     }
 
+    /*
+     * SAMPLE TYPE DISPLAY ENRICHMENT
+     * -------------------------------------------------------
+     * New billing candidates store sample type in sourceSnapshot.
+     * Older invoice lines may predate that snapshot field.
+     *
+     * Resolve sample type from the live source report as a display
+     * fallback so existing invoice drafts/history show Sample Type
+     * immediately without a data migration.
+     */
+    const microSourceIds = Array.from(
+      new Set(
+        invoice.lines
+          .filter(
+            (line) =>
+              line.sourceType ===
+              'REPORT',
+          )
+          .map(
+            (line) =>
+              line.sourceId,
+          ),
+      ),
+    );
+
+    const chemistrySourceIds = Array.from(
+      new Set(
+        invoice.lines
+          .filter(
+            (line) =>
+              line.sourceType ===
+              'CHEMISTRY_REPORT',
+          )
+          .map(
+            (line) =>
+              line.sourceId,
+          ),
+      ),
+    );
+
+    const [
+      microSources,
+      chemistrySources,
+    ] = await Promise.all([
+      microSourceIds.length > 0
+        ? this.prisma.report.findMany({
+            where: {
+              id: {
+                in:
+                  microSourceIds,
+              },
+            },
+
+            include: {
+              microMix: true,
+              microMixWater: true,
+              sterility: true,
+              ape: true,
+            },
+          })
+        : Promise.resolve([] as any[]),
+
+      chemistrySourceIds.length > 0
+        ? this.prisma.chemistryReport.findMany({
+            where: {
+              id: {
+                in:
+                  chemistrySourceIds,
+              },
+            },
+
+            include: {
+              chemistryMix: true,
+              coa: true,
+            },
+          })
+        : Promise.resolve([] as any[]),
+    ]);
+
+    const sampleTypeBySource =
+      new Map<
+        string,
+        {
+          sampleType?: string | null;
+          sampleTypes?: unknown[];
+        }
+      >();
+
+    for (
+      const report of
+      microSources
+    ) {
+      const details =
+        report.microMix ??
+        report.microMixWater ??
+        report.sterility ??
+        report.ape ??
+        null;
+
+      sampleTypeBySource.set(
+        `REPORT:${report.id}`,
+        {
+          sampleType:
+            details?.sampleType ??
+            null,
+        },
+      );
+    }
+
+    for (
+      const report of
+      chemistrySources
+    ) {
+      const details =
+        report.chemistryMix ??
+        report.coa ??
+        null;
+
+      sampleTypeBySource.set(
+        `CHEMISTRY_REPORT:${report.id}`,
+        {
+          sampleTypes:
+            Array.isArray(
+              details?.sampleTypes,
+            )
+              ? details.sampleTypes
+              : [],
+        },
+      );
+    }
+
     const revisionRootId =
       invoice.revisionOfInvoiceId ??
       invoice.id;
@@ -6444,13 +6617,46 @@ export class BillingService {
 
       total: invoice.total.toFixed(2),
 
-      lines: invoice.lines.map((line) => ({
-        ...line,
+      lines: invoice.lines.map((line) => {
+        const sourceSampleType =
+          sampleTypeBySource.get(
+            `${line.sourceType}:${line.sourceId}`,
+          );
 
-        unitPrice: line.unitPrice ? line.unitPrice.toFixed(2) : null,
+        const currentSnapshot =
+          line.sourceSnapshot &&
+          typeof line.sourceSnapshot ===
+            'object' &&
+          !Array.isArray(
+            line.sourceSnapshot,
+          )
+            ? (line.sourceSnapshot as Record<
+                string,
+                any
+              >)
+            : {};
 
-        amount: line.amount ? line.amount.toFixed(2) : null,
-      })),
+        return {
+          ...line,
+
+          sourceSnapshot: {
+            ...currentSnapshot,
+
+            ...(sourceSampleType ??
+              {}),
+          },
+
+          unitPrice:
+            line.unitPrice
+              ? line.unitPrice.toFixed(2)
+              : null,
+
+          amount:
+            line.amount
+              ? line.amount.toFixed(2)
+              : null,
+        };
+      }),
 
       manualLines: invoice.manualLines.map((line) => ({
         ...line,
