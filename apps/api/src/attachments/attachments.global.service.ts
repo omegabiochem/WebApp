@@ -94,16 +94,7 @@ export class AttachmentsGlobalService {
     const chemWhere =
       userRole === 'CLIENT' ? { report: { clientCode: userClientCode } } : {};
 
-    // const role = userRole;
 
-    // const allowedReportTypes: ReportType[] =
-    //   role === 'CHEMISTRY'
-    //     ? ['CHEMISTRY']
-    //     : role === 'MICRO'
-    //       ? ['MICRO', 'MICRO_WATER', 'STERILITY', 'APE']
-    //       : role === 'CLIENT'
-    //         ? ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA']
-    //         : ['CHEMISTRY', 'MICRO', 'MICRO_WATER', 'STERILITY', 'APE', 'COA'];
 
     const canSeeMicro = userRole !== 'CHEMISTRY';
     const canSeeChem = userRole !== 'MICRO';
