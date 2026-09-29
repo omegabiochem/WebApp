@@ -1470,12 +1470,12 @@ export class AuthService {
       };
     }
 
-    const payload = {
-      sub: user.id,
-      role: user.role,
-      uid: user.userId ?? null,
-      clientCode: user.clientCode ?? null,
-    };
+    // const payload = {
+    //   sub: user.id,
+    //   role: user.role,
+    //   uid: user.userId ?? null,
+    //   clientCode: user.clientCode ?? null,
+    // };
     const accessToken = await this.signAccessTokenForSession({
       sub: user.id,
       role: user.role,

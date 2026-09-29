@@ -408,17 +408,51 @@ async function startMicroFinal(r: MicroReport) {
 
   if (!reason.trim()) {
     toast.error("Reason is required.");
-    return { ok: false as const };
+
+    return {
+      ok: false as const,
+    };
   }
 
   const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
 
+  /*
+   * Change workflow status.
+   */
   await api(`/reports/${r.id}/change-status`, {
     method: "PATCH",
-    body: JSON.stringify({ status: nextStatus, reason }),
+    body: JSON.stringify({
+      status: nextStatus,
+      reason,
+    }),
   });
 
-  return { ok: true as const, nextStatus };
+  /*
+   * IMPORTANT:
+   * Get latest version after status change.
+   */
+  const latest = await api<MicroReport>(`/reports/${r.id}`, {
+    method: "GET",
+  });
+
+  const updated: MicroReport = {
+    ...r,
+    ...latest,
+
+    id: latest.id ?? r.id,
+
+    status: latest.status ?? nextStatus,
+
+    version: typeof latest.version === "number" ? latest.version : r.version,
+
+    reportNumber: latest.reportNumber ?? r.reportNumber,
+  };
+
+  return {
+    ok: true as const,
+    nextStatus,
+    updated,
+  };
 }
 
 // ----------------------------------
@@ -1014,12 +1048,11 @@ export default function MCDashboard() {
     Record<string, UnifiedRow>
   >({});
 
-  const [selectedReport, setSelectedReport] =
-  useState<UnifiedRow | null>(null);
+  const [selectedReport, setSelectedReport] = useState<UnifiedRow | null>(null);
 
-const [apeChildReports, setApeChildReports] = useState<
-  Record<string, any>
->({});
+  const [apeChildReports, setApeChildReports] = useState<Record<string, any>>(
+    {},
+  );
 
   const scheduleLiveDashboardRefresh = React.useCallback(() => {
     if (liveRefreshTimerRef.current !== null) {
@@ -1190,7 +1223,6 @@ const [apeChildReports, setApeChildReports] = useState<
       }
     };
   }, [scheduleLiveDashboardRefresh]);
-
 
   const PIN_STORAGE_KEY = userKey ? `mcDashboardPinned:user:${userKey}` : null;
 
@@ -4987,18 +5019,25 @@ const [apeChildReports, setApeChildReports] = useState<
                                   setUpdatingKey(key);
                                   try {
                                     const res = await startMicroFinal(r);
+
                                     if (res.ok) {
+                                      const updatedRow = {
+                                        ...res.updated,
+                                        kind: "MICRO",
+                                      } as UnifiedRow;
+
                                       setMicroReports((prev) =>
                                         prev.map((x) =>
                                           x.id === r.id
-                                            ? { ...x, status: res.nextStatus }
+                                            ? {
+                                                ...x,
+                                                ...res.updated,
+                                              }
                                             : x,
                                         ),
                                       );
-                                      openUpdateTarget({
-                                        ...r,
-                                        status: res.nextStatus,
-                                      } as UnifiedRow);
+
+                                      openUpdateTarget(updatedRow);
                                     }
                                   } catch (e: any) {
                                     toast.error(
@@ -5287,19 +5326,26 @@ const [apeChildReports, setApeChildReports] = useState<
                           setSelectedModalMode("VIEW");
                           setSelectedViewPane("REPORT");
 
-                          const res = await startMicroFinal(r as any);
+                          const res = await startMicroFinal(r as MicroReport);
+
                           if (res.ok) {
+                            const updatedRow = {
+                              ...res.updated,
+                              kind: "MICRO",
+                            } as UnifiedRow;
+
                             setMicroReports((prev) =>
                               prev.map((x) =>
                                 x.id === r.id
-                                  ? { ...x, status: res.nextStatus }
+                                  ? {
+                                      ...x,
+                                      ...res.updated,
+                                    }
                                   : x,
                               ),
                             );
-                            openUpdateTarget({
-                              ...(r as any),
-                              status: res.nextStatus,
-                            });
+
+                            openUpdateTarget(updatedRow);
                           }
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to start final");
