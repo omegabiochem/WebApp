@@ -110,6 +110,35 @@ type BillingCandidate = {
 const DEFAULT_BILLING_TIME_ZONE =
   process.env.BILLING_TIME_ZONE || 'America/New_York';
 
+/*
+ * Large billing months can contain hundreds/thousands of
+ * candidate invoice lines. Keep DB statements bounded so we
+ * do not hit PostgreSQL/Prisma parameter limits or spend the
+ * whole interactive transaction doing one query per report.
+ */
+const BILLING_DB_BATCH_SIZE = 250;
+
+const BILLING_GENERATE_TRANSACTION_TIMEOUT_MS =
+  Number(process.env.BILLING_GENERATE_TRANSACTION_TIMEOUT_MS ?? 60000);
+
+const BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS =
+  Number(process.env.BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS ?? 10000);
+
+function chunkArray<T>(items: T[], size = BILLING_DB_BATCH_SIZE): T[][] {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const safeSize = Math.max(1, Math.floor(size));
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += safeSize) {
+    chunks.push(items.slice(i, i + safeSize));
+  }
+
+  return chunks;
+}
+
 /* =========================================================
    TIMEZONE HELPERS
 ========================================================= */
@@ -2102,24 +2131,26 @@ export class BillingService {
       new Set<string>();
 
     if (chargeKeys.length > 0) {
-      const activeLines =
-        await this.prisma.billingInvoiceLine.findMany({
-          where: {
-            activeChargeKey: {
-              in: chargeKeys,
+      for (const chargeKeyBatch of chunkArray(chargeKeys)) {
+        const activeLines =
+          await this.prisma.billingInvoiceLine.findMany({
+            where: {
+              activeChargeKey: {
+                in: chargeKeyBatch,
+              },
             },
-          },
 
-          select: {
-            activeChargeKey: true,
-          },
-        });
+            select: {
+              activeChargeKey: true,
+            },
+          });
 
-      for (const line of activeLines) {
-        if (line.activeChargeKey) {
-          alreadyCaptured.add(
-            line.activeChargeKey,
-          );
+        for (const line of activeLines) {
+          if (line.activeChargeKey) {
+            alreadyCaptured.add(
+              line.activeChargeKey,
+            );
+          }
         }
       }
     }
@@ -2183,48 +2214,53 @@ export class BillingService {
       itemizedMicroSourceIds.length >
       0
     ) {
-      const legacyMicroLines =
-        await this.prisma.billingInvoiceLine.findMany({
-          where: {
-            sourceType:
-              'REPORT',
+      for (
+        const sourceIdBatch of
+        chunkArray(itemizedMicroSourceIds)
+      ) {
+        const legacyMicroLines =
+          await this.prisma.billingInvoiceLine.findMany({
+            where: {
+              sourceType:
+                'REPORT',
 
-            sourceId: {
-              in:
-                itemizedMicroSourceIds,
-            },
+              sourceId: {
+                in:
+                  sourceIdBatch,
+              },
 
-            itemKey:
-              null,
+              itemKey:
+                null,
 
-            activeChargeKey: {
-              not: null,
-            },
-          },
-
-          select: {
-            sourceId: true,
-
-            invoice: {
-              select: {
-                status: true,
+              activeChargeKey: {
+                not: null,
               },
             },
-          },
-        });
 
-      for (
-        const line of legacyMicroLines
-      ) {
-        if (
-          line.invoice.status ===
-            'CONFIRMED' ||
-          line.invoice.status ===
-            'SENT'
+            select: {
+              sourceId: true,
+
+              invoice: {
+                select: {
+                  status: true,
+                },
+              },
+            },
+          });
+
+        for (
+          const line of legacyMicroLines
         ) {
-          finalizedLegacyMicroSources.add(
-            line.sourceId,
-          );
+          if (
+            line.invoice.status ===
+              'CONFIRMED' ||
+            line.invoice.status ===
+              'SENT'
+          ) {
+            finalizedLegacyMicroSources.add(
+              line.sourceId,
+            );
+          }
         }
       }
     }
@@ -2236,45 +2272,50 @@ export class BillingService {
       itemizedChemistrySourceIds.length >
       0
     ) {
-      const legacyLines =
-        await this.prisma.billingInvoiceLine.findMany({
-          where: {
-            sourceType:
-              'CHEMISTRY_REPORT',
+      for (
+        const sourceIdBatch of
+        chunkArray(itemizedChemistrySourceIds)
+      ) {
+        const legacyLines =
+          await this.prisma.billingInvoiceLine.findMany({
+            where: {
+              sourceType:
+                'CHEMISTRY_REPORT',
 
-            sourceId: {
-              in:
-                itemizedChemistrySourceIds,
-            },
+              sourceId: {
+                in:
+                  sourceIdBatch,
+              },
 
-            itemKey: null,
+              itemKey: null,
 
-            activeChargeKey: {
-              not: null,
-            },
-          },
-
-          select: {
-            sourceId: true,
-
-            invoice: {
-              select: {
-                status: true,
+              activeChargeKey: {
+                not: null,
               },
             },
-          },
-        });
 
-      for (const line of legacyLines) {
-        if (
-          line.invoice.status ===
-            'CONFIRMED' ||
-          line.invoice.status ===
-            'SENT'
-        ) {
-          finalizedLegacySources.add(
-            line.sourceId,
-          );
+            select: {
+              sourceId: true,
+
+              invoice: {
+                select: {
+                  status: true,
+                },
+              },
+            },
+          });
+
+        for (const line of legacyLines) {
+          if (
+            line.invoice.status ===
+              'CONFIRMED' ||
+            line.invoice.status ===
+              'SENT'
+          ) {
+            finalizedLegacySources.add(
+              line.sourceId,
+            );
+          }
         }
       }
     }
@@ -2590,37 +2631,55 @@ export class BillingService {
           itemizedChemistrySourceIds.length >
           0
         ) {
-          const legacyDraftLines =
-            await tx.billingInvoiceLine.findMany({
-              where: {
-                invoiceId:
-                  invoice.id,
+          const legacyDraftLines: Array<{
+            id: string;
+            sourceId: string;
+            formNumber: string;
+            reportNumber: string;
+            testKey: string;
+            manualOverride: boolean;
+          }> = [];
 
-                sourceType:
-                  'CHEMISTRY_REPORT',
+          for (
+            const sourceIdBatch of
+            chunkArray(itemizedChemistrySourceIds)
+          ) {
+            const batchLines =
+              await tx.billingInvoiceLine.findMany({
+                where: {
+                  invoiceId:
+                    invoice.id,
 
-                sourceId: {
-                  in:
-                    itemizedChemistrySourceIds,
+                  sourceType:
+                    'CHEMISTRY_REPORT',
+
+                  sourceId: {
+                    in:
+                      sourceIdBatch,
+                  },
+
+                  itemKey:
+                    null,
+
+                  activeChargeKey: {
+                    not: null,
+                  },
                 },
 
-                itemKey:
-                  null,
-
-                activeChargeKey: {
-                  not: null,
+                select: {
+                  id: true,
+                  sourceId: true,
+                  formNumber: true,
+                  reportNumber: true,
+                  testKey: true,
+                  manualOverride: true,
                 },
-              },
+              });
 
-              select: {
-                id: true,
-                sourceId: true,
-                formNumber: true,
-                reportNumber: true,
-                testKey: true,
-                manualOverride: true,
-              },
-            });
+            legacyDraftLines.push(
+              ...batchLines,
+            );
+          }
 
           legacyManualOverridesReplaced =
             legacyDraftLines.filter(
@@ -2628,24 +2687,25 @@ export class BillingService {
                 line.manualOverride,
             ).length;
 
-          if (
-            legacyDraftLines.length >
-            0
+          for (
+            const idBatch of
+            chunkArray(
+              legacyDraftLines.map(
+                (line) => line.id,
+              ),
+            )
           ) {
             const deleted =
               await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
                     in:
-                      legacyDraftLines.map(
-                        (line) =>
-                          line.id,
-                      ),
+                      idBatch,
                   },
                 },
               });
 
-            legacyLinesReplaced =
+            legacyLinesReplaced +=
               deleted.count;
           }
         }
@@ -2654,33 +2714,47 @@ export class BillingService {
           itemizedMicroSourceIds.length >
           0
         ) {
-          const legacyMicroDraftLines =
-            await tx.billingInvoiceLine.findMany({
-              where: {
-                invoiceId:
-                  invoice.id,
+          const legacyMicroDraftLines: Array<{
+            id: string;
+            manualOverride: boolean;
+          }> = [];
 
-                sourceType:
-                  'REPORT',
+          for (
+            const sourceIdBatch of
+            chunkArray(itemizedMicroSourceIds)
+          ) {
+            const batchLines =
+              await tx.billingInvoiceLine.findMany({
+                where: {
+                  invoiceId:
+                    invoice.id,
 
-                sourceId: {
-                  in:
-                    itemizedMicroSourceIds,
+                  sourceType:
+                    'REPORT',
+
+                  sourceId: {
+                    in:
+                      sourceIdBatch,
+                  },
+
+                  itemKey:
+                    null,
+
+                  activeChargeKey: {
+                    not: null,
+                  },
                 },
 
-                itemKey:
-                  null,
-
-                activeChargeKey: {
-                  not: null,
+                select: {
+                  id: true,
+                  manualOverride: true,
                 },
-              },
+              });
 
-              select: {
-                id: true,
-                manualOverride: true,
-              },
-            });
+            legacyMicroDraftLines.push(
+              ...batchLines,
+            );
+          }
 
           legacyManualOverridesReplaced +=
             legacyMicroDraftLines.filter(
@@ -2688,19 +2762,20 @@ export class BillingService {
                 line.manualOverride,
             ).length;
 
-          if (
-            legacyMicroDraftLines.length >
-            0
+          for (
+            const idBatch of
+            chunkArray(
+              legacyMicroDraftLines.map(
+                (line) => line.id,
+              ),
+            )
           ) {
             const deleted =
               await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
                     in:
-                      legacyMicroDraftLines.map(
-                        (line) =>
-                          line.id,
-                      ),
+                      idBatch,
                   },
                 },
               });
@@ -2789,41 +2864,62 @@ export class BillingService {
           desiredSourcePairs.size >
           0
         ) {
-          const existingSourceLines =
-            await tx.billingInvoiceLine.findMany({
-              where: {
-                invoiceId:
-                  invoice.id,
+          const existingSourceLines: Array<{
+            id: string;
+            sourceType: BillingSourceType;
+            sourceId: string;
+            chargeKey: string;
+            activeChargeKey: string | null;
+            manualOverride: boolean;
+          }> = [];
 
-                OR: Array.from(
-                  desiredSourcePairs.values(),
-                ).map(
-                  (source) => ({
-                    sourceType:
-                      source.sourceType,
+          const sourcePairs =
+            Array.from(
+              desiredSourcePairs.values(),
+            );
 
-                    sourceId:
-                      source.sourceId,
-                  }),
-                ),
-              },
+          for (
+            const sourceBatch of
+            chunkArray(sourcePairs)
+          ) {
+            const batchLines =
+              await tx.billingInvoiceLine.findMany({
+                where: {
+                  invoiceId:
+                    invoice.id,
 
-              select: {
-                id: true,
+                  OR: sourceBatch.map(
+                    (source) => ({
+                      sourceType:
+                        source.sourceType,
 
-                sourceType: true,
+                      sourceId:
+                        source.sourceId,
+                    }),
+                  ),
+                },
 
-                sourceId: true,
+                select: {
+                  id: true,
 
-                chargeKey: true,
+                  sourceType: true,
 
-                activeChargeKey:
-                  true,
+                  sourceId: true,
 
-                manualOverride:
-                  true,
-              },
-            });
+                  chargeKey: true,
+
+                  activeChargeKey:
+                    true,
+
+                  manualOverride:
+                    true,
+                },
+              });
+
+            existingSourceLines.push(
+              ...batchLines,
+            );
+          }
 
           const staleSourceLines =
             existingSourceLines.filter(
@@ -2863,24 +2959,25 @@ export class BillingService {
                 line.manualOverride,
             ).length;
 
-          if (
-            staleSourceLines.length >
-            0
+          for (
+            const idBatch of
+            chunkArray(
+              staleSourceLines.map(
+                (line) => line.id,
+              ),
+            )
           ) {
             const deleted =
               await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
                     in:
-                      staleSourceLines.map(
-                        (line) =>
-                          line.id,
-                      ),
+                      idBatch,
                   },
                 },
               });
 
-            pricingStructureLinesReplaced =
+            pricingStructureLinesReplaced +=
               deleted.count;
           }
         }
@@ -2935,9 +3032,16 @@ export class BillingService {
           sourceSnapshot: line.sourceSnapshot,
         }));
 
-        const created = createData.length
-          ? await tx.billingInvoiceLine.createMany({
-              data: createData,
+        let createdCount = 0;
+
+        for (
+          const createBatch of
+          chunkArray(createData)
+        ) {
+          const created =
+            await tx.billingInvoiceLine.createMany({
+              data:
+                createBatch,
 
               /*
                * activeChargeKey is UNIQUE.
@@ -2945,10 +3049,11 @@ export class BillingService {
                * billing protection.
                */
               skipDuplicates: true,
-            })
-          : {
-              count: 0,
-            };
+            });
+
+          createdCount +=
+            created.count;
+        }
 
         /*
          * CLIENT-SPECIFIC PRICING ROLLOUT
@@ -2997,52 +3102,123 @@ export class BillingService {
           }
         }
 
-        for (const source of clientBySource.values()) {
-          await tx.billingInvoiceLine.updateMany({
-            where: {
-              invoiceId:
-                invoice.id,
+        /*
+         * IMPORTANT PERFORMANCE FIX
+         * ---------------------------------------------------
+         * Do NOT issue one UPDATE per source report.
+         *
+         * Large billing months can have hundreds of sources.
+         * The old loop kept an interactive transaction open
+         * while running hundreds of sequential UPDATEs, which
+         * can exceed Prisma's transaction timeout.
+         *
+         * Group by sourceType + client and update source IDs
+         * in bounded batches instead.
+         */
+        const clientBackfillGroups =
+          new Map<
+            string,
+            {
+              sourceType:
+                BillingSourceType;
+              client: string;
+              sourceIds:
+                Set<string>;
+            }
+          >();
 
+        for (
+          const source of
+          clientBySource.values()
+        ) {
+          const groupKey =
+            `${source.sourceType}:${source.client}`;
+
+          const current =
+            clientBackfillGroups.get(
+              groupKey,
+            ) ?? {
               sourceType:
                 source.sourceType,
 
-              sourceId:
-                source.sourceId,
-
-              client:
-                null,
-            },
-
-            data: {
               client:
                 source.client,
-            },
-          });
+
+              sourceIds:
+                new Set<string>(),
+            };
+
+          current.sourceIds.add(
+            source.sourceId,
+          );
+
+          clientBackfillGroups.set(
+            groupKey,
+            current,
+          );
+        }
+
+        for (
+          const group of
+          clientBackfillGroups.values()
+        ) {
+          for (
+            const sourceIdBatch of
+            chunkArray(
+              Array.from(
+                group.sourceIds,
+              ),
+            )
+          ) {
+            await tx.billingInvoiceLine.updateMany({
+              where: {
+                invoiceId:
+                  invoice.id,
+
+                sourceType:
+                  group.sourceType,
+
+                sourceId: {
+                  in:
+                    sourceIdBatch,
+                },
+
+                client:
+                  null,
+              },
+
+              data: {
+                client:
+                  group.client,
+              },
+            });
+          }
         }
 
         /*
          * Always recalculate totals from persisted lines.
          * Never trust totals supplied by frontend.
          */
-        const persistedLines = await tx.billingInvoiceLine.findMany({
-          where: {
-            invoiceId: invoice.id,
-          },
+        const persistedLineTotals =
+          await tx.billingInvoiceLine.aggregate({
+            where: {
+              invoiceId:
+                invoice.id,
+            },
 
-          select: {
-            amount: true,
-          },
-        });
+            _sum: {
+              amount: true,
+            },
+          });
 
-        let subtotal = new Prisma.Decimal(0);
+        const subtotal =
+          persistedLineTotals._sum.amount ??
+          new Prisma.Decimal(0);
 
-        for (const persistedLine of persistedLines) {
-          if (persistedLine.amount) {
-            subtotal = subtotal.plus(persistedLine.amount);
-          }
-        }
-
-        const total = subtotal.plus(invoice.adjustmentAmount);
+        const total =
+          subtotal.plus(
+            invoice.adjustmentAmount,
+          );
 
         const updated = await tx.billingInvoice.update({
           where: {
@@ -3062,7 +3238,7 @@ export class BillingService {
 
           skipped: false,
 
-          added: created.count,
+          added: createdCount,
 
           legacyLinesReplaced,
 
@@ -3074,6 +3250,20 @@ export class BillingService {
 
           releasedClosedInvoiceId,
         };
+      }, {
+        /*
+         * Prisma interactive transactions default to a short
+         * timeout. Large invoice generation legitimately needs
+         * more time, even after batching.
+         *
+         * These values are configurable through environment
+         * variables without another code change.
+         */
+        maxWait:
+          BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS,
+
+        timeout:
+          BILLING_GENERATE_TRANSACTION_TIMEOUT_MS,
       });
 
       if (!transactionResult.skipped) {
