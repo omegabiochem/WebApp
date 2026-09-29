@@ -43,7 +43,8 @@ const APE_ORGANISM_DEFAULTS: ApeOrganismRow[] = [
 ];
 
 // APE uses the generic reports endpoint in ApeReportForm.
-const attBase = (id: string) => `/reports/${id}/attachments`;
+// APE attachments use the shared Report attachment controller.
+const attBase = (id: string) => `/reports/micro-mix/${id}/attachments`;
 
 const authHeaders = (): HeadersInit => {
   const t = getToken();

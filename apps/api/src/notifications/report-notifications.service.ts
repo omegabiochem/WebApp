@@ -102,6 +102,27 @@ function isCorrectionOrChangeUpdateStatus(status: string) {
   );
 }
 
+/*
+ * Correction/change email policy:
+ *
+ * These statuses NEVER send an immediate email.
+ * They are queued into NotificationOutbox and sent by the
+ * special 5-minute correction digest.
+ *
+ * In-app notifications remain immediate.
+ */
+function usesFiveMinuteCorrectionDigest(status: string) {
+  const s = String(status);
+
+  return (
+    s.includes('NEEDS_CORRECTION') ||
+    s === 'CORRECTION_REQUESTED' ||
+    s === 'CHANGE_REQUESTED' ||
+    s === 'UNDER_CORRECTION_UPDATE' ||
+    s === 'UNDER_CHANGE_UPDATE'
+  );
+}
+
 // replace isUrgentStatus
 function isUrgentStatus(s: ReportStatus) {
   const str = String(s);
@@ -519,9 +540,12 @@ function getOpenCorrectionFieldKeysFromDetails(details: any) {
     .filter(Boolean);
 }
 
-
-function normalizeManualRecipientSide(value: any): CorrectionRecipientSide | null {
-  const v = String(value ?? '').trim().toUpperCase();
+function normalizeManualRecipientSide(
+  value: any,
+): CorrectionRecipientSide | null {
+  const v = String(value ?? '')
+    .trim()
+    .toUpperCase();
 
   if (v === 'CLIENT') return 'CLIENT';
   if (v === 'LAB') return 'LAB';
@@ -600,12 +624,12 @@ export class ReportNotificationsService {
       },
     });
 
-  const openItems: CorrectionLike[] = [];
+    const openItems: CorrectionLike[] = [];
 
-openItems.push(...getOpenCorrectionItemsFromDetails(report?.microMix));
-openItems.push(...getOpenCorrectionItemsFromDetails(report?.microMixWater));
-openItems.push(...getOpenCorrectionItemsFromDetails(report?.sterility));
-openItems.push(...getOpenCorrectionItemsFromDetails(report?.ape));
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.microMix));
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.microMixWater));
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.sterility));
+    openItems.push(...getOpenCorrectionItemsFromDetails(report?.ape));
 
     // APE parent status may be changed while corrections are stored on child reports.
     if (args.formType === 'APE') {
@@ -622,36 +646,36 @@ openItems.push(...getOpenCorrectionItemsFromDetails(report?.ape));
         },
       });
 
-     for (const child of children) {
-  openItems.push(
-    ...getOpenCorrectionItemsFromDetails(child.apeValidationReport),
-  );
-  openItems.push(...getOpenCorrectionItemsFromDetails(child.apeReport));
-}
+      for (const child of children) {
+        openItems.push(
+          ...getOpenCorrectionItemsFromDetails(child.apeValidationReport),
+        );
+        openItems.push(...getOpenCorrectionItemsFromDetails(child.apeReport));
+      }
     }
 
-  const fieldKeys = openItems
-  .map((c) => String(c?.fieldKey ?? '').trim())
-  .filter(Boolean);
+    const fieldKeys = openItems
+      .map((c) => String(c?.fieldKey ?? '').trim())
+      .filter(Boolean);
 
-const manualSide = resolveManualRecipientSide(openItems);
+    const manualSide = resolveManualRecipientSide(openItems);
 
-const side =
-  manualSide ??
-  resolveCorrectionRecipientSideFromFields(args.formType, fieldKeys);
+    const side =
+      manualSide ??
+      resolveCorrectionRecipientSideFromFields(args.formType, fieldKeys);
 
-this.log.warn(
-  `[CORRECTION FIELD ROUTING] report=${args.reportId} ` +
-    `formType=${args.formType} ` +
-    `fields=${fieldKeys.join(',') || 'NONE'} ` +
-    `manualSide=${manualSide ?? 'AUTO'} ` +
-    `side=${side}`,
-);
+    this.log.warn(
+      `[CORRECTION FIELD ROUTING] report=${args.reportId} ` +
+        `formType=${args.formType} ` +
+        `fields=${fieldKeys.join(',') || 'NONE'} ` +
+        `manualSide=${manualSide ?? 'AUTO'} ` +
+        `side=${side}`,
+    );
 
-return {
-  side,
-  fieldKeys,
-};
+    return {
+      side,
+      fieldKeys,
+    };
   }
 
   async onStatusChanged(args: NotifyArgs) {
@@ -709,7 +733,9 @@ return {
         );
       }
 
-      const immediate = options.forceImmediate || isUrgentStatus(newStatus);
+      const immediate =
+        !usesFiveMinuteCorrectionDigest(String(newStatus)) &&
+        (options.forceImmediate || isUrgentStatus(newStatus));
       const defaultHighlight = highlightForStatus(String(newStatus));
 
       const hi = {
@@ -853,7 +879,9 @@ return {
         );
       }
 
-      const immediate = options.forceImmediate || isUrgentStatus(newStatus);
+      const immediate =
+        !usesFiveMinuteCorrectionDigest(String(newStatus)) &&
+        (options.forceImmediate || isUrgentStatus(newStatus));
 
       if (immediate && emails.length > 0) {
         await this.mail.sendStatusNotificationEmail({
@@ -972,42 +1000,99 @@ return {
       const to =
         configuredEmails.length > 0 ? configuredEmails : fallbackEmails;
 
-      if (to.length > 0) {
-        await this.mail.sendStatusNotificationEmail({
-          to,
-          subject: buildNotificationSubject({
-            badgeText,
-            badgeTone,
-            title,
-            formNumber: args.formNumber,
-          }),
-          title,
-          badgeText,
-          badgeTone,
-          priorityLine,
-          lines: [
-            `Form #: ${args.formNumber}`,
-            `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
-            `Form Type: ${args.formType}`,
-            `Request Type: ${args2.requestKind}`,
-            `Requested By Role: ${args2.requestedByRole ?? 'UNKNOWN'}`,
-            `Return Status: ${args2.workflowReturnStatus ?? args.oldStatus}`,
-            `Current Status: ${nice(args.newStatus)}`,
-          ],
-          actionUrl: reportUrl,
-          actionLabel: 'Review request',
-          tag: `${args2.requestKind.toLowerCase()}-request-approval`,
-          metadata: {
+      // if (to.length > 0) {
+      //   await this.mail.sendStatusNotificationEmail({
+      //     to,
+      //     subject: buildNotificationSubject({
+      //       badgeText,
+      //       badgeTone,
+      //       title,
+      //       formNumber: args.formNumber,
+      //     }),
+      //     title,
+      //     badgeText,
+      //     badgeTone,
+      //     priorityLine,
+      //     lines: [
+      //       `Form #: ${args.formNumber}`,
+      //       `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
+      //       `Form Type: ${args.formType}`,
+      //       `Request Type: ${args2.requestKind}`,
+      //       `Requested By Role: ${args2.requestedByRole ?? 'UNKNOWN'}`,
+      //       `Return Status: ${args2.workflowReturnStatus ?? args.oldStatus}`,
+      //       `Current Status: ${nice(args.newStatus)}`,
+      //     ],
+      //     actionUrl: reportUrl,
+      //     actionLabel: 'Review request',
+      //     tag: `${args2.requestKind.toLowerCase()}-request-approval`,
+      //     metadata: {
+      //       reportId: args.reportId,
+      //       formNumber: args.formNumber,
+      //       formType: args.formType,
+      //       status: args.newStatus,
+      //       clientCode: args.clientCode ?? '',
+      //       requestKind: args2.requestKind,
+      //       requestedByRole: args2.requestedByRole ?? 'UNKNOWN',
+      //       workflowReturnStatus: args2.workflowReturnStatus ?? '',
+      //     },
+      //   });
+      // }
+
+      /*
+       * Do NOT email approval requests immediately.
+       *
+       * Queue them into the same 5-minute correction/change digest.
+       */
+      const normalizedApprovalEmails = normalizeEmails(to);
+
+      if (normalizedApprovalEmails.length > 0) {
+        await this.prisma.notificationOutbox.create({
+          data: {
+            /*
+             * Approval users are internal LAB-side users.
+             */
+            scope: 'LAB',
+
+            /*
+             * Special department name makes approval digests
+             * easy to identify.
+             */
+            dept: 'APPROVAL',
+
+            /*
+             * Keep clientCode in the event for email detail,
+             * but correction digest grouping for LAB ignores
+             * clientCode so several clients can be combined.
+             */
+            clientCode: args.clientCode ?? null,
+
+            recipientsKey: JSON.stringify(normalizedApprovalEmails),
+
+            tag: `${args2.requestKind.toLowerCase()}-request-approval`,
+
             reportId: args.reportId,
-            formNumber: args.formNumber,
+
             formType: args.formType,
-            status: args.newStatus,
-            clientCode: args.clientCode ?? '',
-            requestKind: args2.requestKind,
-            requestedByRole: args2.requestedByRole ?? 'UNKNOWN',
-            workflowReturnStatus: args2.workflowReturnStatus ?? '',
+
+            formNumber: args.formNumber,
+
+            clientName: args.clientName,
+
+            oldStatus: args.oldStatus,
+
+            newStatus: args.newStatus,
+
+            reportUrl,
+
+            actorUserId: args.actorUserId ?? null,
           },
         });
+
+        this.log.log(
+          `Queued 5-minute approval digest: ` +
+            `${args2.requestKind} ` +
+            `(${args.formNumber})`,
+        );
       }
 
       await this.inAppNotifications.createForRoles({

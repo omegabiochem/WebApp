@@ -485,14 +485,14 @@ function defaultViewPane(report: Report): ViewPane {
   const formType = String(report.formType || "").toUpperCase();
 
   // -------------------------------------------------
-  // 1. Submission / correction stages → FORM
+  // 1. Draft / correction / change stages → FORM
   // -------------------------------------------------
   if (FORM_DEFAULT_STATUSES.has(status)) {
     return "FORM";
   }
 
   // -------------------------------------------------
-  // 2. MICRO final delivery stages → ATTACHMENTS
+  // 2. MICRO / MICRO WATER
   // -------------------------------------------------
   if (formType === "MICRO_MIX" || formType === "MICRO_MIX_WATER") {
     if (status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED") {
@@ -503,12 +503,27 @@ function defaultViewPane(report: Report): ViewPane {
   }
 
   // -------------------------------------------------
-  // 3. Sterility / APE / Chemistry / COA
-  //    client final delivery stages → ATTACHMENTS
+  // 3. APE
+  //
+  // UNDER_CLIENT_REVIEW / APPROVED
+  // → ATTACHMENTS
+  //
+  // Other post-submission workflow statuses
+  // → REPORT
+  // -------------------------------------------------
+  if (formType === "APE") {
+    if (status === "UNDER_CLIENT_REVIEW" || status === "APPROVED") {
+      return "ATTACHMENTS";
+    }
+
+    return "REPORT";
+  }
+
+  // -------------------------------------------------
+  // 4. Sterility / Chemistry / COA
   // -------------------------------------------------
   if (
     formType === "STERILITY" ||
-    formType === "APE" ||
     formType === "CHEMISTRY_MIX" ||
     formType === "COA"
   ) {
@@ -519,8 +534,6 @@ function defaultViewPane(report: Report): ViewPane {
     return "REPORT";
   }
 
-  // Unknown/new form type:
-  // Report is the safest default after submission.
   return "REPORT";
 }
 

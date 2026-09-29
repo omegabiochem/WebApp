@@ -69,6 +69,18 @@ function isUrgentChemStatus(s: ChemistryReportStatus) {
   return false;
 }
 
+function usesFiveMinuteCorrectionDigest(status: string) {
+  const s = String(status);
+
+  return (
+    s.includes('NEEDS_CORRECTION') ||
+    s === 'CORRECTION_REQUESTED' ||
+    s === 'CHANGE_REQUESTED' ||
+    s === 'UNDER_CORRECTION_UPDATE' ||
+    s === 'UNDER_CHANGE_UPDATE'
+  );
+}
+
 function highlightForStatus(status: string) {
   if (
     status.includes('NEEDS_CORRECTION') ||
@@ -559,7 +571,9 @@ export class ChemistryReportNotificationsService {
         );
       }
 
-      const immediate = options.forceImmediate || isUrgentChemStatus(newStatus);
+      const immediate =
+        !usesFiveMinuteCorrectionDigest(String(newStatus)) &&
+        (options.forceImmediate || isUrgentChemStatus(newStatus));
       const defaultHighlight = highlightForStatus(String(newStatus));
 
       const hi = {
@@ -687,7 +701,9 @@ export class ChemistryReportNotificationsService {
           `clientCode=${clientCode} ` +
           `emails=${emails.length ? emails.join(',') : 'NONE'}`,
       );
-      const immediate = options.forceImmediate || isUrgentChemStatus(newStatus);
+      const immediate =
+        !usesFiveMinuteCorrectionDigest(String(newStatus)) &&
+        (options.forceImmediate || isUrgentChemStatus(newStatus));
       const defaultHighlight = highlightForStatus(String(newStatus));
 
       const hi = {
@@ -818,42 +834,44 @@ export class ChemistryReportNotificationsService {
       const to =
         configuredEmails.length > 0 ? configuredEmails : fallbackEmails;
 
-      if (to.length > 0) {
-        await this.mail.sendStatusNotificationEmail({
-          to,
-          subject: buildNotificationSubject({
-            badgeText,
-            badgeTone,
-            title,
-            formNumber: args.formNumber,
-          }),
-          title,
-          badgeText,
-          badgeTone,
-          priorityLine,
-          lines: [
-            `Form #: ${args.formNumber}`,
-            `Client: ${args.clientName}${args.clientCode ? ` (${args.clientCode})` : ''}`,
-            `Form Type: ${args.formType}`,
-            `Request Type: ${args2.requestKind}`,
-            `Requested By Role: ${args2.requestedByRole ?? 'UNKNOWN'}`,
-            `Return Status: ${args2.workflowReturnStatus ?? args.oldStatus}`,
-            `Current Status: ${nice(args.newStatus)}`,
-          ],
-          actionUrl: args.reportUrl,
-          actionLabel: 'Review request',
-          tag: `${args2.requestKind.toLowerCase()}-request-approval`,
-          metadata: {
-            chemistryId: args.reportId,
-            formNumber: args.formNumber,
+      const normalizedApprovalEmails = normalizeEmails(to);
+
+      if (normalizedApprovalEmails.length > 0) {
+        await this.prisma.notificationOutbox.create({
+          data: {
+            scope: 'LAB',
+
+            dept: 'APPROVAL',
+
+            clientCode: args.clientCode ?? null,
+
+            recipientsKey: JSON.stringify(normalizedApprovalEmails),
+
+            tag: `${args2.requestKind.toLowerCase()}-request-approval`,
+
+            reportId: args.reportId,
+
             formType: args.formType,
-            status: args.newStatus,
-            clientCode: args.clientCode ?? '',
-            requestKind: args2.requestKind,
-            requestedByRole: args2.requestedByRole ?? 'UNKNOWN',
-            workflowReturnStatus: args2.workflowReturnStatus ?? '',
+
+            formNumber: args.formNumber,
+
+            clientName: args.clientName,
+
+            oldStatus: args.oldStatus,
+
+            newStatus: args.newStatus,
+
+            reportUrl: args.reportUrl ?? null,
+
+            actorUserId: args.actorUserId ?? null,
           },
         });
+
+        this.log.log(
+          `Queued 5-minute chemistry approval digest: ` +
+            `${args2.requestKind} ` +
+            `(${args.formNumber})`,
+        );
       }
 
       await this.inAppNotifications.createForRoles({
@@ -924,12 +942,6 @@ export class ChemistryReportNotificationsService {
     // CHEMISTRY && COA STATUS ROUTING
     // =========================
 
-    // const actorUser = args.actorUserId
-    //   ? await this.prisma.user.findUnique({
-    //       where: { id: args.actorUserId },
-    //       select: { id: true, role: true, clientCode: true },
-    //     })
-    //   : null;
 
     const actorUser = args.actorUserId
       ? await this.prisma.user.findFirst({
