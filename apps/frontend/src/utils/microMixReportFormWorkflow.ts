@@ -250,7 +250,7 @@ export const STATUS_TRANSITIONS: Record<
     canEdit: ["QA", "SYSTEMADMIN"],
   },
   UNDER_QA_FINAL_REVIEW: {
-    canSet: ["MICRO", "MC", "QA", "SYSTEMADMIN"],
+    canSet: [ "QA", "SYSTEMADMIN"],
     next: ["QA_NEEDS_FINAL_CORRECTION", "RECEIVED_BY_FRONTDESK"],
     nextEditableBy: ["QA", "SYSTEMADMIN"],
     canEdit: ["QA", "SYSTEMADMIN"],

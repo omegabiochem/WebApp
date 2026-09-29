@@ -1780,65 +1780,101 @@ export default function MicroDashboard() {
     return r;
   }
 
-  async function startFinalAndOpen(r: Report) {
-    const reason =
-      window.prompt(
-        "Reason for change (21 CFR Part 11):",
-        "Start final testing",
-      ) || "";
 
-    if (!reason.trim()) {
-      toast.error("Reason is required.");
-      return;
-    }
+async function startFinal(r: Report) {
+  const reason =
+    window.prompt(
+      "Reason for change (21 CFR Part 11):",
+      "Start final testing",
+    ) || "";
 
-    const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
-
-    await api(`/reports/${r.id}/change-status`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        status: nextStatus,
-        reason,
-        // ✅ no eSignPassword
-      }),
-    });
-
-    // update local list instantly
-    setReports((prev) =>
-      prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus } : x)),
-    );
-
-    // goToReportEditor(r);
-    openUpdateTarget(r);
+  if (!reason.trim()) {
+    toast.error("Reason is required.");
+    return null;
   }
 
-  async function startFinal(r: Report) {
-    const reason =
-      window.prompt(
-        "Reason for change (21 CFR Part 11):",
-        "Start final testing",
-      ) || "";
-    if (!reason.trim()) {
-      toast.error("Reason is required.");
-      return;
-    }
+  const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
 
-    const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
+  /*
+   * 1. Change workflow status.
+   * This may increment the report version in the backend.
+   */
+  await api(`/reports/${r.id}/change-status`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: nextStatus,
+      reason,
+    }),
+  });
 
-    await api(`/reports/${r.id}/change-status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: nextStatus, reason }),
-    });
+  /*
+   * 2. IMPORTANT:
+   * Reload the authoritative report after Start Final.
+   *
+   * Do NOT continue using `r`, because `r.version`
+   * belongs to the report BEFORE the status change.
+   */
+  const latest = await api<Report>(`/reports/${r.id}`, {
+    method: "GET",
+  });
 
-    // update local state
-    setReports((prev) =>
-      prev.map((x) => (x.id === r.id ? { ...x, status: nextStatus } : x)),
-    );
+  const updated: Report = {
+    ...r,
+    ...latest,
 
-    // open editor
-    // goToReportEditor(r);
-    openUpdateTarget(r);
-  }
+    id: latest.id ?? r.id,
+
+    status:
+      latest.status ??
+      nextStatus,
+
+    version:
+      typeof latest.version === "number"
+        ? latest.version
+        : r.version,
+
+    reportNumber:
+      latest.reportNumber ??
+      r.reportNumber,
+  };
+
+  /*
+   * 3. Update dashboard copy with FULL latest report,
+   * not only status.
+   */
+  setReports((prev) =>
+    prev.map((x) =>
+      x.id === r.id
+        ? {
+            ...x,
+            ...updated,
+          }
+        : x,
+    ),
+  );
+
+  /*
+   * 4. Update selected cache too.
+   */
+  setSelectedReportsById((prev) => {
+    if (!prev[r.id]) return prev;
+
+    return {
+      ...prev,
+      [r.id]: {
+        ...prev[r.id],
+        ...updated,
+      },
+    };
+  });
+
+  /*
+   * 5. Open editor with CURRENT database version.
+   */
+  openUpdateTarget(updated);
+
+  return updated;
+}
 
   // ✅ put this inside MicroDashboard(), before return
   const modalShowStartFinal =
@@ -4211,7 +4247,7 @@ export default function MicroDashboard() {
                         try {
                           const r = selectedReport;
                           setSelectedReport(null);
-                          await startFinalAndOpen(r); // or startFinal(r)
+                       await startFinal(r);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to start final");
                         } finally {
