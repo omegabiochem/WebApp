@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
@@ -68,6 +69,21 @@ type BillingActionDialog =
   | { kind: "VOID"; reason: string }
   | null;
 
+type MoveInvoiceLinesDialog = {
+  lineIds: string[];
+  targetInvoiceId: string;
+  targets: InvoiceRow[];
+};
+
+type MoveInvoiceLinesResponse = {
+  sourceInvoice: InvoiceDetail;
+  targetInvoice: InvoiceDetail;
+  movedLineCount: number;
+  movedExtraChargeCount: number;
+  transferredAdjustment: string;
+  sourceClosed: boolean;
+};
+
 type BillingManualInvoiceLine = {
   id: string;
   invoiceId: string;
@@ -114,6 +130,13 @@ type BillingInvoiceExtraCharge = {
   amount: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type BillingExtraChargeSuggestion = {
+  name: string;
+  amount: string;
+  usageCount: number;
+  lastUsedAt: string;
 };
 
 type ExtraChargeDialog =
@@ -289,6 +312,7 @@ type InvoiceDetail = InvoiceRow & {
   manualLines: BillingManualInvoiceLine[];
   emails: BillingEmailHistory[];
   extraCharges: BillingInvoiceExtraCharge[];
+  extraChargeSuggestions?: BillingExtraChargeSuggestion[];
   revisionRootId?: string;
   revisionHistory?: InvoiceRevisionHistoryRow[];
 };
@@ -1462,6 +1486,10 @@ export default function BillingDashboard() {
 
   const [actionDialog, setActionDialog] = useState<BillingActionDialog>(null);
 
+  const [selectedMoveLineIds, setSelectedMoveLineIds] = useState<string[]>([]);
+  const [moveInvoiceLinesDialog, setMoveInvoiceLinesDialog] =
+    useState<MoveInvoiceLinesDialog | null>(null);
+
   const [pricingRuleDialog, setPricingRuleDialog] =
     useState<PricingRuleDialog>(null);
   const [extraChargeDialog, setExtraChargeDialog] =
@@ -2525,6 +2553,19 @@ export default function BillingDashboard() {
     setPage(1);
   }, [month, clientCode, invoiceStatus, perPage]);
 
+  useEffect(() => {
+    setSelectedMoveLineIds([]);
+    setMoveInvoiceLinesDialog(null);
+  }, [
+    selectedInvoiceId,
+    departmentFilter,
+    formTypeFilter,
+    testFilter,
+    itemFilter,
+    resultSentFrom,
+    resultSentTo,
+  ]);
+
   async function openInvoice(id: string) {
     setSelectedInvoiceId(id);
     setDetailLoading(true);
@@ -2712,6 +2753,157 @@ export default function BillingDashboard() {
       setInvoiceDetail(updated);
       setActionDialog(null);
       toast.success("Line price overridden");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function toggleMoveInvoiceLine(lineId: string) {
+    setSelectedMoveLineIds((current) =>
+      current.includes(lineId)
+        ? current.filter((id) => id !== lineId)
+        : [...current, lineId],
+    );
+  }
+
+  function toggleAllVisibleMoveInvoiceLines() {
+    const visibleIds = visibleInvoiceLines.map((line) => line.id);
+
+    if (visibleIds.length === 0) return;
+
+    const allSelected = visibleIds.every((id) =>
+      selectedMoveLineIds.includes(id),
+    );
+
+    setSelectedMoveLineIds((current) => {
+      if (allSelected) {
+        const visibleSet = new Set(visibleIds);
+        return current.filter((id) => !visibleSet.has(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleIds]));
+    });
+  }
+
+  async function openMoveSelectedInvoiceLines() {
+    if (!invoiceDetail || !isManager) return;
+
+    if (invoiceDetail.status !== "DRAFT") {
+      toast.error("Reopen the invoice for editing before moving lines");
+      return;
+    }
+
+    if (invoiceDetail.invoiceKind !== "REPORT") {
+      toast.error("Only report invoice lines can be moved");
+      return;
+    }
+
+    const validLineIds = selectedMoveLineIds.filter((id) =>
+      invoiceDetail.lines.some((line) => line.id === id),
+    );
+
+    if (validLineIds.length === 0) {
+      toast.error("Select at least one invoice line to move");
+      return;
+    }
+
+    setWorking("LOAD_MOVE_TARGETS");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("clientCode", invoiceDetail.clientCode);
+      params.set("status", "DRAFT");
+      params.set("page", "1");
+      params.set("perPage", "100");
+
+      const response = await api<InvoiceListResponse>(
+        `/billing/invoices?${params.toString()}`,
+      );
+
+      const sourceStart = new Date(invoiceDetail.periodStart).getTime();
+      const sourceEnd = new Date(invoiceDetail.periodEnd).getTime();
+
+      const targets = response.items.filter((candidate) => {
+        if (candidate.id === invoiceDetail.id) return false;
+        if (candidate.invoiceKind !== "REPORT") return false;
+        if (candidate.clientCode !== invoiceDetail.clientCode) return false;
+
+        return (
+          new Date(candidate.periodStart).getTime() === sourceStart &&
+          new Date(candidate.periodEnd).getTime() === sourceEnd
+        );
+      });
+
+      if (targets.length === 0) {
+        toast.error(
+          "No other DRAFT report invoice exists for this client and billing period. If the invoice you want is CONFIRMED, reopen it first.",
+        );
+        return;
+      }
+
+      setMoveInvoiceLinesDialog({
+        lineIds: validLineIds,
+        targetInvoiceId: targets[0].id,
+        targets,
+      });
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function submitMoveSelectedInvoiceLines() {
+    if (!invoiceDetail || !isManager || !moveInvoiceLinesDialog) return;
+
+    if (!moveInvoiceLinesDialog.targetInvoiceId) {
+      toast.error("Select the target invoice");
+      return;
+    }
+
+    setWorking("MOVE_LINES");
+
+    try {
+      const result = await api<MoveInvoiceLinesResponse>(
+        `/billing/invoices/${invoiceDetail.id}/lines/move`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            targetInvoiceId: moveInvoiceLinesDialog.targetInvoiceId,
+            lineIds: moveInvoiceLinesDialog.lineIds,
+          }),
+        },
+      );
+
+      setSelectedMoveLineIds([]);
+      setMoveInvoiceLinesDialog(null);
+
+      if (result.sourceClosed) {
+        setSelectedInvoiceId(result.targetInvoice.id);
+        setInvoiceDetail(result.targetInvoice);
+        setDraftAdjustment(result.targetInvoice.adjustmentAmount ?? "0.00");
+        setDraftNotes(result.targetInvoice.notes ?? "");
+
+        toast.success(
+          `${result.movedLineCount} line${
+            result.movedLineCount === 1 ? "" : "s"
+          } moved. The empty source invoice was marked VOID as merged.`,
+        );
+      } else {
+        setInvoiceDetail(result.sourceInvoice);
+        setDraftAdjustment(result.sourceInvoice.adjustmentAmount ?? "0.00");
+        setDraftNotes(result.sourceInvoice.notes ?? "");
+
+        toast.success(
+          `${result.movedLineCount} line${
+            result.movedLineCount === 1 ? "" : "s"
+          } moved to the selected invoice.`,
+        );
+      }
+
       await refreshAll();
     } catch (error: any) {
       toast.error(extractMessage(error));
@@ -4334,46 +4526,6 @@ export default function BillingDashboard() {
   const visibleInvoiceLines = useMemo(() => {
     return (invoiceDetail?.lines ?? []).filter(matchesCommonLineFilters);
   }, [invoiceDetail, matchesCommonLineFilters]);
-
-  const invoiceSourceRows = useMemo(() => {
-    const rows = new Map<
-      string,
-      {
-        key: string;
-        sourceType: string;
-        sourceId: string;
-        formNumber: string;
-        reportNumber: string;
-        charges: BillingInvoiceExtraCharge[];
-      }
-    >();
-
-    for (const line of visibleInvoiceLines) {
-      const key = `${line.sourceType}:${line.sourceId}`;
-
-      if (!rows.has(key)) {
-        rows.set(key, {
-          key,
-          sourceType: line.sourceType,
-          sourceId: line.sourceId,
-          formNumber: line.formNumber,
-          reportNumber: line.reportNumber,
-          charges: [],
-        });
-      }
-    }
-
-    for (const charge of invoiceDetail?.extraCharges ?? []) {
-      const key = `${charge.sourceType}:${charge.sourceId}`;
-      const row = rows.get(key);
-
-      if (row) {
-        row.charges.push(charge);
-      }
-    }
-
-    return [...rows.values()];
-  }, [visibleInvoiceLines, invoiceDetail]);
 
   const activeFilterChips = useMemo(() => {
     const defaults = defaultBillingFilters();
@@ -7226,19 +7378,62 @@ export default function BillingDashboard() {
                           </p>
                         </div>
 
-                        {unresolvedInSelected > 0 && (
-                          <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                            <AlertTriangle className="h-4 w-4" />
-                            {unresolvedInSelected} pricing issue
-                            {unresolvedInSelected === 1 ? "" : "s"}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {invoiceDetail.status === "DRAFT" && isManager && (
+                            <Button
+                              variant="secondary"
+                              onClick={openMoveSelectedInvoiceLines}
+                              disabled={
+                                selectedMoveLineIds.length === 0 ||
+                                working === "LOAD_MOVE_TARGETS" ||
+                                working === "MOVE_LINES"
+                              }
+                            >
+                              {working === "LOAD_MOVE_TARGETS" ? (
+                                <Spinner dark />
+                              ) : (
+                                <ArrowRightLeft className="h-4 w-4" />
+                              )}
+                              Move Selected
+                              {selectedMoveLineIds.length > 0
+                                ? ` (${selectedMoveLineIds.length})`
+                                : ""}
+                            </Button>
+                          )}
+
+                          {unresolvedInSelected > 0 && (
+                            <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                              <AlertTriangle className="h-4 w-4" />
+                              {unresolvedInSelected} pricing issue
+                              {unresolvedInSelected === 1 ? "" : "s"}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
                         <table className="w-full min-w-[1040px] text-sm">
                           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                             <tr>
+                              {invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <th className="w-10 px-3 py-3 text-center">
+                                    <input
+                                      type="checkbox"
+                                      aria-label="Select all visible invoice lines"
+                                      checked={
+                                        visibleInvoiceLines.length > 0 &&
+                                        visibleInvoiceLines.every((line) =>
+                                          selectedMoveLineIds.includes(line.id),
+                                        )
+                                      }
+                                      onChange={
+                                        toggleAllVisibleMoveInvoiceLines
+                                      }
+                                      className="h-4 w-4 rounded border-slate-300"
+                                    />
+                                  </th>
+                                )}
                               <th className="px-4 py-3">Form #</th>
                               <th className="px-4 py-3">Report #</th>
                               <th className="px-4 py-3">Type</th>
@@ -7273,180 +7468,302 @@ export default function BillingDashboard() {
                               const isFirstSourceLine =
                                 firstSourceLineIndex === lineIndex;
 
+                              const lastSourceLineIndex =
+                                visibleInvoiceLines.reduce(
+                                  (lastIndex, candidate, candidateIndex) =>
+                                    `${candidate.sourceType}:${candidate.sourceId}` ===
+                                    sourceKey
+                                      ? candidateIndex
+                                      : lastIndex,
+                                  -1,
+                                );
+
+                              const isLastSourceLine =
+                                lastSourceLineIndex === lineIndex;
+
+                              const sourceExtraCharges = isLastSourceLine
+                                ? (invoiceDetail.extraCharges ?? []).filter(
+                                    (charge) =>
+                                      charge.sourceType === line.sourceType &&
+                                      charge.sourceId === line.sourceId,
+                                  )
+                                : [];
+
                               return (
-                                <tr key={line.id} className="align-top">
-                                  <td className="px-4 py-3 font-medium">
-                                    {line.formNumber}
-                                  </td>
+                                <React.Fragment key={line.id}>
+                                  <tr className="align-top">
+                                    {invoiceDetail.status === "DRAFT" &&
+                                      isManager && (
+                                        <td className="px-3 py-3 text-center">
+                                          <input
+                                            type="checkbox"
+                                            aria-label={`Select ${line.formNumber} ${line.testLabel || line.testKey}`}
+                                            checked={selectedMoveLineIds.includes(
+                                              line.id,
+                                            )}
+                                            onChange={() =>
+                                              toggleMoveInvoiceLine(line.id)
+                                            }
+                                            className="h-4 w-4 rounded border-slate-300"
+                                          />
+                                        </td>
+                                      )}
+                                    <td className="px-4 py-3 font-medium">
+                                      <div>{line.formNumber}</div>
+                                    </td>
 
-                                  <td className="px-4 py-3">
-                                    {line.reportNumber}
-                                  </td>
+                                    <td className="px-4 py-3">
+                                      {line.reportNumber}
+                                    </td>
 
-                                  <td className="px-4 py-3">
-                                    {nice(line.formType)}
-                                  </td>
+                                    <td className="px-4 py-3">
+                                      {nice(line.formType)}
+                                    </td>
 
-                                  <td className="px-4 py-3">
-                                    {billingSampleTypesFromSnapshot(
-                                      line.sourceSnapshot,
-                                    ).length > 0 ? (
-                                      <div className="flex max-w-[200px] flex-wrap gap-1.5">
-                                        {billingSampleTypesFromSnapshot(
-                                          line.sourceSnapshot,
-                                        ).map((sampleType) => (
-                                          <span
-                                            key={sampleType}
-                                            className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
-                                          >
-                                            {sampleType}
-                                          </span>
-                                        ))}
+                                    <td className="px-4 py-3">
+                                      {billingSampleTypesFromSnapshot(
+                                        line.sourceSnapshot,
+                                      ).length > 0 ? (
+                                        <div className="flex max-w-[200px] flex-wrap gap-1.5">
+                                          {billingSampleTypesFromSnapshot(
+                                            line.sourceSnapshot,
+                                          ).map((sampleType) => (
+                                            <span
+                                              key={sampleType}
+                                              className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                            >
+                                              {sampleType}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-slate-400">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    <td className="px-4 py-3">
+                                      <div>
+                                        {line.testLabel || nice(line.testKey)}
                                       </div>
-                                    ) : (
-                                      <span className="text-xs text-slate-400">
-                                        -
-                                      </span>
-                                    )}
-                                  </td>
 
-                                  <td className="px-4 py-3">
-                                    <div>
-                                      {line.testLabel || nice(line.testKey)}
-                                    </div>
-
-                                    {(line.itemLabel || line.itemKey) && (
-                                      <div className="mt-0.5 text-xs font-medium text-slate-600">
-                                        {line.itemLabel || nice(line.itemKey!)}
-                                      </div>
-                                    )}
-
-                                    {!line.itemKey &&
-                                      line.activeCount != null && (
-                                        <div className="text-xs text-slate-500">
-                                          Legacy: {line.activeCount} active
-                                          {line.activeCount === 1 ? "" : "s"}
+                                      {(line.itemLabel || line.itemKey) && (
+                                        <div className="mt-0.5 text-xs font-medium text-slate-600">
+                                          {line.itemLabel ||
+                                            nice(line.itemKey!)}
                                         </div>
                                       )}
-                                  </td>
 
-                                  <td className="px-4 py-3 text-right">
-                                    {line.unitPrice == null
-                                      ? "-"
-                                      : money(line.unitPrice)}
-                                  </td>
-
-                                  <td className="px-4 py-3 text-right font-medium">
-                                    {line.amount == null
-                                      ? "-"
-                                      : money(line.amount)}
-                                  </td>
-
-                                  <td className="px-4 py-3 text-xs">
-                                    {line.pricingIssue ? (
-                                      <span className="text-amber-800">
-                                        {line.pricingIssue}
-                                      </span>
-                                    ) : line.manualOverride ? (
-                                      <span
-                                        className="text-blue-700"
-                                        title={
-                                          line.manualOverrideReason || undefined
-                                        }
-                                      >
-                                        Manual Override
-                                      </span>
-                                    ) : (
-                                      <span className="text-emerald-700">
-                                        Rule
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  <td className="px-4 py-3 text-right">
-                                    {isFirstSourceLine ? (
-                                      <Button
-                                        variant="secondary"
-                                        disabled={
-                                          billingViewLoadingKey ===
-                                          `${line.sourceType}:${line.sourceId}`
-                                        }
-                                        onClick={() => openBillingReport(line)}
-                                      >
-                                        {billingViewLoadingKey ===
-                                        `${line.sourceType}:${line.sourceId}` ? (
-                                          <Spinner dark />
-                                        ) : (
-                                          <FileText className="h-4 w-4" />
+                                      {!line.itemKey &&
+                                        line.activeCount != null && (
+                                          <div className="text-xs text-slate-500">
+                                            Legacy: {line.activeCount} active
+                                            {line.activeCount === 1 ? "" : "s"}
+                                          </div>
                                         )}
-                                        {billingViewLoadingKey ===
-                                        `${line.sourceType}:${line.sourceId}`
-                                          ? "Opening..."
-                                          : "View"}
-                                      </Button>
-                                    ) : (
-                                      <span className="text-xs text-slate-300">
-                                        —
-                                      </span>
-                                    )}
-                                  </td>
+                                    </td>
 
-                                  {invoiceDetail.status === "DRAFT" &&
-                                    isManager && (
-                                      <td className="px-4 py-3 text-right">
-                                        <div className="flex justify-end gap-2">
-                                          <Button
-                                            variant="secondary"
-                                            disabled={
-                                              working === `LINE:${line.id}`
-                                            }
-                                            onClick={() => overrideLine(line)}
-                                          >
-                                            {working === `LINE:${line.id}` ? (
-                                              <Spinner dark />
-                                            ) : null}
-                                            Override
-                                          </Button>
+                                    <td className="px-4 py-3 text-right">
+                                      {line.unitPrice == null
+                                        ? "-"
+                                        : money(line.unitPrice)}
+                                    </td>
 
-                                          <Button
-                                            variant="danger"
-                                            disabled={!!working}
-                                            onClick={() =>
-                                              deleteInvoiceLine(line)
-                                            }
-                                            className="px-2.5"
-                                          >
-                                            {working ===
-                                            `DELETE_LINE:${line.id}` ? (
-                                              <Spinner />
-                                            ) : (
-                                              <Trash2 className="h-4 w-4" />
-                                            )}
-                                            Delete
-                                          </Button>
+                                    <td className="px-4 py-3 text-right font-medium">
+                                      {line.amount == null
+                                        ? "-"
+                                        : money(line.amount)}
+                                    </td>
 
-                                          {isFirstSourceLine && (
+                                    <td className="px-4 py-3 text-xs">
+                                      {line.pricingIssue ? (
+                                        <span className="text-amber-800">
+                                          {line.pricingIssue}
+                                        </span>
+                                      ) : line.manualOverride ? (
+                                        <span
+                                          className="text-blue-700"
+                                          title={
+                                            line.manualOverrideReason ||
+                                            undefined
+                                          }
+                                        >
+                                          Manual Override
+                                        </span>
+                                      ) : (
+                                        <span className="text-emerald-700">
+                                          Rule
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    <td className="px-4 py-3 text-right">
+                                      {isFirstSourceLine ? (
+                                        <Button
+                                          variant="secondary"
+                                          disabled={
+                                            billingViewLoadingKey ===
+                                            `${line.sourceType}:${line.sourceId}`
+                                          }
+                                          onClick={() =>
+                                            openBillingReport(line)
+                                          }
+                                        >
+                                          {billingViewLoadingKey ===
+                                          `${line.sourceType}:${line.sourceId}` ? (
+                                            <Spinner dark />
+                                          ) : (
+                                            <FileText className="h-4 w-4" />
+                                          )}
+                                          {billingViewLoadingKey ===
+                                          `${line.sourceType}:${line.sourceId}`
+                                            ? "Opening..."
+                                            : "View"}
+                                        </Button>
+                                      ) : (
+                                        <span className="text-xs text-slate-300">
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {invoiceDetail.status === "DRAFT" &&
+                                      isManager && (
+                                        <td className="px-4 py-3 text-right">
+                                          <div className="flex justify-end gap-2">
                                             <Button
                                               variant="secondary"
-                                              onClick={() =>
-                                                openAddExtraCharge({
-                                                  sourceType: line.sourceType,
-                                                  sourceId: line.sourceId,
-                                                  formNumber: line.formNumber,
-                                                  reportNumber:
-                                                    line.reportNumber,
-                                                })
+                                              disabled={
+                                                working === `LINE:${line.id}`
                                               }
-                                              disabled={!!working}
+                                              onClick={() => overrideLine(line)}
                                             >
-                                              <Plus className="h-4 w-4" />
-                                              Additional Charge
+                                              {working === `LINE:${line.id}` ? (
+                                                <Spinner dark />
+                                              ) : null}
+                                              Override
                                             </Button>
+
+                                            <Button
+                                              variant="danger"
+                                              disabled={!!working}
+                                              onClick={() =>
+                                                deleteInvoiceLine(line)
+                                              }
+                                              className="px-2.5"
+                                            >
+                                              {working ===
+                                              `DELETE_LINE:${line.id}` ? (
+                                                <Spinner />
+                                              ) : (
+                                                <Trash2 className="h-4 w-4" />
+                                              )}
+                                              Delete
+                                            </Button>
+
+                                            {isFirstSourceLine && (
+                                              <Button
+                                                variant="secondary"
+                                                onClick={() =>
+                                                  openAddExtraCharge({
+                                                    sourceType: line.sourceType,
+                                                    sourceId: line.sourceId,
+                                                    formNumber: line.formNumber,
+                                                    reportNumber:
+                                                      line.reportNumber,
+                                                  })
+                                                }
+                                                disabled={!!working}
+                                              >
+                                                <Plus className="h-4 w-4" />
+                                                Additional Charge
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      )}
+                                  </tr>
+
+                                  {isLastSourceLine &&
+                                    sourceExtraCharges.map((charge) => (
+                                      <tr
+                                        key={`extra-${charge.id}`}
+                                        className="border-t border-slate-100 bg-slate-50/70"
+                                      >
+                                        {invoiceDetail.status === "DRAFT" &&
+                                          isManager && (
+                                            <td className="px-3 py-2" />
                                           )}
-                                        </div>
-                                      </td>
-                                    )}
-                                </tr>
+
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-2 whitespace-nowrap">
+                                            <span className="text-slate-300">
+                                              ↳
+                                            </span>
+                                            <span className="rounded-md border border-red-200 bg-white text-red-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                                              Additional
+                                            </span>
+                                          </div>
+                                        </td>
+
+                                        <td colSpan={4} className="px-4 py-2">
+                                          <div className="font-medium text-slate-700">
+                                            {charge.name}
+                                          </div>
+                                          <div className="mt-0.5 text-[11px] text-slate-400">
+                                            Added to {line.formNumber}
+                                          </div>
+                                        </td>
+
+                                        <td className="px-4 py-2 text-right text-xs text-slate-400">
+                                          —
+                                        </td>
+
+                                        <td className="px-4 py-2 text-right font-semibold text-slate-800">
+                                          +{money(charge.amount)}
+                                        </td>
+
+                                        <td className="px-4 py-2">
+                                          <span className="inline-flex rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-medium text-red-500">
+                                            Form charge
+                                          </span>
+                                        </td>
+
+                                        <td className="px-4 py-2" />
+
+                                        {invoiceDetail.status === "DRAFT" &&
+                                          isManager && (
+                                            <td className="px-4 py-2">
+                                              <div className="flex justify-end gap-1.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    openEditExtraCharge(charge)
+                                                  }
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700"
+                                                  title="Edit additional charge"
+                                                >
+                                                  <Pencil className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    openDeleteExtraCharge(
+                                                      charge,
+                                                    )
+                                                  }
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-rose-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                                  title="Delete additional charge"
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                              </div>
+                                            </td>
+                                          )}
+                                      </tr>
+                                    ))}
+                                </React.Fragment>
                               );
                             })}
 
@@ -7456,7 +7773,7 @@ export default function BillingDashboard() {
                                   colSpan={
                                     invoiceDetail.status === "DRAFT" &&
                                     isManager
-                                      ? 10
+                                      ? 11
                                       : 9
                                   }
                                   className="px-4 py-10 text-center text-sm text-slate-500"
@@ -7467,128 +7784,6 @@ export default function BillingDashboard() {
                             )}
                           </tbody>
                         </table>
-                      </div>
-
-                      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-                          <div>
-                            <h3 className="text-sm font-semibold text-slate-900">
-                              Additional Charges by Form
-                            </h3>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              Add named report-level charges such as rush
-                              processing or special handling.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-sm">
-                            <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
-                              <tr>
-                                <th className="px-4 py-3">Form #</th>
-                                <th className="px-4 py-3">Report #</th>
-                                <th className="px-4 py-3">
-                                  Additional Charges
-                                </th>
-                                <th className="px-4 py-3 text-right">
-                                  Extra Total
-                                </th>
-                              </tr>
-                            </thead>
-
-                            <tbody className="divide-y divide-slate-100">
-                              {invoiceSourceRows
-                                .filter((row) => row.charges.length > 0)
-                                .map((row) => {
-                                  const extraTotal = row.charges.reduce(
-                                    (sum, charge) =>
-                                      sum + Number(charge.amount || 0),
-                                    0,
-                                  );
-
-                                  return (
-                                    <tr key={row.key} className="align-top">
-                                      <td className="px-4 py-3 font-medium text-slate-900">
-                                        {row.formNumber}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-600">
-                                        {row.reportNumber}
-                                      </td>
-                                      <td className="px-4 py-3">
-                                        {row.charges.length ? (
-                                          <div className="space-y-2">
-                                            {row.charges.map((charge) => (
-                                              <div
-                                                key={charge.id}
-                                                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                                              >
-                                                <div className="min-w-0">
-                                                  <div className="truncate text-sm font-medium text-slate-800">
-                                                    {charge.name}
-                                                  </div>
-                                                  <div className="text-xs text-slate-500">
-                                                    {money(charge.amount)}
-                                                  </div>
-                                                </div>
-
-                                                {invoiceDetail.status ===
-                                                  "DRAFT" &&
-                                                  isManager && (
-                                                    <div className="flex shrink-0 gap-1">
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          openEditExtraCharge(
-                                                            charge,
-                                                          )
-                                                        }
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-                                                        title="Edit additional charge"
-                                                      >
-                                                        <Pencil className="h-3.5 w-3.5" />
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          openDeleteExtraCharge(
-                                                            charge,
-                                                          )
-                                                        }
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                                                        title="Delete additional charge"
-                                                      >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                      </button>
-                                                    </div>
-                                                  )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : null}
-                                      </td>
-                                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                                        {money(extraTotal)}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-
-                              {invoiceSourceRows.every(
-                                (row) => row.charges.length === 0,
-                              ) && (
-                                <tr>
-                                  <td
-                                    colSpan={4}
-                                    className="px-4 py-8 text-center text-sm text-slate-500"
-                                  >
-                                    No additional charges added.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
                       </div>
                     </>
                   )}
@@ -8101,6 +8296,126 @@ export default function BillingDashboard() {
 
             <div className="modal-body min-h-0 flex-1 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
               {renderBillingViewedReport(billingViewedReport)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveInvoiceLinesDialog && invoiceDetail && (
+        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Billing
+                </div>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">
+                  Move Invoice Lines
+                </h3>
+                <p className="mt-1 text-sm leading-5 text-slate-500">
+                  Move the selected charges to another DRAFT report invoice for
+                  the same client and billing period.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!working) setMoveInvoiceLinesDialog(null);
+                }}
+                disabled={!!working}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-medium text-slate-500">From</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {invoiceDetail.invoiceNumber || "Draft invoice"}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {invoiceDetail.clientCode} ·{" "}
+                    {moveInvoiceLinesDialog.lineIds.length} selected line
+                    {moveInvoiceLinesDialog.lineIds.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <div className="text-xs font-medium text-blue-700">
+                    Destination
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-blue-950">
+                    Same client · same billing period
+                  </div>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  Move To Invoice
+                </span>
+                <select
+                  autoFocus
+                  value={moveInvoiceLinesDialog.targetInvoiceId}
+                  onChange={(event) =>
+                    setMoveInvoiceLinesDialog({
+                      ...moveInvoiceLinesDialog,
+                      targetInvoiceId: event.target.value,
+                    })
+                  }
+                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  {moveInvoiceLinesDialog.targets.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.invoiceNumber || "Draft invoice"} ·{" "}
+                      {money(target.total)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                The selected line charge keys stay active while they are moved,
+                so they will not return to Unbilled. If every line is moved out
+                of the source invoice, its additional charges and invoice
+                adjustment are carried over when applicable, and the empty
+                source invoice is automatically marked VOID as merged.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+              <Button
+                variant="secondary"
+                onClick={() => setMoveInvoiceLinesDialog(null)}
+                disabled={working === "MOVE_LINES"}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                onClick={submitMoveSelectedInvoiceLines}
+                disabled={
+                  working === "MOVE_LINES" ||
+                  !moveInvoiceLinesDialog.targetInvoiceId
+                }
+              >
+                {working === "MOVE_LINES" ? (
+                  <Spinner />
+                ) : (
+                  <ArrowRightLeft className="h-4 w-4" />
+                )}
+                Move {moveInvoiceLinesDialog.lineIds.length} Line
+                {moveInvoiceLinesDialog.lineIds.length === 1 ? "" : "s"}
+              </Button>
             </div>
           </div>
         </div>
@@ -8834,6 +9149,56 @@ export default function BillingDashboard() {
                       : extraChargeDialog.charge.reportNumber}
                   </span>
                 </div>
+
+                {extraChargeDialog.kind === "ADD" &&
+                  (invoiceDetail?.extraChargeSuggestions?.length ?? 0) > 0 && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                        Previous Additional Charge
+                      </span>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+
+                          const index = Number(e.target.value);
+                          const suggestion =
+                            invoiceDetail?.extraChargeSuggestions?.[index];
+
+                          if (!suggestion) return;
+
+                          setExtraChargeDialog({
+                            ...extraChargeDialog,
+                            name: suggestion.name,
+                            amount: suggestion.amount,
+                          });
+                        }}
+                        className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      >
+                        <option value="">
+                          Select a previously used charge...
+                        </option>
+                        {invoiceDetail?.extraChargeSuggestions?.map(
+                          (suggestion, index) => (
+                            <option
+                              key={`${suggestion.name}:${suggestion.amount}`}
+                              value={index}
+                            >
+                              {suggestion.name} — {money(suggestion.amount)}
+                              {suggestion.usageCount > 1
+                                ? ` · used ${suggestion.usageCount}×`
+                                : ""}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Selecting a previous charge fills both the name and
+                        amount. You can still edit either field before adding
+                        it.
+                      </p>
+                    </label>
+                  )}
 
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-slate-600">

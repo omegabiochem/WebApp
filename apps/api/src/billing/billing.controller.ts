@@ -391,6 +391,36 @@ export class BillingController {
 
   /* =========================================================
 
+     MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES
+
+  ========================================================= */
+
+  @Post('invoices/:invoiceId/lines/move')
+  moveInvoiceLines(
+    @Req() req: Request,
+
+    @Param('invoiceId') invoiceId: string,
+
+    @Body()
+    body: {
+      targetInvoiceId: string;
+
+      lineIds: string[];
+    },
+  ) {
+    return this.billing.moveInvoiceLines(
+      (req as any).user,
+
+      invoiceId,
+
+      body?.targetInvoiceId,
+
+      body?.lineIds,
+    );
+  }
+
+  /* =========================================================
+
      DELETE REPORT INVOICE LINE
 
   ========================================================= */

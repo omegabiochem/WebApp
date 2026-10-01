@@ -183,7 +183,7 @@ export const router = createBrowserRouter([
         path: "billing",
         element: (
           <RequireAuth>
-            <RequireRole roles={["ADMIN", "SYSTEMADMIN"]}>
+            <RequireRole roles={["ADMIN", "SYSTEMADMIN", "FRONTDESK"]}>
               <BillingDashboard />
             </RequireRole>
           </RequireAuth>

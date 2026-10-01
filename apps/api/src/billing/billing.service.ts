@@ -3496,6 +3496,444 @@ export class BillingService {
   }
 
   /* =======================================================
+   MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES
+======================================================= */
+
+  async moveInvoiceLines(
+    user: AuthUser,
+    sourceInvoiceId: string,
+    targetInvoiceIdInput: string,
+    lineIdsInput: string[],
+  ) {
+    this.assertManager(user);
+
+    const targetInvoiceId = String(targetInvoiceIdInput ?? '').trim();
+
+    const lineIds = Array.from(
+      new Set(
+        (Array.isArray(lineIdsInput) ? lineIdsInput : [])
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (!targetInvoiceId) {
+      throw new BadRequestException('targetInvoiceId is required');
+    }
+
+    if (sourceInvoiceId === targetInvoiceId) {
+      throw new BadRequestException(
+        'Source and target invoice must be different',
+      );
+    }
+
+    if (lineIds.length === 0) {
+      throw new BadRequestException('Select at least one invoice line to move');
+    }
+
+    const now = new Date();
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const [sourceInvoice, targetInvoice] = await Promise.all([
+        tx.billingInvoice.findUnique({
+          where: {
+            id: sourceInvoiceId,
+          },
+          select: {
+            id: true,
+            invoiceNumber: true,
+            invoiceKind: true,
+            clientCode: true,
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+            adjustmentAmount: true,
+          },
+        }),
+
+        tx.billingInvoice.findUnique({
+          where: {
+            id: targetInvoiceId,
+          },
+          select: {
+            id: true,
+            invoiceNumber: true,
+            invoiceKind: true,
+            clientCode: true,
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+            adjustmentAmount: true,
+          },
+        }),
+      ]);
+
+      if (!sourceInvoice) {
+        throw new NotFoundException('Source invoice not found');
+      }
+
+      if (!targetInvoice) {
+        throw new NotFoundException('Target invoice not found');
+      }
+
+      if (
+        sourceInvoice.status !== 'DRAFT' ||
+        targetInvoice.status !== 'DRAFT'
+      ) {
+        throw new BadRequestException(
+          'Invoice lines can only be moved between DRAFT invoices. Reopen a CONFIRMED invoice first.',
+        );
+      }
+
+      if (
+        sourceInvoice.invoiceKind !== 'REPORT' ||
+        targetInvoice.invoiceKind !== 'REPORT'
+      ) {
+        throw new BadRequestException(
+          'Invoice lines can only be moved between REPORT invoices',
+        );
+      }
+
+      if (sourceInvoice.clientCode !== targetInvoice.clientCode) {
+        throw new BadRequestException(
+          'Invoice lines can only be moved between invoices for the same client',
+        );
+      }
+
+      if (
+        sourceInvoice.periodStart.getTime() !==
+          targetInvoice.periodStart.getTime() ||
+        sourceInvoice.periodEnd.getTime() !== targetInvoice.periodEnd.getTime()
+      ) {
+        throw new BadRequestException(
+          'Invoice lines can only be moved between invoices for the same billing period',
+        );
+      }
+
+      const selectedLines = await tx.billingInvoiceLine.findMany({
+        where: {
+          invoiceId: sourceInvoiceId,
+          id: {
+            in: lineIds,
+          },
+        },
+      });
+
+      if (selectedLines.length !== lineIds.length) {
+        throw new BadRequestException(
+          'One or more selected lines no longer belong to the source invoice. Refresh and try again.',
+        );
+      }
+
+      const selectedChargeKeys = selectedLines.map((line) => line.chargeKey);
+
+      const targetDuplicate = await tx.billingInvoiceLine.findFirst({
+        where: {
+          invoiceId: targetInvoiceId,
+          chargeKey: {
+            in: selectedChargeKeys,
+          },
+        },
+        select: {
+          id: true,
+          chargeKey: true,
+          formNumber: true,
+        },
+      });
+
+      if (targetDuplicate) {
+        throw new BadRequestException(
+          `Target invoice already contains charge ${targetDuplicate.formNumber} / ${targetDuplicate.chargeKey}`,
+        );
+      }
+
+      /*
+       * Additional charges belong to a report/source rather than to an
+       * individual pricing line. Move those charges only when EVERY line
+       * for that source is being moved, so a partial move never separates
+       * an additional charge from the report that still remains behind.
+       */
+      const selectedIdSet = new Set(selectedLines.map((line) => line.id));
+
+      const sourcePairs = Array.from(
+        new Map(
+          selectedLines.map((line) => [
+            `${line.sourceType}:${line.sourceId}`,
+            {
+              sourceType: line.sourceType,
+              sourceId: line.sourceId,
+            },
+          ]),
+        ).values(),
+      );
+
+      const allLinesForSelectedSources =
+        sourcePairs.length > 0
+          ? await tx.billingInvoiceLine.findMany({
+              where: {
+                invoiceId: sourceInvoiceId,
+                OR: sourcePairs.map((source) => ({
+                  sourceType: source.sourceType,
+                  sourceId: source.sourceId,
+                })),
+              },
+              select: {
+                id: true,
+                sourceType: true,
+                sourceId: true,
+              },
+            })
+          : [];
+
+      const lineIdsBySource = new Map<string, string[]>();
+
+      for (const line of allLinesForSelectedSources) {
+        const key = `${line.sourceType}:${line.sourceId}`;
+        const current = lineIdsBySource.get(key) ?? [];
+        current.push(line.id);
+        lineIdsBySource.set(key, current);
+      }
+
+      const fullyMovedSources = sourcePairs.filter((source) => {
+        const key = `${source.sourceType}:${source.sourceId}`;
+        const sourceLineIds = lineIdsBySource.get(key) ?? [];
+
+        return (
+          sourceLineIds.length > 0 &&
+          sourceLineIds.every((id) => selectedIdSet.has(id))
+        );
+      });
+
+      let movedLineCount = 0;
+
+      for (const lineIdBatch of chunkArray(lineIds)) {
+        const moved = await tx.billingInvoiceLine.updateMany({
+          where: {
+            invoiceId: sourceInvoiceId,
+            id: {
+              in: lineIdBatch,
+            },
+          },
+          data: {
+            invoiceId: targetInvoiceId,
+          },
+        });
+
+        movedLineCount += moved.count;
+      }
+
+      if (movedLineCount !== lineIds.length) {
+        throw new BadRequestException(
+          'Not all selected invoice lines could be moved. Refresh and try again.',
+        );
+      }
+
+      let movedExtraChargeCount = 0;
+
+      if (fullyMovedSources.length > 0) {
+        const movedCharges = await tx.billingInvoiceExtraCharge.updateMany({
+          where: {
+            invoiceId: sourceInvoiceId,
+            OR: fullyMovedSources.map((source) => ({
+              sourceType: source.sourceType,
+              sourceId: source.sourceId,
+            })),
+          },
+          data: {
+            invoiceId: targetInvoiceId,
+            updatedBy: user.userId,
+          },
+        });
+
+        movedExtraChargeCount = movedCharges.count;
+      }
+
+      const [remainingLineCount, remainingExtraChargeCount, manualLineCount] =
+        await Promise.all([
+          tx.billingInvoiceLine.count({
+            where: {
+              invoiceId: sourceInvoiceId,
+            },
+          }),
+          tx.billingInvoiceExtraCharge.count({
+            where: {
+              invoiceId: sourceInvoiceId,
+            },
+          }),
+          tx.billingManualInvoiceLine.count({
+            where: {
+              invoiceId: sourceInvoiceId,
+            },
+          }),
+        ]);
+
+      const sourceBecameEmpty =
+        remainingLineCount === 0 &&
+        remainingExtraChargeCount === 0 &&
+        manualLineCount === 0;
+
+      let transferredAdjustment = new Prisma.Decimal(0);
+
+      if (sourceBecameEmpty && !sourceInvoice.adjustmentAmount.eq(0)) {
+        transferredAdjustment = sourceInvoice.adjustmentAmount;
+
+        await tx.billingInvoice.update({
+          where: {
+            id: targetInvoiceId,
+          },
+          data: {
+            adjustmentAmount: targetInvoice.adjustmentAmount.plus(
+              sourceInvoice.adjustmentAmount,
+            ),
+            updatedBy: user.userId,
+          },
+        });
+
+        await tx.billingInvoice.update({
+          where: {
+            id: sourceInvoiceId,
+          },
+          data: {
+            adjustmentAmount: new Prisma.Decimal(0),
+            updatedBy: user.userId,
+          },
+        });
+      }
+
+      await this.recalculateInvoiceTotals(tx, targetInvoiceId);
+      await this.recalculateInvoiceTotals(tx, sourceInvoiceId);
+
+      await tx.billingInvoice.update({
+        where: {
+          id: targetInvoiceId,
+        },
+        data: {
+          updatedBy: user.userId,
+        },
+      });
+
+      let sourceClosed = false;
+
+      if (sourceBecameEmpty) {
+        const targetLabel =
+          targetInvoice.invoiceNumber ?? `draft ${targetInvoice.id}`;
+
+        await tx.billingInvoice.update({
+          where: {
+            id: sourceInvoiceId,
+          },
+          data: {
+            status: 'VOID',
+            activeKey: null,
+            voidReason: `Merged into ${targetLabel}`,
+            voidedAt: now,
+            voidedBy: user.userId,
+            updatedBy: user.userId,
+          },
+        });
+
+        sourceClosed = true;
+      } else {
+        await tx.billingInvoice.update({
+          where: {
+            id: sourceInvoiceId,
+          },
+          data: {
+            updatedBy: user.userId,
+          },
+        });
+      }
+
+      return {
+        clientCode: sourceInvoice.clientCode,
+        sourceInvoiceNumber: sourceInvoice.invoiceNumber,
+        targetInvoiceNumber: targetInvoice.invoiceNumber,
+        movedLineIds: selectedLines.map((line) => line.id),
+        movedChargeKeys: selectedLines.map((line) => line.chargeKey),
+        movedForms: Array.from(
+          new Set(selectedLines.map((line) => line.formNumber)),
+        ),
+        movedLineCount,
+        movedExtraChargeCount,
+        sourceClosed,
+        transferredAdjustment: transferredAdjustment.toFixed(2),
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_LINES_MOVED_OUT',
+      invoiceId: sourceInvoiceId,
+      clientCode: result.clientCode,
+      details:
+        `Moved ${result.movedLineCount} invoice line(s) to ` +
+        `${result.targetInvoiceNumber ?? targetInvoiceId}`,
+      changes: {
+        targetInvoiceId,
+        targetInvoiceNumber: result.targetInvoiceNumber,
+        movedLineIds: result.movedLineIds,
+        movedChargeKeys: result.movedChargeKeys,
+        movedForms: result.movedForms,
+        movedLineCount: result.movedLineCount,
+        movedExtraChargeCount: result.movedExtraChargeCount,
+        transferredAdjustment: result.transferredAdjustment,
+        sourceClosed: result.sourceClosed,
+      },
+    });
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_LINES_MOVED_IN',
+      invoiceId: targetInvoiceId,
+      clientCode: result.clientCode,
+      details:
+        `Received ${result.movedLineCount} invoice line(s) from ` +
+        `${result.sourceInvoiceNumber ?? sourceInvoiceId}`,
+      changes: {
+        sourceInvoiceId,
+        sourceInvoiceNumber: result.sourceInvoiceNumber,
+        movedLineIds: result.movedLineIds,
+        movedChargeKeys: result.movedChargeKeys,
+        movedForms: result.movedForms,
+        movedLineCount: result.movedLineCount,
+        movedExtraChargeCount: result.movedExtraChargeCount,
+        transferredAdjustment: result.transferredAdjustment,
+      },
+    });
+
+    if (result.sourceClosed) {
+      await this.auditInvoice(user, {
+        action: 'INVOICE_MERGED_AND_VOIDED',
+        invoiceId: sourceInvoiceId,
+        clientCode: result.clientCode,
+        details:
+          `${result.sourceInvoiceNumber ?? sourceInvoiceId} was emptied and ` +
+          `voided after its charges were merged into ` +
+          `${result.targetInvoiceNumber ?? targetInvoiceId}`,
+        changes: {
+          targetInvoiceId,
+          targetInvoiceNumber: result.targetInvoiceNumber,
+          movedLineCount: result.movedLineCount,
+          movedExtraChargeCount: result.movedExtraChargeCount,
+          transferredAdjustment: result.transferredAdjustment,
+        },
+      });
+    }
+
+    const [sourceInvoice, targetInvoice] = await Promise.all([
+      this.getInvoice(user, sourceInvoiceId),
+      this.getInvoice(user, targetInvoiceId),
+    ]);
+
+    return {
+      sourceInvoice,
+      targetInvoice,
+      movedLineCount: result.movedLineCount,
+      movedExtraChargeCount: result.movedExtraChargeCount,
+      transferredAdjustment: result.transferredAdjustment,
+      sourceClosed: result.sourceClosed,
+    };
+  }
+
+  /* =======================================================
    DELETE REPORT INVOICE LINE
 ======================================================= */
 
@@ -5799,6 +6237,67 @@ export class BillingService {
       ],
     });
 
+    /*
+     * ADDITIONAL CHARGE HISTORY
+     * -------------------------------------------------------
+     * Reuse previously entered charge name + amount pairs so
+     * staff do not need to type the same charge repeatedly for
+     * every form. Keep the list bounded and deduplicate it in
+     * application code so no schema change is required.
+     */
+    const recentExtraChargeHistory =
+      await this.prisma.billingInvoiceExtraCharge.findMany({
+        orderBy: {
+          createdAt: 'desc',
+        },
+
+        take: 250,
+
+        select: {
+          name: true,
+          amount: true,
+          createdAt: true,
+        },
+      });
+
+    const extraChargeSuggestionMap = new Map<
+      string,
+      {
+        name: string;
+        amount: string;
+        usageCount: number;
+        lastUsedAt: string;
+      }
+    >();
+
+    for (const charge of recentExtraChargeHistory) {
+      const name = String(charge.name ?? '').trim();
+      const amount = charge.amount.toFixed(2);
+
+      if (!name) {
+        continue;
+      }
+
+      const key = `${name.toLowerCase()}::${amount}`;
+      const existing = extraChargeSuggestionMap.get(key);
+
+      if (existing) {
+        existing.usageCount += 1;
+        continue;
+      }
+
+      extraChargeSuggestionMap.set(key, {
+        name,
+        amount,
+        usageCount: 1,
+        lastUsedAt: charge.createdAt.toISOString(),
+      });
+    }
+
+    const extraChargeSuggestions = Array.from(
+      extraChargeSuggestionMap.values(),
+    ).slice(0, 75);
+
     return {
       ...invoice,
 
@@ -5847,6 +6346,8 @@ export class BillingService {
         ...charge,
         amount: charge.amount.toFixed(2),
       })),
+
+      extraChargeSuggestions,
 
       revisionRootId,
 
