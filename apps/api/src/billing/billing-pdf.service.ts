@@ -1310,7 +1310,7 @@ export class BillingPdfService {
 
      *
 
-     * Invoice No.      -  INV-2026-0003
+     * Invoice No.      -  INV-20260003
 
      * Invoice Date     -  Aug 19, 2026
 
@@ -2494,8 +2494,20 @@ export class BillingPdfService {
 
     const checksum = createHash('sha256').update(bytes).digest('hex');
 
-    const year =
-      invoice.invoiceNumber.split('-')[1] || String(new Date().getFullYear());
+    /*
+     * Invoice numbers now use INV-YYYYNNNN, for example:
+     *
+     *   INV-20260003
+     *   INV-20260003-R1
+     *
+     * Keep PDF storage grouped by the four-digit invoice year.
+     * Also retain compatibility with older INV-YYYY-NNNN invoices.
+     */
+    const invoiceYearMatch = /^INV-(\d{4})(?:\d{4}|-\d{4})(?:-R\d+)?$/i.exec(
+      String(invoice.invoiceNumber ?? ''),
+    );
+
+    const year = invoiceYearMatch?.[1] || String(new Date().getFullYear());
 
     const filename = this.safeFilename(`${invoice.invoiceNumber}.pdf`);
 
@@ -2518,7 +2530,7 @@ export class BillingPdfService {
 
        *
 
-       * local/billing/invoices/2026/INV-2026-0001.pdf
+       * local/billing/invoices/2026/INV-20260001.pdf
 
        *
 

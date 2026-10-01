@@ -4565,13 +4565,13 @@ export class BillingService {
        * NUMBERING RULE
        * -----------------------------------------------------
        * Brand-new DRAFT:
-       *   invoiceNumber is null -> allocate INV-YYYY-NNNN.
+       *   invoiceNumber is null -> allocate INV-YYYYNNNN.
        *
        * Reopened CONFIRMED invoice:
-       *   already has INV-YYYY-NNNN -> KEEP SAME NUMBER.
+       *   already has INV-YYYYNNNN -> KEEP SAME NUMBER.
        *
        * Revision:
-       *   already has INV-YYYY-NNNN-R1 / R2... -> KEEP IT.
+       *   already has INV-YYYYNNNN-R1 / R2... -> KEEP IT.
        */
       let invoiceNumber = invoice.invoiceNumber;
 
@@ -4594,7 +4594,7 @@ export class BillingService {
           },
         });
 
-        invoiceNumber = `INV-${invoiceYear}-${String(
+        invoiceNumber = `INV-${invoiceYear}${String(
           sequence.lastNumber,
         ).padStart(4, '0')}`;
       }
@@ -5058,8 +5058,8 @@ export class BillingService {
          * It receives its revision invoice number NOW,
          * not during confirmation:
          *
-         *   INV-2026-0003-R1
-         *   INV-2026-0003-R2
+         *   INV-20260003-R1
+         *   INV-20260003-R2
          *
          * confirmInvoice() has been updated to preserve an
          * already-existing invoiceNumber.
