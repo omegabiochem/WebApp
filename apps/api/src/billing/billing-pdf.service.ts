@@ -10,91 +10,111 @@ import { Prisma, UserRole } from '@prisma/client';
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 
 import { createHash } from 'crypto';
+
 import { writeFile, unlink } from 'fs/promises';
+
 import { tmpdir } from 'os';
+
 import { join } from 'path';
+
 import type { Readable } from 'stream';
 
 import { PrismaService } from 'prisma/prisma.service';
 
 import { StorageService } from '../storage/storage.service';
+
 import { getRequestContext } from '../common/request-context';
 
 type AuthUser = {
   userId: string;
+
   role: UserRole;
 };
 
 type PdfReportRow = {
   key: string;
+
   formNumber: string;
+
   reportNumber: string;
+
+  resultSentToClientAt: Date | string | null;
+
   description: string;
+
   testLabels: string[];
+
   itemLabels: string[];
+
   extraChargeLabels: string[];
+
   amount: number;
+
   manualOverride: boolean;
 };
 
-const BILLING_TIME_ZONE =
-  process.env.BILLING_TIME_ZONE ||
-  'America/New_York';
+const BILLING_TIME_ZONE = process.env.BILLING_TIME_ZONE || 'America/New_York';
 
 /*
+
  * Invoice letterhead.
+
  *
+
  * Defaults match the laboratory report header so local
+
  * development also renders the correct letterhead.
+
  *
+
  * Production can override every value from .env.
+
  */
+
 const COMPANY_NAME =
-  process.env.BILLING_COMPANY_NAME ||
-  'OMEGA / BIOCHEM LABORATORIES, INC.';
+  process.env.BILLING_COMPANY_NAME || 'OMEGA / BIOCHEM LABORATORIES, INC.';
 
 const COMPANY_SUBTITLE =
-  process.env.BILLING_COMPANY_SUBTITLE ||
-  'FDA REG. | ISO 17025 ACC';
+  process.env.BILLING_COMPANY_SUBTITLE || 'FDA REG. | ISO 17025 ACC';
 
 const COMPANY_ADDRESS =
   process.env.BILLING_COMPANY_ADDRESS ||
   process.env.BILLING_COMPANY_ADDRESS_1 ||
   '56 PARK AVENUE, LYNDHURST, NJ 07071';
 
-const COMPANY_ADDRESS_2 =
-  process.env.BILLING_COMPANY_ADDRESS_2 ||
-  '';
+const COMPANY_ADDRESS_2 = process.env.BILLING_COMPANY_ADDRESS_2 || '';
 
-const COMPANY_PHONE =
-  process.env.BILLING_COMPANY_PHONE ||
-  '(201) 883 1222';
+const COMPANY_PHONE = process.env.BILLING_COMPANY_PHONE || '(201) 883 1222';
 
-const COMPANY_FAX =
-  process.env.BILLING_COMPANY_FAX ||
-  '(201) 883 0449';
+const COMPANY_FAX = process.env.BILLING_COMPANY_FAX || '(201) 883 0449';
 
 const COMPANY_EMAIL =
-  process.env.BILLING_COMPANY_EMAIL ||
-  'lab@omegabiochem.com';
+  process.env.BILLING_COMPANY_EMAIL || 'lab@omegabiochem.com';
 
 const PAGE_WIDTH = 612;
+
 const PAGE_HEIGHT = 792;
 
 const LEFT = 42;
+
 const RIGHT = 42;
+
 const TOP = 44;
+
 const BOTTOM = 44;
 
 @Injectable()
 export class BillingPdfService {
   constructor(
     private readonly prisma: PrismaService,
+
     private readonly storage: StorageService,
   ) {}
 
   /* =========================================================
+
      AUTH
+
   ========================================================= */
 
   private assertReader(user: AuthUser) {
@@ -114,7 +134,9 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      FORMATTING
+
   ========================================================= */
 
   private money(value: number) {
@@ -136,23 +158,22 @@ export class BillingPdfService {
       timeZone: BILLING_TIME_ZONE,
 
       month: 'short',
+
       day: '2-digit',
+
       year: 'numeric',
     }).format(date);
   }
 
   private addDays(
     value: Date | string,
+
     days: number,
   ) {
     const date =
-      value instanceof Date
-        ? new Date(value.getTime())
-        : new Date(value);
+      value instanceof Date ? new Date(value.getTime()) : new Date(value);
 
-    date.setDate(
-      date.getDate() + days,
-    );
+    date.setDate(date.getDate() + days);
 
     return date;
   }
@@ -163,10 +184,15 @@ export class BillingPdfService {
 
   private drawRight(
     page: PDFPage,
+
     text: string,
+
     xRight: number,
+
     y: number,
+
     size: number,
+
     font: PDFFont,
   ) {
     const width = font.widthOfTextAtSize(text, size);
@@ -175,17 +201,24 @@ export class BillingPdfService {
       x: xRight - width,
 
       y,
+
       size,
+
       font,
     });
   }
 
   private drawCentered(
     page: PDFPage,
+
     text: string,
+
     y: number,
+
     size: number,
+
     font: PDFFont,
+
     options?: {
       color?: ReturnType<typeof rgb>;
     },
@@ -196,17 +229,21 @@ export class BillingPdfService {
       return;
     }
 
-    const width =
-      font.widthOfTextAtSize(
-        value,
-        size,
-      );
+    const width = font.widthOfTextAtSize(
+      value,
+
+      size,
+    );
 
     page.drawText(value, {
       x: (PAGE_WIDTH - width) / 2,
+
       y,
+
       size,
+
       font,
+
       ...(options?.color
         ? {
             color: options.color,
@@ -226,40 +263,57 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      PAGE HEADER
+
   ========================================================= */
 
   private drawHeader(
     page: PDFPage,
+
     fonts: {
       regular: PDFFont;
+
       bold: PDFFont;
     },
+
     invoiceNumber: string,
+
     revisionNumber = 0,
   ) {
-    let y =
-      PAGE_HEIGHT -
-      TOP;
+    let y = PAGE_HEIGHT - TOP;
 
-    const brandBlue =
-      rgb(0, 0.18, 0.78);
+    const brandBlue = rgb(0, 0.18, 0.78);
 
     /*
+
      * Match the laboratory report letterhead:
+
      *
+
      * OMEGA / BIOCHEM LABORATORIES, INC.
+
      * (FDA REG. | ISO 17025 ACC)
+
      * 56 PARK AVENUE, LYNDHURST, NJ 07071
+
      * Tel ... | Fax ...
+
      * Email ...
+
      */
+
     this.drawCentered(
       page,
+
       COMPANY_NAME,
+
       y,
+
       17,
+
       fonts.bold,
+
       {
         color: brandBlue,
       },
@@ -269,10 +323,15 @@ export class BillingPdfService {
 
     this.drawCentered(
       page,
+
       `(${COMPANY_SUBTITLE})`,
+
       y,
+
       10,
+
       fonts.bold,
+
       {
         color: brandBlue,
       },
@@ -282,9 +341,13 @@ export class BillingPdfService {
 
     this.drawCentered(
       page,
+
       COMPANY_ADDRESS,
+
       y,
+
       8.5,
+
       fonts.regular,
     );
 
@@ -293,9 +356,13 @@ export class BillingPdfService {
     if (COMPANY_ADDRESS_2) {
       this.drawCentered(
         page,
+
         COMPANY_ADDRESS_2,
+
         y,
+
         8.5,
+
         fonts.regular,
       );
 
@@ -303,23 +370,25 @@ export class BillingPdfService {
     }
 
     const phoneFaxLine = [
-      COMPANY_PHONE
-        ? `Tel: ${COMPANY_PHONE}`
-        : '',
+      COMPANY_PHONE ? `Tel: ${COMPANY_PHONE}` : '',
 
-      COMPANY_FAX
-        ? `Fax: ${COMPANY_FAX}`
-        : '',
+      COMPANY_FAX ? `Fax: ${COMPANY_FAX}` : '',
     ]
+
       .filter(Boolean)
+
       .join('  |  ');
 
     if (phoneFaxLine) {
       this.drawCentered(
         page,
+
         phoneFaxLine,
+
         y,
+
         8.5,
+
         fonts.regular,
       );
 
@@ -327,15 +396,19 @@ export class BillingPdfService {
     }
 
     if (COMPANY_EMAIL) {
-      const emailLabel =
-        `Email: ${COMPANY_EMAIL}`;
+      const emailLabel = `Email: ${COMPANY_EMAIL}`;
 
       this.drawCentered(
         page,
+
         emailLabel,
+
         y,
+
         8.5,
+
         fonts.regular,
+
         {
           color: brandBlue,
         },
@@ -347,63 +420,74 @@ export class BillingPdfService {
     page.drawLine({
       start: {
         x: LEFT,
+
         y,
       },
 
       end: {
-        x:
-          PAGE_WIDTH -
-          RIGHT,
+        x: PAGE_WIDTH - RIGHT,
+
         y,
       },
 
       thickness: 0.7,
 
-      color:
-        rgb(
-          0.65,
-          0.65,
-          0.65,
-        ),
+      color: rgb(
+        0.65,
+
+        0.65,
+
+        0.65,
+      ),
     });
 
     y -= 22;
 
     /*
+
      * Invoice identity row.
+
      *
+
      * Keep this below the common laboratory letterhead so
+
      * all OMEGA PDFs have the same visual identity while
+
      * the document type remains immediately obvious.
+
      */
-    const documentTitle =
-      revisionNumber > 0
-        ? 'REVISED INVOICE'
-        : 'INVOICE';
+
+    const documentTitle = revisionNumber > 0 ? 'REVISED INVOICE' : 'INVOICE';
 
     page.drawText(
       documentTitle,
+
       {
         x: LEFT,
+
         y,
+
         size: 20,
-        font:
-          fonts.bold,
-        color:
-          brandBlue,
+
+        font: fonts.bold,
+
+        color: brandBlue,
       },
     );
 
-    const invoiceText =
-      `INVOICE NO: ${invoiceNumber}`;
+    const invoiceText = `INVOICE NO: ${invoiceNumber}`;
 
     this.drawRight(
       page,
+
       invoiceText,
-      PAGE_WIDTH -
-        RIGHT,
+
+      PAGE_WIDTH - RIGHT,
+
       y + 3,
+
       10,
+
       fonts.bold,
     );
 
@@ -412,13 +496,13 @@ export class BillingPdfService {
     page.drawLine({
       start: {
         x: LEFT,
+
         y,
       },
 
       end: {
-        x:
-          PAGE_WIDTH -
-          RIGHT,
+        x: PAGE_WIDTH - RIGHT,
+
         y,
       },
 
@@ -446,7 +530,9 @@ export class BillingPdfService {
     return Array.from(
       new Set(
         values
+
           .map((value) => String(value ?? '').trim())
+
           .filter(Boolean),
       ),
     );
@@ -454,18 +540,22 @@ export class BillingPdfService {
 
   private groupInvoiceLines(
     lines: any[],
+
     extraCharges: any[] = [],
   ): PdfReportRow[] {
-    const groups =
-      new Map<string, PdfReportRow & {
+    const groups = new Map<
+      string,
+      PdfReportRow & {
         rawItems: string[];
+
         rawTests: string[];
+
         rawExtraCharges: string[];
-      }>();
+      }
+    >();
 
     for (const line of lines) {
-      const key =
-        `${line.sourceType}:${line.sourceId}`;
+      const key = `${line.sourceType}:${line.sourceId}`;
 
       let group = groups.get(key);
 
@@ -473,16 +563,13 @@ export class BillingPdfService {
         group = {
           key,
 
-          formNumber:
-            String(line.formNumber ?? ''),
+          formNumber: String(line.formNumber ?? ''),
 
-          reportNumber:
-            String(line.reportNumber ?? ''),
+          reportNumber: String(line.reportNumber ?? ''),
 
-          description:
-            this.sourceDescription(
-              line.sourceSnapshot,
-            ),
+          resultSentToClientAt: line.resultSentToClientAt ?? null,
+
+          description: this.sourceDescription(line.sourceSnapshot),
 
           testLabels: [],
 
@@ -505,251 +592,265 @@ export class BillingPdfService {
       }
 
       if (!group.description) {
-        group.description =
-          this.sourceDescription(
-            line.sourceSnapshot,
-          );
+        group.description = this.sourceDescription(line.sourceSnapshot);
       }
 
-      group.rawTests.push(
-        String(
-          line.testLabel ||
-            line.testKey ||
-            '',
-        ),
-      );
+      if (!group.resultSentToClientAt && line.resultSentToClientAt) {
+        group.resultSentToClientAt = line.resultSentToClientAt;
+      }
 
-      const itemLabel =
-        String(
-          line.itemLabel ||
-            line.itemKey ||
-            '',
-        ).trim();
+      group.rawTests.push(String(line.testLabel || line.testKey || ''));
+
+      const itemLabel = String(line.itemLabel || line.itemKey || '').trim();
 
       if (itemLabel) {
-        group.rawItems.push(
-          itemLabel.replace(/_/g, ' '),
-        );
-      } else if (
-        line.activeCount != null
-      ) {
-        const count =
-          Number(line.activeCount);
+        group.rawItems.push(itemLabel.replace(/_/g, ' '));
+      } else if (line.activeCount != null) {
+        const count = Number(line.activeCount);
 
-        group.rawItems.push(
-          `${count} active${
-            count === 1 ? '' : 's'
-          }`,
-        );
+        group.rawItems.push(`${count} active${count === 1 ? '' : 's'}`);
       }
 
-      group.amount +=
-        Number(line.amount ?? 0);
+      group.amount += Number(line.amount ?? 0);
 
       group.manualOverride =
-        group.manualOverride ||
-        Boolean(line.manualOverride);
+        group.manualOverride || Boolean(line.manualOverride);
     }
 
     for (const charge of extraCharges) {
       const key = `${charge.sourceType}:${charge.sourceId}`;
+
       const group = groups.get(key);
 
       if (!group) {
         continue;
       }
 
-      const chargeName = String(charge.name ?? '').trim() || 'Additional Charge';
+      const chargeName =
+        String(charge.name ?? '').trim() || 'Additional Charge';
+
       const chargeAmount = Number(charge.amount ?? 0);
 
-      group.rawExtraCharges.push(
-        `${chargeName} (${this.money(chargeAmount)})`,
-      );
+      group.rawExtraCharges.push(`${chargeName} (${this.money(chargeAmount)})`);
 
       group.amount += chargeAmount;
     }
 
     return [...groups.values()]
+
       .map((group) => {
         const {
           rawItems,
+
           rawTests,
+
           rawExtraCharges,
+
           ...row
         } = group;
 
         return {
           ...row,
 
-          testLabels:
-            this.uniqueText(rawTests),
+          testLabels: this.uniqueText(rawTests),
 
-          itemLabels:
-            this.uniqueText(rawItems),
+          itemLabels: this.uniqueText(rawItems),
 
-          extraChargeLabels:
-            this.uniqueText(rawExtraCharges),
+          extraChargeLabels: this.uniqueText(rawExtraCharges),
         };
       })
+
       .sort((a, b) => {
-        const formCompare =
-          a.formNumber.localeCompare(
-            b.formNumber,
-          );
+        const formCompare = a.formNumber.localeCompare(b.formNumber);
 
         if (formCompare !== 0) {
           return formCompare;
         }
 
-        return a.reportNumber.localeCompare(
-          b.reportNumber,
-        );
+        return a.reportNumber.localeCompare(b.reportNumber);
       });
   }
 
   /* =========================================================
+
      TABLE HEADER
+
   ========================================================= */
 
   private drawTableHeader(
     page: PDFPage,
+
     y: number,
+
     font: PDFFont,
   ) {
     const rowHeight = 22;
 
     page.drawRectangle({
       x: LEFT,
+
       y: y - rowHeight + 4,
 
-      width:
-        PAGE_WIDTH -
-        LEFT -
-        RIGHT,
+      width: PAGE_WIDTH - LEFT - RIGHT,
 
-      height:
-        rowHeight,
+      height: rowHeight,
 
-      color:
-        rgb(
-          0.94,
-          0.94,
-          0.94,
-        ),
+      color: rgb(
+        0.94,
+
+        0.94,
+
+        0.94,
+      ),
     });
 
     page.drawText('Form No.', {
       x: LEFT + 4,
+
       y: y - 10,
+
       size: 7.2,
+
       font,
     });
 
-    page.drawText('Report No.', {
+    page.drawText('Result Sent Date', {
       x: 112,
+
       y: y - 10,
-      size: 7.2,
+
+      size: 6.5,
+
       font,
     });
 
     page.drawText('Description', {
       x: 178,
+
       y: y - 10,
+
       size: 7.2,
+
       font,
     });
 
     page.drawText('Type of Test', {
       x: 306,
+
       y: y - 10,
+
       size: 7.2,
+
       font,
     });
 
     page.drawText(
       'Pathogens / Actives / COA',
+
       {
         x: 390,
+
         y: y - 10,
+
         size: 6.7,
+
         font,
       },
     );
 
     this.drawRight(
       page,
+
       'Amount',
-      PAGE_WIDTH -
-        RIGHT -
-        4,
+
+      PAGE_WIDTH - RIGHT - 4,
+
       y - 10,
+
       7.2,
+
       font,
     );
 
     return y - rowHeight;
   }
 
-
   private drawManualTableHeader(
     page: PDFPage,
+
     y: number,
+
     font: PDFFont,
   ) {
     const rowHeight = 22;
 
     page.drawRectangle({
       x: LEFT,
+
       y: y - rowHeight + 4,
 
-      width:
-        PAGE_WIDTH -
-        LEFT -
-        RIGHT,
+      width: PAGE_WIDTH - LEFT - RIGHT,
 
       height: rowHeight,
 
-      color:
-        rgb(
-          0.94,
-          0.94,
-          0.94,
-        ),
+      color: rgb(
+        0.94,
+
+        0.94,
+
+        0.94,
+      ),
     });
 
     page.drawText('Description', {
       x: LEFT + 4,
+
       y: y - 10,
+
       size: 7.2,
+
       font,
     });
 
     this.drawRight(
       page,
+
       'Qty',
+
       385,
+
       y - 10,
+
       7.2,
+
       font,
     );
 
     this.drawRight(
       page,
+
       'Unit Price',
+
       470,
+
       y - 10,
+
       7.2,
+
       font,
     );
 
     this.drawRight(
       page,
+
       'Amount',
-      PAGE_WIDTH -
-        RIGHT -
-        4,
+
+      PAGE_WIDTH - RIGHT - 4,
+
       y - 10,
+
       7.2,
+
       font,
     );
 
@@ -757,7 +858,9 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      BUILD PDF
+
   ========================================================= */
 
   private async buildPdf(invoice: any) {
@@ -769,13 +872,18 @@ export class BillingPdfService {
 
     const fonts = {
       regular,
+
       bold,
     };
 
     /*
+
      * Make regenerated bytes stable relative
+
      * to the confirmed invoice.
+
      */
+
     const documentDate = invoice.confirmedAt ?? invoice.createdAt ?? new Date();
 
     pdf.setTitle(`Invoice ${invoice.invoiceNumber}`);
@@ -796,26 +904,37 @@ export class BillingPdfService {
 
     let y = this.drawHeader(
       page,
+
       fonts,
+
       invoice.invoiceNumber,
+
       invoice.revisionNumber ?? 0,
     );
 
     /* =====================================================
+
        BILL TO / INVOICE INFO
+
     ===================================================== */
 
     page.drawText('BILL TO', {
       x: LEFT,
+
       y,
+
       size: 9,
+
       font: bold,
     });
 
     page.drawText('INVOICE DETAILS', {
       x: 355,
+
       y,
+
       size: 9,
+
       font: bold,
     });
 
@@ -831,7 +950,9 @@ export class BillingPdfService {
       invoice.billingAddressLine2,
 
       [invoice.billingCity, invoice.billingState, invoice.billingPostalCode]
+
         .filter(Boolean)
+
         .join(', '),
 
       invoice.billingCountry,
@@ -846,8 +967,11 @@ export class BillingPdfService {
     for (const line of billTo) {
       page.drawText(this.truncate(String(line), 48), {
         x: LEFT,
+
         y: billY,
+
         size: 8.5,
+
         font: regular,
       });
 
@@ -857,12 +981,19 @@ export class BillingPdfService {
     const endDisplay = new Date(invoice.periodEnd.getTime() - 1);
 
     /*
+
      * Use the actual send date when available.
+
      *
+
      * For a scheduled invoice, use the scheduled send date.
+
      * For a CONFIRMED invoice that has not yet been sent/scheduled,
+
      * use the confirmation date so the PDF still shows an exact date.
+
      */
+
     const paymentStartDate =
       invoice.sentAt ??
       invoice.scheduledSendAt ??
@@ -873,14 +1004,15 @@ export class BillingPdfService {
       invoice.dueDate ??
       this.addDays(
         paymentStartDate,
+
         30,
       );
 
-    const sixtyDayDate =
-      this.addDays(
-        paymentStartDate,
-        60,
-      );
+    const sixtyDayDate = this.addDays(
+      paymentStartDate,
+
+      60,
+    );
 
     const detailRows = [
       ['Invoice No.', invoice.invoiceNumber],
@@ -891,6 +1023,7 @@ export class BillingPdfService {
         ? [
             [
               'Billing Period',
+
               `${this.formatDate(invoice.periodStart)} - ${this.formatDate(
                 endDisplay,
               )}`,
@@ -898,45 +1031,61 @@ export class BillingPdfService {
           ]
         : []),
 
-      [
-        'Due Date',
-        this.formatDate(exactDueDate),
-      ],
+      ['Due Date', this.formatDate(exactDueDate)],
     ];
 
     let detailY = y;
 
     /*
+
      * Keep every separator "-" in the exact same vertical column:
+
      *
+
      * Invoice No.      -  INV-2026-0003
+
      * Invoice Date     -  Aug 19, 2026
+
      * Billing Period   -  Aug 01, 2026 - Aug 31, 2026
+
      * Due Date         -  Sep 18, 2026
+
      */
+
     const detailLabelX = 355;
+
     const detailDashX = 421;
+
     const detailValueX = 432;
 
     for (const [label, value] of detailRows) {
       page.drawText(label, {
         x: detailLabelX,
+
         y: detailY,
+
         size: 8,
+
         font: bold,
       });
 
       page.drawText('-', {
         x: detailDashX,
+
         y: detailY,
+
         size: 8,
+
         font: bold,
       });
 
       page.drawText(this.truncate(String(value), 30), {
         x: detailValueX,
+
         y: detailY,
+
         size: 8,
+
         font: regular,
       });
 
@@ -944,23 +1093,36 @@ export class BillingPdfService {
     }
 
     /*
+
      * Payment notice is shown directly inside INVOICE DETAILS.
+
      *
+
      * Requested layout:
+
      *
+
      * Notes:   2% additional charge ... (date).
+
      *          3% additional charge ... (date).
+
      */
+
     detailY -= 3;
 
     const notesLabelX = 355;
+
     const notesTextX = 390;
+
     const notesFontSize = 6.8;
 
     page.drawText('Notes:', {
       x: notesLabelX,
+
       y: detailY,
+
       size: 8,
+
       font: bold,
     });
 
@@ -968,6 +1130,7 @@ export class BillingPdfService {
       `2% additional charge for payment over 30 days (${this.formatDate(
         exactDueDate,
       )}).`,
+
       `3% additional charge for payment over 60 days (${this.formatDate(
         sixtyDayDate,
       )}).`,
@@ -979,8 +1142,11 @@ export class BillingPdfService {
       for (const line of wrappedNotice) {
         page.drawText(line, {
           x: notesTextX,
+
           y: detailY,
+
           size: notesFontSize,
+
           font: regular,
         });
 
@@ -990,9 +1156,72 @@ export class BillingPdfService {
 
     y = Math.min(billY, detailY) - 14;
 
+    /* =====================================================
+       BILLING BASIS NOTICE - FIRST PAGE ONLY
+    ===================================================== */
+
+    if (invoice.invoiceKind === 'REPORT') {
+      const noticeHeight = 38;
+
+      const noticeRed = rgb(0.72, 0.08, 0.08);
+
+      const noticeBackground = rgb(1, 0.95, 0.95);
+
+      page.drawRectangle({
+        x: LEFT,
+
+        y: y - noticeHeight,
+
+        width: PAGE_WIDTH - LEFT - RIGHT,
+
+        height: noticeHeight,
+
+        color: noticeBackground,
+
+        borderColor: noticeRed,
+
+        borderWidth: 0.7,
+      });
+
+      page.drawText('BILLING BASIS NOTICE', {
+        x: LEFT + 8,
+
+        y: y - 12,
+
+        size: 7.8,
+
+        font: bold,
+
+        color: noticeRed,
+      });
+
+      const billingBasisLines = this.wrapText(
+        'The billing reports listed below are billed based on their Result Sent Date within this billing period.',
+
+        92,
+      );
+
+      billingBasisLines.slice(0, 2).forEach((line, index) => {
+        page.drawText(line, {
+          x: LEFT + 8,
+
+          y: y - 24 - index * 9,
+
+          size: 7.2,
+
+          font: regular,
+
+          color: noticeRed,
+        });
+      });
+
+      y -= noticeHeight + 12;
+    }
+
     page.drawLine({
       start: {
         x: LEFT,
+
         y,
       },
 
@@ -1008,13 +1237,16 @@ export class BillingPdfService {
     y -= 14;
 
     /* =====================================================
+
        LINES
+
     ===================================================== */
 
     const reportRows =
       invoice.invoiceKind === 'REPORT'
         ? this.groupInvoiceLines(
             invoice.lines,
+
             invoice.extraCharges ?? [],
           )
         : [];
@@ -1022,370 +1254,359 @@ export class BillingPdfService {
     if (invoice.invoiceKind === 'MANUAL') {
       y = this.drawManualTableHeader(
         page,
+
         y,
+
         bold,
       );
 
       for (const line of invoice.manualLines ?? []) {
-        const descriptionLines =
-          this.wrapText(
-            line.description || '—',
-            62,
+        const descriptionLines = this.wrapText(
+          line.description || '—',
+
+          62,
+        );
+
+        const rowHeight = Math.max(
+          28,
+
+          11 +
+            Math.max(
+              descriptionLines.length,
+
+              1,
+            ) *
+              9,
+        );
+
+        if (y < BOTTOM + 125 + rowHeight) {
+          page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+          // Continuation pages intentionally omit the full invoice header.
+
+          y = PAGE_HEIGHT - TOP;
+
+          y = this.drawManualTableHeader(
+            page,
+
+            y,
+
+            bold,
           );
-
-        const rowHeight =
-          Math.max(
-            28,
-            11 +
-              Math.max(
-                descriptionLines.length,
-                1,
-              ) *
-                9,
-          );
-
-        if (
-          y <
-          BOTTOM +
-            125 +
-            rowHeight
-        ) {
-          page =
-            pdf.addPage([
-              PAGE_WIDTH,
-              PAGE_HEIGHT,
-            ]);
-
-          y =
-            this.drawHeader(
-              page,
-              fonts,
-              invoice.invoiceNumber,
-              invoice.revisionNumber ?? 0,
-            );
-
-          y =
-            this.drawManualTableHeader(
-              page,
-              y,
-              bold,
-            );
         }
 
-        const textTop =
-          y - 13;
+        const textTop = y - 13;
 
-        descriptionLines.forEach(
-          (descriptionLine, index) => {
-            page.drawText(
-              descriptionLine,
-              {
-                x: LEFT + 4,
+        descriptionLines.forEach((descriptionLine, index) => {
+          page.drawText(
+            descriptionLine,
 
-                y:
-                  textTop -
-                  index * 9,
+            {
+              x: LEFT + 4,
 
-                size: 7.2,
-                font: regular,
-              },
-            );
-          },
-        );
+              y: textTop - index * 9,
+
+              size: 7.2,
+
+              font: regular,
+            },
+          );
+        });
 
         this.drawRight(
           page,
+
           String(line.quantity),
+
           385,
+
           textTop,
+
           7.2,
+
           regular,
         );
 
         this.drawRight(
           page,
-          this.money(
-            Number(line.unitPrice),
-          ),
+
+          this.money(Number(line.unitPrice)),
+
           470,
+
           textTop,
+
           7.2,
+
           regular,
         );
 
         this.drawRight(
           page,
-          this.money(
-            Number(line.amount),
-          ),
-          PAGE_WIDTH -
-            RIGHT -
-            4,
+
+          this.money(Number(line.amount)),
+
+          PAGE_WIDTH - RIGHT - 4,
+
           textTop,
+
           7.3,
+
           regular,
         );
 
         page.drawLine({
           start: {
             x: LEFT,
+
             y: y - rowHeight,
           },
 
           end: {
-            x:
-              PAGE_WIDTH -
-              RIGHT,
+            x: PAGE_WIDTH - RIGHT,
+
             y: y - rowHeight,
           },
 
           thickness: 0.25,
 
-          color:
-            rgb(
-              0.75,
-              0.75,
-              0.75,
-            ),
+          color: rgb(
+            0.75,
+
+            0.75,
+
+            0.75,
+          ),
         });
 
         y -= rowHeight;
       }
     } else {
-      y =
-        this.drawTableHeader(
-          page,
-          y,
-          bold,
-        );
+      y = this.drawTableHeader(
+        page,
 
-    for (const row of reportRows) {
-      /*
+        y,
+
+        bold,
+      );
+
+      for (const row of reportRows) {
+        /*
+
        * Description is intentionally unlimited.
+
        *
+
        * Do not slice/truncate wrapped lines. The invoice row height
+
        * expands based on the full description so the PDF never
+
        * silently drops part of the sample/product description.
+
        */
-      const descriptionLines =
-        this.wrapText(
+
+        const descriptionLines = this.wrapText(
           row.description || '—',
+
           27,
         );
 
-      const testLines =
-        row.testLabels.length > 0
-          ? row.testLabels.flatMap(
-              (label) =>
+        const testLines =
+          row.testLabels.length > 0
+            ? row.testLabels.flatMap((label) =>
                 this.wrapText(
                   label,
+
                   17,
                 ),
-            )
-          : ['—'];
+              )
+            : ['—'];
 
-      const baseItemLines =
-        row.itemLabels.length > 0
-          ? row.itemLabels.flatMap(
-              (label) =>
+        const baseItemLines =
+          row.itemLabels.length > 0
+            ? row.itemLabels.flatMap((label) =>
                 this.wrapText(
                   label,
+
                   22,
                 ),
-            )
-          : ['Type of Test only'];
+              )
+            : ['Type of Test only'];
 
-      const extraChargeLines =
-        row.extraChargeLabels.flatMap(
-          (label) =>
-            this.wrapText(
-              `Additional: ${label}`,
-              22,
-            ),
+        const extraChargeLines = row.extraChargeLabels.flatMap((label) =>
+          this.wrapText(
+            `Additional: ${label}`,
+
+            22,
+          ),
         );
 
-      const itemLines = [
-        ...baseItemLines,
-        ...extraChargeLines,
-      ];
+        const itemLines = [...baseItemLines, ...extraChargeLines];
 
-      const contentLineCount =
-        Math.max(
+        const contentLineCount = Math.max(
           descriptionLines.length,
+
           testLines.length,
+
           itemLines.length,
+
           1,
         );
 
-      const rowHeight =
-        Math.max(
+        const rowHeight = Math.max(
           28,
-          11 +
-            contentLineCount *
-              9,
+
+          11 + contentLineCount * 9,
         );
 
-      if (
-        y <
-        BOTTOM +
-          125 +
-          rowHeight
-      ) {
-        page =
-          pdf.addPage([
-            PAGE_WIDTH,
-            PAGE_HEIGHT,
-          ]);
+        if (y < BOTTOM + 125 + rowHeight) {
+          page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
-        y =
-          this.drawHeader(
-            page,
-            fonts,
-            invoice.invoiceNumber,
-            invoice.revisionNumber ?? 0,
-          );
+          // Continuation pages intentionally omit the full invoice header.
 
-        y =
-          this.drawTableHeader(
+          y = PAGE_HEIGHT - TOP;
+
+          y = this.drawTableHeader(
             page,
+
             y,
+
             bold,
           );
-      }
+        }
 
-      const textTop =
-        y - 13;
+        const textTop = y - 13;
 
-      const formText =
-        row.manualOverride
+        const formText = row.manualOverride
           ? `${row.formNumber} *`
           : row.formNumber;
 
-      page.drawText(
-        this.truncate(
-          formText,
-          15,
-        ),
-        {
-          x: LEFT + 4,
-          y: textTop,
-          size: 7.1,
-          font: regular,
-        },
-      );
+        page.drawText(
+          this.truncate(
+            formText,
 
-      page.drawText(
-        this.truncate(
-          row.reportNumber,
-          13,
-        ),
-        {
-          x: 112,
-          y: textTop,
-          size: 7.1,
-          font: regular,
-        },
-      );
+            15,
+          ),
 
-      descriptionLines.forEach(
-        (line, index) => {
+          {
+            x: LEFT + 4,
+
+            y: textTop,
+
+            size: 7.1,
+
+            font: regular,
+          },
+        );
+
+        page.drawText(
+          this.formatDate(row.resultSentToClientAt) || '—',
+
+          {
+            x: 112,
+
+            y: textTop,
+
+            size: 6.7,
+
+            font: regular,
+          },
+        );
+
+        descriptionLines.forEach((line, index) => {
           page.drawText(line, {
             x: 178,
-            y:
-              textTop -
-              index * 9,
+
+            y: textTop - index * 9,
+
             size: 6.9,
+
             font: regular,
           });
-        },
-      );
+        });
 
-      testLines.forEach(
-        (line, index) => {
+        testLines.forEach((line, index) => {
           page.drawText(line, {
             x: 306,
-            y:
-              textTop -
-              index * 9,
+
+            y: textTop - index * 9,
+
             size: 6.9,
+
             font: regular,
           });
-        },
-      );
+        });
 
-      itemLines.forEach(
-        (line, index) => {
+        itemLines.forEach((line, index) => {
           page.drawText(
             `- ${line}`,
+
             {
               x: 390,
-              y:
-                textTop -
-                index * 9,
+
+              y: textTop - index * 9,
+
               size: 6.7,
+
               font: regular,
             },
           );
-        },
-      );
+        });
 
-      this.drawRight(
-        page,
-        this.money(
-          row.amount,
-        ),
-        PAGE_WIDTH -
-          RIGHT -
-          4,
-        textTop,
-        7.3,
-        regular,
-      );
+        this.drawRight(
+          page,
 
-      page.drawLine({
-        start: {
-          x: LEFT,
-          y:
-            y -
-            rowHeight,
-        },
+          this.money(row.amount),
 
-        end: {
-          x:
-            PAGE_WIDTH -
-            RIGHT,
-          y:
-            y -
-            rowHeight,
-        },
+          PAGE_WIDTH - RIGHT - 4,
 
-        thickness: 0.25,
+          textTop,
 
-        color:
-          rgb(
+          7.3,
+
+          regular,
+        );
+
+        page.drawLine({
+          start: {
+            x: LEFT,
+
+            y: y - rowHeight,
+          },
+
+          end: {
+            x: PAGE_WIDTH - RIGHT,
+
+            y: y - rowHeight,
+          },
+
+          thickness: 0.25,
+
+          color: rgb(
             0.75,
+
             0.75,
+
             0.75,
           ),
-      });
+        });
 
-      y -= rowHeight;
-    }
+        y -= rowHeight;
+      }
     }
 
     /* =====================================================
+
        TOTALS
+
     ===================================================== */
 
     if (y < BOTTOM + 150) {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
-      y = this.drawHeader(
-        page,
-        fonts,
-        invoice.invoiceNumber,
-        invoice.revisionNumber ?? 0,
-      );
+      // Continuation pages intentionally omit the full invoice header.
+
+      y = PAGE_HEIGHT - TOP;
     }
 
     y -= 18;
@@ -1402,8 +1623,11 @@ export class BillingPdfService {
 
     page.drawText('Subtotal', {
       x: labelX,
+
       y,
+
       size: 9,
+
       font: regular,
     });
 
@@ -1413,8 +1637,11 @@ export class BillingPdfService {
 
     page.drawText('Adjustment', {
       x: labelX,
+
       y,
+
       size: 9,
+
       font: regular,
     });
 
@@ -1430,11 +1657,13 @@ export class BillingPdfService {
     page.drawLine({
       start: {
         x: labelX,
+
         y,
       },
 
       end: {
         x: amountRight,
+
         y,
       },
 
@@ -1445,36 +1674,43 @@ export class BillingPdfService {
 
     page.drawText('TOTAL', {
       x: labelX,
+
       y,
+
       size: 11,
+
       font: bold,
     });
 
     this.drawRight(page, this.money(total), amountRight, y, 11, bold);
 
     /* =====================================================
+
        NOTES
+
     ===================================================== */
 
     y -= 40;
 
     if (y < BOTTOM + 120) {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      y = this.drawHeader(
-        page,
-        fonts,
-        invoice.invoiceNumber,
-        invoice.revisionNumber ?? 0,
-      );
+
+      // Continuation pages intentionally omit the full invoice header.
+
+      y = PAGE_HEIGHT - TOP;
     }
 
     if (reportRows.some((row) => row.manualOverride)) {
       page.drawText(
         '* Price manually overridden and recorded in the invoice audit trail.',
+
         {
           x: LEFT,
+
           y,
+
           size: 7.5,
+
           font: regular,
         },
       );
@@ -1485,8 +1721,11 @@ export class BillingPdfService {
     if (invoice.notes) {
       page.drawText('Notes', {
         x: LEFT,
+
         y,
+
         size: 8.5,
+
         font: bold,
       });
 
@@ -1499,8 +1738,11 @@ export class BillingPdfService {
       for (const line of noteLines.slice(0, 8)) {
         page.drawText(line, {
           x: LEFT,
+
           y,
+
           size: 8,
+
           font: regular,
         });
 
@@ -1509,7 +1751,9 @@ export class BillingPdfService {
     }
 
     /* =====================================================
+
        FOOTERS
+
     ===================================================== */
 
     const pages = pdf.getPages();
@@ -1518,6 +1762,7 @@ export class BillingPdfService {
       currentPage.drawLine({
         start: {
           x: LEFT,
+
           y: 31,
         },
 
@@ -1534,17 +1779,25 @@ export class BillingPdfService {
 
       currentPage.drawText(`Invoice ${invoice.invoiceNumber}`, {
         x: LEFT,
+
         y: 18,
+
         size: 7,
+
         font: regular,
       });
 
       this.drawRight(
         currentPage,
+
         `Page ${index + 1} of ${pages.length}`,
+
         PAGE_WIDTH - RIGHT,
+
         18,
+
         7,
+
         regular,
       );
     });
@@ -1557,7 +1810,9 @@ export class BillingPdfService {
   private wrapText(text: string, maxChars: number) {
     const words = String(text ?? '')
       .trim()
+
       .split(/\s+/)
+
       .filter(Boolean);
 
     if (!words.length) {
@@ -1588,17 +1843,24 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      AUDIT
+
   ========================================================= */
 
   private async audit(
     user: AuthUser,
+
     invoice: {
       id: string;
+
       clientCode: string;
+
       invoiceNumber: string | null;
     },
+
     changes: Record<string, any>,
+
     isRegeneration = false,
   ) {
     const ctx = getRequestContext();
@@ -1629,16 +1891,20 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      GENERATE + STORE
+
   ========================================================= */
 
   async generate(user: AuthUser, invoiceId: string) {
     this.assertManager(user);
+
     return this.generateInternal(user, invoiceId);
   }
 
   async generateForDelivery(user: AuthUser, invoiceId: string) {
     this.assertReader(user);
+
     return this.generateInternal(user, invoiceId);
   }
 
@@ -1654,9 +1920,11 @@ export class BillingPdfService {
             {
               formNumber: 'asc',
             },
+
             {
               testKey: 'asc',
             },
+
             {
               itemKey: 'asc',
             },
@@ -1674,6 +1942,7 @@ export class BillingPdfService {
             {
               formNumber: 'asc',
             },
+
             {
               createdAt: 'asc',
             },
@@ -1687,14 +1956,23 @@ export class BillingPdfService {
     }
 
     /*
+
      * Official PDF lifecycle:
+
      *
+
      * CONFIRMED -> PDF may be generated or regenerated.
+
      * SENT      -> PDF is frozen and cannot be regenerated.
+
      *
+
      * This guarantees that the PDF attached/sent to the client
+
      * remains the permanent historical version after delivery.
+
      */
+
     if (invoice.status !== 'CONFIRMED') {
       throw new BadRequestException(
         invoice.status === 'SENT'
@@ -1710,46 +1988,47 @@ export class BillingPdfService {
     }
 
     /*
+
      * While CONFIRMED, an existing PDF is intentionally
+
      * replaceable. We rebuild it from the current confirmed
+
      * invoice data and store the new checksum/timestamp.
+
      *
+
      * Once the invoice becomes SENT, the status guard above
+
      * freezes the PDF permanently.
+
      */
-    const isRegeneration =
-      Boolean(
-        invoice.pdfStorageKey &&
-          invoice.pdfFilename &&
-          invoice.pdfChecksum &&
-          invoice.pdfCreatedAt,
-      );
+
+    const isRegeneration = Boolean(
+      invoice.pdfStorageKey &&
+        invoice.pdfFilename &&
+        invoice.pdfChecksum &&
+        invoice.pdfCreatedAt,
+    );
 
     /*
+
      * Never generate an official PDF with
+
      * unresolved pricing.
+
      */
-    if (
-      invoice.invoiceKind ===
-        'MANUAL' &&
-      invoice.manualLines.length ===
-        0
-    ) {
-      throw new BadRequestException(
-        'Manual invoice has no invoice items',
-      );
+
+    if (invoice.invoiceKind === 'MANUAL' && invoice.manualLines.length === 0) {
+      throw new BadRequestException('Manual invoice has no invoice items');
     }
 
     const unresolved =
-      invoice.invoiceKind ===
-      'REPORT'
+      invoice.invoiceKind === 'REPORT'
         ? invoice.lines.filter(
             (line) =>
               !!line.pricingIssue ||
-              line.unitPrice ==
-                null ||
-              line.amount ==
-                null,
+              line.unitPrice == null ||
+              line.amount == null,
           )
         : [];
 
@@ -1776,15 +2055,25 @@ export class BillingPdfService {
       await writeFile(tempPath, bytes);
 
       /*
+
        * IMPORTANT:
+
        * StorageService.put() returns the REAL stored key.
+
        *
+
        * In S3 mode this may contain S3_PREFIX, for example:
+
        *
+
        * local/billing/invoices/2026/INV-2026-0001.pdf
+
        *
+
        * Never reconstruct the storage key ourselves.
+
        */
+
       const storageKey = await this.storage.put({
         filePath: tempPath,
 
@@ -1806,10 +2095,15 @@ export class BillingPdfService {
           pdfStorageKey: storageKey,
 
           /*
+
            * Leave null for local storage.
+
            * Set S3_BUCKET in production if you want
+
            * the bucket recorded on the invoice.
+
            */
+
           pdfStorageBucket:
             process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || null,
 
@@ -1823,13 +2117,19 @@ export class BillingPdfService {
 
       await this.audit(
         user,
+
         invoice,
+
         {
           filename,
+
           storageKey,
+
           checksum,
+
           regenerated: isRegeneration,
         },
+
         isRegeneration,
       );
 
@@ -1850,8 +2150,7 @@ export class BillingPdfService {
 
         alreadyExists: false,
 
-        regenerated:
-          isRegeneration,
+        regenerated: isRegeneration,
       };
     } finally {
       await unlink(tempPath).catch(() => undefined);
@@ -1859,16 +2158,22 @@ export class BillingPdfService {
   }
 
   /* =========================================================
+
      READ STORED PDF
+
   ========================================================= */
 
   async getStoredPdf(
     user: AuthUser,
+
     invoiceId: string,
   ): Promise<{
     filename: string;
+
     checksum: string | null;
+
     size: number | null;
+
     stream: Readable;
   }> {
     this.assertReader(user);
@@ -1880,9 +2185,13 @@ export class BillingPdfService {
 
       select: {
         id: true,
+
         invoiceNumber: true,
+
         pdfFilename: true,
+
         pdfStorageKey: true,
+
         pdfChecksum: true,
       },
     });
@@ -1905,31 +2214,53 @@ export class BillingPdfService {
 
     try {
       /*
+
        * IMPORTANT:
+
        *
+
        * Do NOT call storage.stat() first.
+
        *
+
        * Different storage implementations can return
+
        * different stat shapes, and we don't need stat
+
        * in order to stream the PDF.
+
        */
+
       const opened: any = await this.storage.createReadStream(
         invoice.pdfStorageKey,
       );
 
       /*
+
        * Support BOTH possible StorageService styles:
+
        *
+
        * 1.
+
        * createReadStream() → Readable
+
        *
+
        * 2.
+
        * createReadStream() →
+
        * {
+
        *   stream: Readable,
+
        *   size / contentLength / ContentLength
+
        * }
+
        */
+
       const stream = (opened?.stream ?? opened) as Readable;
 
       if (!stream || typeof (stream as any).pipe !== 'function') {
