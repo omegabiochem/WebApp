@@ -54,7 +54,12 @@ type PdfReportRow = {
 
   itemLabels: string[];
 
-  extraChargeLabels: string[];
+  extraCharges: Array<{
+    name: string;
+    amount: number;
+  }>;
+
+  baseAmount: number;
 
   amount: number;
 
@@ -756,7 +761,10 @@ export class BillingPdfService {
 
         rawTests: string[];
 
-        rawExtraCharges: string[];
+        rawExtraCharges: Array<{
+          name: string;
+          amount: number;
+        }>;
       }
     >();
 
@@ -787,7 +795,9 @@ export class BillingPdfService {
 
           itemLabels: [],
 
-          extraChargeLabels: [],
+          extraCharges: [],
+
+          baseAmount: 0,
 
           rawSampleTypes: [],
 
@@ -827,7 +837,11 @@ export class BillingPdfService {
         group.rawItems.push(`${count} active${count === 1 ? '' : 's'}`);
       }
 
-      group.amount += Number(line.amount ?? 0);
+      const lineAmount = Number(line.amount ?? 0);
+
+      group.baseAmount += lineAmount;
+
+      group.amount += lineAmount;
 
       group.manualOverride =
         group.manualOverride || Boolean(line.manualOverride);
@@ -847,7 +861,10 @@ export class BillingPdfService {
 
       const chargeAmount = Number(charge.amount ?? 0);
 
-      group.rawExtraCharges.push(`${chargeName} (${this.money(chargeAmount)})`);
+      group.rawExtraCharges.push({
+        name: chargeName,
+        amount: chargeAmount,
+      });
 
       group.amount += chargeAmount;
     }
@@ -876,7 +893,7 @@ export class BillingPdfService {
 
           itemLabels: this.uniqueText(rawItems),
 
-          extraChargeLabels: this.uniqueText(rawExtraCharges),
+          extraCharges: rawExtraCharges,
         };
       })
 
@@ -1761,15 +1778,12 @@ export class BillingPdfService {
                 )
               : ['Type of Test only'];
 
-          const extraChargeLines = row.extraChargeLabels.flatMap((label) =>
-            this.wrapText(
-              `Additional: ${label}`,
-
-              16,
-            ),
-          );
-
-          const itemLines = [...baseItemLines, ...extraChargeLines];
+          /*
+           * Additional charges are rendered as their own child rows
+           * immediately below this form. Keep the normal testing row
+           * focused on the actual test/pathogen/active/COA charge.
+           */
+          const itemLines = baseItemLines;
 
           const contentLineCount = Math.max(
             sampleTypeLines.length,
@@ -1789,7 +1803,28 @@ export class BillingPdfService {
             11 + contentLineCount * 9,
           );
 
-          if (y < BOTTOM + 125 + rowHeight) {
+          /*
+           * Keep the parent form and its first additional charge together.
+           * This prevents an additional charge from starting alone on the
+           * next page and looking like a separate form.
+           */
+          const firstExtraChargeHeight =
+            row.extraCharges.length > 0
+              ? Math.max(
+                  19,
+                  9 +
+                    Math.max(
+                      this.wrapText(
+                        row.extraCharges[0].name || 'Additional Charge',
+                        38,
+                      ).length,
+                      1,
+                    ) *
+                      9,
+                )
+              : 0;
+
+          if (y < BOTTOM + 125 + rowHeight + firstExtraChargeHeight) {
             page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
             // Continuation pages intentionally omit the full invoice header.
@@ -1908,7 +1943,7 @@ export class BillingPdfService {
           this.drawRight(
             page,
 
-            this.money(row.amount),
+            this.money(row.baseAmount),
 
             PAGE_WIDTH - RIGHT - 4,
 
@@ -1919,31 +1954,139 @@ export class BillingPdfService {
             regular,
           );
 
-          page.drawLine({
-            start: {
-              x: LEFT,
-
-              y: y - rowHeight,
-            },
-
-            end: {
-              x: PAGE_WIDTH - RIGHT,
-
-              y: y - rowHeight,
-            },
-
-            thickness: 0.25,
-
-            color: rgb(
-              0.75,
-
-              0.75,
-
-              0.75,
-            ),
-          });
+          /*
+           * Do not draw a divider between a form and its additional
+           * charge(s). The whole block should read as one invoice item.
+           * If there are no additional charges, close the form normally.
+           */
+          if (row.extraCharges.length === 0) {
+            page.drawLine({
+              start: {
+                x: LEFT,
+                y: y - rowHeight,
+              },
+              end: {
+                x: PAGE_WIDTH - RIGHT,
+                y: y - rowHeight,
+              },
+              thickness: 0.25,
+              color: rgb(0.75, 0.75, 0.75),
+            });
+          }
 
           y -= rowHeight;
+
+          /* =================================================
+             REPORT-LEVEL ADDITIONAL CHARGES
+             -------------------------------------------------
+             Render every additional charge as a separate,
+             clearly identified child row under its form.
+             The department totals below still use row.amount,
+             which includes these charges exactly once.
+          ================================================= */
+          for (const extraCharge of row.extraCharges) {
+            const chargeNameLines = this.wrapText(
+              extraCharge.name || 'Additional Charge',
+              38,
+            );
+
+            const chargeRowHeight = Math.max(
+              19,
+              9 + Math.max(chargeNameLines.length, 1) * 9,
+            );
+
+            if (y < BOTTOM + 125 + chargeRowHeight) {
+              page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+              y = PAGE_HEIGHT - TOP;
+
+              y = this.drawReportSectionHeader(
+                page,
+                y,
+                `${section.title} (CONTINUED)`,
+                bold,
+              );
+
+              y = this.drawTableHeader(page, y, bold);
+            }
+
+            const chargeTop = y - 11;
+
+            /*
+             * Keep the charge visually attached to the form above.
+             *
+             * Do NOT render a full-width shaded/table row because that
+             * makes the charge look like another report/form. Instead,
+             * leave the Form No./Result Date columns empty and indent a
+             * compact child line beneath the parent form.
+             */
+            const childLeft = 158;
+            const childBottom = y - chargeRowHeight;
+
+            // Small connector showing this line belongs to the form above.
+            page.drawLine({
+              start: { x: childLeft, y: y + 1 },
+              end: { x: childLeft, y: chargeTop - 1 },
+              thickness: 0.55,
+              color: rgb(0.72, 0.76, 0.82),
+            });
+
+            page.drawLine({
+              start: { x: childLeft, y: chargeTop - 1 },
+              end: { x: childLeft + 8, y: chargeTop - 1 },
+              thickness: 0.55,
+              color: rgb(0.72, 0.76, 0.82),
+            });
+
+            page.drawText('Additional charge:', {
+              x: childLeft + 12,
+              y: chargeTop,
+              size: 6.3,
+              font: bold,
+              color: rgb(0.28, 0.36, 0.48),
+            });
+
+            chargeNameLines.forEach((line, index) => {
+              page.drawText(line, {
+                x: 238,
+                y: chargeTop - index * 9,
+                size: 6.5,
+                font: regular,
+              });
+            });
+
+            this.drawRight(
+              page,
+              `+${this.money(Number(extraCharge.amount ?? 0))}`,
+              PAGE_WIDTH - RIGHT - 4,
+              chargeTop,
+              6.9,
+              bold,
+            );
+
+            // No divider between the parent form and child charges, or
+            // between multiple child charges. They remain one visual block.
+            y -= chargeRowHeight;
+          }
+
+          /*
+           * Draw one divider only after the final additional charge so the
+           * parent form + all of its charges are visually grouped together.
+           */
+          if (row.extraCharges.length > 0) {
+            page.drawLine({
+              start: {
+                x: LEFT,
+                y,
+              },
+              end: {
+                x: PAGE_WIDTH - RIGHT,
+                y,
+              },
+              thickness: 0.25,
+              color: rgb(0.75, 0.75, 0.75),
+            });
+          }
         }
 
         y -= 10;
