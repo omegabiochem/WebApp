@@ -3792,6 +3792,107 @@ export class BillingService {
   }
 
   /* =======================================================
+   DELETE REPORT INVOICE LINE
+======================================================= */
+
+  async deleteInvoiceLine(
+    user: AuthUser,
+    invoiceId: string,
+    lineId: string,
+  ) {
+    this.assertManager(user);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
+        },
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      if (invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Only DRAFT invoice lines can be deleted',
+        );
+      }
+
+      if (invoice.invoiceKind !== 'REPORT') {
+        throw new BadRequestException(
+          'This route only deletes report invoice lines',
+        );
+      }
+
+      const existing = await tx.billingInvoiceLine.findFirst({
+        where: {
+          id: lineId,
+          invoiceId,
+        },
+      });
+
+      if (!existing) {
+        throw new NotFoundException('Invoice line not found');
+      }
+
+      await tx.billingInvoiceLine.delete({
+        where: {
+          id: lineId,
+        },
+      });
+
+      await this.recalculateInvoiceTotals(tx, invoiceId);
+
+      await tx.billingInvoice.update({
+        where: {
+          id: invoiceId,
+        },
+        data: {
+          updatedBy: user.userId,
+        },
+      });
+
+      return {
+        existing,
+        clientCode: invoice.clientCode,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_LINE_DELETED',
+      invoiceId,
+      clientCode: result.clientCode,
+      details:
+        `Deleted invoice line ${result.existing.formNumber} / ` +
+        `${result.existing.testLabel ?? result.existing.testKey}` +
+        `${result.existing.itemLabel ? ` / ${result.existing.itemLabel}` : ''}`,
+      changes: {
+        lineId: result.existing.id,
+        sourceType: result.existing.sourceType,
+        sourceId: result.existing.sourceId,
+        chargeKey: result.existing.chargeKey,
+        activeChargeKey: result.existing.activeChargeKey,
+        formType: result.existing.formType,
+        formNumber: result.existing.formNumber,
+        reportNumber: result.existing.reportNumber,
+        testKey: result.existing.testKey,
+        testLabel: result.existing.testLabel,
+        itemKey: result.existing.itemKey,
+        itemLabel: result.existing.itemLabel,
+        quantity: result.existing.quantity,
+        unitPrice: result.existing.unitPrice?.toFixed(2) ?? null,
+        amount: result.existing.amount?.toFixed(2) ?? null,
+        manualOverride: result.existing.manualOverride,
+        releasedToUnbilled:
+          result.existing.activeChargeKey != null,
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
+  }
+
+  /* =======================================================
    UPDATE DRAFT
 ======================================================= */
 
