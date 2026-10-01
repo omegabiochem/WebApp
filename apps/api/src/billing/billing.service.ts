@@ -118,11 +118,13 @@ const DEFAULT_BILLING_TIME_ZONE =
  */
 const BILLING_DB_BATCH_SIZE = 250;
 
-const BILLING_GENERATE_TRANSACTION_TIMEOUT_MS =
-  Number(process.env.BILLING_GENERATE_TRANSACTION_TIMEOUT_MS ?? 60000);
+const BILLING_GENERATE_TRANSACTION_TIMEOUT_MS = Number(
+  process.env.BILLING_GENERATE_TRANSACTION_TIMEOUT_MS ?? 60000,
+);
 
-const BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS =
-  Number(process.env.BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS ?? 10000);
+const BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS = Number(
+  process.env.BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS ?? 10000,
+);
 
 function chunkArray<T>(items: T[], size = BILLING_DB_BATCH_SIZE): T[][] {
   if (items.length === 0) {
@@ -281,15 +283,10 @@ function normalizeBillingIdentity(value: unknown) {
     .replace(/^_+|_+$/g, '');
 }
 
-function buildCombinationIdentity(
-  items: BillingSourceItem[],
-) {
-  const ordered =
-    [...items]
-      .filter((item) => !!item.itemKey)
-      .sort((a, b) =>
-        a.itemKey.localeCompare(b.itemKey),
-      );
+function buildCombinationIdentity(items: BillingSourceItem[]) {
+  const ordered = [...items]
+    .filter((item) => !!item.itemKey)
+    .sort((a, b) => a.itemKey.localeCompare(b.itemKey));
 
   if (ordered.length < 2) {
     return null;
@@ -302,15 +299,9 @@ function buildCombinationIdentity(
    * Example:
    *   COMBO_E_COLI_PLUS_P_AER_PLUS_S_AUR
    */
-  const itemKey =
-    `COMBO_${ordered
-      .map((item) => item.itemKey)
-      .join('_PLUS_')}`;
+  const itemKey = `COMBO_${ordered.map((item) => item.itemKey).join('_PLUS_')}`;
 
-  const itemLabel =
-    ordered
-      .map((item) => item.itemLabel)
-      .join(' + ');
+  const itemLabel = ordered.map((item) => item.itemLabel).join(' + ');
 
   return {
     itemKey,
@@ -318,7 +309,6 @@ function buildCombinationIdentity(
     items: ordered,
   };
 }
-
 
 function pricingClientIdentity(value: unknown) {
   const client = String(value ?? '')
@@ -414,17 +404,10 @@ function extractSelectedActives(actives: any): BillingSourceItem[] {
     ).trim();
 
     const baseLabel = String(
-      row.label ??
-        row.name ??
-        row.active ??
-        sourceKey,
+      row.label ?? row.name ?? row.active ?? sourceKey,
     ).trim();
 
-    const otherName = String(
-      row.otherName ??
-        row.customName ??
-        '',
-    ).trim();
+    const otherName = String(row.otherName ?? row.customName ?? '').trim();
 
     const isOtherSlot =
       /^OTHER(?:_\d+)?$/i.test(sourceKey) ||
@@ -438,15 +421,13 @@ function extractSelectedActives(actives: any): BillingSourceItem[] {
      * actual active rather than whichever OTHER slot was used.
      */
     const itemLabel =
-      isOtherSlot && otherName
-        ? otherName
-        : baseLabel || sourceKey;
+      isOtherSlot && otherName ? otherName : baseLabel || sourceKey;
 
-    const normalizedSourceKey =
-      normalizeBillingIdentity(sourceKey || itemLabel);
+    const normalizedSourceKey = normalizeBillingIdentity(
+      sourceKey || itemLabel,
+    );
 
-    const normalizedCustomName =
-      normalizeBillingIdentity(itemLabel);
+    const normalizedCustomName = normalizeBillingIdentity(itemLabel);
 
     const itemKey =
       isOtherSlot && otherName
@@ -470,9 +451,7 @@ function extractSelectedActives(actives: any): BillingSourceItem[] {
   return [...byKey.values()];
 }
 
-function extractSelectedPathogens(
-  pathogens: any,
-): BillingSourceItem[] {
+function extractSelectedPathogens(pathogens: any): BillingSourceItem[] {
   if (!Array.isArray(pathogens)) {
     return [];
   }
@@ -480,50 +459,27 @@ function extractSelectedPathogens(
   const byKey = new Map<string, BillingSourceItem>();
 
   for (const row of pathogens) {
-    if (
-      !row ||
-      (row.checked !== true &&
-        row.selected !== true)
-    ) {
+    if (!row || (row.checked !== true && row.selected !== true)) {
       continue;
     }
 
     const sourceKey = String(
-      row.key ??
-        row.value ??
-        row.pathogenKey ??
-        row.label ??
-        row.name ??
-        '',
+      row.key ?? row.value ?? row.pathogenKey ?? row.label ?? row.name ?? '',
     ).trim();
 
-    const label = String(
-      row.label ??
-        row.name ??
-        sourceKey,
-    ).trim();
+    const label = String(row.label ?? row.name ?? sourceKey).trim();
 
     if (!label && !sourceKey) {
       continue;
     }
 
-    const normalizedSourceKey =
-      normalizeBillingIdentity(
-        sourceKey || label,
-      );
+    const normalizedSourceKey = normalizeBillingIdentity(sourceKey || label);
 
-    const normalizedLabel =
-      normalizeBillingIdentity(label);
+    const normalizedLabel = normalizeBillingIdentity(label);
 
-    const isOtherSlot =
-      /^OTHER(?:_\d+)?$/i.test(
-        sourceKey,
-      );
+    const isOtherSlot = /^OTHER(?:_\d+)?$/i.test(sourceKey);
 
-    const isGenericOtherLabel =
-      /^OTHER(?:\s*\d+)?$/i.test(
-        label,
-      );
+    const isGenericOtherLabel = /^OTHER(?:\s*\d+)?$/i.test(label);
 
     /*
      * The Micro forms use an editable OTHER row.
@@ -532,14 +488,11 @@ function extractSelectedPathogens(
      * use the actual name as the semantic billing identity.
      */
     const itemKey =
-      isOtherSlot &&
-      label &&
-      !isGenericOtherLabel
+      isOtherSlot && label && !isGenericOtherLabel
         ? `OTHER_${normalizedLabel}`
         : normalizedSourceKey;
 
-    const itemLabel =
-      label || sourceKey;
+    const itemLabel = label || sourceKey;
 
     if (!itemKey || !itemLabel) {
       continue;
@@ -549,8 +502,7 @@ function extractSelectedPathogens(
       byKey.set(itemKey, {
         itemKey,
         itemLabel,
-        sourceKey:
-          sourceKey || null,
+        sourceKey: sourceKey || null,
         sourceValue: null,
       });
     }
@@ -578,45 +530,30 @@ function extractSelectedCoaItems(coaRows: any): BillingSourceItem[] {
      * Support older/imported property names defensively.
      */
     const specification = String(
-      row.Specification ??
-        row.specification ??
-        row.standard ??
-        row.spec ??
-        '',
+      row.Specification ?? row.specification ?? row.standard ?? row.spec ?? '',
     ).trim();
 
     if (!specification) {
       continue;
     }
 
-    const sourceKey = String(
-      row.key ??
-        row.itemKey ??
-        row.item ??
-        '',
-    ).trim();
+    const sourceKey = String(row.key ?? row.itemKey ?? row.item ?? '').trim();
 
-    const itemLabel = String(
-      row.item ??
-        row.label ??
-        sourceKey,
-    ).trim();
+    const itemLabel = String(row.item ?? row.label ?? sourceKey).trim();
 
     if (!itemLabel) {
       continue;
     }
 
-    const normalizedSourceKey =
-      normalizeBillingIdentity(sourceKey || itemLabel);
+    const normalizedSourceKey = normalizeBillingIdentity(
+      sourceKey || itemLabel,
+    );
 
-    const normalizedLabel =
-      normalizeBillingIdentity(itemLabel);
+    const normalizedLabel = normalizeBillingIdentity(itemLabel);
 
-    const isOtherSlot =
-      /^OTHER(?:_\d+)?$/i.test(sourceKey);
+    const isOtherSlot = /^OTHER(?:_\d+)?$/i.test(sourceKey);
 
-    const isGenericOtherLabel =
-      /^OTHER(?:\s*\d+)?$/i.test(itemLabel);
+    const isGenericOtherLabel = /^OTHER(?:\s*\d+)?$/i.test(itemLabel);
 
     /*
      * OTHER_1 ... OTHER_12 are positional slots.
@@ -793,44 +730,40 @@ export class BillingService {
       throw new BadRequestException('Only DRAFT invoices can be recalculated');
     }
 
-    const [
-      lineAggregate,
-      manualLineAggregate,
-      extraChargeAggregate,
-    ] = await Promise.all([
-      tx.billingInvoiceLine.aggregate({
-        where: {
-          invoiceId,
-        },
+    const [lineAggregate, manualLineAggregate, extraChargeAggregate] =
+      await Promise.all([
+        tx.billingInvoiceLine.aggregate({
+          where: {
+            invoiceId,
+          },
 
-        _sum: {
-          amount: true,
-        },
-      }),
+          _sum: {
+            amount: true,
+          },
+        }),
 
-      tx.billingManualInvoiceLine.aggregate({
-        where: {
-          invoiceId,
-        },
+        tx.billingManualInvoiceLine.aggregate({
+          where: {
+            invoiceId,
+          },
 
-        _sum: {
-          amount: true,
-        },
-      }),
+          _sum: {
+            amount: true,
+          },
+        }),
 
-      tx.billingInvoiceExtraCharge.aggregate({
-        where: {
-          invoiceId,
-        },
+        tx.billingInvoiceExtraCharge.aggregate({
+          where: {
+            invoiceId,
+          },
 
-        _sum: {
-          amount: true,
-        },
-      }),
-    ]);
+          _sum: {
+            amount: true,
+          },
+        }),
+      ]);
 
-    const lineSubtotal =
-      lineAggregate._sum.amount ?? new Prisma.Decimal(0);
+    const lineSubtotal = lineAggregate._sum.amount ?? new Prisma.Decimal(0);
 
     const manualLineSubtotal =
       manualLineAggregate._sum.amount ?? new Prisma.Decimal(0);
@@ -934,28 +867,17 @@ export class BillingService {
     const items: BillingCandidate[] = [];
 
     for (const report of reports) {
-      const clientCode = String(
-        report.clientCode ?? '',
-      )
+      const clientCode = String(report.clientCode ?? '')
         .trim()
         .toUpperCase();
 
-      if (
-        !clientCode ||
-        !report.billingReadyAt ||
-        !report.reportNumber
-      ) {
+      if (!clientCode || !report.billingReadyAt || !report.reportNumber) {
         continue;
       }
 
-      const clientStart =
-        clientStartMap.get(clientCode);
+      const clientStart = clientStartMap.get(clientCode);
 
-      if (
-        clientStart &&
-        report.billingReadyAt <
-          clientStart
-      ) {
+      if (clientStart && report.billingReadyAt < clientStart) {
         continue;
       }
 
@@ -966,35 +888,21 @@ export class BillingService {
         report.ape ??
         null;
 
-      const client =
-        this.pricing.normalizeClientName(
-          details?.client,
-        );
+      const client = this.pricing.normalizeClientName(details?.client);
 
-      const rawTypeOfTest =
-        String(
-          details?.typeOfTest ?? '',
-        ).trim();
+      const rawTypeOfTest = String(details?.typeOfTest ?? '').trim();
 
-      const testKey =
-        rawTypeOfTest
-          ? this.pricing.normalizeTestKey(
-              rawTypeOfTest,
-            )
-          : 'UNSPECIFIED';
+      const testKey = rawTypeOfTest
+        ? this.pricing.normalizeTestKey(rawTypeOfTest)
+        : 'UNSPECIFIED';
 
       const supportsPathogens =
-        report.formType ===
-          'MICRO_MIX' ||
-        report.formType ===
-          'MICRO_MIX_WATER';
+        report.formType === 'MICRO_MIX' ||
+        report.formType === 'MICRO_MIX_WATER';
 
-      const selectedPathogens =
-        supportsPathogens
-          ? extractSelectedPathogens(
-              details?.pathogens,
-            )
-          : [];
+      const selectedPathogens = supportsPathogens
+        ? extractSelectedPathogens(details?.pathogens)
+        : [];
 
       /*
        * MICRO_MIX / MICRO_MIX_WATER
@@ -1010,124 +918,75 @@ export class BillingService {
        * exception. It MUST NOT silently fall back to the
        * individual pathogen prices.
        */
-      if (
-        supportsPathogens &&
-        selectedPathogens.length > 0
-      ) {
-        const combination =
-          buildCombinationIdentity(
-            selectedPathogens,
-          );
+      if (supportsPathogens && selectedPathogens.length > 0) {
+        const combination = buildCombinationIdentity(selectedPathogens);
 
-        const fixedCombinationPricing =
-          rawTypeOfTest
-            ? usesFixedCombinationPricing(
-                rules,
-                {
-                  clientCode,
-                  client,
-                  formType:
-                    report.formType,
-                  testKey,
-                  at:
-                    report.billingReadyAt,
-                },
-              )
-            : false;
+        const fixedCombinationPricing = rawTypeOfTest
+          ? usesFixedCombinationPricing(rules, {
+              clientCode,
+              client,
+              formType: report.formType,
+              testKey,
+              at: report.billingReadyAt,
+            })
+          : false;
 
-        if (
-          fixedCombinationPricing &&
-          combination &&
-          rawTypeOfTest
-        ) {
-          const combinationCandidate =
-            this.priceCandidate(
-              rules,
-              {
-                sourceType:
-                  'REPORT',
+        if (fixedCombinationPricing && combination && rawTypeOfTest) {
+          const combinationCandidate = this.priceCandidate(rules, {
+            sourceType: 'REPORT',
 
-                sourceId:
-                  report.id,
+            sourceId: report.id,
 
-                chargeKey:
-                  `REPORT:${report.id}:${report.formType}:${testKey}:COMBINATION:${combination.itemKey}`,
+            chargeKey: `REPORT:${report.id}:${report.formType}:${testKey}:COMBINATION:${combination.itemKey}`,
 
-                formType:
-                  report.formType,
+            formType: report.formType,
 
-                formNumber:
-                  report.formNumber,
+            formNumber: report.formNumber,
 
-                reportNumber:
-                  report.reportNumber,
+            reportNumber: report.reportNumber,
 
-                clientCode,
+            clientCode,
 
-                client,
+            client,
 
-                resultSentToClientAt:
-                  report.resultSentToClientAt ??
-                  null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
-                billingReadyAt:
-                  report.billingReadyAt,
+            billingReadyAt: report.billingReadyAt,
 
-                testKey,
+            testKey,
 
-                testLabel:
-                  rawTypeOfTest,
+            testLabel: rawTypeOfTest,
 
-                itemKey:
-                  combination.itemKey,
+            itemKey: combination.itemKey,
 
-                itemLabel:
-                  combination.itemLabel,
+            itemLabel: combination.itemLabel,
 
-                activeCount:
-                  null,
+            activeCount: null,
 
-                sourceSnapshot: {
-                  pricingMethod:
-                    'COMBINATION',
+            sourceSnapshot: {
+              pricingMethod: 'COMBINATION',
 
-                  typeOfTest:
-                    rawTypeOfTest,
+              typeOfTest: rawTypeOfTest,
 
-                  client:
-                    details?.client ??
-                    null,
+              client: details?.client ?? null,
 
-                  description:
-                    details?.description ??
-                    null,
+              description: details?.description ?? null,
 
-                  sampleType:
-                    details?.sampleType ??
-                    null,
+              sampleType: details?.sampleType ?? null,
 
-                  combinationKey:
-                    combination.itemKey,
+              combinationKey: combination.itemKey,
 
-                  combinationLabel:
-                    combination.itemLabel,
+              combinationLabel: combination.itemLabel,
 
-                  selectedPathogens:
-                    combination.items.map(
-                      (item) => ({
-                        itemKey:
-                          item.itemKey,
+              selectedPathogens: combination.items.map((item) => ({
+                itemKey: item.itemKey,
 
-                        itemLabel:
-                          item.itemLabel,
-                      }),
-                    ),
-                },
+                itemLabel: item.itemLabel,
+              })),
+            },
 
-                dataIssue:
-                  null,
-              },
-            );
+            dataIssue: null,
+          });
 
           /*
            * FIXED COMBINATION means the combination candidate
@@ -1135,111 +994,69 @@ export class BillingService {
            * missing. A missing price remains visible as a
            * pricing exception in Unbilled.
            */
-          items.push(
-            combinationCandidate,
-          );
+          items.push(combinationCandidate);
 
           continue;
         }
 
-        for (
-          const pathogen of selectedPathogens
-        ) {
-          const candidate =
-            this.priceCandidate(
-              rules,
-              {
-                sourceType:
-                  'REPORT',
+        for (const pathogen of selectedPathogens) {
+          const candidate = this.priceCandidate(rules, {
+            sourceType: 'REPORT',
 
-                sourceId:
-                  report.id,
+            sourceId: report.id,
 
-                chargeKey:
-                  `REPORT:${report.id}:${report.formType}:${testKey}:PATHOGEN:${pathogen.itemKey}`,
+            chargeKey: `REPORT:${report.id}:${report.formType}:${testKey}:PATHOGEN:${pathogen.itemKey}`,
 
-                formType:
-                  report.formType,
+            formType: report.formType,
 
-                formNumber:
-                  report.formNumber,
+            formNumber: report.formNumber,
 
-                reportNumber:
-                  report.reportNumber,
+            reportNumber: report.reportNumber,
 
-                clientCode,
+            clientCode,
 
-                client,
+            client,
 
-                resultSentToClientAt:
-                  report.resultSentToClientAt ??
-                  null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
-                billingReadyAt:
-                  report.billingReadyAt,
+            billingReadyAt: report.billingReadyAt,
 
-                testKey,
+            testKey,
 
-                testLabel:
-                  rawTypeOfTest ||
-                  null,
+            testLabel: rawTypeOfTest || null,
 
-                itemKey:
-                  pathogen.itemKey,
+            itemKey: pathogen.itemKey,
 
-                itemLabel:
-                  pathogen.itemLabel,
+            itemLabel: pathogen.itemLabel,
 
-                activeCount:
-                  null,
+            activeCount: null,
 
-                sourceSnapshot: {
-                  pricingMethod:
-                    'INDIVIDUAL',
+            sourceSnapshot: {
+              pricingMethod: 'INDIVIDUAL',
 
-                  typeOfTest:
-                    rawTypeOfTest ||
-                    null,
+              typeOfTest: rawTypeOfTest || null,
 
-                  client:
-                    details?.client ??
-                    null,
+              client: details?.client ?? null,
 
-                  description:
-                    details?.description ??
-                    null,
+              description: details?.description ?? null,
 
-                  sampleType:
-                    details?.sampleType ??
-                    null,
+              sampleType: details?.sampleType ?? null,
 
-                  pathogenKey:
-                    pathogen.itemKey,
+              pathogenKey: pathogen.itemKey,
 
-                  pathogenLabel:
-                    pathogen.itemLabel,
+              pathogenLabel: pathogen.itemLabel,
 
-                  sourcePathogenKey:
-                    pathogen.sourceKey,
+              sourcePathogenKey: pathogen.sourceKey,
 
-                  selectedPathogens:
-                    selectedPathogens.map(
-                      (item) => ({
-                        itemKey:
-                          item.itemKey,
+              selectedPathogens: selectedPathogens.map((item) => ({
+                itemKey: item.itemKey,
 
-                        itemLabel:
-                          item.itemLabel,
-                      }),
-                    ),
-                },
+                itemLabel: item.itemLabel,
+              })),
+            },
 
-                dataIssue:
-                  rawTypeOfTest
-                    ? null
-                    : 'Missing Type of Test',
-              },
-            );
+            dataIssue: rawTypeOfTest ? null : 'Missing Type of Test',
+          });
 
           items.push(candidate);
         }
@@ -1256,91 +1073,57 @@ export class BillingService {
        *
        * STERILITY and APE also continue to use this path.
        */
-      const chargeKey =
-        `REPORT:${report.id}:${report.formType}`;
+      const chargeKey = `REPORT:${report.id}:${report.formType}`;
 
-      const candidate =
-        this.priceCandidate(
-          rules,
-          {
-            sourceType:
-              'REPORT',
+      const candidate = this.priceCandidate(rules, {
+        sourceType: 'REPORT',
 
-            sourceId:
-              report.id,
+        sourceId: report.id,
 
-            chargeKey,
+        chargeKey,
 
-            formType:
-              report.formType,
+        formType: report.formType,
 
-            formNumber:
-              report.formNumber,
+        formNumber: report.formNumber,
 
-            reportNumber:
-              report.reportNumber,
+        reportNumber: report.reportNumber,
 
-            clientCode,
+        clientCode,
 
-            client,
+        client,
 
-            resultSentToClientAt:
-              report.resultSentToClientAt ??
-              null,
+        resultSentToClientAt: report.resultSentToClientAt ?? null,
 
-            billingReadyAt:
-              report.billingReadyAt,
+        billingReadyAt: report.billingReadyAt,
 
-            testKey,
+        testKey,
 
-            testLabel:
-              rawTypeOfTest ||
-              null,
+        testLabel: rawTypeOfTest || null,
 
-            itemKey:
-              null,
+        itemKey: null,
 
-            itemLabel:
-              null,
+        itemLabel: null,
 
-            activeCount:
-              null,
+        activeCount: null,
 
-            sourceSnapshot: {
-              typeOfTest:
-                rawTypeOfTest ||
-                null,
+        sourceSnapshot: {
+          typeOfTest: rawTypeOfTest || null,
 
-              client:
-                details?.client ??
-                null,
+          client: details?.client ?? null,
 
-              description:
-                details?.description ??
-                null,
+          description: details?.description ?? null,
 
-                  sampleType:
-                    details?.sampleType ??
-                    null,
+          sampleType: details?.sampleType ?? null,
 
-              selectedPathogens:
-                selectedPathogens.map(
-                  (item) => ({
-                    itemKey:
-                      item.itemKey,
+          selectedPathogens: selectedPathogens.map((item) => ({
+            itemKey: item.itemKey,
 
-                    itemLabel:
-                      item.itemLabel,
-                  }),
-                ),
-            },
+            itemLabel: item.itemLabel,
+          })),
+        },
 
-            dataIssue:
-              rawTypeOfTest
-                ? null
-                : 'Missing Type of Test',
-          },
-        );
+        dataIssue: rawTypeOfTest ? null : 'Missing Type of Test',
+      });
 
       items.push(candidate);
     }
@@ -1382,13 +1165,9 @@ export class BillingService {
       if (report.formType === 'COA') {
         const details = report.coa;
 
-        const client =
-          this.pricing.normalizeClientName(
-            details?.client,
-          );
+        const client = this.pricing.normalizeClientName(details?.client);
 
-        const selectedItems =
-          extractSelectedCoaItems(details?.coaRows);
+        const selectedItems = extractSelectedCoaItems(details?.coaRows);
 
         /*
          * No COA row selected -> keep the report visible as
@@ -1400,8 +1179,7 @@ export class BillingService {
 
             sourceId: report.id,
 
-            chargeKey:
-              `CHEMISTRY_REPORT:${report.id}:COA:UNSPECIFIED_ITEM`,
+            chargeKey: `CHEMISTRY_REPORT:${report.id}:COA:UNSPECIFIED_ITEM`,
 
             formType: report.formType,
 
@@ -1413,8 +1191,7 @@ export class BillingService {
 
             client,
 
-            resultSentToClientAt:
-              report.resultSentToClientAt ?? null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
             billingReadyAt: report.billingReadyAt,
 
@@ -1432,22 +1209,16 @@ export class BillingService {
               client: details?.client ?? null,
 
               description:
-                details?.sampleDescription ??
-                details?.description ??
-                null,
+                details?.sampleDescription ?? details?.description ?? null,
 
-              sampleTypes:
-                Array.isArray(details?.sampleTypes)
-                  ? details.sampleTypes
-                  : [],
-
-              coaRows: Array.isArray(details?.coaRows)
-                ? details.coaRows
+              sampleTypes: Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
                 : [],
+
+              coaRows: Array.isArray(details?.coaRows) ? details.coaRows : [],
             },
 
-            dataIssue:
-              'No COA item has a Specification',
+            dataIssue: 'No COA item has a Specification',
           });
 
           items.push(candidate);
@@ -1464,8 +1235,7 @@ export class BillingService {
             /*
              * Individual COA item = individual billable charge.
              */
-            chargeKey:
-              `CHEMISTRY_REPORT:${report.id}:COA:${selectedItem.itemKey}`,
+            chargeKey: `CHEMISTRY_REPORT:${report.id}:COA:${selectedItem.itemKey}`,
 
             formType: report.formType,
 
@@ -1477,8 +1247,7 @@ export class BillingService {
 
             client,
 
-            resultSentToClientAt:
-              report.resultSentToClientAt ?? null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
             billingReadyAt: report.billingReadyAt,
 
@@ -1496,26 +1265,19 @@ export class BillingService {
               client: details?.client ?? null,
 
               description:
-                details?.sampleDescription ??
-                details?.description ??
-                null,
+                details?.sampleDescription ?? details?.description ?? null,
 
-              sampleTypes:
-                Array.isArray(details?.sampleTypes)
-                  ? details.sampleTypes
-                  : [],
+              sampleTypes: Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
 
-              coaItemKey:
-                selectedItem.itemKey,
+              coaItemKey: selectedItem.itemKey,
 
-              coaItemLabel:
-                selectedItem.itemLabel,
+              coaItemLabel: selectedItem.itemLabel,
 
-              sourceRowKey:
-                selectedItem.sourceKey,
+              sourceRowKey: selectedItem.sourceKey,
 
-              specification:
-                selectedItem.sourceValue,
+              specification: selectedItem.sourceValue,
             },
 
             dataIssue: null,
@@ -1535,22 +1297,17 @@ export class BillingService {
 
       const details = report.chemistryMix;
 
-      const client =
-        this.pricing.normalizeClientName(
-          details?.client,
-        );
+      const client = this.pricing.normalizeClientName(details?.client);
 
-      const rawTestTypes: unknown[] =
-        Array.isArray(details?.testTypes)
-          ? details.testTypes
-          : [];
+      const rawTestTypes: unknown[] = Array.isArray(details?.testTypes)
+        ? details.testTypes
+        : [];
 
       /*
        * Deduplicate by normalized billing key while keeping a
        * readable label from the source.
        */
-      const testTypeMap =
-        new Map<string, string>();
+      const testTypeMap = new Map<string, string>();
 
       for (const value of rawTestTypes) {
         const raw = String(value ?? '').trim();
@@ -1559,35 +1316,23 @@ export class BillingService {
           continue;
         }
 
-        const normalized =
-          this.pricing.normalizeTestKey(raw);
+        const normalized = this.pricing.normalizeTestKey(raw);
 
-        if (
-          normalized &&
-          !testTypeMap.has(normalized)
-        ) {
-          testTypeMap.set(
-            normalized,
-            raw,
-          );
+        if (normalized && !testTypeMap.has(normalized)) {
+          testTypeMap.set(normalized, raw);
         }
       }
 
-      const testTypes =
-        [...testTypeMap.entries()].map(
-          ([testKey, rawValue]) => ({
-            testKey,
-            rawValue,
-          }),
-        );
+      const testTypes = [...testTypeMap.entries()].map(
+        ([testKey, rawValue]) => ({
+          testKey,
+          rawValue,
+        }),
+      );
 
-      const selectedActives =
-        extractSelectedActives(details?.actives);
+      const selectedActives = extractSelectedActives(details?.actives);
 
-      const declaredCount =
-        parseDeclaredActiveCount(
-          details?.numberOfActives,
-        );
+      const declaredCount = parseDeclaredActiveCount(details?.numberOfActives);
 
       /*
        * Missing Test Type -> one source-level exception.
@@ -1598,8 +1343,7 @@ export class BillingService {
 
           sourceId: report.id,
 
-          chargeKey:
-            `CHEMISTRY_REPORT:${report.id}:UNSPECIFIED:UNSPECIFIED_ITEM`,
+          chargeKey: `CHEMISTRY_REPORT:${report.id}:UNSPECIFIED:UNSPECIFIED_ITEM`,
 
           formType: report.formType,
 
@@ -1611,8 +1355,7 @@ export class BillingService {
 
           client,
 
-          resultSentToClientAt:
-            report.resultSentToClientAt ?? null,
+          resultSentToClientAt: report.resultSentToClientAt ?? null,
 
           billingReadyAt: report.billingReadyAt,
 
@@ -1630,24 +1373,19 @@ export class BillingService {
             client,
 
             description:
-              details?.sampleDescription ??
-                details?.description ??
-                null,
+              details?.sampleDescription ?? details?.description ?? null,
 
-            sampleTypes:
-              Array.isArray(details?.sampleTypes)
-                ? details.sampleTypes
-                : [],
+            sampleTypes: Array.isArray(details?.sampleTypes)
+              ? details.sampleTypes
+              : [],
 
             testTypes: [],
             selectedActives,
             declaredActiveCount: declaredCount,
-            numberOfActives:
-              details?.numberOfActives ?? null,
+            numberOfActives: details?.numberOfActives ?? null,
           },
 
-          dataIssue:
-            'Missing Chemistry Type of Test',
+          dataIssue: 'Missing Chemistry Type of Test',
         });
 
         items.push(candidate);
@@ -1669,8 +1407,7 @@ export class BillingService {
 
             sourceId: report.id,
 
-            chargeKey:
-              `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:UNSPECIFIED_ITEM`,
+            chargeKey: `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:UNSPECIFIED_ITEM`,
 
             formType: report.formType,
 
@@ -1682,17 +1419,13 @@ export class BillingService {
 
             client,
 
-            resultSentToClientAt:
-              report.resultSentToClientAt ?? null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
             billingReadyAt: report.billingReadyAt,
 
             testKey: testType.testKey,
 
-            testLabel:
-              niceTestLabel(
-                testType.rawValue,
-              ),
+            testLabel: niceTestLabel(testType.rawValue),
 
             itemKey: null,
 
@@ -1704,31 +1437,24 @@ export class BillingService {
               client,
 
               description:
-                details?.sampleDescription ??
-                details?.description ??
-                null,
+                details?.sampleDescription ?? details?.description ?? null,
 
-            sampleTypes:
-              Array.isArray(details?.sampleTypes)
+              sampleTypes: Array.isArray(details?.sampleTypes)
                 ? details.sampleTypes
                 : [],
 
-              testType:
-                testType.rawValue,
+              testType: testType.rawValue,
 
               selectedActives: [],
 
-              declaredActiveCount:
-                declaredCount,
+              declaredActiveCount: declaredCount,
 
-              numberOfActives:
-                details?.numberOfActives ?? null,
+              numberOfActives: details?.numberOfActives ?? null,
             },
 
-            dataIssue:
-              declaredCount
-                ? `No selected Chemistry active data found; ${declaredCount} active(s) were declared`
-                : 'No Chemistry active selected',
+            dataIssue: declaredCount
+              ? `No selected Chemistry active data found; ${declaredCount} active(s) were declared`
+              : 'No Chemistry active selected',
           });
 
           items.push(candidate);
@@ -1752,154 +1478,24 @@ export class BillingService {
        *
        * numberOfActives remains informational only.
        */
-      const activeCombination =
-        buildCombinationIdentity(
-          selectedActives,
-        );
+      const activeCombination = buildCombinationIdentity(selectedActives);
 
       for (const testType of testTypes) {
-        const fixedCombinationPricing =
-          usesFixedCombinationPricing(
-            rules,
-            {
-              clientCode,
-              client,
-              formType:
-                report.formType,
-              testKey:
-                testType.testKey,
-              at:
-                report.billingReadyAt,
-            },
-          );
+        const fixedCombinationPricing = usesFixedCombinationPricing(rules, {
+          clientCode,
+          client,
+          formType: report.formType,
+          testKey: testType.testKey,
+          at: report.billingReadyAt,
+        });
 
-        if (
-          fixedCombinationPricing &&
-          activeCombination
-        ) {
-          const combinationCandidate =
-            this.priceCandidate(
-              rules,
-              {
-                sourceType:
-                  'CHEMISTRY_REPORT',
-
-                sourceId:
-                  report.id,
-
-                chargeKey:
-                  `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:COMBINATION:${activeCombination.itemKey}`,
-
-                formType:
-                  report.formType,
-
-                formNumber:
-                  report.formNumber,
-
-                reportNumber:
-                  report.reportNumber,
-
-                clientCode,
-
-                client,
-
-                resultSentToClientAt:
-                  report.resultSentToClientAt ??
-                  null,
-
-                billingReadyAt:
-                  report.billingReadyAt,
-
-                testKey:
-                  testType.testKey,
-
-                testLabel:
-                  niceTestLabel(
-                    testType.rawValue,
-                  ),
-
-                itemKey:
-                  activeCombination.itemKey,
-
-                itemLabel:
-                  activeCombination.itemLabel,
-
-                activeCount:
-                  null,
-
-                sourceSnapshot: {
-                  pricingMethod:
-                    'COMBINATION',
-
-                  client,
-
-                  description:
-                    details?.sampleDescription ??
-                      details?.description ??
-                      null,
-
-            sampleTypes:
-              Array.isArray(details?.sampleTypes)
-                ? details.sampleTypes
-                : [],
-
-                  testType:
-                    testType.rawValue,
-
-                  combinationKey:
-                    activeCombination.itemKey,
-
-                  combinationLabel:
-                    activeCombination.itemLabel,
-
-                  selectedActives:
-                    activeCombination.items.map(
-                      (active) => ({
-                        itemKey:
-                          active.itemKey,
-
-                        itemLabel:
-                          active.itemLabel,
-                      }),
-                    ),
-
-                  declaredActiveCount:
-                    declaredCount,
-
-                  numberOfActives:
-                    details?.numberOfActives ??
-                    null,
-
-                  selectedActiveCount:
-                    selectedActives.length,
-
-                  declaredCountMatchesSelection:
-                    declaredCount == null
-                      ? null
-                      : declaredCount ===
-                        selectedActives.length,
-                },
-
-                dataIssue:
-                  null,
-              },
-            );
-
-          items.push(
-            combinationCandidate,
-          );
-
-          continue;
-        }
-
-        for (const selectedActive of selectedActives) {
-          const candidate = this.priceCandidate(rules, {
+        if (fixedCombinationPricing && activeCombination) {
+          const combinationCandidate = this.priceCandidate(rules, {
             sourceType: 'CHEMISTRY_REPORT',
 
             sourceId: report.id,
 
-            chargeKey:
-              `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:${selectedActive.itemKey}`,
+            chargeKey: `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:COMBINATION:${activeCombination.itemKey}`,
 
             formType: report.formType,
 
@@ -1911,83 +1507,134 @@ export class BillingService {
 
             client,
 
-            resultSentToClientAt:
-              report.resultSentToClientAt ?? null,
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
 
             billingReadyAt: report.billingReadyAt,
 
-            testKey:
-              testType.testKey,
+            testKey: testType.testKey,
 
-            testLabel:
-              niceTestLabel(
-                testType.rawValue,
-              ),
+            testLabel: niceTestLabel(testType.rawValue),
 
-            itemKey:
-              selectedActive.itemKey,
+            itemKey: activeCombination.itemKey,
 
-            itemLabel:
-              selectedActive.itemLabel,
+            itemLabel: activeCombination.itemLabel,
 
             activeCount: null,
 
             sourceSnapshot: {
-              pricingMethod:
-                'INDIVIDUAL',
+              pricingMethod: 'COMBINATION',
 
               client,
 
               description:
-                details?.sampleDescription ??
-                details?.description ??
-                null,
+                details?.sampleDescription ?? details?.description ?? null,
 
-            sampleTypes:
-              Array.isArray(details?.sampleTypes)
+              sampleTypes: Array.isArray(details?.sampleTypes)
                 ? details.sampleTypes
                 : [],
 
-              testType:
-                testType.rawValue,
+              testType: testType.rawValue,
 
-              itemKey:
-                selectedActive.itemKey,
+              combinationKey: activeCombination.itemKey,
 
-              itemLabel:
-                selectedActive.itemLabel,
+              combinationLabel: activeCombination.itemLabel,
 
-              sourceActiveKey:
-                selectedActive.sourceKey,
+              selectedActives: activeCombination.items.map((active) => ({
+                itemKey: active.itemKey,
 
-              sourceActiveValue:
-                selectedActive.sourceValue,
+                itemLabel: active.itemLabel,
+              })),
 
-              selectedActives:
-                selectedActives.map(
-                  (active) => ({
-                    itemKey:
-                      active.itemKey,
+              declaredActiveCount: declaredCount,
 
-                    itemLabel:
-                      active.itemLabel,
-                  }),
-                ),
+              numberOfActives: details?.numberOfActives ?? null,
 
-              declaredActiveCount:
-                declaredCount,
-
-              numberOfActives:
-                details?.numberOfActives ?? null,
-
-              selectedActiveCount:
-                selectedActives.length,
+              selectedActiveCount: selectedActives.length,
 
               declaredCountMatchesSelection:
                 declaredCount == null
                   ? null
-                  : declaredCount ===
-                    selectedActives.length,
+                  : declaredCount === selectedActives.length,
+            },
+
+            dataIssue: null,
+          });
+
+          items.push(combinationCandidate);
+
+          continue;
+        }
+
+        for (const selectedActive of selectedActives) {
+          const candidate = this.priceCandidate(rules, {
+            sourceType: 'CHEMISTRY_REPORT',
+
+            sourceId: report.id,
+
+            chargeKey: `CHEMISTRY_REPORT:${report.id}:${testType.testKey}:${selectedActive.itemKey}`,
+
+            formType: report.formType,
+
+            formNumber: report.formNumber,
+
+            reportNumber: report.reportNumber,
+
+            clientCode,
+
+            client,
+
+            resultSentToClientAt: report.resultSentToClientAt ?? null,
+
+            billingReadyAt: report.billingReadyAt,
+
+            testKey: testType.testKey,
+
+            testLabel: niceTestLabel(testType.rawValue),
+
+            itemKey: selectedActive.itemKey,
+
+            itemLabel: selectedActive.itemLabel,
+
+            activeCount: null,
+
+            sourceSnapshot: {
+              pricingMethod: 'INDIVIDUAL',
+
+              client,
+
+              description:
+                details?.sampleDescription ?? details?.description ?? null,
+
+              sampleTypes: Array.isArray(details?.sampleTypes)
+                ? details.sampleTypes
+                : [],
+
+              testType: testType.rawValue,
+
+              itemKey: selectedActive.itemKey,
+
+              itemLabel: selectedActive.itemLabel,
+
+              sourceActiveKey: selectedActive.sourceKey,
+
+              sourceActiveValue: selectedActive.sourceValue,
+
+              selectedActives: selectedActives.map((active) => ({
+                itemKey: active.itemKey,
+
+                itemLabel: active.itemLabel,
+              })),
+
+              declaredActiveCount: declaredCount,
+
+              numberOfActives: details?.numberOfActives ?? null,
+
+              selectedActiveCount: selectedActives.length,
+
+              declaredCountMatchesSelection:
+                declaredCount == null
+                  ? null
+                  : declaredCount === selectedActives.length,
             },
 
             dataIssue: null,
@@ -1996,7 +1643,6 @@ export class BillingService {
           items.push(candidate);
         }
       }
-
     }
 
     return items;
@@ -2163,35 +1809,27 @@ export class BillingService {
     /*
      * Remove anything already captured by its exact chargeKey.
      */
-    const chargeKeys =
-      candidates.map(
-        (item) =>
-          item.chargeKey,
-      );
+    const chargeKeys = candidates.map((item) => item.chargeKey);
 
-    const alreadyCaptured =
-      new Set<string>();
+    const alreadyCaptured = new Set<string>();
 
     if (chargeKeys.length > 0) {
       for (const chargeKeyBatch of chunkArray(chargeKeys)) {
-        const activeLines =
-          await this.prisma.billingInvoiceLine.findMany({
-            where: {
-              activeChargeKey: {
-                in: chargeKeyBatch,
-              },
+        const activeLines = await this.prisma.billingInvoiceLine.findMany({
+          where: {
+            activeChargeKey: {
+              in: chargeKeyBatch,
             },
+          },
 
-            select: {
-              activeChargeKey: true,
-            },
-          });
+          select: {
+            activeChargeKey: true,
+          },
+        });
 
         for (const line of activeLines) {
           if (line.activeChargeKey) {
-            alreadyCaptured.add(
-              line.activeChargeKey,
-            );
+            alreadyCaptured.add(line.activeChargeKey);
           }
         }
       }
@@ -2215,176 +1853,123 @@ export class BillingService {
      * new candidates through; generateDraftInvoices() safely
      * replaces those legacy draft lines.
      */
-    const itemizedChemistrySourceIds =
-      Array.from(
-        new Set(
-          candidates
-            .filter(
-              (item) =>
-                item.sourceType ===
-                  'CHEMISTRY_REPORT' &&
-                item.itemKey != null,
-            )
-            .map(
-              (item) =>
-                item.sourceId,
-            ),
-        ),
-      );
+    const itemizedChemistrySourceIds = Array.from(
+      new Set(
+        candidates
+          .filter(
+            (item) =>
+              item.sourceType === 'CHEMISTRY_REPORT' && item.itemKey != null,
+          )
+          .map((item) => item.sourceId),
+      ),
+    );
 
-    const itemizedMicroSourceIds =
-      Array.from(
-        new Set(
-          candidates
-            .filter(
-              (item) =>
-                item.sourceType ===
-                  'REPORT' &&
-                item.itemKey != null,
-            )
-            .map(
-              (item) =>
-                item.sourceId,
-            ),
-        ),
-      );
+    const itemizedMicroSourceIds = Array.from(
+      new Set(
+        candidates
+          .filter(
+            (item) => item.sourceType === 'REPORT' && item.itemKey != null,
+          )
+          .map((item) => item.sourceId),
+      ),
+    );
 
-    const finalizedLegacyMicroSources =
-      new Set<string>();
+    const finalizedLegacyMicroSources = new Set<string>();
 
-    if (
-      itemizedMicroSourceIds.length >
-      0
-    ) {
-      for (
-        const sourceIdBatch of
-        chunkArray(itemizedMicroSourceIds)
-      ) {
-        const legacyMicroLines =
-          await this.prisma.billingInvoiceLine.findMany({
-            where: {
-              sourceType:
-                'REPORT',
+    if (itemizedMicroSourceIds.length > 0) {
+      for (const sourceIdBatch of chunkArray(itemizedMicroSourceIds)) {
+        const legacyMicroLines = await this.prisma.billingInvoiceLine.findMany({
+          where: {
+            sourceType: 'REPORT',
 
-              sourceId: {
-                in:
-                  sourceIdBatch,
-              },
-
-              itemKey:
-                null,
-
-              activeChargeKey: {
-                not: null,
-              },
+            sourceId: {
+              in: sourceIdBatch,
             },
 
-            select: {
-              sourceId: true,
+            itemKey: null,
 
-              invoice: {
-                select: {
-                  status: true,
-                },
+            activeChargeKey: {
+              not: null,
+            },
+          },
+
+          select: {
+            sourceId: true,
+
+            invoice: {
+              select: {
+                status: true,
               },
             },
-          });
+          },
+        });
 
-        for (
-          const line of legacyMicroLines
-        ) {
+        for (const line of legacyMicroLines) {
           if (
-            line.invoice.status ===
-              'CONFIRMED' ||
-            line.invoice.status ===
-              'SENT'
+            line.invoice.status === 'CONFIRMED' ||
+            line.invoice.status === 'SENT'
           ) {
-            finalizedLegacyMicroSources.add(
-              line.sourceId,
-            );
+            finalizedLegacyMicroSources.add(line.sourceId);
           }
         }
       }
     }
 
-    const finalizedLegacySources =
-      new Set<string>();
+    const finalizedLegacySources = new Set<string>();
 
-    if (
-      itemizedChemistrySourceIds.length >
-      0
-    ) {
-      for (
-        const sourceIdBatch of
-        chunkArray(itemizedChemistrySourceIds)
-      ) {
-        const legacyLines =
-          await this.prisma.billingInvoiceLine.findMany({
-            where: {
-              sourceType:
-                'CHEMISTRY_REPORT',
+    if (itemizedChemistrySourceIds.length > 0) {
+      for (const sourceIdBatch of chunkArray(itemizedChemistrySourceIds)) {
+        const legacyLines = await this.prisma.billingInvoiceLine.findMany({
+          where: {
+            sourceType: 'CHEMISTRY_REPORT',
 
-              sourceId: {
-                in:
-                  sourceIdBatch,
-              },
-
-              itemKey: null,
-
-              activeChargeKey: {
-                not: null,
-              },
+            sourceId: {
+              in: sourceIdBatch,
             },
 
-            select: {
-              sourceId: true,
+            itemKey: null,
 
-              invoice: {
-                select: {
-                  status: true,
-                },
+            activeChargeKey: {
+              not: null,
+            },
+          },
+
+          select: {
+            sourceId: true,
+
+            invoice: {
+              select: {
+                status: true,
               },
             },
-          });
+          },
+        });
 
         for (const line of legacyLines) {
           if (
-            line.invoice.status ===
-              'CONFIRMED' ||
-            line.invoice.status ===
-              'SENT'
+            line.invoice.status === 'CONFIRMED' ||
+            line.invoice.status === 'SENT'
           ) {
-            finalizedLegacySources.add(
-              line.sourceId,
-            );
+            finalizedLegacySources.add(line.sourceId);
           }
         }
       }
     }
 
-    candidates =
-      candidates.filter(
-        (item) =>
-          !alreadyCaptured.has(
-            item.chargeKey,
-          ) &&
-          !(
-            item.sourceType ===
-              'CHEMISTRY_REPORT' &&
-            item.itemKey != null &&
-            finalizedLegacySources.has(
-              item.sourceId,
-            )
-          ) &&
-          !(
-            item.sourceType ===
-              'REPORT' &&
-            item.itemKey != null &&
-            finalizedLegacyMicroSources.has(
-              item.sourceId,
-            )
-          ),
-      );
+    candidates = candidates.filter(
+      (item) =>
+        !alreadyCaptured.has(item.chargeKey) &&
+        !(
+          item.sourceType === 'CHEMISTRY_REPORT' &&
+          item.itemKey != null &&
+          finalizedLegacySources.has(item.sourceId)
+        ) &&
+        !(
+          item.sourceType === 'REPORT' &&
+          item.itemKey != null &&
+          finalizedLegacyMicroSources.has(item.sourceId)
+        ),
+    );
 
     return {
       month,
@@ -2392,6 +1977,139 @@ export class BillingService {
       periodEnd,
       candidates,
     };
+  }
+
+  /* =======================================================
+     DELETED LINE HISTORY FOR UNBILLED
+  ======================================================= */
+
+  private async getDeletedChargeHistory(candidates: BillingCandidate[]) {
+    const historyByChargeKey = new Map<
+      string,
+      {
+        previouslyDeleted: true;
+        deletionCount: number;
+        lastDeletedAt: Date;
+        lastDeletedBy: string | null;
+        lastDeletedInvoiceId: string;
+        lastDeletedInvoiceNumber: string | null;
+        lastDeletedInvoiceStatus: BillingInvoiceStatus | null;
+        canRestoreToOriginalDraft: boolean;
+      }
+    >();
+
+    if (candidates.length === 0) {
+      return historyByChargeKey;
+    }
+
+    const candidateChargeKeys = new Set(
+      candidates.map((item) => item.chargeKey),
+    );
+
+    const clientCodes = Array.from(
+      new Set(candidates.map((item) => item.clientCode).filter(Boolean)),
+    );
+
+    if (clientCodes.length === 0) {
+      return historyByChargeKey;
+    }
+
+    const deletionAudits = await this.prisma.auditTrail.findMany({
+      where: {
+        action: 'INVOICE_LINE_DELETED',
+        entity: 'BILLING_INVOICE',
+        clientCode: {
+          in: clientCodes,
+        },
+      },
+      select: {
+        id: true,
+        entityId: true,
+        userId: true,
+        createdAt: true,
+        changes: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const invoiceIds = new Set<string>();
+
+    for (const audit of deletionAudits) {
+      const changes =
+        audit.changes &&
+        typeof audit.changes === 'object' &&
+        !Array.isArray(audit.changes)
+          ? (audit.changes as Record<string, any>)
+          : null;
+
+      const chargeKey = String(changes?.chargeKey ?? '').trim();
+
+      if (!chargeKey || !candidateChargeKeys.has(chargeKey)) {
+        continue;
+      }
+
+      const invoiceId = String(audit.entityId ?? '').trim();
+
+      if (!invoiceId) {
+        continue;
+      }
+
+      invoiceIds.add(invoiceId);
+
+      const existing = historyByChargeKey.get(chargeKey);
+
+      if (!existing) {
+        historyByChargeKey.set(chargeKey, {
+          previouslyDeleted: true,
+          deletionCount: 1,
+          lastDeletedAt: audit.createdAt,
+          lastDeletedBy: audit.userId ?? null,
+          lastDeletedInvoiceId: invoiceId,
+          lastDeletedInvoiceNumber: null,
+          lastDeletedInvoiceStatus: null,
+          canRestoreToOriginalDraft: false,
+        });
+      } else {
+        existing.deletionCount += 1;
+      }
+    }
+
+    if (invoiceIds.size === 0) {
+      return historyByChargeKey;
+    }
+
+    const invoices = await this.prisma.billingInvoice.findMany({
+      where: {
+        id: {
+          in: Array.from(invoiceIds),
+        },
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
+        invoiceKind: true,
+      },
+    });
+
+    const invoiceById = new Map(
+      invoices.map((invoice) => [invoice.id, invoice]),
+    );
+
+    for (const history of historyByChargeKey.values()) {
+      const invoice = invoiceById.get(history.lastDeletedInvoiceId);
+
+      history.lastDeletedInvoiceNumber = invoice?.invoiceNumber ?? null;
+
+      history.lastDeletedInvoiceStatus = invoice?.status ?? null;
+
+      history.canRestoreToOriginalDraft =
+        invoice?.status === 'DRAFT' && invoice?.invoiceKind === 'REPORT';
+    }
+
+    return historyByChargeKey;
   }
 
   /* =======================================================
@@ -2421,6 +2139,10 @@ export class BillingService {
       }
     }
 
+    const deletedHistory = await this.getDeletedChargeHistory(
+      result.candidates,
+    );
+
     return {
       month: result.month,
 
@@ -2442,6 +2164,8 @@ export class BillingService {
         unitPrice: item.unitPrice ? item.unitPrice.toFixed(2) : null,
 
         amount: item.amount ? item.amount.toFixed(2) : null,
+
+        deletionHistory: deletedHistory.get(item.chargeKey) ?? null,
       })),
     };
   }
@@ -2467,22 +2191,16 @@ export class BillingService {
      * If one pathogen / active / COA item from that report
      * is not READY, the whole report stays in Unbilled.
      */
-    const candidatesBySource =
-      new Map<string, BillingCandidate[]>();
+    const candidatesBySource = new Map<string, BillingCandidate[]>();
 
     for (const item of discovery.candidates) {
-      const sourceKey =
-        `${item.sourceType}:${item.sourceId}`;
+      const sourceKey = `${item.sourceType}:${item.sourceId}`;
 
-      const current =
-        candidatesBySource.get(sourceKey) ?? [];
+      const current = candidatesBySource.get(sourceKey) ?? [];
 
       current.push(item);
 
-      candidatesBySource.set(
-        sourceKey,
-        current,
-      );
+      candidatesBySource.set(sourceKey, current);
     }
 
     const readyCandidates: BillingCandidate[] = [];
@@ -2490,43 +2208,29 @@ export class BillingService {
     let skippedNotReadySources = 0;
     let skippedNotReadyCharges = 0;
 
-    for (
-      const sourceLines of
-      candidatesBySource.values()
-    ) {
-      const sourceReady =
-        sourceLines.every(
-          (line) =>
-            !line.pricingIssue &&
-            line.unitPrice != null &&
-            line.amount != null,
-        );
+    for (const sourceLines of candidatesBySource.values()) {
+      const sourceReady = sourceLines.every(
+        (line) =>
+          !line.pricingIssue && line.unitPrice != null && line.amount != null,
+      );
 
       if (!sourceReady) {
         skippedNotReadySources += 1;
-        skippedNotReadyCharges +=
-          sourceLines.length;
+        skippedNotReadyCharges += sourceLines.length;
         continue;
       }
 
-      readyCandidates.push(
-        ...sourceLines,
-      );
+      readyCandidates.push(...sourceLines);
     }
 
-    const groups =
-      new Map<string, BillingCandidate[]>();
+    const groups = new Map<string, BillingCandidate[]>();
 
     for (const item of readyCandidates) {
-      const current =
-        groups.get(item.clientCode) ?? [];
+      const current = groups.get(item.clientCode) ?? [];
 
       current.push(item);
 
-      groups.set(
-        item.clientCode,
-        current,
-      );
+      groups.set(item.clientCode, current);
     }
 
     const results: any[] = [];
@@ -2534,174 +2238,140 @@ export class BillingService {
     for (const [clientCode, lines] of groups.entries()) {
       const activeKey = `${clientCode}:${discovery.month}`;
 
-      const transactionResult = await this.prisma.$transaction(async (tx) => {
-        /*
-         * There may be only ONE open DRAFT slot per client/month.
-         *
-         * IMPORTANT:
-         * A previously CONFIRMED/SENT invoice must NOT keep the
-         * monthly activeKey lock. Otherwise any report that becomes
-         * Ready later in the same month can never enter a new draft.
-         *
-         * Historical invoices remain immutable; we only release the
-         * activeKey slot so a new DRAFT can be created.
-         */
-        let invoice =
-          await tx.billingInvoice.findUnique({
+      const transactionResult = await this.prisma.$transaction(
+        async (tx) => {
+          /*
+           * There may be only ONE open DRAFT slot per client/month.
+           *
+           * IMPORTANT:
+           * A previously CONFIRMED/SENT invoice must NOT keep the
+           * monthly activeKey lock. Otherwise any report that becomes
+           * Ready later in the same month can never enter a new draft.
+           *
+           * Historical invoices remain immutable; we only release the
+           * activeKey slot so a new DRAFT can be created.
+           */
+          let invoice = await tx.billingInvoice.findUnique({
             where: {
               activeKey,
             },
           });
 
-        let releasedClosedInvoiceId:
-          | string
-          | null = null;
+          let releasedClosedInvoiceId: string | null = null;
 
-        if (
-          invoice &&
-          invoice.status !== 'DRAFT'
-        ) {
-          releasedClosedInvoiceId =
-            invoice.id;
+          if (invoice && invoice.status !== 'DRAFT') {
+            releasedClosedInvoiceId = invoice.id;
 
-          await tx.billingInvoice.update({
-            where: {
-              id: invoice.id,
-            },
+            await tx.billingInvoice.update({
+              where: {
+                id: invoice.id,
+              },
 
-            data: {
-              activeKey: null,
+              data: {
+                activeKey: null,
 
-              updatedBy:
-                user.userId,
-            },
-          });
+                updatedBy: user.userId,
+              },
+            });
 
-          invoice = null;
-        }
+            invoice = null;
+          }
 
-        if (!invoice) {
-          invoice =
-            await tx.billingInvoice.create({
+          if (!invoice) {
+            invoice = await tx.billingInvoice.create({
               data: {
                 activeKey,
 
                 clientCode,
 
-                periodStart:
-                  discovery.periodStart,
+                periodStart: discovery.periodStart,
 
-                periodEnd:
-                  discovery.periodEnd,
+                periodEnd: discovery.periodEnd,
 
-                status:
-                  'DRAFT',
+                status: 'DRAFT',
 
-                invoiceKind:
-                  'REPORT',
+                invoiceKind: 'REPORT',
 
-                createdBy:
-                  user.userId,
+                createdBy: user.userId,
 
-                updatedBy:
-                  user.userId,
+                updatedBy: user.userId,
               },
             });
-        }
+          }
 
-        /*
-         * Transition old DRAFT Chemistry/COA lines to the new
-         * itemized structure.
-         *
-         * We only replace legacy itemKey=null lines when the
-         * current discovery produced exact itemized candidates
-         * for that same source.
-         *
-         * IMPORTANT:
-         *
-         * A DRAFT invoice is still rebuildable. If an old
-         * generic Chemistry/COA draft line had a manual price
-         * override, that override belonged to the OLD pricing
-         * structure and cannot be mapped safely across multiple
-         * new itemized lines.
-         *
-         * Therefore Generate Drafts intentionally removes the
-         * old legacy DRAFT line and recreates the source using
-         * the current itemized pricing model.
-         *
-         * CONFIRMED/SENT invoices are never handled here and
-         * remain protected/immutable.
-         */
-        const itemizedChemistrySourceIds =
-          Array.from(
+          /*
+           * Transition old DRAFT Chemistry/COA lines to the new
+           * itemized structure.
+           *
+           * We only replace legacy itemKey=null lines when the
+           * current discovery produced exact itemized candidates
+           * for that same source.
+           *
+           * IMPORTANT:
+           *
+           * A DRAFT invoice is still rebuildable. If an old
+           * generic Chemistry/COA draft line had a manual price
+           * override, that override belonged to the OLD pricing
+           * structure and cannot be mapped safely across multiple
+           * new itemized lines.
+           *
+           * Therefore Generate Drafts intentionally removes the
+           * old legacy DRAFT line and recreates the source using
+           * the current itemized pricing model.
+           *
+           * CONFIRMED/SENT invoices are never handled here and
+           * remain protected/immutable.
+           */
+          const itemizedChemistrySourceIds = Array.from(
             new Set(
               lines
                 .filter(
                   (line) =>
-                    line.sourceType ===
-                      'CHEMISTRY_REPORT' &&
+                    line.sourceType === 'CHEMISTRY_REPORT' &&
                     line.itemKey != null,
                 )
-                .map(
-                  (line) =>
-                    line.sourceId,
-                ),
+                .map((line) => line.sourceId),
             ),
           );
 
-        const itemizedMicroSourceIds =
-          Array.from(
+          const itemizedMicroSourceIds = Array.from(
             new Set(
               lines
                 .filter(
                   (line) =>
-                    line.sourceType ===
-                      'REPORT' &&
-                    line.itemKey != null,
+                    line.sourceType === 'REPORT' && line.itemKey != null,
                 )
-                .map(
-                  (line) =>
-                    line.sourceId,
-                ),
+                .map((line) => line.sourceId),
             ),
           );
 
-        let legacyLinesReplaced = 0;
-        let legacyManualOverridesReplaced = 0;
+          let legacyLinesReplaced = 0;
+          let legacyManualOverridesReplaced = 0;
 
-        if (
-          itemizedChemistrySourceIds.length >
-          0
-        ) {
-          const legacyDraftLines: Array<{
-            id: string;
-            sourceId: string;
-            formNumber: string;
-            reportNumber: string;
-            testKey: string;
-            manualOverride: boolean;
-          }> = [];
+          if (itemizedChemistrySourceIds.length > 0) {
+            const legacyDraftLines: Array<{
+              id: string;
+              sourceId: string;
+              formNumber: string;
+              reportNumber: string;
+              testKey: string;
+              manualOverride: boolean;
+            }> = [];
 
-          for (
-            const sourceIdBatch of
-            chunkArray(itemizedChemistrySourceIds)
-          ) {
-            const batchLines =
-              await tx.billingInvoiceLine.findMany({
+            for (const sourceIdBatch of chunkArray(
+              itemizedChemistrySourceIds,
+            )) {
+              const batchLines = await tx.billingInvoiceLine.findMany({
                 where: {
-                  invoiceId:
-                    invoice.id,
+                  invoiceId: invoice.id,
 
-                  sourceType:
-                    'CHEMISTRY_REPORT',
+                  sourceType: 'CHEMISTRY_REPORT',
 
                   sourceId: {
-                    in:
-                      sourceIdBatch,
+                    in: sourceIdBatch,
                   },
 
-                  itemKey:
-                    null,
+                  itemKey: null,
 
                   activeChargeKey: {
                     not: null,
@@ -2718,69 +2388,46 @@ export class BillingService {
                 },
               });
 
-            legacyDraftLines.push(
-              ...batchLines,
-            );
-          }
+              legacyDraftLines.push(...batchLines);
+            }
 
-          legacyManualOverridesReplaced =
-            legacyDraftLines.filter(
-              (line) =>
-                line.manualOverride,
+            legacyManualOverridesReplaced = legacyDraftLines.filter(
+              (line) => line.manualOverride,
             ).length;
 
-          for (
-            const idBatch of
-            chunkArray(
-              legacyDraftLines.map(
-                (line) => line.id,
-              ),
-            )
-          ) {
-            const deleted =
-              await tx.billingInvoiceLine.deleteMany({
+            for (const idBatch of chunkArray(
+              legacyDraftLines.map((line) => line.id),
+            )) {
+              const deleted = await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
-                    in:
-                      idBatch,
+                    in: idBatch,
                   },
                 },
               });
 
-            legacyLinesReplaced +=
-              deleted.count;
+              legacyLinesReplaced += deleted.count;
+            }
           }
-        }
 
-        if (
-          itemizedMicroSourceIds.length >
-          0
-        ) {
-          const legacyMicroDraftLines: Array<{
-            id: string;
-            manualOverride: boolean;
-          }> = [];
+          if (itemizedMicroSourceIds.length > 0) {
+            const legacyMicroDraftLines: Array<{
+              id: string;
+              manualOverride: boolean;
+            }> = [];
 
-          for (
-            const sourceIdBatch of
-            chunkArray(itemizedMicroSourceIds)
-          ) {
-            const batchLines =
-              await tx.billingInvoiceLine.findMany({
+            for (const sourceIdBatch of chunkArray(itemizedMicroSourceIds)) {
+              const batchLines = await tx.billingInvoiceLine.findMany({
                 where: {
-                  invoiceId:
-                    invoice.id,
+                  invoiceId: invoice.id,
 
-                  sourceType:
-                    'REPORT',
+                  sourceType: 'REPORT',
 
                   sourceId: {
-                    in:
-                      sourceIdBatch,
+                    in: sourceIdBatch,
                   },
 
-                  itemKey:
-                    null,
+                  itemKey: null,
 
                   activeChargeKey: {
                     not: null,
@@ -2793,152 +2440,106 @@ export class BillingService {
                 },
               });
 
-            legacyMicroDraftLines.push(
-              ...batchLines,
-            );
-          }
+              legacyMicroDraftLines.push(...batchLines);
+            }
 
-          legacyManualOverridesReplaced +=
-            legacyMicroDraftLines.filter(
-              (line) =>
-                line.manualOverride,
+            legacyManualOverridesReplaced += legacyMicroDraftLines.filter(
+              (line) => line.manualOverride,
             ).length;
 
-          for (
-            const idBatch of
-            chunkArray(
-              legacyMicroDraftLines.map(
-                (line) => line.id,
-              ),
-            )
-          ) {
-            const deleted =
-              await tx.billingInvoiceLine.deleteMany({
+            for (const idBatch of chunkArray(
+              legacyMicroDraftLines.map((line) => line.id),
+            )) {
+              const deleted = await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
-                    in:
-                      idBatch,
+                    in: idBatch,
                   },
                 },
               });
 
-            legacyLinesReplaced +=
-              deleted.count;
+              legacyLinesReplaced += deleted.count;
+            }
           }
-        }
 
-        /*
-         * PRICING-STRUCTURE RECONCILIATION
-         * ---------------------------------------------------
-         * Combination pricing changes the number of lines that
-         * represent one source report:
-         *
-         *   individual:
-         *     E_COLI + P_AER = two invoice lines
-         *
-         *   combination:
-         *     E_COLI + P_AER = one invoice line
-         *
-         * A report may already exist on the current DRAFT when
-         * a new combination rule is added. Remove obsolete
-         * auto-captured lines for that source before inserting
-         * the newly discovered pricing shape. This prevents an
-         * old individual set and a new combination line from
-         * being billed together.
-         *
-         * As with the existing legacy-itemization migration,
-         * a manual override attached to an obsolete structure
-         * cannot be mapped safely to the new structure, so it
-         * is explicitly counted and replaced during Generate
-         * Drafts.
-         */
-        const desiredChargeKeysBySource =
-          new Map<string, Set<string>>();
+          /*
+           * PRICING-STRUCTURE RECONCILIATION
+           * ---------------------------------------------------
+           * Combination pricing changes the number of lines that
+           * represent one source report:
+           *
+           *   individual:
+           *     E_COLI + P_AER = two invoice lines
+           *
+           *   combination:
+           *     E_COLI + P_AER = one invoice line
+           *
+           * A report may already exist on the current DRAFT when
+           * a new combination rule is added. Remove obsolete
+           * auto-captured lines for that source before inserting
+           * the newly discovered pricing shape. This prevents an
+           * old individual set and a new combination line from
+           * being billed together.
+           *
+           * As with the existing legacy-itemization migration,
+           * a manual override attached to an obsolete structure
+           * cannot be mapped safely to the new structure, so it
+           * is explicitly counted and replaced during Generate
+           * Drafts.
+           */
+          const desiredChargeKeysBySource = new Map<string, Set<string>>();
 
-        const desiredSourcePairs =
-          new Map<
+          const desiredSourcePairs = new Map<
             string,
             {
-              sourceType:
-                BillingSourceType;
+              sourceType: BillingSourceType;
               sourceId: string;
             }
           >();
 
-        for (const line of lines) {
-          const sourceKey =
-            `${line.sourceType}:${line.sourceId}`;
+          for (const line of lines) {
+            const sourceKey = `${line.sourceType}:${line.sourceId}`;
 
-          const desired =
-            desiredChargeKeysBySource.get(
-              sourceKey,
-            ) ??
-            new Set<string>();
+            const desired =
+              desiredChargeKeysBySource.get(sourceKey) ?? new Set<string>();
 
-          desired.add(
-            line.chargeKey,
-          );
+            desired.add(line.chargeKey);
 
-          desiredChargeKeysBySource.set(
-            sourceKey,
-            desired,
-          );
+            desiredChargeKeysBySource.set(sourceKey, desired);
 
-          desiredSourcePairs.set(
-            sourceKey,
-            {
-              sourceType:
-                line.sourceType,
+            desiredSourcePairs.set(sourceKey, {
+              sourceType: line.sourceType,
 
-              sourceId:
-                line.sourceId,
-            },
-          );
-        }
+              sourceId: line.sourceId,
+            });
+          }
 
-        let pricingStructureLinesReplaced =
-          0;
+          let pricingStructureLinesReplaced = 0;
 
-        let pricingStructureManualOverridesReplaced =
-          0;
+          let pricingStructureManualOverridesReplaced = 0;
 
-        if (
-          desiredSourcePairs.size >
-          0
-        ) {
-          const existingSourceLines: Array<{
-            id: string;
-            sourceType: BillingSourceType;
-            sourceId: string;
-            chargeKey: string;
-            activeChargeKey: string | null;
-            manualOverride: boolean;
-          }> = [];
+          if (desiredSourcePairs.size > 0) {
+            const existingSourceLines: Array<{
+              id: string;
+              sourceType: BillingSourceType;
+              sourceId: string;
+              chargeKey: string;
+              activeChargeKey: string | null;
+              manualOverride: boolean;
+            }> = [];
 
-          const sourcePairs =
-            Array.from(
-              desiredSourcePairs.values(),
-            );
+            const sourcePairs = Array.from(desiredSourcePairs.values());
 
-          for (
-            const sourceBatch of
-            chunkArray(sourcePairs)
-          ) {
-            const batchLines =
-              await tx.billingInvoiceLine.findMany({
+            for (const sourceBatch of chunkArray(sourcePairs)) {
+              const batchLines = await tx.billingInvoiceLine.findMany({
                 where: {
-                  invoiceId:
-                    invoice.id,
+                  invoiceId: invoice.id,
 
-                  OR: sourceBatch.map(
-                    (source) => ({
-                      sourceType:
-                        source.sourceType,
+                  OR: sourceBatch.map((source) => ({
+                    sourceType: source.sourceType,
 
-                      sourceId:
-                        source.sourceId,
-                    }),
-                  ),
+                    sourceId: source.sourceId,
+                  })),
                 },
 
                 select: {
@@ -2950,140 +2551,106 @@ export class BillingService {
 
                   chargeKey: true,
 
-                  activeChargeKey:
-                    true,
+                  activeChargeKey: true,
 
-                  manualOverride:
-                    true,
+                  manualOverride: true,
                 },
               });
 
-            existingSourceLines.push(
-              ...batchLines,
-            );
-          }
+              existingSourceLines.push(...batchLines);
+            }
 
-          const staleSourceLines =
-            existingSourceLines.filter(
-              (existing) => {
-                /*
-                 * Historical/revision ownership lines use a
-                 * null activeChargeKey and are not part of this
-                 * monthly DRAFT replacement path.
-                 */
-                if (
-                  existing.activeChargeKey ==
-                  null
-                ) {
-                  return false;
-                }
+            const staleSourceLines = existingSourceLines.filter((existing) => {
+              /*
+               * Historical/revision ownership lines use a
+               * null activeChargeKey and are not part of this
+               * monthly DRAFT replacement path.
+               */
+              if (existing.activeChargeKey == null) {
+                return false;
+              }
 
-                const sourceKey =
-                  `${existing.sourceType}:${existing.sourceId}`;
+              const sourceKey = `${existing.sourceType}:${existing.sourceId}`;
 
-                const desired =
-                  desiredChargeKeysBySource.get(
-                    sourceKey,
-                  );
+              const desired = desiredChargeKeysBySource.get(sourceKey);
 
-                return (
-                  !!desired &&
-                  !desired.has(
-                    existing.chargeKey,
-                  )
-                );
-              },
-            );
+              return !!desired && !desired.has(existing.chargeKey);
+            });
 
-          pricingStructureManualOverridesReplaced =
-            staleSourceLines.filter(
-              (line) =>
-                line.manualOverride,
+            pricingStructureManualOverridesReplaced = staleSourceLines.filter(
+              (line) => line.manualOverride,
             ).length;
 
-          for (
-            const idBatch of
-            chunkArray(
-              staleSourceLines.map(
-                (line) => line.id,
-              ),
-            )
-          ) {
-            const deleted =
-              await tx.billingInvoiceLine.deleteMany({
+            for (const idBatch of chunkArray(
+              staleSourceLines.map((line) => line.id),
+            )) {
+              const deleted = await tx.billingInvoiceLine.deleteMany({
                 where: {
                   id: {
-                    in:
-                      idBatch,
+                    in: idBatch,
                   },
                 },
               });
 
-            pricingStructureLinesReplaced +=
-              deleted.count;
+              pricingStructureLinesReplaced += deleted.count;
+            }
           }
-        }
 
-        const createData = lines.map((line) => ({
-          invoiceId: invoice.id,
+          const createData = lines.map((line) => ({
+            invoiceId: invoice.id,
 
-          sourceType: line.sourceType,
+            sourceType: line.sourceType,
 
-          sourceId: line.sourceId,
+            sourceId: line.sourceId,
 
-          chargeKey: line.chargeKey,
+            chargeKey: line.chargeKey,
 
-          activeChargeKey: line.chargeKey,
+            activeChargeKey: line.chargeKey,
 
-          formType: line.formType,
+            formType: line.formType,
 
-          formNumber: line.formNumber,
+            formNumber: line.formNumber,
 
-          reportNumber: line.reportNumber,
+            reportNumber: line.reportNumber,
 
-          clientCode: line.clientCode,
+            clientCode: line.clientCode,
 
-          client: line.client,
+            client: line.client,
 
-          resultSentToClientAt: line.resultSentToClientAt,
+            resultSentToClientAt: line.resultSentToClientAt,
 
-          billingReadyAt: line.billingReadyAt,
+            billingReadyAt: line.billingReadyAt,
 
-          testKey: line.testKey,
+            testKey: line.testKey,
 
-          testLabel: line.testLabel,
+            testLabel: line.testLabel,
 
-          itemKey: line.itemKey,
+            itemKey: line.itemKey,
 
-          itemLabel: line.itemLabel,
+            itemLabel: line.itemLabel,
 
-          activeCount: line.activeCount,
+            activeCount: line.activeCount,
 
-          priceBasis: line.priceBasis,
+            priceBasis: line.priceBasis,
 
-          quantity: line.quantity,
+            quantity: line.quantity,
 
-          unitPrice: line.unitPrice,
+            unitPrice: line.unitPrice,
 
-          amount: line.amount,
+            amount: line.amount,
 
-          pricingRuleId: line.pricingRuleId,
+            pricingRuleId: line.pricingRuleId,
 
-          pricingIssue: line.pricingIssue,
+            pricingIssue: line.pricingIssue,
 
-          sourceSnapshot: line.sourceSnapshot,
-        }));
+            sourceSnapshot: line.sourceSnapshot,
+          }));
 
-        let createdCount = 0;
+          let createdCount = 0;
 
-        for (
-          const createBatch of
-          chunkArray(createData)
-        ) {
-          const created =
-            await tx.billingInvoiceLine.createMany({
-              data:
-                createBatch,
+          for (const createBatch of chunkArray(createData)) {
+            const created = await tx.billingInvoiceLine.createMany({
+              data: createBatch,
 
               /*
                * activeChargeKey is UNIQUE.
@@ -3093,24 +2660,22 @@ export class BillingService {
               skipDuplicates: true,
             });
 
-          createdCount +=
-            created.count;
-        }
+            createdCount += created.count;
+          }
 
-        /*
-         * CLIENT-SPECIFIC PRICING ROLLOUT
-         * ---------------------------------------------------
-         * Existing DRAFT invoice lines created before the new
-         * BillingInvoiceLine.client column may already own the
-         * activeChargeKey, so createMany(skipDuplicates) will
-         * not recreate them.
-         *
-         * Backfill the exact report-level client by source so
-         * Refresh Pricing can immediately apply the correct
-         * client-specific rule to existing open drafts.
-         */
-        const clientBySource =
-          new Map<
+          /*
+           * CLIENT-SPECIFIC PRICING ROLLOUT
+           * ---------------------------------------------------
+           * Existing DRAFT invoice lines created before the new
+           * BillingInvoiceLine.client column may already own the
+           * activeChargeKey, so createMany(skipDuplicates) will
+           * not recreate them.
+           *
+           * Backfill the exact report-level client by source so
+           * Refresh Pricing can immediately apply the correct
+           * client-specific rule to existing open drafts.
+           */
+          const clientBySource = new Map<
             string,
             {
               sourceType: BillingSourceType;
@@ -3119,133 +2684,93 @@ export class BillingService {
             }
           >();
 
-        for (const line of lines) {
-          if (!line.client) {
-            continue;
+          for (const line of lines) {
+            if (!line.client) {
+              continue;
+            }
+
+            const key = `${line.sourceType}:${line.sourceId}`;
+
+            if (!clientBySource.has(key)) {
+              clientBySource.set(key, {
+                sourceType: line.sourceType,
+
+                sourceId: line.sourceId,
+
+                client: line.client,
+              });
+            }
           }
 
-          const key =
-            `${line.sourceType}:${line.sourceId}`;
-
-          if (!clientBySource.has(key)) {
-            clientBySource.set(
-              key,
-              {
-                sourceType:
-                  line.sourceType,
-
-                sourceId:
-                  line.sourceId,
-
-                client:
-                  line.client,
-              },
-            );
-          }
-        }
-
-        /*
-         * IMPORTANT PERFORMANCE FIX
-         * ---------------------------------------------------
-         * Do NOT issue one UPDATE per source report.
-         *
-         * Large billing months can have hundreds of sources.
-         * The old loop kept an interactive transaction open
-         * while running hundreds of sequential UPDATEs, which
-         * can exceed Prisma's transaction timeout.
-         *
-         * Group by sourceType + client and update source IDs
-         * in bounded batches instead.
-         */
-        const clientBackfillGroups =
-          new Map<
+          /*
+           * IMPORTANT PERFORMANCE FIX
+           * ---------------------------------------------------
+           * Do NOT issue one UPDATE per source report.
+           *
+           * Large billing months can have hundreds of sources.
+           * The old loop kept an interactive transaction open
+           * while running hundreds of sequential UPDATEs, which
+           * can exceed Prisma's transaction timeout.
+           *
+           * Group by sourceType + client and update source IDs
+           * in bounded batches instead.
+           */
+          const clientBackfillGroups = new Map<
             string,
             {
-              sourceType:
-                BillingSourceType;
+              sourceType: BillingSourceType;
               client: string;
-              sourceIds:
-                Set<string>;
+              sourceIds: Set<string>;
             }
           >();
 
-        for (
-          const source of
-          clientBySource.values()
-        ) {
-          const groupKey =
-            `${source.sourceType}:${source.client}`;
+          for (const source of clientBySource.values()) {
+            const groupKey = `${source.sourceType}:${source.client}`;
 
-          const current =
-            clientBackfillGroups.get(
-              groupKey,
-            ) ?? {
-              sourceType:
-                source.sourceType,
+            const current = clientBackfillGroups.get(groupKey) ?? {
+              sourceType: source.sourceType,
 
-              client:
-                source.client,
+              client: source.client,
 
-              sourceIds:
-                new Set<string>(),
+              sourceIds: new Set<string>(),
             };
 
-          current.sourceIds.add(
-            source.sourceId,
-          );
+            current.sourceIds.add(source.sourceId);
 
-          clientBackfillGroups.set(
-            groupKey,
-            current,
-          );
-        }
+            clientBackfillGroups.set(groupKey, current);
+          }
 
-        for (
-          const group of
-          clientBackfillGroups.values()
-        ) {
-          for (
-            const sourceIdBatch of
-            chunkArray(
-              Array.from(
-                group.sourceIds,
-              ),
-            )
-          ) {
-            await tx.billingInvoiceLine.updateMany({
-              where: {
-                invoiceId:
-                  invoice.id,
+          for (const group of clientBackfillGroups.values()) {
+            for (const sourceIdBatch of chunkArray(
+              Array.from(group.sourceIds),
+            )) {
+              await tx.billingInvoiceLine.updateMany({
+                where: {
+                  invoiceId: invoice.id,
 
-                sourceType:
-                  group.sourceType,
+                  sourceType: group.sourceType,
 
-                sourceId: {
-                  in:
-                    sourceIdBatch,
+                  sourceId: {
+                    in: sourceIdBatch,
+                  },
+
+                  client: null,
                 },
 
-                client:
-                  null,
-              },
-
-              data: {
-                client:
-                  group.client,
-              },
-            });
+                data: {
+                  client: group.client,
+                },
+              });
+            }
           }
-        }
 
-        /*
-         * Always recalculate totals from persisted lines.
-         * Never trust totals supplied by frontend.
-         */
-        const persistedLineTotals =
-          await tx.billingInvoiceLine.aggregate({
+          /*
+           * Always recalculate totals from persisted lines.
+           * Never trust totals supplied by frontend.
+           */
+          const persistedLineTotals = await tx.billingInvoiceLine.aggregate({
             where: {
-              invoiceId:
-                invoice.id,
+              invoiceId: invoice.id,
             },
 
             _sum: {
@@ -3253,60 +2778,56 @@ export class BillingService {
             },
           });
 
-        const subtotal =
-          persistedLineTotals._sum.amount ??
-          new Prisma.Decimal(0);
+          const subtotal =
+            persistedLineTotals._sum.amount ?? new Prisma.Decimal(0);
 
-        const total =
-          subtotal.plus(
-            invoice.adjustmentAmount,
-          );
+          const total = subtotal.plus(invoice.adjustmentAmount);
 
-        const updated = await tx.billingInvoice.update({
-          where: {
-            id: invoice.id,
-          },
+          const updated = await tx.billingInvoice.update({
+            where: {
+              id: invoice.id,
+            },
 
-          data: {
-            subtotal,
-            total,
+            data: {
+              subtotal,
+              total,
 
-            updatedBy: user.userId,
-          },
-        });
+              updatedBy: user.userId,
+            },
+          });
 
-        return {
-          invoice: updated,
+          return {
+            invoice: updated,
 
-          skipped: false,
+            skipped: false,
 
-          added: createdCount,
+            added: createdCount,
 
-          legacyLinesReplaced,
+            legacyLinesReplaced,
 
-          legacyManualOverridesReplaced,
+            legacyManualOverridesReplaced,
 
-          pricingStructureLinesReplaced,
+            pricingStructureLinesReplaced,
 
-          pricingStructureManualOverridesReplaced,
+            pricingStructureManualOverridesReplaced,
 
-          releasedClosedInvoiceId,
-        };
-      }, {
-        /*
-         * Prisma interactive transactions default to a short
-         * timeout. Large invoice generation legitimately needs
-         * more time, even after batching.
-         *
-         * These values are configurable through environment
-         * variables without another code change.
-         */
-        maxWait:
-          BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS,
+            releasedClosedInvoiceId,
+          };
+        },
+        {
+          /*
+           * Prisma interactive transactions default to a short
+           * timeout. Large invoice generation legitimately needs
+           * more time, even after batching.
+           *
+           * These values are configurable through environment
+           * variables without another code change.
+           */
+          maxWait: BILLING_GENERATE_TRANSACTION_MAX_WAIT_MS,
 
-        timeout:
-          BILLING_GENERATE_TRANSACTION_TIMEOUT_MS,
-      });
+          timeout: BILLING_GENERATE_TRANSACTION_TIMEOUT_MS,
+        },
+      );
 
       if (!transactionResult.skipped) {
         await this.auditInvoice(user, {
@@ -3323,8 +2844,7 @@ export class BillingService {
 
             linesAdded: transactionResult.added,
 
-            legacyLinesReplaced:
-              transactionResult.legacyLinesReplaced,
+            legacyLinesReplaced: transactionResult.legacyLinesReplaced,
 
             legacyManualOverridesReplaced:
               transactionResult.legacyManualOverridesReplaced,
@@ -3335,8 +2855,7 @@ export class BillingService {
             pricingStructureManualOverridesReplaced:
               transactionResult.pricingStructureManualOverridesReplaced,
 
-            releasedClosedInvoiceId:
-              transactionResult.releasedClosedInvoiceId,
+            releasedClosedInvoiceId: transactionResult.releasedClosedInvoiceId,
           },
         });
       }
@@ -3352,8 +2871,7 @@ export class BillingService {
 
         linesAdded: transactionResult.added,
 
-        legacyLinesReplaced:
-          transactionResult.legacyLinesReplaced,
+        legacyLinesReplaced: transactionResult.legacyLinesReplaced,
 
         legacyManualOverridesReplaced:
           transactionResult.legacyManualOverridesReplaced,
@@ -3364,8 +2882,7 @@ export class BillingService {
         pricingStructureManualOverridesReplaced:
           transactionResult.pricingStructureManualOverridesReplaced,
 
-        releasedClosedInvoiceId:
-          transactionResult.releasedClosedInvoiceId,
+        releasedClosedInvoiceId: transactionResult.releasedClosedInvoiceId,
 
         subtotal: transactionResult.invoice.subtotal.toFixed(2),
 
@@ -3380,8 +2897,7 @@ export class BillingService {
 
       invoiceCount: results.length,
 
-      readyChargeCount:
-        readyCandidates.length,
+      readyChargeCount: readyCandidates.length,
 
       skippedNotReadySources,
 
@@ -3433,92 +2949,64 @@ export class BillingService {
      * older Chemistry Mix snapshots may not. Prefetch source
      * details once instead of querying once per invoice line.
      */
-    const missingReportSourceIds =
-      Array.from(
-        new Set(
-          invoice.lines
-            .filter(
-              (line) =>
-                line.client == null &&
-                line.sourceType ===
-                  'REPORT',
-            )
-            .map(
-              (line) =>
-                line.sourceId,
-            ),
-        ),
-      );
+    const missingReportSourceIds = Array.from(
+      new Set(
+        invoice.lines
+          .filter((line) => line.client == null && line.sourceType === 'REPORT')
+          .map((line) => line.sourceId),
+      ),
+    );
 
-    const missingChemistrySourceIds =
-      Array.from(
-        new Set(
-          invoice.lines
-            .filter(
-              (line) =>
-                line.client == null &&
-                line.sourceType ===
-                  'CHEMISTRY_REPORT',
-            )
-            .map(
-              (line) =>
-                line.sourceId,
-            ),
-        ),
-      );
+    const missingChemistrySourceIds = Array.from(
+      new Set(
+        invoice.lines
+          .filter(
+            (line) =>
+              line.client == null && line.sourceType === 'CHEMISTRY_REPORT',
+          )
+          .map((line) => line.sourceId),
+      ),
+    );
 
-    const [
-      sourceReports,
-      sourceChemistryReports,
-    ] =
-      await Promise.all([
-        missingReportSourceIds.length
-          ? this.prisma.report.findMany({
-              where: {
-                id: {
-                  in:
-                    missingReportSourceIds,
-                },
+    const [sourceReports, sourceChemistryReports] = await Promise.all([
+      missingReportSourceIds.length
+        ? this.prisma.report.findMany({
+            where: {
+              id: {
+                in: missingReportSourceIds,
               },
+            },
 
-              include: {
-                microMix:
-                  true,
+            include: {
+              microMix: true,
 
-                microMixWater:
-                  true,
+              microMixWater: true,
 
-                sterility:
-                  true,
+              sterility: true,
 
-                ape:
-                  true,
+              ape: true,
+            },
+          })
+        : Promise.resolve([]),
+
+      missingChemistrySourceIds.length
+        ? this.prisma.chemistryReport.findMany({
+            where: {
+              id: {
+                in: missingChemistrySourceIds,
               },
-            })
-          : Promise.resolve([]),
+            },
 
-        missingChemistrySourceIds.length
-          ? this.prisma.chemistryReport.findMany({
-              where: {
-                id: {
-                  in:
-                    missingChemistrySourceIds,
-                },
-              },
+            include: {
+              chemistryMix: true,
 
-              include: {
-                chemistryMix:
-                  true,
+              coa: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
 
-                coa:
-                  true,
-              },
-            })
-          : Promise.resolve([]),
-      ]);
-
-    const sourceClientMap =
-      new Map<string, string | null>();
+    const sourceClientMap = new Map<string, string | null>();
 
     for (const report of sourceReports) {
       const details =
@@ -3530,23 +3018,16 @@ export class BillingService {
 
       sourceClientMap.set(
         `REPORT:${report.id}`,
-        this.pricing.normalizeClientName(
-          details?.client,
-        ),
+        this.pricing.normalizeClientName(details?.client),
       );
     }
 
     for (const report of sourceChemistryReports) {
-      const details =
-        report.chemistryMix ??
-        report.coa ??
-        null;
+      const details = report.chemistryMix ?? report.coa ?? null;
 
       sourceClientMap.set(
         `CHEMISTRY_REPORT:${report.id}`,
-        this.pricing.normalizeClientName(
-          details?.client,
-        ),
+        this.pricing.normalizeClientName(details?.client),
       );
     }
 
@@ -3582,32 +3063,21 @@ export class BillingService {
 
         const snapshot =
           line.sourceSnapshot &&
-          typeof line.sourceSnapshot ===
-            'object' &&
-          !Array.isArray(
-            line.sourceSnapshot,
-          )
-            ? (line.sourceSnapshot as Record<
-                string,
-                any
-              >)
+          typeof line.sourceSnapshot === 'object' &&
+          !Array.isArray(line.sourceSnapshot)
+            ? (line.sourceSnapshot as Record<string, any>)
             : null;
 
         const resolvedClient =
           line.client ??
-          this.pricing.normalizeClientName(
-            snapshot?.client,
-          ) ??
-          sourceClientMap.get(
-            `${line.sourceType}:${line.sourceId}`,
-          ) ??
+          this.pricing.normalizeClientName(snapshot?.client) ??
+          sourceClientMap.get(`${line.sourceType}:${line.sourceId}`) ??
           null;
 
         const resolved = this.pricing.resolveFromRules(rules, {
           clientCode: line.clientCode,
 
-          client:
-            resolvedClient,
+          client: resolvedClient,
 
           formType: line.formType,
 
@@ -3626,8 +3096,7 @@ export class BillingService {
           },
 
           data: {
-            client:
-              resolvedClient,
+            client: resolvedClient,
 
             priceBasis: resolved.priceBasis,
 
@@ -3792,14 +3261,245 @@ export class BillingService {
   }
 
   /* =======================================================
+   RESTORE PREVIOUSLY DELETED REPORT INVOICE LINE
+======================================================= */
+
+  async restoreDeletedInvoiceLine(
+    user: AuthUser,
+    invoiceId: string,
+    chargeKeyInput: string,
+  ) {
+    this.assertManager(user);
+
+    const chargeKey = String(chargeKeyInput ?? '').trim();
+
+    if (!chargeKey) {
+      throw new BadRequestException('chargeKey is required');
+    }
+
+    const invoice = await this.prisma.billingInvoice.findUnique({
+      where: {
+        id: invoiceId,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    if (invoice.status !== 'DRAFT') {
+      throw new BadRequestException(
+        'Previously deleted lines can only be restored to a DRAFT invoice',
+      );
+    }
+
+    if (invoice.invoiceKind !== 'REPORT') {
+      throw new BadRequestException(
+        'Only report invoice lines can be restored with this route',
+      );
+    }
+
+    /*
+     * Require an actual deletion audit for THIS invoice + charge.
+     * This prevents the restore endpoint from becoming a generic
+     * arbitrary line-insertion endpoint.
+     */
+    const deletionAudits = await this.prisma.auditTrail.findMany({
+      where: {
+        action: 'INVOICE_LINE_DELETED',
+        entity: 'BILLING_INVOICE',
+        entityId: invoiceId,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        changes: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const deletionAudit = deletionAudits.find((audit) => {
+      const changes =
+        audit.changes &&
+        typeof audit.changes === 'object' &&
+        !Array.isArray(audit.changes)
+          ? (audit.changes as Record<string, any>)
+          : null;
+
+      return String(changes?.chargeKey ?? '').trim() === chargeKey;
+    });
+
+    if (!deletionAudit) {
+      throw new BadRequestException(
+        'This charge was not previously deleted from the selected invoice',
+      );
+    }
+
+    const periodParts = getZonedParts(
+      invoice.periodStart,
+      DEFAULT_BILLING_TIME_ZONE,
+    );
+
+    const month = `${periodParts.year}-${String(periodParts.month).padStart(
+      2,
+      '0',
+    )}`;
+
+    /*
+     * Rebuild the exact charge from the current billing source and
+     * configured pricing. This keeps restore aligned with the same
+     * candidate logic used by Unbilled / Generate Drafts.
+     */
+    const discovery = await this.discoverUnbilled(user, {
+      month,
+      clientCode: invoice.clientCode,
+    });
+
+    const candidate = discovery.candidates.find(
+      (item) => item.chargeKey === chargeKey,
+    );
+
+    if (!candidate) {
+      throw new BadRequestException(
+        'This charge is no longer available in Unbilled. Refresh Billing and try again.',
+      );
+    }
+
+    if (
+      candidate.pricingIssue ||
+      candidate.unitPrice == null ||
+      candidate.amount == null
+    ) {
+      throw new BadRequestException(
+        'Resolve the pricing issue before restoring this invoice line',
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const currentInvoice = await tx.billingInvoice.findUnique({
+          where: {
+            id: invoiceId,
+          },
+          select: {
+            status: true,
+            invoiceKind: true,
+          },
+        });
+
+        if (
+          !currentInvoice ||
+          currentInvoice.status !== 'DRAFT' ||
+          currentInvoice.invoiceKind !== 'REPORT'
+        ) {
+          throw new BadRequestException(
+            'Invoice is no longer an editable report DRAFT',
+          );
+        }
+
+        const alreadyActive = await tx.billingInvoiceLine.findFirst({
+          where: {
+            activeChargeKey: chargeKey,
+          },
+          select: {
+            id: true,
+            invoiceId: true,
+          },
+        });
+
+        if (alreadyActive) {
+          throw new BadRequestException(
+            'This charge has already been restored or captured on an invoice',
+          );
+        }
+
+        await tx.billingInvoiceLine.create({
+          data: {
+            invoiceId,
+            sourceType: candidate.sourceType,
+            sourceId: candidate.sourceId,
+            chargeKey: candidate.chargeKey,
+            activeChargeKey: candidate.chargeKey,
+            formType: candidate.formType,
+            formNumber: candidate.formNumber,
+            reportNumber: candidate.reportNumber,
+            clientCode: candidate.clientCode,
+            client: candidate.client,
+            resultSentToClientAt: candidate.resultSentToClientAt,
+            billingReadyAt: candidate.billingReadyAt,
+            testKey: candidate.testKey,
+            testLabel: candidate.testLabel,
+            itemKey: candidate.itemKey,
+            itemLabel: candidate.itemLabel,
+            activeCount: candidate.activeCount,
+            priceBasis: candidate.priceBasis,
+            quantity: candidate.quantity,
+            unitPrice: candidate.unitPrice,
+            amount: candidate.amount,
+            pricingRuleId: candidate.pricingRuleId,
+            pricingIssue: candidate.pricingIssue,
+            sourceSnapshot: candidate.sourceSnapshot,
+          },
+        });
+
+        await this.recalculateInvoiceTotals(tx, invoiceId);
+
+        await tx.billingInvoice.update({
+          where: {
+            id: invoiceId,
+          },
+          data: {
+            updatedBy: user.userId,
+          },
+        });
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new BadRequestException(
+          'This charge has already been restored or captured on an invoice',
+        );
+      }
+
+      throw error;
+    }
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_LINE_RESTORED',
+      invoiceId,
+      clientCode: invoice.clientCode,
+      details:
+        `Restored invoice line ${candidate.formNumber} / ` +
+        `${candidate.testLabel ?? candidate.testKey}` +
+        `${candidate.itemLabel ? ` / ${candidate.itemLabel}` : ''}`,
+      changes: {
+        chargeKey: candidate.chargeKey,
+        sourceType: candidate.sourceType,
+        sourceId: candidate.sourceId,
+        formType: candidate.formType,
+        formNumber: candidate.formNumber,
+        reportNumber: candidate.reportNumber,
+        testKey: candidate.testKey,
+        testLabel: candidate.testLabel,
+        itemKey: candidate.itemKey,
+        itemLabel: candidate.itemLabel,
+        quantity: candidate.quantity,
+        unitPrice: candidate.unitPrice.toFixed(2),
+        amount: candidate.amount.toFixed(2),
+        restoredFromDeletionAuditId: deletionAudit.id,
+        restoredFromDeletionAt: deletionAudit.createdAt.toISOString(),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
+  }
+
+  /* =======================================================
    DELETE REPORT INVOICE LINE
 ======================================================= */
 
-  async deleteInvoiceLine(
-    user: AuthUser,
-    invoiceId: string,
-    lineId: string,
-  ) {
+  async deleteInvoiceLine(user: AuthUser, invoiceId: string, lineId: string) {
     this.assertManager(user);
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -3884,8 +3584,7 @@ export class BillingService {
         unitPrice: result.existing.unitPrice?.toFixed(2) ?? null,
         amount: result.existing.amount?.toFixed(2) ?? null,
         manualOverride: result.existing.manualOverride,
-        releasedToUnbilled:
-          result.existing.activeChargeKey != null,
+        releasedToUnbilled: result.existing.activeChargeKey != null,
       },
     });
 
@@ -3981,7 +3680,6 @@ export class BillingService {
     return this.getInvoice(user, invoiceId);
   }
 
-
   /* =======================================================
      MANUAL INVOICES
   ======================================================= */
@@ -3995,28 +3693,22 @@ export class BillingService {
   ) {
     this.assertManager(user);
 
-    const clientCode =
-      String(dto?.clientCode ?? '')
-        .trim()
-        .toUpperCase();
+    const clientCode = String(dto?.clientCode ?? '')
+      .trim()
+      .toUpperCase();
 
     if (!clientCode) {
-      throw new BadRequestException(
-        'clientCode is required',
-      );
+      throw new BadRequestException('clientCode is required');
     }
 
-    const client =
-      await this.prisma.clientDetails.findUnique({
-        where: {
-          clientCode,
-        },
-      });
+    const client = await this.prisma.clientDetails.findUnique({
+      where: {
+        clientCode,
+      },
+    });
 
     if (!client) {
-      throw new NotFoundException(
-        `Client details not found for ${clientCode}`,
-      );
+      throw new NotFoundException(`Client details not found for ${clientCode}`);
     }
 
     if (!client.active) {
@@ -4032,135 +3724,83 @@ export class BillingService {
      * billingEnabled / billingStartAt only control automatic
      * LIMS report discovery.
      */
-    const range =
-      getMonthRange(
-        undefined,
-        DEFAULT_BILLING_TIME_ZONE,
-      );
+    const range = getMonthRange(undefined, DEFAULT_BILLING_TIME_ZONE);
 
-    const invoice =
-      await this.prisma.billingInvoice.create({
-        data: {
-          invoiceKind:
-            'MANUAL',
+    const invoice = await this.prisma.billingInvoice.create({
+      data: {
+        invoiceKind: 'MANUAL',
 
-          clientCode,
+        clientCode,
 
-          activeKey:
-            null,
+        activeKey: null,
 
-          periodStart:
-            range.periodStart,
+        periodStart: range.periodStart,
 
-          periodEnd:
-            range.periodEnd,
+        periodEnd: range.periodEnd,
 
-          status:
-            'DRAFT',
+        status: 'DRAFT',
 
-          currency:
-            'USD',
+        currency: 'USD',
 
-          subtotal:
-            new Prisma.Decimal(0),
+        subtotal: new Prisma.Decimal(0),
 
-          adjustmentAmount:
-            new Prisma.Decimal(0),
+        adjustmentAmount: new Prisma.Decimal(0),
 
-          total:
-            new Prisma.Decimal(0),
+        total: new Prisma.Decimal(0),
 
-          clientName:
-            client.name ?? null,
+        clientName: client.name ?? null,
 
-          clientLegalName:
-            client.legalName ?? null,
+        clientLegalName: client.legalName ?? null,
 
-          billingContactName:
-            client.billingContactName ?? null,
+        billingContactName: client.billingContactName ?? null,
 
-          billingEmail:
-            client.billingEmail ?? null,
+        billingEmail: client.billingEmail ?? null,
 
-          billingPhone:
-            client.billingPhone ?? null,
+        billingPhone: client.billingPhone ?? null,
 
-          billingAddressLine1:
-            client.billingAddressLine1 ?? null,
+        billingAddressLine1: client.billingAddressLine1 ?? null,
 
-          billingAddressLine2:
-            client.billingAddressLine2 ?? null,
+        billingAddressLine2: client.billingAddressLine2 ?? null,
 
-          billingCity:
-            client.billingCity ?? null,
+        billingCity: client.billingCity ?? null,
 
-          billingState:
-            client.billingState ?? null,
+        billingState: client.billingState ?? null,
 
-          billingPostalCode:
-            client.billingPostalCode ?? null,
+        billingPostalCode: client.billingPostalCode ?? null,
 
-          billingCountry:
-            client.billingCountry ?? null,
+        billingCountry: client.billingCountry ?? null,
 
-          paymentTerms:
-            client.paymentTerms ?? null,
+        paymentTerms: client.paymentTerms ?? null,
 
-          notes:
-            dto?.notes?.trim() ||
-            null,
+        notes: dto?.notes?.trim() || null,
 
-          createdBy:
-            user.userId,
+        createdBy: user.userId,
 
-          updatedBy:
-            user.userId,
-        },
-      });
-
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'MANUAL_INVOICE_CREATED',
-
-        invoiceId:
-          invoice.id,
-
-        clientCode:
-          invoice.clientCode,
-
-        details:
-          `Created manual invoice draft for ${invoice.clientCode}`,
-
-        changes: {
-          invoiceKind:
-            'MANUAL',
-        },
+        updatedBy: user.userId,
       },
-    );
+    });
 
-    return this.getInvoice(
-      user,
-      invoice.id,
-    );
+    await this.auditInvoice(user, {
+      action: 'MANUAL_INVOICE_CREATED',
+
+      invoiceId: invoice.id,
+
+      clientCode: invoice.clientCode,
+
+      details: `Created manual invoice draft for ${invoice.clientCode}`,
+
+      changes: {
+        invoiceKind: 'MANUAL',
+      },
+    });
+
+    return this.getInvoice(user, invoice.id);
   }
 
-  private parseManualQuantity(
-    value: unknown,
-  ) {
-    const quantity =
-      Number(
-        String(
-          value ?? '',
-        ).trim(),
-      );
+  private parseManualQuantity(value: unknown) {
+    const quantity = Number(String(value ?? '').trim());
 
-    if (
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 100000
-    ) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100000) {
       throw new BadRequestException(
         'quantity must be a whole number between 1 and 100000',
       );
@@ -4169,18 +3809,12 @@ export class BillingService {
     return quantity;
   }
 
-  private normalizeManualDescription(
-    value: unknown,
-  ) {
-    const description =
-      String(value ?? '')
-        .trim()
-        .replace(/\s+/g, ' ');
+  private normalizeManualDescription(value: unknown) {
+    const description = String(value ?? '')
+      .trim()
+      .replace(/\s+/g, ' ');
 
-    if (
-      description.length < 2 ||
-      description.length > 500
-    ) {
+    if (description.length < 2 || description.length > 500) {
       throw new BadRequestException(
         'Description must be between 2 and 500 characters',
       );
@@ -4200,142 +3834,92 @@ export class BillingService {
   ) {
     this.assertManager(user);
 
-    const description =
-      this.normalizeManualDescription(
-        dto?.description,
-      );
+    const description = this.normalizeManualDescription(dto?.description);
 
-    const quantity =
-      this.parseManualQuantity(
-        dto?.quantity,
-      );
+    const quantity = this.parseManualQuantity(dto?.quantity);
 
-    const unitPrice =
-      this.parseMoney(
-        dto?.unitPrice,
-        'unitPrice',
-      );
+    const unitPrice = this.parseMoney(dto?.unitPrice, 'unitPrice');
 
     if (unitPrice.lte(0)) {
-      throw new BadRequestException(
-        'unitPrice must be greater than 0',
-      );
+      throw new BadRequestException('unitPrice must be greater than 0');
     }
 
-    const amount =
-      unitPrice
-        .mul(
-          new Prisma.Decimal(
-            quantity,
-          ),
-        )
-        .toDecimalPlaces(2);
+    const amount = unitPrice
+      .mul(new Prisma.Decimal(quantity))
+      .toDecimalPlaces(2);
 
-    const result =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const invoice =
-            await tx.billingInvoice.findUnique({
-              where: {
-                id:
-                  invoiceId,
-              },
-            });
-
-          if (!invoice) {
-            throw new NotFoundException(
-              'Invoice not found',
-            );
-          }
-
-          if (
-            invoice.invoiceKind !==
-            'MANUAL'
-          ) {
-            throw new BadRequestException(
-              'Items can only be added to a MANUAL invoice',
-            );
-          }
-
-          if (
-            invoice.status !==
-            'DRAFT'
-          ) {
-            throw new BadRequestException(
-              'Manual invoice items can only be changed while the invoice is DRAFT',
-            );
-          }
-
-          const line =
-            await tx.billingManualInvoiceLine.create({
-              data: {
-                invoiceId:
-                  invoice.id,
-
-                description,
-
-                quantity,
-
-                unitPrice,
-
-                amount,
-
-                createdBy:
-                  user.userId,
-
-                updatedBy:
-                  user.userId,
-              },
-            });
-
-          await this.recalculateInvoiceTotals(
-            tx,
-            invoice.id,
-          );
-
-          return {
-            line,
-            clientCode:
-              invoice.clientCode,
-          };
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
         },
-      );
+      });
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'MANUAL_INVOICE_LINE_ADDED',
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-        invoiceId,
+      if (invoice.invoiceKind !== 'MANUAL') {
+        throw new BadRequestException(
+          'Items can only be added to a MANUAL invoice',
+        );
+      }
 
-        clientCode:
-          result.clientCode,
+      if (invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Manual invoice items can only be changed while the invoice is DRAFT',
+        );
+      }
 
-        details:
-          `Added manual invoice item: ${description}`,
-
-        changes: {
-          manualLineId:
-            result.line.id,
+      const line = await tx.billingManualInvoiceLine.create({
+        data: {
+          invoiceId: invoice.id,
 
           description,
 
           quantity,
 
-          unitPrice:
-            unitPrice.toFixed(2),
+          unitPrice,
 
-          amount:
-            amount.toFixed(2),
+          amount,
+
+          createdBy: user.userId,
+
+          updatedBy: user.userId,
         },
-      },
-    );
+      });
 
-    return this.getInvoice(
-      user,
+      await this.recalculateInvoiceTotals(tx, invoice.id);
+
+      return {
+        line,
+        clientCode: invoice.clientCode,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'MANUAL_INVOICE_LINE_ADDED',
+
       invoiceId,
-    );
+
+      clientCode: result.clientCode,
+
+      details: `Added manual invoice item: ${description}`,
+
+      changes: {
+        manualLineId: result.line.id,
+
+        description,
+
+        quantity,
+
+        unitPrice: unitPrice.toFixed(2),
+
+        amount: amount.toFixed(2),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
   }
 
   async updateManualInvoiceLine(
@@ -4350,185 +3934,126 @@ export class BillingService {
   ) {
     this.assertManager(user);
 
-    const result =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const invoice =
-            await tx.billingInvoice.findUnique({
-              where: {
-                id:
-                  invoiceId,
-              },
-            });
-
-          if (!invoice) {
-            throw new NotFoundException(
-              'Invoice not found',
-            );
-          }
-
-          if (
-            invoice.invoiceKind !==
-            'MANUAL'
-          ) {
-            throw new BadRequestException(
-              'Items can only be changed on a MANUAL invoice',
-            );
-          }
-
-          if (
-            invoice.status !==
-            'DRAFT'
-          ) {
-            throw new BadRequestException(
-              'Manual invoice items can only be changed while the invoice is DRAFT',
-            );
-          }
-
-          const existing =
-            await tx.billingManualInvoiceLine.findFirst({
-              where: {
-                id:
-                  lineId,
-
-                invoiceId,
-              },
-            });
-
-          if (!existing) {
-            throw new NotFoundException(
-              'Manual invoice item not found',
-            );
-          }
-
-          const description =
-            dto?.description !==
-            undefined
-              ? this.normalizeManualDescription(
-                  dto.description,
-                )
-              : existing.description;
-
-          const quantity =
-            dto?.quantity !==
-            undefined
-              ? this.parseManualQuantity(
-                  dto.quantity,
-                )
-              : existing.quantity;
-
-          const unitPrice =
-            dto?.unitPrice !==
-            undefined
-              ? this.parseMoney(
-                  dto.unitPrice,
-                  'unitPrice',
-                )
-              : existing.unitPrice;
-
-          if (unitPrice.lte(0)) {
-            throw new BadRequestException(
-              'unitPrice must be greater than 0',
-            );
-          }
-
-          const amount =
-            unitPrice
-              .mul(
-                new Prisma.Decimal(
-                  quantity,
-                ),
-              )
-              .toDecimalPlaces(2);
-
-          const updated =
-            await tx.billingManualInvoiceLine.update({
-              where: {
-                id:
-                  lineId,
-              },
-
-              data: {
-                description,
-
-                quantity,
-
-                unitPrice,
-
-                amount,
-
-                updatedBy:
-                  user.userId,
-              },
-            });
-
-          await this.recalculateInvoiceTotals(
-            tx,
-            invoice.id,
-          );
-
-          return {
-            existing,
-            updated,
-            clientCode:
-              invoice.clientCode,
-          };
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
         },
-      );
+      });
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'MANUAL_INVOICE_LINE_UPDATED',
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-        invoiceId,
+      if (invoice.invoiceKind !== 'MANUAL') {
+        throw new BadRequestException(
+          'Items can only be changed on a MANUAL invoice',
+        );
+      }
 
-        clientCode:
-          result.clientCode,
+      if (invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Manual invoice items can only be changed while the invoice is DRAFT',
+        );
+      }
 
-        details:
-          `Updated manual invoice item ${lineId}`,
+      const existing = await tx.billingManualInvoiceLine.findFirst({
+        where: {
+          id: lineId,
 
-        changes: {
-          manualLineId:
-            lineId,
+          invoiceId,
+        },
+      });
 
-          before: {
-            description:
-              result.existing.description,
+      if (!existing) {
+        throw new NotFoundException('Manual invoice item not found');
+      }
 
-            quantity:
-              result.existing.quantity,
+      const description =
+        dto?.description !== undefined
+          ? this.normalizeManualDescription(dto.description)
+          : existing.description;
 
-            unitPrice:
-              result.existing.unitPrice.toFixed(2),
+      const quantity =
+        dto?.quantity !== undefined
+          ? this.parseManualQuantity(dto.quantity)
+          : existing.quantity;
 
-            amount:
-              result.existing.amount.toFixed(2),
-          },
+      const unitPrice =
+        dto?.unitPrice !== undefined
+          ? this.parseMoney(dto.unitPrice, 'unitPrice')
+          : existing.unitPrice;
 
-          after: {
-            description:
-              result.updated.description,
+      if (unitPrice.lte(0)) {
+        throw new BadRequestException('unitPrice must be greater than 0');
+      }
 
-            quantity:
-              result.updated.quantity,
+      const amount = unitPrice
+        .mul(new Prisma.Decimal(quantity))
+        .toDecimalPlaces(2);
 
-            unitPrice:
-              result.updated.unitPrice.toFixed(2),
+      const updated = await tx.billingManualInvoiceLine.update({
+        where: {
+          id: lineId,
+        },
 
-            amount:
-              result.updated.amount.toFixed(2),
-          },
+        data: {
+          description,
+
+          quantity,
+
+          unitPrice,
+
+          amount,
+
+          updatedBy: user.userId,
+        },
+      });
+
+      await this.recalculateInvoiceTotals(tx, invoice.id);
+
+      return {
+        existing,
+        updated,
+        clientCode: invoice.clientCode,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'MANUAL_INVOICE_LINE_UPDATED',
+
+      invoiceId,
+
+      clientCode: result.clientCode,
+
+      details: `Updated manual invoice item ${lineId}`,
+
+      changes: {
+        manualLineId: lineId,
+
+        before: {
+          description: result.existing.description,
+
+          quantity: result.existing.quantity,
+
+          unitPrice: result.existing.unitPrice.toFixed(2),
+
+          amount: result.existing.amount.toFixed(2),
+        },
+
+        after: {
+          description: result.updated.description,
+
+          quantity: result.updated.quantity,
+
+          unitPrice: result.updated.unitPrice.toFixed(2),
+
+          amount: result.updated.amount.toFixed(2),
         },
       },
-    );
+    });
 
-    return this.getInvoice(
-      user,
-      invoiceId,
-    );
+    return this.getInvoice(user, invoiceId);
   }
 
   async deleteManualInvoiceLine(
@@ -4538,114 +4063,78 @@ export class BillingService {
   ) {
     this.assertManager(user);
 
-    const result =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const invoice =
-            await tx.billingInvoice.findUnique({
-              where: {
-                id:
-                  invoiceId,
-              },
-            });
-
-          if (!invoice) {
-            throw new NotFoundException(
-              'Invoice not found',
-            );
-          }
-
-          if (
-            invoice.invoiceKind !==
-            'MANUAL'
-          ) {
-            throw new BadRequestException(
-              'Items can only be changed on a MANUAL invoice',
-            );
-          }
-
-          if (
-            invoice.status !==
-            'DRAFT'
-          ) {
-            throw new BadRequestException(
-              'Manual invoice items can only be changed while the invoice is DRAFT',
-            );
-          }
-
-          const existing =
-            await tx.billingManualInvoiceLine.findFirst({
-              where: {
-                id:
-                  lineId,
-
-                invoiceId,
-              },
-            });
-
-          if (!existing) {
-            throw new NotFoundException(
-              'Manual invoice item not found',
-            );
-          }
-
-          await tx.billingManualInvoiceLine.delete({
-            where: {
-              id:
-                lineId,
-            },
-          });
-
-          await this.recalculateInvoiceTotals(
-            tx,
-            invoice.id,
-          );
-
-          return {
-            existing,
-            clientCode:
-              invoice.clientCode,
-          };
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
         },
-      );
+      });
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'MANUAL_INVOICE_LINE_DELETED',
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-        invoiceId,
+      if (invoice.invoiceKind !== 'MANUAL') {
+        throw new BadRequestException(
+          'Items can only be changed on a MANUAL invoice',
+        );
+      }
 
-        clientCode:
-          result.clientCode,
+      if (invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Manual invoice items can only be changed while the invoice is DRAFT',
+        );
+      }
 
-        details:
-          `Deleted manual invoice item: ${result.existing.description}`,
+      const existing = await tx.billingManualInvoiceLine.findFirst({
+        where: {
+          id: lineId,
 
-        changes: {
-          manualLineId:
-            result.existing.id,
-
-          description:
-            result.existing.description,
-
-          quantity:
-            result.existing.quantity,
-
-          unitPrice:
-            result.existing.unitPrice.toFixed(2),
-
-          amount:
-            result.existing.amount.toFixed(2),
+          invoiceId,
         },
-      },
-    );
+      });
 
-    return this.getInvoice(
-      user,
+      if (!existing) {
+        throw new NotFoundException('Manual invoice item not found');
+      }
+
+      await tx.billingManualInvoiceLine.delete({
+        where: {
+          id: lineId,
+        },
+      });
+
+      await this.recalculateInvoiceTotals(tx, invoice.id);
+
+      return {
+        existing,
+        clientCode: invoice.clientCode,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'MANUAL_INVOICE_LINE_DELETED',
+
       invoiceId,
-    );
+
+      clientCode: result.clientCode,
+
+      details: `Deleted manual invoice item: ${result.existing.description}`,
+
+      changes: {
+        manualLineId: result.existing.id,
+
+        description: result.existing.description,
+
+        quantity: result.existing.quantity,
+
+        unitPrice: result.existing.unitPrice.toFixed(2),
+
+        amount: result.existing.amount.toFixed(2),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
   }
 
   /* =======================================================
@@ -4664,7 +4153,9 @@ export class BillingService {
   ) {
     this.assertManager(user);
 
-    const sourceType = String(dto?.sourceType ?? '').trim() as BillingSourceType;
+    const sourceType = String(
+      dto?.sourceType ?? '',
+    ).trim() as BillingSourceType;
     const sourceId = String(dto?.sourceId ?? '').trim();
     const name = String(dto?.name ?? '').trim();
 
@@ -4685,7 +4176,9 @@ export class BillingService {
     const amount = this.parseMoney(dto.amount, 'amount');
 
     if (amount.lte(0)) {
-      throw new BadRequestException('Additional charge amount must be greater than 0');
+      throw new BadRequestException(
+        'Additional charge amount must be greater than 0',
+      );
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -4793,7 +4286,9 @@ export class BillingService {
       : undefined;
 
     if (amount !== undefined && amount.lte(0)) {
-      throw new BadRequestException('Additional charge amount must be greater than 0');
+      throw new BadRequestException(
+        'Additional charge amount must be greater than 0',
+      );
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -4961,22 +4456,15 @@ export class BillingService {
         throw new BadRequestException('Only DRAFT invoices can be confirmed');
       }
 
-      if (
-        invoice.invoiceKind ===
-          'REPORT' &&
-        invoice.lines.length ===
-          0
-      ) {
+      if (invoice.invoiceKind === 'REPORT' && invoice.lines.length === 0) {
         throw new BadRequestException(
           'Report invoice cannot be confirmed without invoice lines',
         );
       }
 
       if (
-        invoice.invoiceKind ===
-          'MANUAL' &&
-        invoice.manualLines.length ===
-          0
+        invoice.invoiceKind === 'MANUAL' &&
+        invoice.manualLines.length === 0
       ) {
         throw new BadRequestException(
           'Manual invoice cannot be confirmed without at least one invoice item',
@@ -5047,14 +4535,8 @@ export class BillingService {
        * active client, even when automatic report billing
        * is disabled.
        */
-      if (
-        invoice.invoiceKind ===
-          'REPORT' &&
-        !client.billingEnabled
-      ) {
-        throw new BadRequestException(
-          'Billing is disabled for this client',
-        );
+      if (invoice.invoiceKind === 'REPORT' && !client.billingEnabled) {
+        throw new BadRequestException('Billing is disabled for this client');
       }
 
       let subtotal = new Prisma.Decimal(0);
@@ -5091,33 +4573,30 @@ export class BillingService {
        * Revision:
        *   already has INV-YYYY-NNNN-R1 / R2... -> KEEP IT.
        */
-      let invoiceNumber =
-        invoice.invoiceNumber;
+      let invoiceNumber = invoice.invoiceNumber;
 
       if (!invoiceNumber) {
-        const sequence =
-          await tx.billingInvoiceSequence.upsert({
-            where: {
-              year: invoiceYear,
+        const sequence = await tx.billingInvoiceSequence.upsert({
+          where: {
+            year: invoiceYear,
+          },
+
+          update: {
+            lastNumber: {
+              increment: 1,
             },
+          },
 
-            update: {
-              lastNumber: {
-                increment: 1,
-              },
-            },
+          create: {
+            year: invoiceYear,
 
-            create: {
-              year: invoiceYear,
+            lastNumber: 1,
+          },
+        });
 
-              lastNumber: 1,
-            },
-          });
-
-        invoiceNumber =
-          `INV-${invoiceYear}-${String(
-            sequence.lastNumber,
-          ).padStart(4, '0')}`;
+        invoiceNumber = `INV-${invoiceYear}-${String(
+          sequence.lastNumber,
+        ).padStart(4, '0')}`;
       }
 
       const updateResult = await tx.billingInvoice.updateMany({
@@ -5220,889 +4699,634 @@ export class BillingService {
     return this.getInvoice(user, invoiceId);
   }
 
-
-
   /* =======================================================
      REOPEN CONFIRMED INVOICE
   ======================================================= */
 
-  async reopenConfirmedInvoice(
-    user: AuthUser,
-    invoiceId: string,
-  ) {
+  async reopenConfirmedInvoice(user: AuthUser, invoiceId: string) {
     this.assertManager(user);
 
-    const result =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const invoice =
-            await tx.billingInvoice.findUnique({
-              where: {
-                id: invoiceId,
-              },
-
-              include: {
-                lines: {
-                  select: {
-                    id: true,
-                  },
-                },
-              },
-            });
-
-          if (!invoice) {
-            throw new NotFoundException(
-              'Invoice not found',
-            );
-          }
-
-          if (
-            invoice.status !==
-            'CONFIRMED'
-          ) {
-            throw new BadRequestException(
-              invoice.status ===
-                'SENT'
-                ? 'Sent invoices cannot be reopened. Create a revision instead.'
-                : 'Only CONFIRMED invoices can be reopened for editing',
-            );
-          }
-
-          if (
-            !invoice.invoiceNumber
-          ) {
-            throw new BadRequestException(
-              'Confirmed invoice is missing invoiceNumber',
-            );
-          }
-
-          const previous = {
-            status:
-              invoice.status,
-
-            invoiceNumber:
-              invoice.invoiceNumber,
-
-            confirmedAt:
-              invoice.confirmedAt,
-
-            confirmedBy:
-              invoice.confirmedBy,
-
-            pdfFilename:
-              invoice.pdfFilename,
-
-            pdfStorageKey:
-              invoice.pdfStorageKey,
-
-            pdfChecksum:
-              invoice.pdfChecksum,
-
-            pdfCreatedAt:
-              invoice.pdfCreatedAt,
-
-            dueDate:
-              invoice.dueDate,
-
-            scheduledSendAt:
-              invoice.scheduledSendAt,
-
-            scheduledToEmail:
-              invoice.scheduledToEmail,
-          };
-
-          /*
-           * Reopening is allowed only before delivery.
-           *
-           * Keep:
-           *   - same invoiceNumber
-           *   - same invoice id
-           *   - same line charge identities
-           *   - same revision relationship
-           *
-           * Clear confirmation/PDF/schedule metadata because
-           * the invoice is editable again and a new official
-           * PDF must be generated after re-confirmation.
-           *
-           * activeKey stays null. A confirmed invoice already
-           * released the monthly draft slot and reopening must
-           * not steal that slot from a newer monthly draft.
-           */
-          const updated =
-            await tx.billingInvoice.updateMany({
-              where: {
-                id:
-                  invoice.id,
-
-                status:
-                  'CONFIRMED',
-              },
-
-              data: {
-                status:
-                  'DRAFT',
-
-                activeKey:
-                  null,
-
-                confirmedAt:
-                  null,
-
-                confirmedBy:
-                  null,
-
-                dueDate:
-                  null,
-
-                scheduledSendAt:
-                  null,
-
-                scheduledToEmail:
-                  null,
-
-                scheduledBy:
-                  null,
-
-                scheduledAt:
-                  null,
-
-                pdfFilename:
-                  null,
-
-                pdfStorageKey:
-                  null,
-
-                pdfStorageBucket:
-                  null,
-
-                pdfChecksum:
-                  null,
-
-                pdfCreatedAt:
-                  null,
-
-                updatedBy:
-                  user.userId,
-              },
-            });
-
-          if (
-            updated.count !== 1
-          ) {
-            throw new BadRequestException(
-              'Invoice is no longer CONFIRMED',
-            );
-          }
-
-          return {
-            clientCode:
-              invoice.clientCode,
-
-            invoiceNumber:
-              invoice.invoiceNumber,
-
-            revisionNumber:
-              invoice.revisionNumber,
-
-            revisionOfInvoiceId:
-              invoice.revisionOfInvoiceId,
-
-            previous,
-
-            lineCount:
-              invoice.lines.length,
-          };
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
         },
-      );
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'INVOICE_REOPENED_FOR_EDITING',
-
-        invoiceId,
-
-        clientCode:
-          result.clientCode,
-
-        details:
-          `Reopened ${result.invoiceNumber} for editing`,
-
-        changes: {
-          previousStatus:
-            'CONFIRMED',
-
-          newStatus:
-            'DRAFT',
-
-          invoiceNumber:
-            result.invoiceNumber,
-
-          revisionNumber:
-            result.revisionNumber,
-
-          revisionOfInvoiceId:
-            result.revisionOfInvoiceId,
-
-          lineCount:
-            result.lineCount,
-
-          previousConfirmedAt:
-            result.previous.confirmedAt
-              ?.toISOString() ??
-            null,
-
-          previousConfirmedBy:
-            result.previous.confirmedBy,
-
-          previousPdfChecksum:
-            result.previous.pdfChecksum,
-
-          previousDueDate:
-            result.previous.dueDate
-              ?.toISOString() ??
-            null,
-
-          previousScheduledSendAt:
-            result.previous.scheduledSendAt
-              ?.toISOString() ??
-            null,
+        include: {
+          lines: {
+            select: {
+              id: true,
+            },
+          },
         },
-      },
-    );
+      });
 
-    return this.getInvoice(
-      user,
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      if (invoice.status !== 'CONFIRMED') {
+        throw new BadRequestException(
+          invoice.status === 'SENT'
+            ? 'Sent invoices cannot be reopened. Create a revision instead.'
+            : 'Only CONFIRMED invoices can be reopened for editing',
+        );
+      }
+
+      if (!invoice.invoiceNumber) {
+        throw new BadRequestException(
+          'Confirmed invoice is missing invoiceNumber',
+        );
+      }
+
+      const previous = {
+        status: invoice.status,
+
+        invoiceNumber: invoice.invoiceNumber,
+
+        confirmedAt: invoice.confirmedAt,
+
+        confirmedBy: invoice.confirmedBy,
+
+        pdfFilename: invoice.pdfFilename,
+
+        pdfStorageKey: invoice.pdfStorageKey,
+
+        pdfChecksum: invoice.pdfChecksum,
+
+        pdfCreatedAt: invoice.pdfCreatedAt,
+
+        dueDate: invoice.dueDate,
+
+        scheduledSendAt: invoice.scheduledSendAt,
+
+        scheduledToEmail: invoice.scheduledToEmail,
+      };
+
+      /*
+       * Reopening is allowed only before delivery.
+       *
+       * Keep:
+       *   - same invoiceNumber
+       *   - same invoice id
+       *   - same line charge identities
+       *   - same revision relationship
+       *
+       * Clear confirmation/PDF/schedule metadata because
+       * the invoice is editable again and a new official
+       * PDF must be generated after re-confirmation.
+       *
+       * activeKey stays null. A confirmed invoice already
+       * released the monthly draft slot and reopening must
+       * not steal that slot from a newer monthly draft.
+       */
+      const updated = await tx.billingInvoice.updateMany({
+        where: {
+          id: invoice.id,
+
+          status: 'CONFIRMED',
+        },
+
+        data: {
+          status: 'DRAFT',
+
+          activeKey: null,
+
+          confirmedAt: null,
+
+          confirmedBy: null,
+
+          dueDate: null,
+
+          scheduledSendAt: null,
+
+          scheduledToEmail: null,
+
+          scheduledBy: null,
+
+          scheduledAt: null,
+
+          pdfFilename: null,
+
+          pdfStorageKey: null,
+
+          pdfStorageBucket: null,
+
+          pdfChecksum: null,
+
+          pdfCreatedAt: null,
+
+          updatedBy: user.userId,
+        },
+      });
+
+      if (updated.count !== 1) {
+        throw new BadRequestException('Invoice is no longer CONFIRMED');
+      }
+
+      return {
+        clientCode: invoice.clientCode,
+
+        invoiceNumber: invoice.invoiceNumber,
+
+        revisionNumber: invoice.revisionNumber,
+
+        revisionOfInvoiceId: invoice.revisionOfInvoiceId,
+
+        previous,
+
+        lineCount: invoice.lines.length,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_REOPENED_FOR_EDITING',
+
       invoiceId,
-    );
+
+      clientCode: result.clientCode,
+
+      details: `Reopened ${result.invoiceNumber} for editing`,
+
+      changes: {
+        previousStatus: 'CONFIRMED',
+
+        newStatus: 'DRAFT',
+
+        invoiceNumber: result.invoiceNumber,
+
+        revisionNumber: result.revisionNumber,
+
+        revisionOfInvoiceId: result.revisionOfInvoiceId,
+
+        lineCount: result.lineCount,
+
+        previousConfirmedAt: result.previous.confirmedAt?.toISOString() ?? null,
+
+        previousConfirmedBy: result.previous.confirmedBy,
+
+        previousPdfChecksum: result.previous.pdfChecksum,
+
+        previousDueDate: result.previous.dueDate?.toISOString() ?? null,
+
+        previousScheduledSendAt:
+          result.previous.scheduledSendAt?.toISOString() ?? null,
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
   }
 
   /* =======================================================
      CREATE REVISION FROM SENT INVOICE
   ======================================================= */
 
-  async createInvoiceRevision(
-    user: AuthUser,
-    invoiceId: string,
-  ) {
+  async createInvoiceRevision(user: AuthUser, invoiceId: string) {
     this.assertManager(user);
 
-    let transactionResult:
-      {
-        revisionId: string;
-        revisionInvoiceNumber: string;
-        revisionNumber: number;
-        rootInvoiceId: string;
-        rootInvoiceNumber: string;
-        copiedFromInvoiceId: string;
-        copiedFromInvoiceNumber: string;
-        clientCode: string;
-        lineCount: number;
-        extraChargeCount: number;
-      };
+    let transactionResult: {
+      revisionId: string;
+      revisionInvoiceNumber: string;
+      revisionNumber: number;
+      rootInvoiceId: string;
+      rootInvoiceNumber: string;
+      copiedFromInvoiceId: string;
+      copiedFromInvoiceNumber: string;
+      clientCode: string;
+      lineCount: number;
+      extraChargeCount: number;
+    };
 
     try {
-      transactionResult =
-        await this.prisma.$transaction(
-          async (tx) => {
-            const requestedInvoice =
-              await tx.billingInvoice.findUnique({
-                where: {
-                  id:
-                    invoiceId,
-                },
-              });
-
-            if (!requestedInvoice) {
-              throw new NotFoundException(
-                'Invoice not found',
-              );
-            }
-
-            if (
-              requestedInvoice.status !==
-              'SENT'
-            ) {
-              throw new BadRequestException(
-                requestedInvoice.status ===
-                  'CONFIRMED'
-                  ? 'Confirmed invoices should be reopened for editing instead of revised'
-                  : 'Only SENT invoices can create a revision',
-              );
-            }
-
-            /*
-             * Every revision points directly to the ORIGINAL
-             * invoice, not to the previous revision.
-             *
-             * Original:
-             *   revisionOfInvoiceId = null
-             *
-             * R1 / R2 / R3:
-             *   revisionOfInvoiceId = original.id
-             */
-            const rootInvoiceId =
-              requestedInvoice.revisionOfInvoiceId ??
-              requestedInvoice.id;
-
-            const rootInvoice =
-              await tx.billingInvoice.findUnique({
-                where: {
-                  id:
-                    rootInvoiceId,
-                },
-
-                select: {
-                  id: true,
-                  invoiceNumber: true,
-                  clientCode: true,
-                },
-              });
-
-            if (
-              !rootInvoice ||
-              !rootInvoice.invoiceNumber
-            ) {
-              throw new BadRequestException(
-                'Original invoice could not be resolved for revision',
-              );
-            }
-
-            const existingRevisions =
-              await tx.billingInvoice.findMany({
-                where: {
-                  revisionOfInvoiceId:
-                    rootInvoiceId,
-                },
-
-                select: {
-                  id: true,
-                  invoiceNumber: true,
-                  revisionNumber: true,
-                  status: true,
-                },
-
-                orderBy: {
-                  revisionNumber:
-                    'desc',
-                },
-              });
-
-            /*
-             * Only one revision may be "in progress".
-             *
-             * If R1 is still DRAFT or CONFIRMED, the user
-             * must finish/reopen that revision instead of
-             * accidentally creating R2.
-             */
-            const openRevision =
-              existingRevisions.find(
-                (revision) =>
-                  revision.status ===
-                    'DRAFT' ||
-                  revision.status ===
-                    'CONFIRMED',
-              );
-
-            if (openRevision) {
-              throw new BadRequestException(
-                `${openRevision.invoiceNumber ?? `Revision ${openRevision.revisionNumber}`} already exists and is ${openRevision.status}. Complete that revision before creating another one.`,
-              );
-            }
-
-            const highestRevisionNumber =
-              existingRevisions.reduce(
-                (
-                  highest,
-                  revision,
-                ) =>
-                  Math.max(
-                    highest,
-                    revision.revisionNumber,
-                  ),
-                0,
-              );
-
-            const nextRevisionNumber =
-              highestRevisionNumber +
-              1;
-
-            /*
-             * Copy from the latest SENT version in the family.
-             *
-             * This matters if the user opens the original
-             * invoice after R1 was already sent. Creating R2
-             * should inherit R1's latest changes, not revert
-             * back to the original values.
-             */
-            const latestSentVersion =
-              await tx.billingInvoice.findFirst({
-                where: {
-                  status:
-                    'SENT',
-
-                  OR: [
-                    {
-                      id:
-                        rootInvoiceId,
-                    },
-
-                    {
-                      revisionOfInvoiceId:
-                        rootInvoiceId,
-                    },
-                  ],
-                },
-
-                include: {
-                  lines: {
-                    orderBy: {
-                      createdAt:
-                        'asc',
-                    },
-                  },
-
-                  manualLines: {
-                    orderBy: {
-                      createdAt:
-                        'asc',
-                    },
-                  },
-
-                  extraCharges: {
-                    orderBy: {
-                      createdAt:
-                        'asc',
-                    },
-                  },
-                },
-
-                orderBy: [
-                  {
-                    revisionNumber:
-                      'desc',
-                  },
-
-                  {
-                    sentAt:
-                      'desc',
-                  },
-                ],
-              });
-
-            if (
-              !latestSentVersion ||
-              !latestSentVersion.invoiceNumber
-            ) {
-              throw new BadRequestException(
-                'No SENT invoice version is available to revise',
-              );
-            }
-
-            const revisionInvoiceNumber =
-              `${rootInvoice.invoiceNumber}-R${nextRevisionNumber}`;
-
-            /*
-             * Create the revised invoice as DRAFT.
-             *
-             * It receives its revision invoice number NOW,
-             * not during confirmation:
-             *
-             *   INV-2026-0003-R1
-             *   INV-2026-0003-R2
-             *
-             * confirmInvoice() has been updated to preserve an
-             * already-existing invoiceNumber.
-             */
-            const revision =
-              await tx.billingInvoice.create({
-                data: {
-                  invoiceNumber:
-                    revisionInvoiceNumber,
-
-                  invoiceKind:
-                    latestSentVersion.invoiceKind,
-
-                  clientCode:
-                    latestSentVersion.clientCode,
-
-                  activeKey:
-                    null,
-
-                  periodStart:
-                    latestSentVersion.periodStart,
-
-                  periodEnd:
-                    latestSentVersion.periodEnd,
-
-                  status:
-                    'DRAFT',
-
-                  currency:
-                    latestSentVersion.currency,
-
-                  /*
-                   * Totals are recalculated after the copied
-                   * lines / extra charges are inserted.
-                   */
-                  subtotal:
-                    new Prisma.Decimal(
-                      0,
-                    ),
-
-                  adjustmentAmount:
-                    latestSentVersion.adjustmentAmount,
-
-                  total:
-                    new Prisma.Decimal(
-                      0,
-                    ),
-
-                  clientName:
-                    latestSentVersion.clientName,
-
-                  clientLegalName:
-                    latestSentVersion.clientLegalName,
-
-                  billingContactName:
-                    latestSentVersion.billingContactName,
-
-                  billingEmail:
-                    latestSentVersion.billingEmail,
-
-                  billingPhone:
-                    latestSentVersion.billingPhone,
-
-                  billingAddressLine1:
-                    latestSentVersion.billingAddressLine1,
-
-                  billingAddressLine2:
-                    latestSentVersion.billingAddressLine2,
-
-                  billingCity:
-                    latestSentVersion.billingCity,
-
-                  billingState:
-                    latestSentVersion.billingState,
-
-                  billingPostalCode:
-                    latestSentVersion.billingPostalCode,
-
-                  billingCountry:
-                    latestSentVersion.billingCountry,
-
-                  paymentTerms:
-                    latestSentVersion.paymentTerms,
-
-                  notes:
-                    latestSentVersion.notes,
-
-                  /*
-                   * Revision is a fresh editable invoice.
-                   * Confirmation/send/PDF/due-date metadata
-                   * intentionally starts empty.
-                   */
-                  confirmedAt:
-                    null,
-
-                  confirmedBy:
-                    null,
-
-                  sentAt:
-                    null,
-
-                  sentBy:
-                    null,
-
-                  dueDate:
-                    null,
-
-                  scheduledSendAt:
-                    null,
-
-                  scheduledToEmail:
-                    null,
-
-                  scheduledBy:
-                    null,
-
-                  scheduledAt:
-                    null,
-
-                  voidedAt:
-                    null,
-
-                  voidedBy:
-                    null,
-
-                  voidReason:
-                    null,
-
-                  pdfFilename:
-                    null,
-
-                  pdfStorageKey:
-                    null,
-
-                  pdfStorageBucket:
-                    null,
-
-                  pdfChecksum:
-                    null,
-
-                  pdfCreatedAt:
-                    null,
-
-                  revisionOfInvoiceId:
-                    rootInvoiceId,
-
-                  revisionNumber:
-                    nextRevisionNumber,
-
-                  createdBy:
-                    user.userId,
-
-                  updatedBy:
-                    user.userId,
-                },
-              });
-
-            /*
-             * Copy all testing lines exactly as they appeared
-             * on the latest SENT version.
-             *
-             * CRITICAL:
-             * activeChargeKey MUST be null.
-             *
-             * The original/SENT version remains the historical
-             * owner of the billable source identity. A revision
-             * is a correction of that invoice, not a second
-             * billing occurrence.
-             */
-            if (
-              latestSentVersion.lines.length >
-              0
-            ) {
-              await tx.billingInvoiceLine.createMany({
-                data:
-                  latestSentVersion.lines.map(
-                    (line) => ({
-                      invoiceId:
-                        revision.id,
-
-                      sourceType:
-                        line.sourceType,
-
-                      sourceId:
-                        line.sourceId,
-
-                      chargeKey:
-                        line.chargeKey,
-
-                      activeChargeKey:
-                        null,
-
-                      formType:
-                        line.formType,
-
-                      formNumber:
-                        line.formNumber,
-
-                      reportNumber:
-                        line.reportNumber,
-
-                      clientCode:
-                        line.clientCode,
-
-                      client:
-                        line.client,
-
-                      resultSentToClientAt:
-                        line.resultSentToClientAt,
-
-                      billingReadyAt:
-                        line.billingReadyAt,
-
-                      testKey:
-                        line.testKey,
-
-                      testLabel:
-                        line.testLabel,
-
-                      itemKey:
-                        line.itemKey,
-
-                      itemLabel:
-                        line.itemLabel,
-
-                      activeCount:
-                        line.activeCount,
-
-                      priceBasis:
-                        line.priceBasis,
-
-                      quantity:
-                        line.quantity,
-
-                      unitPrice:
-                        line.unitPrice,
-
-                      amount:
-                        line.amount,
-
-                      pricingRuleId:
-                        line.pricingRuleId,
-
-                      pricingIssue:
-                        line.pricingIssue,
-
-                      manualOverride:
-                        line.manualOverride,
-
-                      manualOverrideReason:
-                        line.manualOverrideReason,
-
-                      manualOverrideBy:
-                        line.manualOverrideBy,
-
-                      manualOverrideAt:
-                        line.manualOverrideAt,
-
-                      sourceSnapshot:
-                        line.sourceSnapshot ===
-                        null
-                          ? Prisma.JsonNull
-                          : (line.sourceSnapshot as Prisma.InputJsonValue),
-                    })),
-              });
-            }
-
-            if (
-              latestSentVersion.manualLines.length >
-              0
-            ) {
-              await tx.billingManualInvoiceLine.createMany({
-                data:
-                  latestSentVersion.manualLines.map(
-                    (line) => ({
-                      invoiceId:
-                        revision.id,
-
-                      description:
-                        line.description,
-
-                      quantity:
-                        line.quantity,
-
-                      unitPrice:
-                        line.unitPrice,
-
-                      amount:
-                        line.amount,
-
-                      createdBy:
-                        user.userId,
-
-                      updatedBy:
-                        user.userId,
-                    }),
-                  ),
-              });
-            }
-
-            if (
-              latestSentVersion.extraCharges.length >
-              0
-            ) {
-              await tx.billingInvoiceExtraCharge.createMany({
-                data:
-                  latestSentVersion.extraCharges.map(
-                    (charge) => ({
-                      invoiceId:
-                        revision.id,
-
-                      sourceType:
-                        charge.sourceType,
-
-                      sourceId:
-                        charge.sourceId,
-
-                      formNumber:
-                        charge.formNumber,
-
-                      reportNumber:
-                        charge.reportNumber,
-
-                      name:
-                        charge.name,
-
-                      amount:
-                        charge.amount,
-
-                      createdBy:
-                        user.userId,
-
-                      updatedBy:
-                        user.userId,
-                    })),
-              });
-            }
-
-            const recalculated =
-              await this.recalculateInvoiceTotals(
-                tx,
-                revision.id,
-              );
-
-            await tx.billingInvoice.update({
-              where: {
-                id:
-                  revision.id,
-              },
-
-              data: {
-                updatedBy:
-                  user.userId,
-              },
-            });
-
-            return {
-              revisionId:
-                revision.id,
-
-              revisionInvoiceNumber:
-                revision.invoiceNumber!,
-
-              revisionNumber:
-                revision.revisionNumber,
-
-              rootInvoiceId:
-                rootInvoice.id,
-
-              rootInvoiceNumber:
-                rootInvoice.invoiceNumber,
-
-              copiedFromInvoiceId:
-                latestSentVersion.id,
-
-              copiedFromInvoiceNumber:
-                latestSentVersion.invoiceNumber,
-
-              clientCode:
-                latestSentVersion.clientCode,
-
-              lineCount:
-                latestSentVersion.lines.length,
-
-              extraChargeCount:
-                latestSentVersion.extraCharges.length,
-
-              subtotal:
-                recalculated.subtotal,
-            };
+      transactionResult = await this.prisma.$transaction(async (tx) => {
+        const requestedInvoice = await tx.billingInvoice.findUnique({
+          where: {
+            id: invoiceId,
           },
+        });
+
+        if (!requestedInvoice) {
+          throw new NotFoundException('Invoice not found');
+        }
+
+        if (requestedInvoice.status !== 'SENT') {
+          throw new BadRequestException(
+            requestedInvoice.status === 'CONFIRMED'
+              ? 'Confirmed invoices should be reopened for editing instead of revised'
+              : 'Only SENT invoices can create a revision',
+          );
+        }
+
+        /*
+         * Every revision points directly to the ORIGINAL
+         * invoice, not to the previous revision.
+         *
+         * Original:
+         *   revisionOfInvoiceId = null
+         *
+         * R1 / R2 / R3:
+         *   revisionOfInvoiceId = original.id
+         */
+        const rootInvoiceId =
+          requestedInvoice.revisionOfInvoiceId ?? requestedInvoice.id;
+
+        const rootInvoice = await tx.billingInvoice.findUnique({
+          where: {
+            id: rootInvoiceId,
+          },
+
+          select: {
+            id: true,
+            invoiceNumber: true,
+            clientCode: true,
+          },
+        });
+
+        if (!rootInvoice || !rootInvoice.invoiceNumber) {
+          throw new BadRequestException(
+            'Original invoice could not be resolved for revision',
+          );
+        }
+
+        const existingRevisions = await tx.billingInvoice.findMany({
+          where: {
+            revisionOfInvoiceId: rootInvoiceId,
+          },
+
+          select: {
+            id: true,
+            invoiceNumber: true,
+            revisionNumber: true,
+            status: true,
+          },
+
+          orderBy: {
+            revisionNumber: 'desc',
+          },
+        });
+
+        /*
+         * Only one revision may be "in progress".
+         *
+         * If R1 is still DRAFT or CONFIRMED, the user
+         * must finish/reopen that revision instead of
+         * accidentally creating R2.
+         */
+        const openRevision = existingRevisions.find(
+          (revision) =>
+            revision.status === 'DRAFT' || revision.status === 'CONFIRMED',
         );
+
+        if (openRevision) {
+          throw new BadRequestException(
+            `${openRevision.invoiceNumber ?? `Revision ${openRevision.revisionNumber}`} already exists and is ${openRevision.status}. Complete that revision before creating another one.`,
+          );
+        }
+
+        const highestRevisionNumber = existingRevisions.reduce(
+          (highest, revision) => Math.max(highest, revision.revisionNumber),
+          0,
+        );
+
+        const nextRevisionNumber = highestRevisionNumber + 1;
+
+        /*
+         * Copy from the latest SENT version in the family.
+         *
+         * This matters if the user opens the original
+         * invoice after R1 was already sent. Creating R2
+         * should inherit R1's latest changes, not revert
+         * back to the original values.
+         */
+        const latestSentVersion = await tx.billingInvoice.findFirst({
+          where: {
+            status: 'SENT',
+
+            OR: [
+              {
+                id: rootInvoiceId,
+              },
+
+              {
+                revisionOfInvoiceId: rootInvoiceId,
+              },
+            ],
+          },
+
+          include: {
+            lines: {
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+
+            manualLines: {
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+
+            extraCharges: {
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+          },
+
+          orderBy: [
+            {
+              revisionNumber: 'desc',
+            },
+
+            {
+              sentAt: 'desc',
+            },
+          ],
+        });
+
+        if (!latestSentVersion || !latestSentVersion.invoiceNumber) {
+          throw new BadRequestException(
+            'No SENT invoice version is available to revise',
+          );
+        }
+
+        const revisionInvoiceNumber = `${rootInvoice.invoiceNumber}-R${nextRevisionNumber}`;
+
+        /*
+         * Create the revised invoice as DRAFT.
+         *
+         * It receives its revision invoice number NOW,
+         * not during confirmation:
+         *
+         *   INV-2026-0003-R1
+         *   INV-2026-0003-R2
+         *
+         * confirmInvoice() has been updated to preserve an
+         * already-existing invoiceNumber.
+         */
+        const revision = await tx.billingInvoice.create({
+          data: {
+            invoiceNumber: revisionInvoiceNumber,
+
+            invoiceKind: latestSentVersion.invoiceKind,
+
+            clientCode: latestSentVersion.clientCode,
+
+            activeKey: null,
+
+            periodStart: latestSentVersion.periodStart,
+
+            periodEnd: latestSentVersion.periodEnd,
+
+            status: 'DRAFT',
+
+            currency: latestSentVersion.currency,
+
+            /*
+             * Totals are recalculated after the copied
+             * lines / extra charges are inserted.
+             */
+            subtotal: new Prisma.Decimal(0),
+
+            adjustmentAmount: latestSentVersion.adjustmentAmount,
+
+            total: new Prisma.Decimal(0),
+
+            clientName: latestSentVersion.clientName,
+
+            clientLegalName: latestSentVersion.clientLegalName,
+
+            billingContactName: latestSentVersion.billingContactName,
+
+            billingEmail: latestSentVersion.billingEmail,
+
+            billingPhone: latestSentVersion.billingPhone,
+
+            billingAddressLine1: latestSentVersion.billingAddressLine1,
+
+            billingAddressLine2: latestSentVersion.billingAddressLine2,
+
+            billingCity: latestSentVersion.billingCity,
+
+            billingState: latestSentVersion.billingState,
+
+            billingPostalCode: latestSentVersion.billingPostalCode,
+
+            billingCountry: latestSentVersion.billingCountry,
+
+            paymentTerms: latestSentVersion.paymentTerms,
+
+            notes: latestSentVersion.notes,
+
+            /*
+             * Revision is a fresh editable invoice.
+             * Confirmation/send/PDF/due-date metadata
+             * intentionally starts empty.
+             */
+            confirmedAt: null,
+
+            confirmedBy: null,
+
+            sentAt: null,
+
+            sentBy: null,
+
+            dueDate: null,
+
+            scheduledSendAt: null,
+
+            scheduledToEmail: null,
+
+            scheduledBy: null,
+
+            scheduledAt: null,
+
+            voidedAt: null,
+
+            voidedBy: null,
+
+            voidReason: null,
+
+            pdfFilename: null,
+
+            pdfStorageKey: null,
+
+            pdfStorageBucket: null,
+
+            pdfChecksum: null,
+
+            pdfCreatedAt: null,
+
+            revisionOfInvoiceId: rootInvoiceId,
+
+            revisionNumber: nextRevisionNumber,
+
+            createdBy: user.userId,
+
+            updatedBy: user.userId,
+          },
+        });
+
+        /*
+         * Copy all testing lines exactly as they appeared
+         * on the latest SENT version.
+         *
+         * CRITICAL:
+         * activeChargeKey MUST be null.
+         *
+         * The original/SENT version remains the historical
+         * owner of the billable source identity. A revision
+         * is a correction of that invoice, not a second
+         * billing occurrence.
+         */
+        if (latestSentVersion.lines.length > 0) {
+          await tx.billingInvoiceLine.createMany({
+            data: latestSentVersion.lines.map((line) => ({
+              invoiceId: revision.id,
+
+              sourceType: line.sourceType,
+
+              sourceId: line.sourceId,
+
+              chargeKey: line.chargeKey,
+
+              activeChargeKey: null,
+
+              formType: line.formType,
+
+              formNumber: line.formNumber,
+
+              reportNumber: line.reportNumber,
+
+              clientCode: line.clientCode,
+
+              client: line.client,
+
+              resultSentToClientAt: line.resultSentToClientAt,
+
+              billingReadyAt: line.billingReadyAt,
+
+              testKey: line.testKey,
+
+              testLabel: line.testLabel,
+
+              itemKey: line.itemKey,
+
+              itemLabel: line.itemLabel,
+
+              activeCount: line.activeCount,
+
+              priceBasis: line.priceBasis,
+
+              quantity: line.quantity,
+
+              unitPrice: line.unitPrice,
+
+              amount: line.amount,
+
+              pricingRuleId: line.pricingRuleId,
+
+              pricingIssue: line.pricingIssue,
+
+              manualOverride: line.manualOverride,
+
+              manualOverrideReason: line.manualOverrideReason,
+
+              manualOverrideBy: line.manualOverrideBy,
+
+              manualOverrideAt: line.manualOverrideAt,
+
+              sourceSnapshot:
+                line.sourceSnapshot === null
+                  ? Prisma.JsonNull
+                  : (line.sourceSnapshot as Prisma.InputJsonValue),
+            })),
+          });
+        }
+
+        if (latestSentVersion.manualLines.length > 0) {
+          await tx.billingManualInvoiceLine.createMany({
+            data: latestSentVersion.manualLines.map((line) => ({
+              invoiceId: revision.id,
+
+              description: line.description,
+
+              quantity: line.quantity,
+
+              unitPrice: line.unitPrice,
+
+              amount: line.amount,
+
+              createdBy: user.userId,
+
+              updatedBy: user.userId,
+            })),
+          });
+        }
+
+        if (latestSentVersion.extraCharges.length > 0) {
+          await tx.billingInvoiceExtraCharge.createMany({
+            data: latestSentVersion.extraCharges.map((charge) => ({
+              invoiceId: revision.id,
+
+              sourceType: charge.sourceType,
+
+              sourceId: charge.sourceId,
+
+              formNumber: charge.formNumber,
+
+              reportNumber: charge.reportNumber,
+
+              name: charge.name,
+
+              amount: charge.amount,
+
+              createdBy: user.userId,
+
+              updatedBy: user.userId,
+            })),
+          });
+        }
+
+        const recalculated = await this.recalculateInvoiceTotals(
+          tx,
+          revision.id,
+        );
+
+        await tx.billingInvoice.update({
+          where: {
+            id: revision.id,
+          },
+
+          data: {
+            updatedBy: user.userId,
+          },
+        });
+
+        return {
+          revisionId: revision.id,
+
+          revisionInvoiceNumber: revision.invoiceNumber!,
+
+          revisionNumber: revision.revisionNumber,
+
+          rootInvoiceId: rootInvoice.id,
+
+          rootInvoiceNumber: rootInvoice.invoiceNumber,
+
+          copiedFromInvoiceId: latestSentVersion.id,
+
+          copiedFromInvoiceNumber: latestSentVersion.invoiceNumber,
+
+          clientCode: latestSentVersion.clientCode,
+
+          lineCount: latestSentVersion.lines.length,
+
+          extraChargeCount: latestSentVersion.extraCharges.length,
+
+          subtotal: recalculated.subtotal,
+        };
+      });
     } catch (error: any) {
       /*
        * Database uniqueness is the final concurrency guard:
@@ -6114,10 +5338,7 @@ export class BillingService {
        * same moment, one succeeds and the other receives a
        * clean message instead of creating duplicate R1/R2.
        */
-      if (
-        error?.code ===
-        'P2002'
-      ) {
+      if (error?.code === 'P2002') {
         throw new BadRequestException(
           'Another revision was created at the same time. Refresh the invoice and try again.',
         );
@@ -6126,265 +5347,181 @@ export class BillingService {
       throw error;
     }
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'INVOICE_REVISION_CREATED',
+    await this.auditInvoice(user, {
+      action: 'INVOICE_REVISION_CREATED',
 
-        invoiceId:
-          transactionResult.revisionId,
+      invoiceId: transactionResult.revisionId,
 
-        clientCode:
-          transactionResult.clientCode,
+      clientCode: transactionResult.clientCode,
 
-        details:
-          `Created ${transactionResult.revisionInvoiceNumber} from ${transactionResult.copiedFromInvoiceNumber}`,
+      details: `Created ${transactionResult.revisionInvoiceNumber} from ${transactionResult.copiedFromInvoiceNumber}`,
 
-        changes: {
-          originalInvoiceId:
-            transactionResult.rootInvoiceId,
+      changes: {
+        originalInvoiceId: transactionResult.rootInvoiceId,
 
-          originalInvoiceNumber:
-            transactionResult.rootInvoiceNumber,
+        originalInvoiceNumber: transactionResult.rootInvoiceNumber,
 
-          copiedFromInvoiceId:
-            transactionResult.copiedFromInvoiceId,
+        copiedFromInvoiceId: transactionResult.copiedFromInvoiceId,
 
-          copiedFromInvoiceNumber:
-            transactionResult.copiedFromInvoiceNumber,
+        copiedFromInvoiceNumber: transactionResult.copiedFromInvoiceNumber,
 
-          revisionNumber:
-            transactionResult.revisionNumber,
+        revisionNumber: transactionResult.revisionNumber,
 
-          revisionInvoiceNumber:
-            transactionResult.revisionInvoiceNumber,
+        revisionInvoiceNumber: transactionResult.revisionInvoiceNumber,
 
-          copiedLineCount:
-            transactionResult.lineCount,
+        copiedLineCount: transactionResult.lineCount,
 
-          copiedExtraChargeCount:
-            transactionResult.extraChargeCount,
-        },
+        copiedExtraChargeCount: transactionResult.extraChargeCount,
       },
-    );
+    });
 
     /*
      * Also put a trace on the SENT invoice that was copied.
      * This makes the old invoice's audit history clearly show
      * which revised document superseded it.
      */
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'INVOICE_REVISION_CREATED_FROM',
+    await this.auditInvoice(user, {
+      action: 'INVOICE_REVISION_CREATED_FROM',
 
-        invoiceId:
-          transactionResult.copiedFromInvoiceId,
+      invoiceId: transactionResult.copiedFromInvoiceId,
 
-        clientCode:
-          transactionResult.clientCode,
+      clientCode: transactionResult.clientCode,
 
-        details:
-          `${transactionResult.copiedFromInvoiceNumber} revised as ${transactionResult.revisionInvoiceNumber}`,
+      details: `${transactionResult.copiedFromInvoiceNumber} revised as ${transactionResult.revisionInvoiceNumber}`,
 
-        changes: {
-          revisionInvoiceId:
-            transactionResult.revisionId,
+      changes: {
+        revisionInvoiceId: transactionResult.revisionId,
 
-          revisionInvoiceNumber:
-            transactionResult.revisionInvoiceNumber,
+        revisionInvoiceNumber: transactionResult.revisionInvoiceNumber,
 
-          revisionNumber:
-            transactionResult.revisionNumber,
-        },
+        revisionNumber: transactionResult.revisionNumber,
       },
-    );
+    });
 
-    return this.getInvoice(
-      user,
-      transactionResult.revisionId,
-    );
+    return this.getInvoice(user, transactionResult.revisionId);
   }
 
   /* =======================================================
      VOID INVOICE
   ======================================================= */
 
-  async voidInvoice(
-    user: AuthUser,
-    invoiceId: string,
-    dto: VoidInvoiceDto,
-  ) {
+  async voidInvoice(user: AuthUser, invoiceId: string, dto: VoidInvoiceDto) {
     this.assertManager(user);
 
-    const reason = String(
-      dto.reason ?? '',
-    ).trim();
+    const reason = String(dto.reason ?? '').trim();
 
     if (reason.length < 3) {
-      throw new BadRequestException(
-        'Void reason is required',
-      );
+      throw new BadRequestException('Void reason is required');
     }
 
     const now = new Date();
 
-    const result =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const invoice =
-            await tx.billingInvoice.findUnique({
-              where: {
-                id: invoiceId,
-              },
-
-              include: {
-                lines: true,
-              },
-            });
-
-          if (!invoice) {
-            throw new NotFoundException(
-              'Invoice not found',
-            );
-          }
-
-          if (
-            invoice.status ===
-            'VOID'
-          ) {
-            throw new BadRequestException(
-              'Invoice is already VOID',
-            );
-          }
-
-          if (
-            invoice.status !==
-              'CONFIRMED' &&
-            invoice.status !==
-              'SENT'
-          ) {
-            throw new BadRequestException(
-              'Only CONFIRMED or SENT invoices can be voided',
-            );
-          }
-
-          const previousStatus =
-            invoice.status;
-
-          const previousActiveKey =
-            invoice.activeKey;
-
-          /*
-           * Keep historical chargeKey unchanged.
-           * Release only activeChargeKey so a replacement
-           * invoice may legitimately capture the source.
-           */
-          const released =
-            await tx.billingInvoiceLine.updateMany({
-              where: {
-                invoiceId:
-                  invoice.id,
-              },
-
-              data: {
-                activeChargeKey:
-                  null,
-              },
-            });
-
-          const voided =
-            await tx.billingInvoice.update({
-              where: {
-                id:
-                  invoice.id,
-              },
-
-              data: {
-                status:
-                  'VOID',
-
-                activeKey:
-                  null,
-
-                voidReason:
-                  reason,
-
-                voidedAt:
-                  now,
-
-                voidedBy:
-                  user.userId,
-
-                updatedBy:
-                  user.userId,
-              },
-            });
-
-          return {
-            voided,
-
-            previousStatus,
-
-            previousActiveKey,
-
-            releasedChargeCount:
-              released.count,
-          };
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: {
+          id: invoiceId,
         },
-      );
 
-    await this.auditInvoice(
-      user,
-      {
-        action:
-          'INVOICE_VOIDED',
-
-        invoiceId:
-          result.voided.id,
-
-        clientCode:
-          result.voided.clientCode,
-
-        details:
-          `Voided invoice ${
-            result.voided.invoiceNumber ??
-            result.voided.id
-          } | reason: ${reason}`,
-
-        changes: {
-          previousStatus:
-            result.previousStatus,
-
-          newStatus:
-            'VOID',
-
-          previousActiveKey:
-            result.previousActiveKey,
-
-          activeKey:
-            null,
-
-          releasedChargeCount:
-            result.releasedChargeCount,
-
-          reason,
-
-          voidedAt:
-            now.toISOString(),
-
-          voidedBy:
-            user.userId,
+        include: {
+          lines: true,
         },
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      if (invoice.status === 'VOID') {
+        throw new BadRequestException('Invoice is already VOID');
+      }
+
+      if (invoice.status !== 'CONFIRMED' && invoice.status !== 'SENT') {
+        throw new BadRequestException(
+          'Only CONFIRMED or SENT invoices can be voided',
+        );
+      }
+
+      const previousStatus = invoice.status;
+
+      const previousActiveKey = invoice.activeKey;
+
+      /*
+       * Keep historical chargeKey unchanged.
+       * Release only activeChargeKey so a replacement
+       * invoice may legitimately capture the source.
+       */
+      const released = await tx.billingInvoiceLine.updateMany({
+        where: {
+          invoiceId: invoice.id,
+        },
+
+        data: {
+          activeChargeKey: null,
+        },
+      });
+
+      const voided = await tx.billingInvoice.update({
+        where: {
+          id: invoice.id,
+        },
+
+        data: {
+          status: 'VOID',
+
+          activeKey: null,
+
+          voidReason: reason,
+
+          voidedAt: now,
+
+          voidedBy: user.userId,
+
+          updatedBy: user.userId,
+        },
+      });
+
+      return {
+        voided,
+
+        previousStatus,
+
+        previousActiveKey,
+
+        releasedChargeCount: released.count,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'INVOICE_VOIDED',
+
+      invoiceId: result.voided.id,
+
+      clientCode: result.voided.clientCode,
+
+      details: `Voided invoice ${
+        result.voided.invoiceNumber ?? result.voided.id
+      } | reason: ${reason}`,
+
+      changes: {
+        previousStatus: result.previousStatus,
+
+        newStatus: 'VOID',
+
+        previousActiveKey: result.previousActiveKey,
+
+        activeKey: null,
+
+        releasedChargeCount: result.releasedChargeCount,
+
+        reason,
+
+        voidedAt: now.toISOString(),
+
+        voidedBy: user.userId,
       },
-    );
+    });
 
-    return this.getInvoice(
-      user,
-      invoiceId,
-    );
+    return this.getInvoice(user, invoiceId);
   }
 
   /* =======================================================
@@ -6546,43 +5683,25 @@ export class BillingService {
     const microSourceIds = Array.from(
       new Set(
         invoice.lines
-          .filter(
-            (line) =>
-              line.sourceType ===
-              'REPORT',
-          )
-          .map(
-            (line) =>
-              line.sourceId,
-          ),
+          .filter((line) => line.sourceType === 'REPORT')
+          .map((line) => line.sourceId),
       ),
     );
 
     const chemistrySourceIds = Array.from(
       new Set(
         invoice.lines
-          .filter(
-            (line) =>
-              line.sourceType ===
-              'CHEMISTRY_REPORT',
-          )
-          .map(
-            (line) =>
-              line.sourceId,
-          ),
+          .filter((line) => line.sourceType === 'CHEMISTRY_REPORT')
+          .map((line) => line.sourceId),
       ),
     );
 
-    const [
-      microSources,
-      chemistrySources,
-    ] = await Promise.all([
+    const [microSources, chemistrySources] = await Promise.all([
       microSourceIds.length > 0
         ? this.prisma.report.findMany({
             where: {
               id: {
-                in:
-                  microSourceIds,
+                in: microSourceIds,
               },
             },
 
@@ -6599,8 +5718,7 @@ export class BillingService {
         ? this.prisma.chemistryReport.findMany({
             where: {
               id: {
-                in:
-                  chemistrySourceIds,
+                in: chemistrySourceIds,
               },
             },
 
@@ -6612,19 +5730,15 @@ export class BillingService {
         : Promise.resolve([] as any[]),
     ]);
 
-    const sampleTypeBySource =
-      new Map<
-        string,
-        {
-          sampleType?: string | null;
-          sampleTypes?: unknown[];
-        }
-      >();
+    const sampleTypeBySource = new Map<
+      string,
+      {
+        sampleType?: string | null;
+        sampleTypes?: unknown[];
+      }
+    >();
 
-    for (
-      const report of
-      microSources
-    ) {
+    for (const report of microSources) {
       const details =
         report.microMix ??
         report.microMixWater ??
@@ -6632,82 +5746,58 @@ export class BillingService {
         report.ape ??
         null;
 
-      sampleTypeBySource.set(
-        `REPORT:${report.id}`,
-        {
-          sampleType:
-            details?.sampleType ??
-            null,
-        },
-      );
+      sampleTypeBySource.set(`REPORT:${report.id}`, {
+        sampleType: details?.sampleType ?? null,
+      });
     }
 
-    for (
-      const report of
-      chemistrySources
-    ) {
-      const details =
-        report.chemistryMix ??
-        report.coa ??
-        null;
+    for (const report of chemistrySources) {
+      const details = report.chemistryMix ?? report.coa ?? null;
 
-      sampleTypeBySource.set(
-        `CHEMISTRY_REPORT:${report.id}`,
-        {
-          sampleTypes:
-            Array.isArray(
-              details?.sampleTypes,
-            )
-              ? details.sampleTypes
-              : [],
-        },
-      );
+      sampleTypeBySource.set(`CHEMISTRY_REPORT:${report.id}`, {
+        sampleTypes: Array.isArray(details?.sampleTypes)
+          ? details.sampleTypes
+          : [],
+      });
     }
 
-    const revisionRootId =
-      invoice.revisionOfInvoiceId ??
-      invoice.id;
+    const revisionRootId = invoice.revisionOfInvoiceId ?? invoice.id;
 
-    const revisionHistory =
-      await this.prisma.billingInvoice.findMany({
-        where: {
-          OR: [
-            {
-              id:
-                revisionRootId,
-            },
-
-            {
-              revisionOfInvoiceId:
-                revisionRootId,
-            },
-          ],
-        },
-
-        select: {
-          id: true,
-          invoiceNumber: true,
-          status: true,
-          revisionOfInvoiceId: true,
-          revisionNumber: true,
-          confirmedAt: true,
-          sentAt: true,
-          total: true,
-          createdAt: true,
-        },
-
-        orderBy: [
+    const revisionHistory = await this.prisma.billingInvoice.findMany({
+      where: {
+        OR: [
           {
-            revisionNumber:
-              'asc',
+            id: revisionRootId,
           },
 
           {
-            createdAt:
-              'asc',
+            revisionOfInvoiceId: revisionRootId,
           },
         ],
-      });
+      },
+
+      select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
+        revisionOfInvoiceId: true,
+        revisionNumber: true,
+        confirmedAt: true,
+        sentAt: true,
+        total: true,
+        createdAt: true,
+      },
+
+      orderBy: [
+        {
+          revisionNumber: 'asc',
+        },
+
+        {
+          createdAt: 'asc',
+        },
+      ],
+    });
 
     return {
       ...invoice,
@@ -6719,22 +5809,15 @@ export class BillingService {
       total: invoice.total.toFixed(2),
 
       lines: invoice.lines.map((line) => {
-        const sourceSampleType =
-          sampleTypeBySource.get(
-            `${line.sourceType}:${line.sourceId}`,
-          );
+        const sourceSampleType = sampleTypeBySource.get(
+          `${line.sourceType}:${line.sourceId}`,
+        );
 
         const currentSnapshot =
           line.sourceSnapshot &&
-          typeof line.sourceSnapshot ===
-            'object' &&
-          !Array.isArray(
-            line.sourceSnapshot,
-          )
-            ? (line.sourceSnapshot as Record<
-                string,
-                any
-              >)
+          typeof line.sourceSnapshot === 'object' &&
+          !Array.isArray(line.sourceSnapshot)
+            ? (line.sourceSnapshot as Record<string, any>)
             : {};
 
         return {
@@ -6743,30 +5826,21 @@ export class BillingService {
           sourceSnapshot: {
             ...currentSnapshot,
 
-            ...(sourceSampleType ??
-              {}),
+            ...(sourceSampleType ?? {}),
           },
 
-          unitPrice:
-            line.unitPrice
-              ? line.unitPrice.toFixed(2)
-              : null,
+          unitPrice: line.unitPrice ? line.unitPrice.toFixed(2) : null,
 
-          amount:
-            line.amount
-              ? line.amount.toFixed(2)
-              : null,
+          amount: line.amount ? line.amount.toFixed(2) : null,
         };
       }),
 
       manualLines: invoice.manualLines.map((line) => ({
         ...line,
 
-        unitPrice:
-          line.unitPrice.toFixed(2),
+        unitPrice: line.unitPrice.toFixed(2),
 
-        amount:
-          line.amount.toFixed(2),
+        amount: line.amount.toFixed(2),
       })),
 
       extraCharges: invoice.extraCharges.map((charge) => ({
@@ -6776,17 +5850,11 @@ export class BillingService {
 
       revisionRootId,
 
-      revisionHistory:
-        revisionHistory.map(
-          (version) => ({
-            ...version,
+      revisionHistory: revisionHistory.map((version) => ({
+        ...version,
 
-            total:
-              version.total.toFixed(
-                2,
-              ),
-          }),
-        ),
+        total: version.total.toFixed(2),
+      })),
     };
   }
 
