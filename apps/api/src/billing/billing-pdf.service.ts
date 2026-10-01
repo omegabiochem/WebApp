@@ -31,8 +31,14 @@ type AuthUser = {
   role: UserRole;
 };
 
+type PdfReportDepartment = 'MICROBIOLOGY' | 'CHEMISTRY';
+
 type PdfReportRow = {
   key: string;
+
+  formType: string;
+
+  department: PdfReportDepartment;
 
   formNumber: string;
 
@@ -41,6 +47,8 @@ type PdfReportRow = {
   resultSentToClientAt: Date | string | null;
 
   description: string;
+
+  sampleTypes: string[];
 
   testLabels: string[];
 
@@ -526,6 +534,202 @@ export class BillingPdfService {
     ).trim();
   }
 
+  private sourceSampleTypes(snapshot: any) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return [];
+    }
+
+    const rawValues = Array.isArray(snapshot.sampleTypes)
+      ? snapshot.sampleTypes
+      : snapshot.sampleType != null
+        ? [snapshot.sampleType]
+        : [];
+
+    return this.uniqueText(
+      rawValues.map((value: any) => {
+        if (value == null) {
+          return '';
+        }
+
+        if (typeof value === 'object') {
+          return String(
+            value.sampleType ??
+              value.name ??
+              value.label ??
+              value.value ??
+              value.type ??
+              value.key ??
+              '',
+          )
+            .trim()
+
+            .replace(/_/g, ' ');
+        }
+
+        return String(value)
+          .trim()
+
+          .replace(/_/g, ' ');
+      }),
+    );
+  }
+
+  private reportDepartment(line: any): PdfReportDepartment {
+    const sourceType = String(line?.sourceType ?? '').toUpperCase();
+
+    const formType = String(line?.formType ?? '').toUpperCase();
+
+    if (
+      sourceType === 'CHEMISTRY_REPORT' ||
+      formType === 'CHEMISTRY_MIX' ||
+      formType === 'COA'
+    ) {
+      return 'CHEMISTRY';
+    }
+
+    return 'MICROBIOLOGY';
+  }
+
+  private async enrichInvoiceLineSampleTypes(lines: any[]) {
+    if (!Array.isArray(lines) || lines.length === 0) {
+      return lines ?? [];
+    }
+
+    const missing = lines.filter(
+      (line) => this.sourceSampleTypes(line?.sourceSnapshot).length === 0,
+    );
+
+    if (missing.length === 0) {
+      return lines;
+    }
+
+    const microSourceIds = Array.from(
+      new Set(
+        missing
+
+          .filter((line) => String(line?.sourceType) === 'REPORT')
+
+          .map((line) => String(line?.sourceId ?? '').trim())
+
+          .filter(Boolean),
+      ),
+    );
+
+    const chemistrySourceIds = Array.from(
+      new Set(
+        missing
+
+          .filter((line) => String(line?.sourceType) === 'CHEMISTRY_REPORT')
+
+          .map((line) => String(line?.sourceId ?? '').trim())
+
+          .filter(Boolean),
+      ),
+    );
+
+    const [microSources, chemistrySources] = await Promise.all([
+      microSourceIds.length > 0
+        ? this.prisma.report.findMany({
+            where: {
+              id: {
+                in: microSourceIds,
+              },
+            },
+
+            include: {
+              microMix: true,
+
+              microMixWater: true,
+
+              sterility: true,
+
+              ape: true,
+            },
+          })
+        : Promise.resolve([] as any[]),
+
+      chemistrySourceIds.length > 0
+        ? this.prisma.chemistryReport.findMany({
+            where: {
+              id: {
+                in: chemistrySourceIds,
+              },
+            },
+
+            include: {
+              chemistryMix: true,
+
+              coa: true,
+            },
+          })
+        : Promise.resolve([] as any[]),
+    ]);
+
+    const fallbackBySource = new Map<string, Record<string, any>>();
+
+    for (const source of microSources as any[]) {
+      const details =
+        source?.microMix ??
+        source?.microMixWater ??
+        source?.sterility ??
+        source?.ape ??
+        null;
+
+      const sampleType = String(details?.sampleType ?? '').trim();
+
+      if (sampleType) {
+        fallbackBySource.set(`REPORT:${source.id}`, {
+          sampleType,
+        });
+      }
+    }
+
+    for (const source of chemistrySources as any[]) {
+      const details = source?.chemistryMix ?? source?.coa ?? null;
+
+      const sampleTypes = Array.isArray(details?.sampleTypes)
+        ? details.sampleTypes
+        : [];
+
+      if (sampleTypes.length > 0) {
+        fallbackBySource.set(`CHEMISTRY_REPORT:${source.id}`, {
+          sampleTypes,
+        });
+      }
+    }
+
+    return lines.map((line) => {
+      if (this.sourceSampleTypes(line?.sourceSnapshot).length > 0) {
+        return line;
+      }
+
+      const fallback = fallbackBySource.get(
+        `${line?.sourceType}:${line?.sourceId}`,
+      );
+
+      if (!fallback) {
+        return line;
+      }
+
+      const currentSnapshot =
+        line?.sourceSnapshot &&
+        typeof line.sourceSnapshot === 'object' &&
+        !Array.isArray(line.sourceSnapshot)
+          ? line.sourceSnapshot
+          : {};
+
+      return {
+        ...line,
+
+        sourceSnapshot: {
+          ...currentSnapshot,
+
+          ...fallback,
+        },
+      };
+    });
+  }
+
   private uniqueText(values: Array<string | null | undefined>) {
     return Array.from(
       new Set(
@@ -546,6 +750,8 @@ export class BillingPdfService {
     const groups = new Map<
       string,
       PdfReportRow & {
+        rawSampleTypes: string[];
+
         rawItems: string[];
 
         rawTests: string[];
@@ -563,6 +769,10 @@ export class BillingPdfService {
         group = {
           key,
 
+          formType: String(line.formType ?? ''),
+
+          department: this.reportDepartment(line),
+
           formNumber: String(line.formNumber ?? ''),
 
           reportNumber: String(line.reportNumber ?? ''),
@@ -571,11 +781,15 @@ export class BillingPdfService {
 
           description: this.sourceDescription(line.sourceSnapshot),
 
+          sampleTypes: [],
+
           testLabels: [],
 
           itemLabels: [],
 
           extraChargeLabels: [],
+
+          rawSampleTypes: [],
 
           rawTests: [],
 
@@ -598,6 +812,8 @@ export class BillingPdfService {
       if (!group.resultSentToClientAt && line.resultSentToClientAt) {
         group.resultSentToClientAt = line.resultSentToClientAt;
       }
+
+      group.rawSampleTypes.push(...this.sourceSampleTypes(line.sourceSnapshot));
 
       group.rawTests.push(String(line.testLabel || line.testKey || ''));
 
@@ -640,6 +856,8 @@ export class BillingPdfService {
 
       .map((group) => {
         const {
+          rawSampleTypes,
+
           rawItems,
 
           rawTests,
@@ -651,6 +869,8 @@ export class BillingPdfService {
 
         return {
           ...row,
+
+          sampleTypes: this.uniqueText(rawSampleTypes),
 
           testLabels: this.uniqueText(rawTests),
 
@@ -676,6 +896,44 @@ export class BillingPdfService {
      TABLE HEADER
 
   ========================================================= */
+
+  private drawReportSectionHeader(
+    page: PDFPage,
+
+    y: number,
+
+    title: string,
+
+    font: PDFFont,
+  ) {
+    const height = 22;
+
+    page.drawRectangle({
+      x: LEFT,
+
+      y: y - height + 4,
+
+      width: PAGE_WIDTH - LEFT - RIGHT,
+
+      height,
+
+      color: rgb(0.88, 0.92, 0.97),
+    });
+
+    page.drawText(title, {
+      x: LEFT + 6,
+
+      y: y - 10,
+
+      size: 8.2,
+
+      font,
+
+      color: rgb(0.12, 0.24, 0.4),
+    });
+
+    return y - height;
+  }
 
   private drawTableHeader(
     page: PDFPage,
@@ -709,13 +967,43 @@ export class BillingPdfService {
 
       y: y - 10,
 
-      size: 7.2,
+      size: 6.9,
 
       font,
     });
 
     page.drawText('Result Sent Date', {
-      x: 112,
+      x: 104,
+
+      y: y - 10,
+
+      size: 6.1,
+
+      font,
+    });
+
+    page.drawText('Sample Type', {
+      x: 166,
+
+      y: y - 10,
+
+      size: 6.4,
+
+      font,
+    });
+
+    page.drawText('Description', {
+      x: 238,
+
+      y: y - 10,
+
+      size: 6.8,
+
+      font,
+    });
+
+    page.drawText('Type of Test', {
+      x: 342,
 
       y: y - 10,
 
@@ -724,35 +1012,15 @@ export class BillingPdfService {
       font,
     });
 
-    page.drawText('Description', {
-      x: 178,
-
-      y: y - 10,
-
-      size: 7.2,
-
-      font,
-    });
-
-    page.drawText('Type of Test', {
-      x: 306,
-
-      y: y - 10,
-
-      size: 7.2,
-
-      font,
-    });
-
     page.drawText(
       'Pathogens / Actives / COA',
 
       {
-        x: 390,
+        x: 418,
 
         y: y - 10,
 
-        size: 6.7,
+        size: 5.9,
 
         font,
       },
@@ -767,7 +1035,7 @@ export class BillingPdfService {
 
       y - 10,
 
-      7.2,
+      6.8,
 
       font,
     );
@@ -1382,216 +1650,287 @@ export class BillingPdfService {
         y -= rowHeight;
       }
     } else {
-      y = this.drawTableHeader(
-        page,
+      const reportSections = [
+        {
+          title: 'MICROBIOLOGY',
 
-        y,
+          rows: reportRows.filter((row) => row.department === 'MICROBIOLOGY'),
+        },
 
-        bold,
-      );
+        {
+          title: 'CHEMISTRY',
 
-      for (const row of reportRows) {
-        /*
+          rows: reportRows.filter((row) => row.department === 'CHEMISTRY'),
+        },
+      ].filter((section) => section.rows.length > 0);
 
-       * Description is intentionally unlimited.
-
-       *
-
-       * Do not slice/truncate wrapped lines. The invoice row height
-
-       * expands based on the full description so the PDF never
-
-       * silently drops part of the sample/product description.
-
-       */
-
-        const descriptionLines = this.wrapText(
-          row.description || '—',
-
-          27,
-        );
-
-        const testLines =
-          row.testLabels.length > 0
-            ? row.testLabels.flatMap((label) =>
-                this.wrapText(
-                  label,
-
-                  17,
-                ),
-              )
-            : ['—'];
-
-        const baseItemLines =
-          row.itemLabels.length > 0
-            ? row.itemLabels.flatMap((label) =>
-                this.wrapText(
-                  label,
-
-                  22,
-                ),
-              )
-            : ['Type of Test only'];
-
-        const extraChargeLines = row.extraChargeLabels.flatMap((label) =>
-          this.wrapText(
-            `Additional: ${label}`,
-
-            22,
-          ),
-        );
-
-        const itemLines = [...baseItemLines, ...extraChargeLines];
-
-        const contentLineCount = Math.max(
-          descriptionLines.length,
-
-          testLines.length,
-
-          itemLines.length,
-
-          1,
-        );
-
-        const rowHeight = Math.max(
-          28,
-
-          11 + contentLineCount * 9,
-        );
-
-        if (y < BOTTOM + 125 + rowHeight) {
+      for (const section of reportSections) {
+        if (y < BOTTOM + 175) {
           page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
           // Continuation pages intentionally omit the full invoice header.
 
           y = PAGE_HEIGHT - TOP;
-
-          y = this.drawTableHeader(
-            page,
-
-            y,
-
-            bold,
-          );
         }
 
-        const textTop = y - 13;
+        y = this.drawReportSectionHeader(
+          page,
 
-        const formText = row.manualOverride
-          ? `${row.formNumber} *`
-          : row.formNumber;
+          y,
 
-        page.drawText(
-          this.truncate(
-            formText,
+          section.title,
 
-            15,
-          ),
-
-          {
-            x: LEFT + 4,
-
-            y: textTop,
-
-            size: 7.1,
-
-            font: regular,
-          },
+          bold,
         );
 
-        page.drawText(
-          this.formatDate(row.resultSentToClientAt) || '—',
+        y = this.drawTableHeader(
+          page,
 
-          {
-            x: 112,
+          y,
 
-            y: textTop,
-
-            size: 6.7,
-
-            font: regular,
-          },
+          bold,
         );
 
-        descriptionLines.forEach((line, index) => {
-          page.drawText(line, {
-            x: 178,
+        for (const row of section.rows) {
+          /*
 
-            y: textTop - index * 9,
+           * Description is intentionally unlimited.
 
-            size: 6.9,
+           *
 
-            font: regular,
-          });
-        });
+           * Do not slice/truncate wrapped lines. The invoice row height
 
-        testLines.forEach((line, index) => {
-          page.drawText(line, {
-            x: 306,
+           * expands based on the full content so the PDF never silently
 
-            y: textTop - index * 9,
+           * drops the sample type, description, test, or billed item.
 
-            size: 6.9,
+           */
 
-            font: regular,
-          });
-        });
+          const sampleTypeLines =
+            row.sampleTypes.length > 0
+              ? row.sampleTypes.flatMap((label) =>
+                  this.wrapText(
+                    label,
 
-        itemLines.forEach((line, index) => {
+                    14,
+                  ),
+                )
+              : ['-'];
+
+          const descriptionLines = this.wrapText(
+            row.description || '-',
+
+            21,
+          );
+
+          const testLines =
+            row.testLabels.length > 0
+              ? row.testLabels.flatMap((label) =>
+                  this.wrapText(
+                    label,
+
+                    14,
+                  ),
+                )
+              : ['-'];
+
+          const baseItemLines =
+            row.itemLabels.length > 0
+              ? row.itemLabels.flatMap((label) =>
+                  this.wrapText(
+                    label,
+
+                    16,
+                  ),
+                )
+              : ['Type of Test only'];
+
+          const extraChargeLines = row.extraChargeLabels.flatMap((label) =>
+            this.wrapText(
+              `Additional: ${label}`,
+
+              16,
+            ),
+          );
+
+          const itemLines = [...baseItemLines, ...extraChargeLines];
+
+          const contentLineCount = Math.max(
+            sampleTypeLines.length,
+
+            descriptionLines.length,
+
+            testLines.length,
+
+            itemLines.length,
+
+            1,
+          );
+
+          const rowHeight = Math.max(
+            28,
+
+            11 + contentLineCount * 9,
+          );
+
+          if (y < BOTTOM + 125 + rowHeight) {
+            page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+            // Continuation pages intentionally omit the full invoice header.
+
+            y = PAGE_HEIGHT - TOP;
+
+            y = this.drawReportSectionHeader(
+              page,
+
+              y,
+
+              `${section.title} (CONTINUED)`,
+
+              bold,
+            );
+
+            y = this.drawTableHeader(
+              page,
+
+              y,
+
+              bold,
+            );
+          }
+
+          const textTop = y - 13;
+
+          const formText = row.manualOverride
+            ? `${row.formNumber} *`
+            : row.formNumber;
+
           page.drawText(
-            `- ${line}`,
+            this.truncate(
+              formText,
+
+              13,
+            ),
 
             {
-              x: 390,
+              x: LEFT + 4,
 
-              y: textTop - index * 9,
+              y: textTop,
 
-              size: 6.7,
+              size: 6.8,
 
               font: regular,
             },
           );
-        });
 
-        this.drawRight(
-          page,
+          page.drawText(
+            this.formatDate(row.resultSentToClientAt) || '-',
 
-          this.money(row.amount),
+            {
+              x: 104,
 
-          PAGE_WIDTH - RIGHT - 4,
+              y: textTop,
 
-          textTop,
+              size: 6.2,
 
-          7.3,
+              font: regular,
+            },
+          );
 
-          regular,
-        );
+          sampleTypeLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: 166,
 
-        page.drawLine({
-          start: {
-            x: LEFT,
+              y: textTop - index * 9,
 
-            y: y - rowHeight,
-          },
+              size: 6.3,
 
-          end: {
-            x: PAGE_WIDTH - RIGHT,
+              font: regular,
+            });
+          });
 
-            y: y - rowHeight,
-          },
+          descriptionLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: 238,
 
-          thickness: 0.25,
+              y: textTop - index * 9,
 
-          color: rgb(
-            0.75,
+              size: 6.5,
 
-            0.75,
+              font: regular,
+            });
+          });
 
-            0.75,
-          ),
-        });
+          testLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: 342,
 
-        y -= rowHeight;
+              y: textTop - index * 9,
+
+              size: 6.4,
+
+              font: regular,
+            });
+          });
+
+          itemLines.forEach((line, index) => {
+            page.drawText(
+              `- ${line}`,
+
+              {
+                x: 418,
+
+                y: textTop - index * 9,
+
+                size: 6.1,
+
+                font: regular,
+              },
+            );
+          });
+
+          this.drawRight(
+            page,
+
+            this.money(row.amount),
+
+            PAGE_WIDTH - RIGHT - 4,
+
+            textTop,
+
+            7.0,
+
+            regular,
+          );
+
+          page.drawLine({
+            start: {
+              x: LEFT,
+
+              y: y - rowHeight,
+            },
+
+            end: {
+              x: PAGE_WIDTH - RIGHT,
+
+              y: y - rowHeight,
+            },
+
+            thickness: 0.25,
+
+            color: rgb(
+              0.75,
+
+              0.75,
+
+              0.75,
+            ),
+          });
+
+          y -= rowHeight;
+        }
+
+        y -= 10;
       }
     }
 
@@ -2038,7 +2377,16 @@ export class BillingPdfService {
       );
     }
 
-    const bytes = await this.buildPdf(invoice);
+    const pdfLines =
+      invoice.invoiceKind === 'REPORT'
+        ? await this.enrichInvoiceLineSampleTypes(invoice.lines)
+        : invoice.lines;
+
+    const bytes = await this.buildPdf({
+      ...invoice,
+
+      lines: pdfLines,
+    });
 
     const checksum = createHash('sha256').update(bytes).digest('hex');
 
