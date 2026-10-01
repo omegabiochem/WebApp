@@ -54,6 +54,7 @@ type BillingActionDialog =
       unitPrice: string;
       reason: string;
     }
+  | { kind: "DELETE_LINE"; line: BillingLine }
   | { kind: "CONFIRM" }
   | { kind: "REOPEN" }
   | { kind: "REVISE" }
@@ -2565,6 +2566,49 @@ export default function BillingDashboard() {
       setInvoiceDetail(updated);
       setActionDialog(null);
       toast.success("Line price overridden");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function deleteInvoiceLine(line: BillingLine) {
+    if (!invoiceDetail || !isManager) return;
+
+    setActionDialog({
+      kind: "DELETE_LINE",
+      line,
+    });
+  }
+
+  async function submitDeleteInvoiceLine() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      actionDialog?.kind !== "DELETE_LINE"
+    ) {
+      return;
+    }
+
+    const line = actionDialog.line;
+
+    setWorking(`DELETE_LINE:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/lines/${line.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setActionDialog(null);
+      toast.success("Invoice line deleted");
       await refreshAll();
     } catch (error: any) {
       toast.error(extractMessage(error));
@@ -7033,6 +7077,21 @@ export default function BillingDashboard() {
                                         Override
                                       </Button>
 
+                                      <Button
+                                        variant="danger"
+                                        disabled={!!working}
+                                        onClick={() => deleteInvoiceLine(line)}
+                                        className="px-2.5"
+                                      >
+                                        {working ===
+                                        `DELETE_LINE:${line.id}` ? (
+                                          <Spinner />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4" />
+                                        )}
+                                        Delete
+                                      </Button>
+
                                       {isFirstSourceLine && (
                                         <Button
                                           variant="secondary"
@@ -7709,6 +7768,8 @@ export default function BillingDashboard() {
                 <h3 className="mt-1 text-lg font-bold text-slate-900">
                   {actionDialog.kind === "OVERRIDE"
                     ? "Override Line Price"
+                    : actionDialog.kind === "DELETE_LINE"
+                      ? "Delete Invoice Line"
                     : actionDialog.kind === "CONFIRM"
                       ? "Confirm Invoice"
                       : actionDialog.kind === "REOPEN"
@@ -7728,6 +7789,8 @@ export default function BillingDashboard() {
                 <p className="mt-1 text-sm leading-5 text-slate-500">
                   {actionDialog.kind === "OVERRIDE"
                     ? "Enter the replacement unit price and document why it is being changed."
+                    : actionDialog.kind === "DELETE_LINE"
+                      ? "Remove this charge from the current DRAFT invoice. The invoice total will be recalculated immediately."
                     : actionDialog.kind === "CONFIRM"
                       ? "Review the invoice total before confirming."
                       : actionDialog.kind === "REOPEN"
@@ -7812,6 +7875,41 @@ export default function BillingDashboard() {
                     />
                   </label>
                 </>
+              )}
+
+              {actionDialog.kind === "DELETE_LINE" && invoiceDetail && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                    <div className="font-semibold text-rose-950">
+                      {actionDialog.line.formNumber} ·{" "}
+                      {actionDialog.line.testLabel ||
+                        nice(actionDialog.line.testKey)}
+                    </div>
+
+                    {(actionDialog.line.itemLabel ||
+                      actionDialog.line.itemKey) && (
+                      <div className="mt-1 text-sm text-rose-800">
+                        {actionDialog.line.itemLabel ||
+                          nice(actionDialog.line.itemKey!)}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between gap-4 border-t border-rose-200 pt-3">
+                      <span className="text-sm text-rose-800">Line amount</span>
+                      <span className="font-bold text-rose-950">
+                        {actionDialog.line.amount == null
+                          ? "-"
+                          : money(actionDialog.line.amount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                    {actionDialog.line.activeChargeKey
+                      ? "Deleting this line releases its billing charge key. It can appear in Unbilled again and can be added to a future/generated draft."
+                      : "This line belongs to a revision/history copy and does not own the active billing charge key. Deleting it removes it only from this DRAFT revision."}
+                  </div>
+                </div>
               )}
 
               {actionDialog.kind === "CONFIRM" && invoiceDetail && (
@@ -7988,6 +8086,23 @@ export default function BillingDashboard() {
                 >
                   {working === `LINE:${actionDialog.line.id}` && <Spinner />}
                   Save Override
+                </Button>
+              )}
+
+              {actionDialog.kind === "DELETE_LINE" && (
+                <Button
+                  variant="danger"
+                  onClick={submitDeleteInvoiceLine}
+                  disabled={
+                    working === `DELETE_LINE:${actionDialog.line.id}`
+                  }
+                >
+                  {working === `DELETE_LINE:${actionDialog.line.id}` ? (
+                    <Spinner />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete Line
                 </Button>
               )}
 
