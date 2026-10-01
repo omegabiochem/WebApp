@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarClock,
@@ -1248,18 +1249,180 @@ function SummaryCard({
   );
 }
 
+
+type BillingFilterState = {
+  month: string;
+  clientCode: string;
+  invoiceStatus: "ALL" | BillingInvoiceStatus;
+  departmentFilter: "ALL" | "MICRO" | "CHEMISTRY";
+  formTypeFilter: string;
+  testFilter: string;
+  itemFilter: string;
+  page: number;
+  perPage: number;
+};
+
+function defaultBillingFilters(): BillingFilterState {
+  return {
+    month: currentMonthKey(),
+    clientCode: "",
+    invoiceStatus: "ALL",
+    departmentFilter: "ALL",
+    formTypeFilter: "ALL",
+    testFilter: "ALL",
+    itemFilter: "ALL",
+    page: 1,
+    perPage: 25,
+  };
+}
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getInitialBillingFilters(
+  searchParams: URLSearchParams,
+  storageKey: string | null,
+): BillingFilterState {
+  const defaults = defaultBillingFilters();
+
+  try {
+    const hasUrlFilters = [
+      "billingMonth",
+      "billingClient",
+      "billingStatus",
+      "billingDepartment",
+      "billingForm",
+      "billingTest",
+      "billingItem",
+      "billingPage",
+      "billingPerPage",
+    ].some((key) => searchParams.has(key));
+
+    if (hasUrlFilters) {
+      const invoiceStatus = searchParams.get("billingStatus");
+      const departmentFilter = searchParams.get("billingDepartment");
+
+      return {
+        ...defaults,
+        month: searchParams.get("billingMonth") || defaults.month,
+        clientCode: searchParams.get("billingClient") || defaults.clientCode,
+        invoiceStatus:
+          invoiceStatus === "DRAFT" ||
+          invoiceStatus === "CONFIRMED" ||
+          invoiceStatus === "SENT" ||
+          invoiceStatus === "VOID"
+            ? invoiceStatus
+            : "ALL",
+        departmentFilter:
+          departmentFilter === "MICRO" || departmentFilter === "CHEMISTRY"
+            ? departmentFilter
+            : "ALL",
+        formTypeFilter:
+          searchParams.get("billingForm") || defaults.formTypeFilter,
+        testFilter:
+          searchParams.get("billingTest") || defaults.testFilter,
+        itemFilter:
+          searchParams.get("billingItem") || defaults.itemFilter,
+        page: parsePositiveInt(
+          searchParams.get("billingPage"),
+          defaults.page,
+        ),
+        perPage: parsePositiveInt(
+          searchParams.get("billingPerPage"),
+          defaults.perPage,
+        ),
+      };
+    }
+
+    if (storageKey) {
+      const raw = localStorage.getItem(storageKey);
+
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<BillingFilterState>;
+
+        return {
+          ...defaults,
+          ...saved,
+          month: saved.month || defaults.month,
+          clientCode: String(saved.clientCode ?? ""),
+          invoiceStatus:
+            saved.invoiceStatus === "DRAFT" ||
+            saved.invoiceStatus === "CONFIRMED" ||
+            saved.invoiceStatus === "SENT" ||
+            saved.invoiceStatus === "VOID"
+              ? saved.invoiceStatus
+              : "ALL",
+          departmentFilter:
+            saved.departmentFilter === "MICRO" ||
+            saved.departmentFilter === "CHEMISTRY"
+              ? saved.departmentFilter
+              : "ALL",
+          formTypeFilter: String(
+            saved.formTypeFilter ?? defaults.formTypeFilter,
+          ),
+          testFilter: String(saved.testFilter ?? defaults.testFilter),
+          itemFilter: String(saved.itemFilter ?? defaults.itemFilter),
+          page:
+            typeof saved.page === "number" && saved.page > 0
+              ? saved.page
+              : defaults.page,
+          perPage:
+            typeof saved.perPage === "number" && saved.perPage > 0
+              ? saved.perPage
+              : defaults.perPage,
+        };
+      }
+    }
+  } catch {
+    // Ignore malformed URL/localStorage filter data and use defaults.
+  }
+
+  return defaults;
+}
+
 export default function BillingDashboard() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const role = String((user as any)?.role ?? "");
   const isManager = role === "ADMIN" || role === "SYSTEMADMIN";
 
+  const userKey =
+    (user as any)?.id ||
+    (user as any)?.userId ||
+    (user as any)?.sub ||
+    (user as any)?.uid ||
+    null;
+
+  const FILTER_STORAGE_KEY = userKey
+    ? `billingDashboardFilters:user:${userKey}`
+    : null;
+
+  const initialFilters = getInitialBillingFilters(
+    searchParams,
+    FILTER_STORAGE_KEY,
+  );
+
   const [tab, setTab] = useState<BillingTab>("OVERVIEW");
-  const [month, setMonth] = useState(currentMonthKey());
-  const [clientCode, setClientCode] = useState("");
+  const [month, setMonth] = useState(initialFilters.month);
+  const [clientCode, setClientCode] = useState(initialFilters.clientCode);
   const [invoiceStatus, setInvoiceStatus] = useState<
     "ALL" | BillingInvoiceStatus
-  >("ALL");
+  >(initialFilters.invoiceStatus);
+  const [departmentFilter, setDepartmentFilter] = useState<
+    "ALL" | "MICRO" | "CHEMISTRY"
+  >(initialFilters.departmentFilter);
+  const [formTypeFilter, setFormTypeFilter] = useState(
+    initialFilters.formTypeFilter,
+  );
+  const [testFilter, setTestFilter] = useState(initialFilters.testFilter);
+  const [itemFilter, setItemFilter] = useState(initialFilters.itemFilter);
+  const [page, setPage] = useState(initialFilters.page);
+  const [perPage, setPerPage] = useState(initialFilters.perPage);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
   // Dashboard-style read-only report viewer used by Billing View.
   const [billingViewedReport, setBillingViewedReport] =
@@ -1292,23 +1455,6 @@ export default function BillingDashboard() {
     pricingClientDirectoryLoading,
     setPricingClientDirectoryLoading,
   ] = useState(false);
-
-  /*
-   * Common Billing filters.
-   *
-   * These controls live in the main Billing header and remain
-   * visible while switching between Overview, Invoices,
-   * Unbilled, and Pricing.
-   */
-  const [departmentFilter, setDepartmentFilter] = useState<
-    "ALL" | "MICRO" | "CHEMISTRY"
-  >("ALL");
-  const [formTypeFilter, setFormTypeFilter] = useState("ALL");
-  const [testFilter, setTestFilter] = useState("ALL");
-  const [itemFilter, setItemFilter] = useState("ALL");
-
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(25);
 
   const [loading, setLoading] = useState(true);
   const [pricesLoading, setPricesLoading] = useState(false);
@@ -1828,6 +1974,130 @@ export default function BillingDashboard() {
     priceForm.effectiveFrom,
     pricingRequiresItem,
     prices,
+  ]);
+
+
+  /*
+   * Billing filters use the same persistence model as the
+   * reference dashboard: URL first, then per-user localStorage.
+   */
+  useEffect(() => {
+    const next = getInitialBillingFilters(
+      searchParams,
+      FILTER_STORAGE_KEY,
+    );
+
+    setMonth(next.month);
+    setClientCode(next.clientCode);
+    setInvoiceStatus(next.invoiceStatus);
+    setDepartmentFilter(next.departmentFilter);
+    setFormTypeFilter(next.formTypeFilter);
+    setTestFilter(next.testFilter);
+    setItemFilter(next.itemFilter);
+    setPage(next.page);
+    setPerPage(next.perPage);
+    setFiltersHydrated(true);
+    // Rehydrate when the authenticated user changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [FILTER_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!filtersHydrated || !FILTER_STORAGE_KEY) return;
+
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          month,
+          clientCode,
+          invoiceStatus,
+          departmentFilter,
+          formTypeFilter,
+          testFilter,
+          itemFilter,
+          page,
+          perPage,
+        } satisfies BillingFilterState),
+      );
+    } catch {
+      // Ignore storage errors in restricted browser contexts.
+    }
+  }, [
+    FILTER_STORAGE_KEY,
+    filtersHydrated,
+    month,
+    clientCode,
+    invoiceStatus,
+    departmentFilter,
+    formTypeFilter,
+    testFilter,
+    itemFilter,
+    page,
+    perPage,
+  ]);
+
+  useEffect(() => {
+    if (!filtersHydrated) return;
+
+    const next = new URLSearchParams(searchParams);
+    const defaults = defaultBillingFilters();
+
+    const setOrDelete = (
+      key: string,
+      value: string,
+      defaultValue: string,
+    ) => {
+      if (value && value !== defaultValue) {
+        next.set(key, value);
+      } else {
+        next.delete(key);
+      }
+    };
+
+    setOrDelete("billingMonth", month, defaults.month);
+    setOrDelete(
+      "billingClient",
+      clientCode.trim().toUpperCase(),
+      defaults.clientCode,
+    );
+    setOrDelete("billingStatus", invoiceStatus, defaults.invoiceStatus);
+    setOrDelete(
+      "billingDepartment",
+      departmentFilter,
+      defaults.departmentFilter,
+    );
+    setOrDelete("billingForm", formTypeFilter, defaults.formTypeFilter);
+    setOrDelete("billingTest", testFilter, defaults.testFilter);
+    setOrDelete("billingItem", itemFilter, defaults.itemFilter);
+
+    if (page !== defaults.page) {
+      next.set("billingPage", String(page));
+    } else {
+      next.delete("billingPage");
+    }
+
+    if (perPage !== defaults.perPage) {
+      next.set("billingPerPage", String(perPage));
+    } else {
+      next.delete("billingPerPage");
+    }
+
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [
+    filtersHydrated,
+    month,
+    clientCode,
+    invoiceStatus,
+    departmentFilter,
+    formTypeFilter,
+    testFilter,
+    itemFilter,
+    page,
+    perPage,
+    searchParams,
+    setSearchParams,
   ]);
 
   const managerTabs: BillingTab[] = isManager
@@ -4331,27 +4601,162 @@ export default function BillingDashboard() {
     return [...rows.values()];
   }, [visibleInvoiceLines, invoiceDetail]);
 
-  function clearCommonFilters() {
-    setClientCode("");
-    setDepartmentFilter("ALL");
-    setFormTypeFilter("ALL");
-    setTestFilter("ALL");
-    setItemFilter("ALL");
-    setInvoiceStatus("ALL");
-    setPage(1);
+  const activeFilterChips = useMemo(() => {
+    const defaults = defaultBillingFilters();
+    const chips: {
+      key: string;
+      label: string;
+      onClear: () => void;
+    }[] = [];
+
+    if (month !== defaults.month) {
+      const [year, monthNumber] = month.split("-").map(Number);
+      const date =
+        Number.isFinite(year) && Number.isFinite(monthNumber)
+          ? new Date(year, monthNumber - 1, 1)
+          : null;
+
+      const label =
+        date && !Number.isNaN(date.getTime())
+          ? new Intl.DateTimeFormat(undefined, {
+              month: "long",
+              year: "numeric",
+            }).format(date)
+          : month;
+
+      chips.push({
+        key: "month",
+        label: `Billing Month: ${label}`,
+        onClear: () => {
+          setMonth(defaults.month);
+          setPage(1);
+        },
+      });
+    }
+
+    if (clientCode.trim()) {
+      const normalized = clientCode.trim().toUpperCase();
+      const selectedClient = commonClientOptions.find(
+        (client) => client.clientCode === normalized,
+      );
+
+      chips.push({
+        key: "client",
+        label: `Client: ${normalized}${
+          selectedClient?.name ? ` — ${selectedClient.name}` : ""
+        }`,
+        onClear: () => {
+          setClientCode(defaults.clientCode);
+          setPage(1);
+        },
+      });
+    }
+
+    if (departmentFilter !== defaults.departmentFilter) {
+      chips.push({
+        key: "department",
+        label: `Department: ${nice(departmentFilter)}`,
+        onClear: () => {
+          setDepartmentFilter(defaults.departmentFilter);
+          setFormTypeFilter(defaults.formTypeFilter);
+          setTestFilter(defaults.testFilter);
+          setItemFilter(defaults.itemFilter);
+        },
+      });
+    }
+
+    if (formTypeFilter !== defaults.formTypeFilter) {
+      chips.push({
+        key: "form",
+        label: `Form: ${nice(formTypeFilter)}`,
+        onClear: () => {
+          setFormTypeFilter(defaults.formTypeFilter);
+          setTestFilter(defaults.testFilter);
+          setItemFilter(defaults.itemFilter);
+        },
+      });
+    }
+
+    if (testFilter !== defaults.testFilter) {
+      const testLabel =
+        commonTestOptions.find((option) => option.value === testFilter)
+          ?.label || nice(testFilter);
+
+      chips.push({
+        key: "test",
+        label: `Test: ${testLabel}`,
+        onClear: () => {
+          setTestFilter(defaults.testFilter);
+          setItemFilter(defaults.itemFilter);
+        },
+      });
+    }
+
+    if (itemFilter !== defaults.itemFilter) {
+      const itemLabel =
+        commonItemOptions.find((option) => option.value === itemFilter)
+          ?.label || nice(itemFilter);
+
+      chips.push({
+        key: "item",
+        label: `Item: ${itemLabel}`,
+        onClear: () => setItemFilter(defaults.itemFilter),
+      });
+    }
+
+    if (invoiceStatus !== defaults.invoiceStatus) {
+      chips.push({
+        key: "status",
+        label: `Invoice Status: ${nice(invoiceStatus)}`,
+        onClear: () => {
+          setInvoiceStatus(defaults.invoiceStatus);
+          setPage(1);
+        },
+      });
+    }
+
+    if (perPage !== defaults.perPage) {
+      chips.push({
+        key: "perPage",
+        label: `Rows: ${perPage}`,
+        onClear: () => {
+          setPerPage(defaults.perPage);
+          setPage(1);
+        },
+      });
+    }
+
+    return chips;
+  }, [
+    month,
+    clientCode,
+    departmentFilter,
+    formTypeFilter,
+    testFilter,
+    itemFilter,
+    invoiceStatus,
+    perPage,
+    commonClientOptions,
+    commonTestOptions,
+    commonItemOptions,
+  ]);
+
+  function clearAllBillingFilters() {
+    const defaults = defaultBillingFilters();
+
+    setMonth(defaults.month);
+    setClientCode(defaults.clientCode);
+    setDepartmentFilter(defaults.departmentFilter);
+    setFormTypeFilter(defaults.formTypeFilter);
+    setTestFilter(defaults.testFilter);
+    setItemFilter(defaults.itemFilter);
+    setInvoiceStatus(defaults.invoiceStatus);
+    setPerPage(defaults.perPage);
+    setPage(defaults.page);
   }
 
-  const activeCommonFilterCount = [
-    !!clientCode.trim(),
-    departmentFilter !== "ALL",
-    formTypeFilter !== "ALL",
-    testFilter !== "ALL",
-    itemFilter !== "ALL",
-    invoiceStatus !== "ALL",
-  ].filter(Boolean).length;
-
-  const hasActiveCommonFilters =
-    activeCommonFilterCount > 0;
+  const activeCommonFilterCount = activeFilterChips.length;
+  const hasActiveCommonFilters = activeCommonFilterCount > 0;
 
   const unresolvedInSelected =
     visibleInvoiceLines.filter(
@@ -4383,18 +4788,14 @@ export default function BillingDashboard() {
             <div className="flex shrink-0 items-center gap-2">
               <Button
                 type="button"
-                variant={
-                  hasActiveCommonFilters
-                    ? "danger"
-                    : "secondary"
-                }
-                onClick={clearCommonFilters}
-                disabled={!hasActiveCommonFilters}
-                className="min-w-[118px]"
+                variant="secondary"
+                onClick={() => setFilterDialogOpen(true)}
+                className="min-w-[112px]"
               >
-                Clear Filters
+                <Settings2 className="h-4 w-4" />
+                Filters
                 {hasActiveCommonFilters && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold text-white">
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">
                     {activeCommonFilterCount}
                   </span>
                 )}
@@ -4432,209 +4833,6 @@ export default function BillingDashboard() {
             </div>
           </div>
 
-          {/* Stable common filter bar */}
-          <div className="bg-slate-50/70 px-5 py-4">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-slate-800">
-                  Filters
-                </div>
-
-                <div className="mt-0.5 text-xs text-slate-500">
-                  These filters apply across Overview, Invoices, Unbilled, and Pricing.
-                </div>
-              </div>
-
-              {hasActiveCommonFilters && (
-                <div className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
-                  {activeCommonFilterCount} active
-                </div>
-              )}
-            </div>
-
-            {/*
-              Keep one predictable two-row filter layout:
-              Row 1 = Month, Client, Department, Form Type
-              Row 2 = Type of Test, Pathogen / Active / COA Item, Invoice Status.
-              On narrower screens the filter area scrolls horizontally
-              instead of changing the order.
-            */}
-            <div className="overflow-x-auto pb-1">
-              <div className="grid min-w-[900px] grid-cols-4 gap-x-3 gap-y-4">
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Billing Month
-                  </span>
-
-                  <input
-                    type="month"
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Client Code
-                  </span>
-
-                  <select
-                    value={clientCode}
-                    onChange={(e) => {
-                      setClientCode(e.target.value);
-                      setPage(1);
-                    }}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="">All Client Codes</option>
-
-                    {commonClientOptions.map((client) => (
-                      <option
-                        key={client.clientCode}
-                        value={client.clientCode}
-                      >
-                        {client.clientCode}
-                        {client.name ? ` — ${client.name}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Department
-                  </span>
-
-                  <select
-                    value={departmentFilter}
-                    onChange={(e) => {
-                      setDepartmentFilter(
-                        e.target.value as
-                          | "ALL"
-                          | "MICRO"
-                          | "CHEMISTRY",
-                      );
-
-                      setFormTypeFilter("ALL");
-                      setTestFilter("ALL");
-                      setItemFilter("ALL");
-                    }}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="ALL">All Departments</option>
-                    <option value="MICRO">Micro</option>
-                    <option value="CHEMISTRY">Chemistry</option>
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Form Type
-                  </span>
-
-                  <select
-                    value={formTypeFilter}
-                    onChange={(e) => {
-                      setFormTypeFilter(e.target.value);
-                      setTestFilter("ALL");
-                      setItemFilter("ALL");
-                    }}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="ALL">All Forms</option>
-
-                    {commonFormOptions.map((formType) => (
-                      <option
-                        key={formType}
-                        value={formType}
-                      >
-                        {nice(formType)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Type of Test
-                  </span>
-
-                  <select
-                    value={testFilter}
-                    onChange={(e) => {
-                      setTestFilter(e.target.value);
-                      setItemFilter("ALL");
-                    }}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="ALL">All Tests</option>
-
-                    {commonTestOptions.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Pathogen / Active / COA Item
-                  </span>
-
-                  <select
-                    value={itemFilter}
-                    onChange={(e) =>
-                      setItemFilter(e.target.value)
-                    }
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="ALL">All Items</option>
-
-                    {commonItemOptions.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Invoice Status
-                  </span>
-
-                  <select
-                    value={invoiceStatus}
-                    onChange={(e) =>
-                      setInvoiceStatus(
-                        e.target.value as
-                          | "ALL"
-                          | BillingInvoiceStatus,
-                      )
-                    }
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    {STATUS_OPTIONS.map((status) => (
-                      <option
-                        key={status}
-                        value={status}
-                      >
-                        {nice(status)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-          </div>
         </section>
 
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -4653,6 +4851,250 @@ export default function BillingDashboard() {
             </button>
           ))}
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[360px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                  aria-label={`Remove ${chip.label}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+
+            <button
+              type="button"
+              onClick={clearAllBillingFilters}
+              className="ml-auto text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {filterDialogOpen && (
+          <div
+            className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Billing filters"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                setFilterDialogOpen(false);
+              }
+            }}
+          >
+            <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Billing
+                  </div>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">
+                    Filters
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Your selections are saved automatically for your user account.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterDialogOpen(false)}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  title="Close"
+                  aria-label="Close filters"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="max-h-[70vh] overflow-y-auto p-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Billing Month
+                    </span>
+                    <input
+                      type="month"
+                      value={month}
+                      onChange={(e) => {
+                        setMonth(e.target.value);
+                        setPage(1);
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Client Code
+                    </span>
+                    <select
+                      value={clientCode}
+                      onChange={(e) => {
+                        setClientCode(e.target.value);
+                        setPage(1);
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">All Client Codes</option>
+                      {commonClientOptions.map((client) => (
+                        <option
+                          key={client.clientCode}
+                          value={client.clientCode}
+                        >
+                          {client.clientCode}
+                          {client.name ? ` — ${client.name}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Department
+                    </span>
+                    <select
+                      value={departmentFilter}
+                      onChange={(e) => {
+                        setDepartmentFilter(
+                          e.target.value as
+                            | "ALL"
+                            | "MICRO"
+                            | "CHEMISTRY",
+                        );
+                        setFormTypeFilter("ALL");
+                        setTestFilter("ALL");
+                        setItemFilter("ALL");
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="ALL">All Departments</option>
+                      <option value="MICRO">Micro</option>
+                      <option value="CHEMISTRY">Chemistry</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Form Type
+                    </span>
+                    <select
+                      value={formTypeFilter}
+                      onChange={(e) => {
+                        setFormTypeFilter(e.target.value);
+                        setTestFilter("ALL");
+                        setItemFilter("ALL");
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="ALL">All Forms</option>
+                      {commonFormOptions.map((formType) => (
+                        <option key={formType} value={formType}>
+                          {nice(formType)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Type of Test
+                    </span>
+                    <select
+                      value={testFilter}
+                      onChange={(e) => {
+                        setTestFilter(e.target.value);
+                        setItemFilter("ALL");
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="ALL">All Tests</option>
+                      {commonTestOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Pathogen / Active / COA Item
+                    </span>
+                    <select
+                      value={itemFilter}
+                      onChange={(e) => setItemFilter(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="ALL">All Items</option>
+                      {commonItemOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Invoice Status
+                    </span>
+                    <select
+                      value={invoiceStatus}
+                      onChange={(e) => {
+                        setInvoiceStatus(
+                          e.target.value as
+                            | "ALL"
+                            | BillingInvoiceStatus,
+                        );
+                        setPage(1);
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      {STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>
+                          {nice(status)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4">
+                <Button
+                  variant="secondary"
+                  onClick={clearAllBillingFilters}
+                  disabled={!hasActiveCommonFilters}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset Filters
+                </Button>
+
+                <Button onClick={() => setFilterDialogOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading && !summary ? (
           <div className="flex min-h-48 items-center justify-center rounded-xl border bg-white">
@@ -4949,7 +5391,7 @@ export default function BillingDashboard() {
                     </h2>
                     <p className="mt-1 text-xs text-slate-500">
                       Review and edit existing prices directly from Overview.
-                      The common Billing filters above also filter this list.
+                      The selected Billing filters also filter this list.
                     </p>
                   </div>
 
@@ -7126,7 +7568,7 @@ export default function BillingDashboard() {
                               }
                               className="px-4 py-10 text-center text-sm text-slate-500"
                             >
-                              No invoice lines match the common filters.
+                              No invoice lines match the selected filters.
                             </td>
                           </tr>
                         )}
