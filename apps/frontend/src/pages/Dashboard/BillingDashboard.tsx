@@ -68,7 +68,6 @@ type BillingActionDialog =
   | { kind: "VOID"; reason: string }
   | null;
 
-
 type BillingManualInvoiceLine = {
   id: string;
   invoiceId: string;
@@ -103,7 +102,6 @@ type ManualInvoiceDialog =
       line: BillingManualInvoiceLine;
     }
   | null;
-
 
 type BillingInvoiceExtraCharge = {
   id: string;
@@ -155,7 +153,6 @@ type PricingRuleDialog =
       rule: PricingRule;
     }
   | null;
-
 
 type SummaryBucket = {
   count: number;
@@ -318,6 +315,16 @@ type UnbilledItem = {
   amount: string | null;
   pricingRuleId?: string | null;
   pricingIssue?: string | null;
+  deletionHistory?: {
+    previouslyDeleted: true;
+    deletionCount: number;
+    lastDeletedAt: string;
+    lastDeletedBy?: string | null;
+    lastDeletedInvoiceId: string;
+    lastDeletedInvoiceNumber?: string | null;
+    lastDeletedInvoiceStatus?: BillingInvoiceStatus | null;
+    canRestoreToOriginalDraft: boolean;
+  } | null;
   sourceSnapshot?: Record<string, any> | null;
 };
 
@@ -571,15 +578,9 @@ const MICRO_WATER_TEST_LABELS = [
   "WATER MICRO",
 ];
 
-const STERILITY_TEST_LABELS = [
-  "Sterility USP 71",
-  "Testing",
-];
+const STERILITY_TEST_LABELS = ["Sterility USP 71", "Testing"];
 
-const APE_TEST_LABELS = [
-  "AET USP51",
-  "TBT/TFC",
-];
+const APE_TEST_LABELS = ["AET USP51", "TBT/TFC"];
 
 const CHEMISTRY_TEST_OPTIONS: PricingOption[] = [
   { value: "ID", label: "ID" },
@@ -681,9 +682,7 @@ function dedupeProductionTests(labels: string[]): PricingOption[] {
     byKey.set(value, { value, label });
   }
 
-  return [...byKey.values()].sort((a, b) =>
-    a.label.localeCompare(b.label),
-  );
+  return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 const TEST_OPTIONS_BY_FORM: Record<string, PricingOption[]> = {
@@ -734,7 +733,6 @@ function pricingItemName(formType: string) {
   return "Active";
 }
 
-
 function supportsCombinationPricing(formType: string) {
   return (
     formType === "MICRO_MIX" ||
@@ -746,9 +744,7 @@ function supportsCombinationPricing(formType: string) {
 function buildCombinationItemKey(itemKeys: string[]) {
   const normalized = Array.from(
     new Set(
-      itemKeys
-        .map((value) => normalizePricingKey(value))
-        .filter(Boolean),
+      itemKeys.map((value) => normalizePricingKey(value)).filter(Boolean),
     ),
   ).sort((a, b) => a.localeCompare(b));
 
@@ -761,20 +757,14 @@ function isCombinationItemKey(value?: string | null) {
   return String(value ?? "").startsWith("COMBO_");
 }
 
-
 function isMissingPricingRule(issue?: string | null) {
   return String(issue ?? "")
     .toLowerCase()
     .includes("no pricing rule configured");
 }
 
-
 function unbilledClient(item: UnbilledItem) {
-  return String(
-    item.client ??
-      item.sourceSnapshot?.client ??
-      "",
-  )
+  return String(item.client ?? item.sourceSnapshot?.client ?? "")
     .trim()
     .replace(/\s+/g, " ");
 }
@@ -790,7 +780,6 @@ function unbilledDescription(item: UnbilledItem) {
   ).trim();
 }
 
-
 function unbilledCombinationItemKeys(item: UnbilledItem) {
   const snapshot = item.sourceSnapshot ?? {};
 
@@ -804,32 +793,23 @@ function unbilledCombinationItemKeys(item: UnbilledItem) {
     new Set(
       rows
         .map((row: any) =>
-          String(
-            row?.itemKey ??
-              row?.key ??
-              row?.value ??
-              "",
-          ).trim(),
+          String(row?.itemKey ?? row?.key ?? row?.value ?? "").trim(),
         )
         .filter(Boolean),
     ),
   ).sort((a, b) => a.localeCompare(b));
 }
 
-
-function billingSampleTypesFromSnapshot(
-  snapshot?: Record<string, any> | null,
-) {
+function billingSampleTypesFromSnapshot(snapshot?: Record<string, any> | null) {
   if (!snapshot || typeof snapshot !== "object") {
     return [] as string[];
   }
 
-  const raw =
-    Array.isArray(snapshot.sampleTypes)
-      ? snapshot.sampleTypes
-      : snapshot.sampleType != null
-        ? [snapshot.sampleType]
-        : [];
+  const raw = Array.isArray(snapshot.sampleTypes)
+    ? snapshot.sampleTypes
+    : snapshot.sampleType != null
+      ? [snapshot.sampleType]
+      : [];
 
   return uniqueNonEmpty(
     raw.map((value: any) => {
@@ -869,9 +849,7 @@ const BILLING_REPORT_NOT_GENERATED_STATUSES = new Set([
   "UNDER_DRAFT_REVIEW",
 ]);
 
-function billingDefaultViewPane(
-  report: BillingViewedReport,
-): BillingViewPane {
+function billingDefaultViewPane(report: BillingViewedReport): BillingViewPane {
   const status = String(report.status || "").toUpperCase();
   const formType = String(report.formType || "").toUpperCase();
 
@@ -880,10 +858,7 @@ function billingDefaultViewPane(
   }
 
   if (formType === "MICRO_MIX" || formType === "MICRO_MIX_WATER") {
-    if (
-      status === "UNDER_CLIENT_FINAL_REVIEW" ||
-      status === "FINAL_APPROVED"
-    ) {
+    if (status === "UNDER_CLIENT_FINAL_REVIEW" || status === "FINAL_APPROVED") {
       return "ATTACHMENTS";
     }
 
@@ -914,9 +889,7 @@ function billingDefaultViewPane(
 }
 
 function billingReportNotGenerated(status?: string | null) {
-  return BILLING_REPORT_NOT_GENERATED_STATUSES.has(
-    String(status || ""),
-  );
+  return BILLING_REPORT_NOT_GENERATED_STATUSES.has(String(status || ""));
 }
 
 function billingClassNames(
@@ -959,17 +932,11 @@ function BillingReportNotGeneratedMessage({
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
   return Array.from(
-    new Set(
-      values
-        .map((value) => String(value ?? "").trim())
-        .filter(Boolean),
-    ),
+    new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)),
   );
 }
 
-function groupUnbilledByReport(
-  items: UnbilledItem[],
-): GroupedUnbilledReport[] {
+function groupUnbilledByReport(items: UnbilledItem[]): GroupedUnbilledReport[] {
   const groups = new Map<string, GroupedUnbilledReport>();
 
   for (const item of items) {
@@ -1028,16 +995,12 @@ function groupUnbilledByReport(
   for (const group of groups.values()) {
     group.sampleTypes = uniqueNonEmpty(
       group.items.flatMap((item) =>
-        billingSampleTypesFromSnapshot(
-          item.sourceSnapshot,
-        ),
+        billingSampleTypesFromSnapshot(item.sourceSnapshot),
       ),
     );
 
     group.testLabels = uniqueNonEmpty(
-      group.items.map(
-        (item) => item.testLabel || nice(item.testKey),
-      ),
+      group.items.map((item) => item.testLabel || nice(item.testKey)),
     );
 
     group.itemLabels = uniqueNonEmpty(
@@ -1100,7 +1063,6 @@ function nextPricingEffectiveDate(currentEffectiveFrom?: string | null) {
 
   return nextDay > today ? nextDay : today;
 }
-
 
 function money(value: string | number | null | undefined) {
   const n = Number(value ?? 0);
@@ -1251,7 +1213,6 @@ function SummaryCard({
   );
 }
 
-
 type BillingFilterState = {
   month: string;
   clientCode: string;
@@ -1329,18 +1290,13 @@ function getInitialBillingFilters(
             : "ALL",
         formTypeFilter:
           searchParams.get("billingForm") || defaults.formTypeFilter,
-        testFilter:
-          searchParams.get("billingTest") || defaults.testFilter,
-        itemFilter:
-          searchParams.get("billingItem") || defaults.itemFilter,
+        testFilter: searchParams.get("billingTest") || defaults.testFilter,
+        itemFilter: searchParams.get("billingItem") || defaults.itemFilter,
         resultSentFrom:
           searchParams.get("billingResultSentFrom") || defaults.resultSentFrom,
         resultSentTo:
           searchParams.get("billingResultSentTo") || defaults.resultSentTo,
-        page: parsePositiveInt(
-          searchParams.get("billingPage"),
-          defaults.page,
-        ),
+        page: parsePositiveInt(searchParams.get("billingPage"), defaults.page),
         perPage: parsePositiveInt(
           searchParams.get("billingPerPage"),
           defaults.perPage,
@@ -1379,9 +1335,7 @@ function getInitialBillingFilters(
           resultSentFrom: String(
             saved.resultSentFrom ?? defaults.resultSentFrom,
           ),
-          resultSentTo: String(
-            saved.resultSentTo ?? defaults.resultSentTo,
-          ),
+          resultSentTo: String(saved.resultSentTo ?? defaults.resultSentTo),
           page:
             typeof saved.page === "number" && saved.page > 0
               ? saved.page
@@ -1416,9 +1370,7 @@ export default function BillingDashboard() {
 
   const filterStorageKeyForTab = useCallback(
     (targetTab: BillingTab) =>
-      userKey
-        ? `billingDashboardFilters:${targetTab}:user:${userKey}`
-        : null,
+      userKey ? `billingDashboardFilters:${targetTab}:user:${userKey}` : null,
     [userKey],
   );
 
@@ -1426,8 +1378,7 @@ export default function BillingDashboard() {
     ? `billingDashboardFilters:user:${userKey}`
     : null;
 
-  const OVERVIEW_FILTER_STORAGE_KEY =
-    filterStorageKeyForTab("OVERVIEW");
+  const OVERVIEW_FILTER_STORAGE_KEY = filterStorageKeyForTab("OVERVIEW");
 
   /*
    * Start Overview from its own saved filters. For users upgrading
@@ -1456,9 +1407,7 @@ export default function BillingDashboard() {
   const [resultSentFrom, setResultSentFrom] = useState(
     initialFilters.resultSentFrom,
   );
-  const [resultSentTo, setResultSentTo] = useState(
-    initialFilters.resultSentTo,
-  );
+  const [resultSentTo, setResultSentTo] = useState(initialFilters.resultSentTo);
   const [page, setPage] = useState(initialFilters.page);
   const [perPage, setPerPage] = useState(initialFilters.perPage);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
@@ -1470,30 +1419,31 @@ export default function BillingDashboard() {
   const [billingViewPane, setBillingViewPane] =
     useState<BillingViewPane>("REPORT");
 
-  const [billingViewLoadingKey, setBillingViewLoadingKey] =
-    useState<string | null>(null);
+  const [billingViewLoadingKey, setBillingViewLoadingKey] = useState<
+    string | null
+  >(null);
 
   const [billingApeReportTab, setBillingApeReportTab] =
     useState<BillingApeReportTab>("APE_VALIDATION_REPORT");
 
-  const [billingApeChildReports, setBillingApeChildReports] =
-    useState<Record<string, any>>({});
+  const [billingApeChildReports, setBillingApeChildReports] = useState<
+    Record<string, any>
+  >({});
 
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [invoices, setInvoices] = useState<InvoiceListResponse | null>(null);
   const [unbilled, setUnbilled] = useState<UnbilledResponse | null>(null);
   const [prices, setPrices] = useState<PricingRule[]>([]);
-  const [billingClients, setBillingClients] = useState<BillingClientOption[]>([]);
+  const [billingClients, setBillingClients] = useState<BillingClientOption[]>(
+    [],
+  );
 
-  const [
-    pricingClientDirectory,
-    setPricingClientDirectory,
-  ] = useState<ClientNameDirectoryRow[]>([]);
+  const [pricingClientDirectory, setPricingClientDirectory] = useState<
+    ClientNameDirectoryRow[]
+  >([]);
 
-  const [
-    pricingClientDirectoryLoading,
-    setPricingClientDirectoryLoading,
-  ] = useState(false);
+  const [pricingClientDirectoryLoading, setPricingClientDirectoryLoading] =
+    useState(false);
 
   const [loading, setLoading] = useState(true);
   const [pricesLoading, setPricesLoading] = useState(false);
@@ -1510,8 +1460,7 @@ export default function BillingDashboard() {
   const [draftAdjustment, setDraftAdjustment] = useState("0.00");
   const [draftNotes, setDraftNotes] = useState("");
 
-  const [actionDialog, setActionDialog] =
-    useState<BillingActionDialog>(null);
+  const [actionDialog, setActionDialog] = useState<BillingActionDialog>(null);
 
   const [pricingRuleDialog, setPricingRuleDialog] =
     useState<PricingRuleDialog>(null);
@@ -1554,75 +1503,50 @@ export default function BillingDashboard() {
         return [] as ClientNameDirectoryRow[];
       }
 
-      const code =
-        String(clientCodeInput ?? "")
-          .trim()
-          .toUpperCase();
+      const code = String(clientCodeInput ?? "")
+        .trim()
+        .toUpperCase();
 
       if (!code) {
         return [] as ClientNameDirectoryRow[];
       }
 
-      const response =
-        await api<ClientNameDirectoryResponse>(
-          `/billing/client-names?clientCode=${encodeURIComponent(code)}`,
-        );
+      const response = await api<ClientNameDirectoryResponse>(
+        `/billing/client-names?clientCode=${encodeURIComponent(code)}`,
+      );
 
-      return Array.isArray(response?.items)
-        ? response.items
-        : [];
+      return Array.isArray(response?.items) ? response.items : [];
     },
     [isManager],
   );
 
-  const refreshPricingClientDirectory =
-    useCallback(
-      async (
-        clientCodeInput =
-          priceForm.clientCode,
-      ) => {
-        const code =
-          String(clientCodeInput ?? "")
-            .trim()
-            .toUpperCase();
+  const refreshPricingClientDirectory = useCallback(
+    async (clientCodeInput = priceForm.clientCode) => {
+      const code = String(clientCodeInput ?? "")
+        .trim()
+        .toUpperCase();
 
-        if (!code) {
-          setPricingClientDirectory([]);
-          return;
-        }
+      if (!code) {
+        setPricingClientDirectory([]);
+        return;
+      }
 
-        setPricingClientDirectoryLoading(
-          true,
-        );
+      setPricingClientDirectoryLoading(true);
 
-        try {
-          const rows =
-            await loadPricingClientDirectory(
-              code,
-            );
+      try {
+        const rows = await loadPricingClientDirectory(code);
 
-          setPricingClientDirectory(
-            rows,
-          );
-        } catch (error: any) {
-          setPricingClientDirectory(
-            [],
-          );
+        setPricingClientDirectory(rows);
+      } catch (error: any) {
+        setPricingClientDirectory([]);
 
-          toast.error(
-            extractMessage(error),
-          );
-        } finally {
-          setPricingClientDirectoryLoading(
-            false,
-          );
-        }
-      },
-      [
-        loadPricingClientDirectory,
-        priceForm.clientCode,
-      ],
-    );
+        toast.error(extractMessage(error));
+      } finally {
+        setPricingClientDirectoryLoading(false);
+      }
+    },
+    [loadPricingClientDirectory, priceForm.clientCode],
+  );
 
   /*
    * Centralized client-name dropdown.
@@ -1631,103 +1555,53 @@ export default function BillingDashboard() {
    * existing reports before returning this list.
    */
   useEffect(() => {
-    if (
-      !isManager ||
-      tab !== "PRICING"
-    ) {
+    if (!isManager || tab !== "PRICING") {
       return;
     }
 
-    const code =
-      priceForm.clientCode
-        .trim()
-        .toUpperCase();
+    const code = priceForm.clientCode.trim().toUpperCase();
 
     if (!code) {
-      setPricingClientDirectory(
-        [],
-      );
+      setPricingClientDirectory([]);
       return;
     }
 
-    refreshPricingClientDirectory(
-      code,
-    );
-  }, [
-    isManager,
-    tab,
-    priceForm.clientCode,
-    refreshPricingClientDirectory,
-  ]);
+    refreshPricingClientDirectory(code);
+  }, [isManager, tab, priceForm.clientCode, refreshPricingClientDirectory]);
 
-  const pricingClientOptions =
-    useMemo(() => {
-      const byIdentity =
-        new Map<
-          string,
-          string
-        >();
+  const pricingClientOptions = useMemo(() => {
+    const byIdentity = new Map<string, string>();
 
-      const add = (
-        value?: string | null,
-      ) => {
-        const label =
-          String(value ?? "")
-            .trim()
-            .replace(/\s+/g, " ");
+    const add = (value?: string | null) => {
+      const label = String(value ?? "")
+        .trim()
+        .replace(/\s+/g, " ");
 
-        if (!label) {
-          return;
-        }
-
-        const identity =
-          label.toUpperCase();
-
-        if (
-          !byIdentity.has(
-            identity,
-          )
-        ) {
-          byIdentity.set(
-            identity,
-            label,
-          );
-        }
-      };
-
-      for (
-        const row of
-        pricingClientDirectory
-      ) {
-        add(
-          row.name,
-        );
+      if (!label) {
+        return;
       }
 
-      /*
-       * Keep an Unbilled-prefilled client visible immediately
-       * while the backend directory request is still loading.
-       */
-      if (
-        priceForm.client &&
-        priceForm.client !==
-          CUSTOM_CLIENT_VALUE
-      ) {
-        add(
-          priceForm.client,
-        );
-      }
+      const identity = label.toUpperCase();
 
-      return [
-        ...byIdentity.values(),
-      ].sort(
-        (a, b) =>
-          a.localeCompare(b),
-      );
-    }, [
-      pricingClientDirectory,
-      priceForm.client,
-    ]);
+      if (!byIdentity.has(identity)) {
+        byIdentity.set(identity, label);
+      }
+    };
+
+    for (const row of pricingClientDirectory) {
+      add(row.name);
+    }
+
+    /*
+     * Keep an Unbilled-prefilled client visible immediately
+     * while the backend directory request is still loading.
+     */
+    if (priceForm.client && priceForm.client !== CUSTOM_CLIENT_VALUE) {
+      add(priceForm.client);
+    }
+
+    return [...byIdentity.values()].sort((a, b) => a.localeCompare(b));
+  }, [pricingClientDirectory, priceForm.client]);
 
   const pricingTestOptions = useMemo(
     () => getTestOptions(priceForm.formType),
@@ -1739,14 +1613,13 @@ export default function BillingDashboard() {
     [priceForm.formType],
   );
 
-  const pricingSupportsItem =
-    supportsPricingItem(priceForm.formType);
+  const pricingSupportsItem = supportsPricingItem(priceForm.formType);
 
-  const pricingRequiresItem =
-    requiresPricingItem(priceForm.formType);
+  const pricingRequiresItem = requiresPricingItem(priceForm.formType);
 
-  const pricingSupportsCombination =
-    supportsCombinationPricing(priceForm.formType);
+  const pricingSupportsCombination = supportsCombinationPricing(
+    priceForm.formType,
+  );
 
   const combinationPricingPreview = useMemo(() => {
     if (
@@ -1766,17 +1639,14 @@ export default function BillingDashboard() {
 
     const itemKeys = selectedOptions.map((option) => option.value);
     const itemKey = buildCombinationItemKey(itemKeys);
-    const itemLabel = selectedOptions
-      .map((option) => option.label)
-      .join(" + ");
+    const itemLabel = selectedOptions.map((option) => option.label).join(" + ");
 
     let testKey = priceForm.testKey;
     if (testKey === CUSTOM_TEST_VALUE) {
       testKey = normalizePricingKey(priceForm.customTestLabel);
     }
 
-    const clientCodeValue =
-      priceForm.clientCode.trim().toUpperCase();
+    const clientCodeValue = priceForm.clientCode.trim().toUpperCase();
 
     const clientValue =
       priceForm.client === CUSTOM_CLIENT_VALUE
@@ -1789,14 +1659,9 @@ export default function BillingDashboard() {
 
     const isEffective = (rule: PricingRule) => {
       const from = new Date(rule.effectiveFrom);
-      const to = rule.effectiveTo
-        ? new Date(rule.effectiveTo)
-        : null;
+      const to = rule.effectiveTo ? new Date(rule.effectiveTo) : null;
 
-      if (
-        Number.isNaN(effectiveAt.getTime()) ||
-        Number.isNaN(from.getTime())
-      ) {
+      if (Number.isNaN(effectiveAt.getTime()) || Number.isNaN(from.getTime())) {
         return true;
       }
 
@@ -1844,10 +1709,7 @@ export default function BillingDashboard() {
     }));
 
     const individualTotal = individual.reduce(
-      (sum, row) =>
-        row.rule
-          ? sum + Number(row.rule.unitPrice ?? 0)
-          : sum,
+      (sum, row) => (row.rule ? sum + Number(row.rule.unitPrice ?? 0) : sum),
       0,
     );
 
@@ -1855,8 +1717,7 @@ export default function BillingDashboard() {
       .filter((row) => !row.rule)
       .map((row) => row.option.label);
 
-    const combinationRule =
-      itemKey ? resolveRule(itemKey) : null;
+    const combinationRule = itemKey ? resolveRule(itemKey) : null;
 
     return {
       selectedOptions,
@@ -1881,7 +1742,6 @@ export default function BillingDashboard() {
     prices,
   ]);
 
-
   const individualPricingPreview = useMemo(() => {
     if (
       priceForm.pricingMethod !== "INDIVIDUAL" ||
@@ -1903,40 +1763,25 @@ export default function BillingDashboard() {
     let itemKey = priceForm.itemKey || "";
 
     if (itemKey === CUSTOM_ITEM_VALUE) {
-      const customLabel =
-        priceForm.customItemLabel.trim();
+      const customLabel = priceForm.customItemLabel.trim();
 
-      itemKey = customLabel
-        ? `OTHER_${normalizePricingKey(customLabel)}`
-        : "";
+      itemKey = customLabel ? `OTHER_${normalizePricingKey(customLabel)}` : "";
     }
 
-    if (
-      pricingRequiresItem &&
-      !itemKey
-    ) {
+    if (pricingRequiresItem && !itemKey) {
       return null;
     }
 
-    const clientCodeValue =
-      priceForm.clientCode
-        .trim()
-        .toUpperCase();
+    const clientCodeValue = priceForm.clientCode.trim().toUpperCase();
 
     const clientValue =
-      priceForm.client ===
-      CUSTOM_CLIENT_VALUE
-        ? priceForm.customClientName
-            .trim()
-            .replace(/\s+/g, " ")
-        : priceForm.client
-            .trim()
-            .replace(/\s+/g, " ");
+      priceForm.client === CUSTOM_CLIENT_VALUE
+        ? priceForm.customClientName.trim().replace(/\s+/g, " ")
+        : priceForm.client.trim().replace(/\s+/g, " ");
 
-    const effectiveAt =
-      new Date(
-        `${priceForm.effectiveFrom || todayDateInput()}T00:00:00`,
-      );
+    const effectiveAt = new Date(
+      `${priceForm.effectiveFrom || todayDateInput()}T00:00:00`,
+    );
 
     const matching = prices
       .filter((rule) => {
@@ -1945,18 +1790,13 @@ export default function BillingDashboard() {
         if (rule.formType !== priceForm.formType) return false;
         if (rule.testKey !== testKey) return false;
 
-        const ruleItemKey =
-          rule.itemKey ?? "";
+        const ruleItemKey = rule.itemKey ?? "";
 
         if (ruleItemKey !== itemKey) return false;
 
-        const from =
-          new Date(rule.effectiveFrom);
+        const from = new Date(rule.effectiveFrom);
 
-        const to =
-          rule.effectiveTo
-            ? new Date(rule.effectiveTo)
-            : null;
+        const to = rule.effectiveTo ? new Date(rule.effectiveTo) : null;
 
         if (
           !Number.isNaN(effectiveAt.getTime()) &&
@@ -1983,17 +1823,12 @@ export default function BillingDashboard() {
             String(candidate.client ?? "")
               .trim()
               .replace(/\s+/g, " ")
-              .toUpperCase() ===
-            clientValue.toUpperCase(),
+              .toUpperCase() === clientValue.toUpperCase(),
         ) ?? null;
     }
 
     if (!rule) {
-      rule =
-        matching.find(
-          (candidate) =>
-            !candidate.client,
-        ) ?? null;
+      rule = matching.find((candidate) => !candidate.client) ?? null;
     }
 
     return {
@@ -2014,7 +1849,6 @@ export default function BillingDashboard() {
     pricingRequiresItem,
     prices,
   ]);
-
 
   function currentBillingFilterState(): BillingFilterState {
     return {
@@ -2134,11 +1968,7 @@ export default function BillingDashboard() {
     const next = new URLSearchParams(searchParams);
     const defaults = defaultBillingFilters();
 
-    const setOrDelete = (
-      key: string,
-      value: string,
-      defaultValue: string,
-    ) => {
+    const setOrDelete = (key: string, value: string, defaultValue: string) => {
       if (value && value !== defaultValue) {
         next.set(key, value);
       } else {
@@ -2166,11 +1996,7 @@ export default function BillingDashboard() {
       resultSentFrom,
       defaults.resultSentFrom,
     );
-    setOrDelete(
-      "billingResultSentTo",
-      resultSentTo,
-      defaults.resultSentTo,
-    );
+    setOrDelete("billingResultSentTo", resultSentTo, defaults.resultSentTo);
 
     if (page !== defaults.page) {
       next.set("billingPage", String(page));
@@ -2228,9 +2054,7 @@ export default function BillingDashboard() {
     params.set("page", String(page));
     params.set("perPage", String(perPage));
 
-    return api<InvoiceListResponse>(
-      `/billing/invoices?${params.toString()}`,
-    );
+    return api<InvoiceListResponse>(`/billing/invoices?${params.toString()}`);
   }, [baseQuery, invoiceStatus, page, perPage]);
 
   const loadUnbilled = useCallback(async () => {
@@ -2325,10 +2149,7 @@ export default function BillingDashboard() {
         id: fullReport?.id || sourceId,
         formType: fullReport?.formType || row.formType,
         formNumber: fullReport?.formNumber || row.formNumber || "",
-        reportNumber:
-          fullReport?.reportNumber ??
-          row.reportNumber ??
-          "",
+        reportNumber: fullReport?.reportNumber ?? row.reportNumber ?? "",
       };
 
       setBillingViewPane(billingDefaultViewPane(report));
@@ -2341,10 +2162,7 @@ export default function BillingDashboard() {
     } catch (error: any) {
       console.error("Failed to open billing report viewer", error);
 
-      toast.error(
-        error?.message ||
-          "Failed to load report",
-      );
+      toast.error(error?.message || "Failed to load report");
     } finally {
       setBillingViewLoadingKey(null);
     }
@@ -2362,9 +2180,7 @@ export default function BillingDashboard() {
     reportType: BillingApeReportTab,
   ) {
     const saved =
-      billingApeChildReports[
-        billingApeChildKey(parent.id, reportType)
-      ];
+      billingApeChildReports[billingApeChildKey(parent.id, reportType)];
 
     if (saved) {
       return {
@@ -2417,20 +2233,13 @@ export default function BillingDashboard() {
     };
   }
 
-  function renderBillingApeReportTabs(
-    parent: BillingViewedReport,
-  ) {
-    const validationChild =
-      makeBillingApeChildReport(
-        parent,
-        "APE_VALIDATION_REPORT",
-      );
+  function renderBillingApeReportTabs(parent: BillingViewedReport) {
+    const validationChild = makeBillingApeChildReport(
+      parent,
+      "APE_VALIDATION_REPORT",
+    );
 
-    const apeChild =
-      makeBillingApeChildReport(
-        parent,
-        "APE_REPORT",
-      );
+    const apeChild = makeBillingApeChildReport(parent, "APE_REPORT");
 
     const tabClass = (tab: BillingApeReportTab) =>
       billingClassNames(
@@ -2447,9 +2256,7 @@ export default function BillingDashboard() {
             <button
               type="button"
               className={tabClass("APE_VALIDATION_REPORT")}
-              onClick={() =>
-                setBillingApeReportTab("APE_VALIDATION_REPORT")
-              }
+              onClick={() => setBillingApeReportTab("APE_VALIDATION_REPORT")}
             >
               APE Validation Report
             </button>
@@ -2457,9 +2264,7 @@ export default function BillingDashboard() {
             <button
               type="button"
               className={tabClass("APE_REPORT")}
-              onClick={() =>
-                setBillingApeReportTab("APE_REPORT")
-              }
+              onClick={() => setBillingApeReportTab("APE_REPORT")}
             >
               APE Report
             </button>
@@ -2469,8 +2274,7 @@ export default function BillingDashboard() {
         {billingApeReportTab === "APE_VALIDATION_REPORT" && (
           <ApeValidationReportView
             key={
-              validationChild.id ??
-              `${parent.id}:APE_VALIDATION_REPORT:view`
+              validationChild.id ?? `${parent.id}:APE_VALIDATION_REPORT:view`
             }
             report={validationChild}
             embedded={true}
@@ -2484,10 +2288,7 @@ export default function BillingDashboard() {
 
         {billingApeReportTab === "APE_REPORT" && (
           <ApeReportView
-            key={
-              apeChild.id ??
-              `${parent.id}:APE_REPORT:view`
-            }
+            key={apeChild.id ?? `${parent.id}:APE_REPORT:view`}
             report={apeChild}
             embedded={true}
             pageMode="VIEW"
@@ -2501,18 +2302,12 @@ export default function BillingDashboard() {
     );
   }
 
-  function renderBillingViewedReport(
-    report: BillingViewedReport,
-  ) {
+  function renderBillingViewedReport(report: BillingViewedReport) {
     if (
       billingViewPane === "REPORT" &&
       billingReportNotGenerated(report.status)
     ) {
-      return (
-        <BillingReportNotGeneratedMessage
-          report={report}
-        />
-      );
+      return <BillingReportNotGeneratedMessage report={report} />;
     }
 
     if (report.formType === "MICRO_MIX") {
@@ -2549,10 +2344,7 @@ export default function BillingDashboard() {
     }
 
     if (report.formType === "APE") {
-      if (
-        billingViewPane === "FORM" ||
-        billingViewPane === "ATTACHMENTS"
-      ) {
+      if (billingViewPane === "FORM" || billingViewPane === "ATTACHMENTS") {
         return (
           <ApeReportFormView
             report={report}
@@ -2660,12 +2452,7 @@ export default function BillingDashboard() {
           const next = { ...prev };
 
           if (validationReport?.id) {
-            next[
-              billingApeChildKey(
-                safeParent.id,
-                "APE_VALIDATION_REPORT",
-              )
-            ] = {
+            next[billingApeChildKey(safeParent.id, "APE_VALIDATION_REPORT")] = {
               ...safeParent,
               ...validationReport,
               reportType: "APE_VALIDATION_REPORT",
@@ -2681,12 +2468,7 @@ export default function BillingDashboard() {
           }
 
           if (apeReport?.id) {
-            next[
-              billingApeChildKey(
-                safeParent.id,
-                "APE_REPORT",
-              )
-            ] = {
+            next[billingApeChildKey(safeParent.id, "APE_REPORT")] = {
               ...safeParent,
               ...apeReport,
               reportType: "APE_REPORT",
@@ -2716,10 +2498,7 @@ export default function BillingDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [
-    billingViewedReport?.id,
-    billingViewedReport?.formType,
-  ]);
+  }, [billingViewedReport?.id, billingViewedReport?.formType]);
 
   useEffect(() => {
     refreshAll();
@@ -2728,11 +2507,7 @@ export default function BillingDashboard() {
   useEffect(() => {
     if (!isManager) return;
 
-    if (
-      tab === "PRICING" ||
-      tab === "OVERVIEW" ||
-      tab === "UNBILLED"
-    ) {
+    if (tab === "PRICING" || tab === "OVERVIEW" || tab === "UNBILLED") {
       refreshPrices();
     }
 
@@ -2801,10 +2576,7 @@ export default function BillingDashboard() {
         result?.skippedNotReadySources ?? 0,
       );
 
-      if (
-        result?.invoiceCount === 0 &&
-        skippedNotReadySources > 0
-      ) {
+      if (result?.invoiceCount === 0 && skippedNotReadySources > 0) {
         toast(
           `${skippedNotReadySources} form${
             skippedNotReadySources === 1 ? "" : "s"
@@ -2901,11 +2673,7 @@ export default function BillingDashboard() {
   }
 
   async function submitOverrideLine() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "OVERRIDE"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "OVERRIDE") {
       return;
     }
 
@@ -2913,7 +2681,11 @@ export default function BillingDashboard() {
     const unitPrice = actionDialog.unitPrice.trim();
     const reason = actionDialog.reason.trim();
 
-    if (!unitPrice || Number.isNaN(Number(unitPrice)) || Number(unitPrice) < 0) {
+    if (
+      !unitPrice ||
+      Number.isNaN(Number(unitPrice)) ||
+      Number(unitPrice) < 0
+    ) {
       toast.error("Enter a valid unit price");
       return;
     }
@@ -2958,11 +2730,7 @@ export default function BillingDashboard() {
   }
 
   async function submitDeleteInvoiceLine() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "DELETE_LINE"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "DELETE_LINE") {
       return;
     }
 
@@ -2991,6 +2759,49 @@ export default function BillingDashboard() {
     }
   }
 
+  async function restoreDeletedUnbilledLine(item: UnbilledItem) {
+    if (!isManager) return;
+
+    const history = item.deletionHistory;
+
+    if (!history?.canRestoreToOriginalDraft || !history.lastDeletedInvoiceId) {
+      toast.error("The original invoice is no longer an editable DRAFT");
+      return;
+    }
+
+    const workKey = `RESTORE_DELETED:${item.chargeKey}`;
+
+    setWorking(workKey);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${history.lastDeletedInvoiceId}/lines/restore`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            chargeKey: item.chargeKey,
+          }),
+        },
+      );
+
+      if (invoiceDetail?.id === updated.id) {
+        setInvoiceDetail(updated);
+        setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+        setDraftNotes(updated.notes ?? "");
+      }
+
+      toast.success(
+        `Restored ${item.formNumber} to ${updated.invoiceNumber || "draft invoice"}`,
+      );
+
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
   function confirmInvoice() {
     if (!invoiceDetail || !isManager) return;
 
@@ -2998,11 +2809,7 @@ export default function BillingDashboard() {
   }
 
   async function submitConfirmInvoice() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "CONFIRM"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "CONFIRM") {
       return;
     }
 
@@ -3046,9 +2853,7 @@ export default function BillingDashboard() {
       await refreshAll();
 
       toast.success(
-        isRegeneration
-          ? "Invoice PDF regenerated"
-          : "Invoice PDF generated",
+        isRegeneration ? "Invoice PDF regenerated" : "Invoice PDF generated",
       );
     } catch (error: any) {
       toast.error(extractMessage(error));
@@ -3107,17 +2912,11 @@ export default function BillingDashboard() {
     setWorking(`VIEW_ROW_PDF:${row.id}`);
 
     try {
-      const { blob } = await apiBlob(
-        `/billing/invoices/${row.id}/pdf`,
-      );
+      const { blob } = await apiBlob(`/billing/invoices/${row.id}/pdf`);
 
       const url = URL.createObjectURL(blob);
 
-      const opened = window.open(
-        url,
-        "_blank",
-        "noopener,noreferrer",
-      );
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
 
       if (!opened) {
         toast.error("Browser blocked the PDF window");
@@ -3125,10 +2924,7 @@ export default function BillingDashboard() {
         return;
       }
 
-      window.setTimeout(
-        () => URL.revokeObjectURL(url),
-        60_000,
-      );
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error: any) {
       toast.error(extractMessage(error));
     } finally {
@@ -3137,11 +2933,7 @@ export default function BillingDashboard() {
   }
 
   function reopenInvoiceForEditing() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      invoiceDetail.status !== "CONFIRMED"
-    ) {
+    if (!invoiceDetail || !isManager || invoiceDetail.status !== "CONFIRMED") {
       return;
     }
 
@@ -3151,11 +2943,7 @@ export default function BillingDashboard() {
   }
 
   async function submitReopenInvoice() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "REOPEN"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "REOPEN") {
       return;
     }
 
@@ -3187,11 +2975,7 @@ export default function BillingDashboard() {
   }
 
   function createInvoiceRevision() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      invoiceDetail.status !== "SENT"
-    ) {
+    if (!invoiceDetail || !isManager || invoiceDetail.status !== "SENT") {
       return;
     }
 
@@ -3201,11 +2985,7 @@ export default function BillingDashboard() {
   }
 
   async function submitCreateInvoiceRevision() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "REVISE"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "REVISE") {
       return;
     }
 
@@ -3225,9 +3005,7 @@ export default function BillingDashboard() {
       setDraftNotes(revised.notes ?? "");
       setActionDialog(null);
 
-      toast.success(
-        `Created revised invoice ${revised.invoiceNumber}`,
-      );
+      toast.success(`Created revised invoice ${revised.invoiceNumber}`);
 
       await refreshAll();
     } catch (error: any) {
@@ -3247,10 +3025,7 @@ export default function BillingDashboard() {
   }
 
   async function submitSendInvoice() {
-    if (
-      !invoiceDetail ||
-      actionDialog?.kind !== "SEND"
-    ) {
+    if (!invoiceDetail || actionDialog?.kind !== "SEND") {
       return;
     }
 
@@ -3292,20 +3067,13 @@ export default function BillingDashboard() {
     setActionDialog({
       kind: "SCHEDULE",
       toEmail:
-        invoiceDetail.scheduledToEmail ??
-        invoiceDetail.billingEmail ??
-        "",
-      scheduledSendLocal: toDateTimeLocal(
-        invoiceDetail.scheduledSendAt,
-      ),
+        invoiceDetail.scheduledToEmail ?? invoiceDetail.billingEmail ?? "",
+      scheduledSendLocal: toDateTimeLocal(invoiceDetail.scheduledSendAt),
     });
   }
 
   async function submitScheduleInvoiceSend() {
-    if (
-      !invoiceDetail ||
-      actionDialog?.kind !== "SCHEDULE"
-    ) {
+    if (!invoiceDetail || actionDialog?.kind !== "SCHEDULE") {
       return;
     }
 
@@ -3317,7 +3085,10 @@ export default function BillingDashboard() {
       return;
     }
 
-    if (Number.isNaN(scheduled.getTime()) || scheduled.getTime() <= Date.now()) {
+    if (
+      Number.isNaN(scheduled.getTime()) ||
+      scheduled.getTime() <= Date.now()
+    ) {
       toast.error("Choose a future send date and time");
       return;
     }
@@ -3378,11 +3149,7 @@ export default function BillingDashboard() {
   }
 
   async function submitVoidInvoice() {
-    if (
-      !invoiceDetail ||
-      !isManager ||
-      actionDialog?.kind !== "VOID"
-    ) {
+    if (!invoiceDetail || !isManager || actionDialog?.kind !== "VOID") {
       return;
     }
 
@@ -3427,15 +3194,11 @@ export default function BillingDashboard() {
   }
 
   async function submitCreateManualInvoice() {
-    if (
-      !isManager ||
-      manualInvoiceDialog?.kind !== "CREATE"
-    ) {
+    if (!isManager || manualInvoiceDialog?.kind !== "CREATE") {
       return;
     }
 
-    const selectedClient =
-      manualInvoiceDialog.clientCode.trim().toUpperCase();
+    const selectedClient = manualInvoiceDialog.clientCode.trim().toUpperCase();
 
     if (!selectedClient) {
       toast.error("Select a client");
@@ -3445,15 +3208,12 @@ export default function BillingDashboard() {
     setWorking("CREATE_MANUAL_INVOICE");
 
     try {
-      const created = await api<InvoiceDetail>(
-        "/billing/invoices/manual",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            clientCode: selectedClient,
-          }),
-        },
-      );
+      const created = await api<InvoiceDetail>("/billing/invoices/manual", {
+        method: "POST",
+        body: JSON.stringify({
+          clientCode: selectedClient,
+        }),
+      });
 
       setManualInvoiceDialog(null);
       setSelectedInvoiceId(created.id);
@@ -3737,9 +3497,7 @@ export default function BillingDashboard() {
       setInvoiceDetail(updated);
       setExtraChargeDialog(null);
       toast.success(
-        isEdit
-          ? "Additional charge updated"
-          : "Additional charge added",
+        isEdit ? "Additional charge updated" : "Additional charge added",
       );
       await refreshAll();
     } catch (error: any) {
@@ -3771,8 +3529,7 @@ export default function BillingDashboard() {
     );
 
     const formSupportsItem = supportsPricingItem(item.formType);
-    const formSupportsCombination =
-      supportsCombinationPricing(item.formType);
+    const formSupportsCombination = supportsCombinationPricing(item.formType);
 
     const combinationItemKeys = formSupportsCombination
       ? unbilledCombinationItemKeys(item)
@@ -3791,15 +3548,11 @@ export default function BillingDashboard() {
     const knownItem =
       sourcePricingMethod === "INDIVIDUAL" &&
       !!item.itemKey &&
-      itemOptions.some(
-        (option) => option.value === item.itemKey,
-      );
+      itemOptions.some((option) => option.value === item.itemKey);
 
     const customItemLabel =
       item.itemLabel ||
-      (item.itemKey
-        ? nice(item.itemKey.replace(/^OTHER_/, ""))
-        : "");
+      (item.itemKey ? nice(item.itemKey.replace(/^OTHER_/, "")) : "");
 
     setPriceForm({
       pricingMethod: sourcePricingMethod,
@@ -3823,13 +3576,9 @@ export default function BillingDashboard() {
       department,
       formType: item.formType,
 
-      testKey: knownTest
-        ? item.testKey
-        : CUSTOM_TEST_VALUE,
+      testKey: knownTest ? item.testKey : CUSTOM_TEST_VALUE,
 
-      testLabel: knownTest
-        ? item.testLabel || nice(item.testKey)
-        : "",
+      testLabel: knownTest ? item.testLabel || nice(item.testKey) : "",
 
       itemKey:
         sourcePricingMethod === "COMBINATION" || !formSupportsItem
@@ -3842,13 +3591,10 @@ export default function BillingDashboard() {
 
       itemLabel:
         sourcePricingMethod === "INDIVIDUAL" && knownItem
-          ? item.itemLabel ||
-            (item.itemKey ? nice(item.itemKey) : "")
+          ? item.itemLabel || (item.itemKey ? nice(item.itemKey) : "")
           : "",
 
-      customTestLabel: knownTest
-        ? ""
-        : item.testLabel || nice(item.testKey),
+      customTestLabel: knownTest ? "" : item.testLabel || nice(item.testKey),
 
       customItemLabel:
         sourcePricingMethod === "INDIVIDUAL" &&
@@ -3867,7 +3613,6 @@ export default function BillingDashboard() {
       effectiveFrom: `${month}-01`,
     });
 
-
     const selectionLabel =
       combinationItemKeys.length > 0
         ? ` Selected ${
@@ -3877,9 +3622,7 @@ export default function BillingDashboard() {
 
     setPricingPrefillMessage(
       `Prefilled from ${item.formNumber} / ${item.reportNumber}${
-        unbilledClient(item)
-          ? ` for ${unbilledClient(item)}`
-          : ""
+        unbilledClient(item) ? ` for ${unbilledClient(item)}` : ""
       }.${selectionLabel} Enter the price and review Effective From before creating the rule.`,
     );
 
@@ -3891,19 +3634,15 @@ export default function BillingDashboard() {
       formTypeFilter: item.formType,
       testFilter: item.testKey || "ALL",
       itemFilter:
-        sourcePricingMethod === "COMBINATION"
-          ? "ALL"
-          : item.itemKey || "ALL",
+        sourcePricingMethod === "COMBINATION" ? "ALL" : item.itemKey || "ALL",
       page: 1,
     });
 
     window.setTimeout(() => {
-      document
-        .getElementById("billing-pricing-rule-form")
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
+      document.getElementById("billing-pricing-rule-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
 
       const priceInput = document.getElementById(
         "billing-pricing-unit-price",
@@ -3975,10 +3714,7 @@ export default function BillingDashboard() {
         ? priceForm.customClientName.trim().replace(/\s+/g, " ")
         : priceForm.client.trim().replace(/\s+/g, " ");
 
-    if (
-      priceForm.client === CUSTOM_CLIENT_VALUE &&
-      !pricingClient
-    ) {
+    if (priceForm.client === CUSTOM_CLIENT_VALUE && !pricingClient) {
       toast.error("Enter the client name");
       return;
     }
@@ -4028,9 +3764,7 @@ export default function BillingDashboard() {
         selectedOptions.map((option) => option.value),
       );
 
-      itemLabel = selectedOptions
-        .map((option) => option.label)
-        .join(" + ");
+      itemLabel = selectedOptions.map((option) => option.label).join(" + ");
     } else if (pricingSupportsItem) {
       itemKey = priceForm.itemKey || undefined;
       itemLabel = priceForm.itemLabel || undefined;
@@ -4055,9 +3789,7 @@ export default function BillingDashboard() {
       }
 
       if (pricingRequiresItem && !itemKey) {
-        toast.error(
-          `${pricingItemName(priceForm.formType)} is required`,
-        );
+        toast.error(`${pricingItemName(priceForm.formType)} is required`);
         return;
       }
 
@@ -4118,9 +3850,7 @@ export default function BillingDashboard() {
 
       setPricingPrefillMessage(null);
 
-      await refreshPricingClientDirectory(
-        priceForm.clientCode,
-      );
+      await refreshPricingClientDirectory(priceForm.clientCode);
 
       setPriceForm((prev) => ({
         ...prev,
@@ -4152,7 +3882,6 @@ export default function BillingDashboard() {
     }
   }
 
-
   function openEditPriceRule(rule: PricingRule) {
     if (!isManager) return;
 
@@ -4168,21 +3897,12 @@ export default function BillingDashboard() {
   }
 
   async function submitEditPriceRule() {
-    if (
-      !isManager ||
-      pricingRuleDialog?.kind !== "EDIT"
-    ) {
+    if (!isManager || pricingRuleDialog?.kind !== "EDIT") {
       return;
     }
 
-    const {
-      rule,
-      unitPrice,
-      effectiveFrom,
-      testLabel,
-      itemLabel,
-      active,
-    } = pricingRuleDialog;
+    const { rule, unitPrice, effectiveFrom, testLabel, itemLabel, active } =
+      pricingRuleDialog;
 
     if (!unitPrice.trim() || Number(unitPrice) < 0) {
       toast.error("Enter a valid unit price");
@@ -4232,10 +3952,7 @@ export default function BillingDashboard() {
   }
 
   async function submitDeletePriceRule() {
-    if (
-      !isManager ||
-      pricingRuleDialog?.kind !== "DELETE"
-    ) {
+    if (!isManager || pricingRuleDialog?.kind !== "DELETE") {
       return;
     }
 
@@ -4273,7 +3990,9 @@ export default function BillingDashboard() {
         }),
       });
 
-      toast.success(rule.active ? "Pricing rule disabled" : "Pricing rule enabled");
+      toast.success(
+        rule.active ? "Pricing rule disabled" : "Pricing rule enabled",
+      );
       await refreshPrices();
       await refreshAll();
     } catch (error: any) {
@@ -4291,7 +4010,9 @@ export default function BillingDashboard() {
     }
 
     for (const row of invoices?.items ?? []) {
-      const code = String(row.clientCode ?? "").trim().toUpperCase();
+      const code = String(row.clientCode ?? "")
+        .trim()
+        .toUpperCase();
       if (!code) continue;
 
       const existing = byCode.get(code);
@@ -4306,7 +4027,9 @@ export default function BillingDashboard() {
     }
 
     for (const item of unbilled?.items ?? []) {
-      const code = String(item.clientCode ?? "").trim().toUpperCase();
+      const code = String(item.clientCode ?? "")
+        .trim()
+        .toUpperCase();
       if (!code || byCode.has(code)) continue;
 
       byCode.set(code, {
@@ -4315,7 +4038,9 @@ export default function BillingDashboard() {
     }
 
     for (const rule of prices) {
-      const code = String(rule.clientCode ?? "").trim().toUpperCase();
+      const code = String(rule.clientCode ?? "")
+        .trim()
+        .toUpperCase();
       if (!code || byCode.has(code)) continue;
 
       byCode.set(code, {
@@ -4345,12 +4070,9 @@ export default function BillingDashboard() {
       if (departmentFilter === "ALL") return true;
 
       if (departmentFilter === "MICRO") {
-        return [
-          "MICRO_MIX",
-          "MICRO_MIX_WATER",
-          "STERILITY",
-          "APE",
-        ].includes(formType);
+        return ["MICRO_MIX", "MICRO_MIX_WATER", "STERILITY", "APE"].includes(
+          formType,
+        );
       }
 
       return ["CHEMISTRY_MIX", "COA"].includes(formType);
@@ -4364,10 +4086,7 @@ export default function BillingDashboard() {
       const key = String(value ?? "").trim();
       if (!key) return;
 
-      tests.set(
-        key,
-        String(label ?? "").trim() || nice(key),
-      );
+      tests.set(key, String(label ?? "").trim() || nice(key));
     };
 
     if (formTypeFilter !== "ALL") {
@@ -4388,17 +4107,11 @@ export default function BillingDashboard() {
           ? "CHEMISTRY"
           : "MICRO";
 
-      if (
-        departmentFilter !== "ALL" &&
-        department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && department !== departmentFilter) {
         continue;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        item.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && item.formType !== formTypeFilter) {
         continue;
       }
 
@@ -4406,17 +4119,11 @@ export default function BillingDashboard() {
     }
 
     for (const rule of prices) {
-      if (
-        departmentFilter !== "ALL" &&
-        rule.department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && rule.department !== departmentFilter) {
         continue;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        rule.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && rule.formType !== formTypeFilter) {
         continue;
       }
 
@@ -4426,13 +4133,7 @@ export default function BillingDashboard() {
     return [...tests.entries()]
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [
-    departmentFilter,
-    formTypeFilter,
-    commonFormOptions,
-    unbilled,
-    prices,
-  ]);
+  }, [departmentFilter, formTypeFilter, commonFormOptions, unbilled, prices]);
 
   const commonItemOptions = useMemo(() => {
     const items = new Map<string, string>();
@@ -4441,16 +4142,11 @@ export default function BillingDashboard() {
       const key = String(value ?? "").trim();
       if (!key) return;
 
-      items.set(
-        key,
-        String(label ?? "").trim() || nice(key),
-      );
+      items.set(key, String(label ?? "").trim() || nice(key));
     };
 
     const forms =
-      formTypeFilter !== "ALL"
-        ? [formTypeFilter]
-        : commonFormOptions;
+      formTypeFilter !== "ALL" ? [formTypeFilter] : commonFormOptions;
 
     for (const formType of forms) {
       for (const option of getItemOptions(formType)) {
@@ -4464,24 +4160,15 @@ export default function BillingDashboard() {
           ? "CHEMISTRY"
           : "MICRO";
 
-      if (
-        departmentFilter !== "ALL" &&
-        department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && department !== departmentFilter) {
         continue;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        item.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && item.formType !== formTypeFilter) {
         continue;
       }
 
-      if (
-        testFilter !== "ALL" &&
-        item.testKey !== testFilter
-      ) {
+      if (testFilter !== "ALL" && item.testKey !== testFilter) {
         continue;
       }
 
@@ -4489,24 +4176,15 @@ export default function BillingDashboard() {
     }
 
     for (const rule of prices) {
-      if (
-        departmentFilter !== "ALL" &&
-        rule.department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && rule.department !== departmentFilter) {
         continue;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        rule.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && rule.formType !== formTypeFilter) {
         continue;
       }
 
-      if (
-        testFilter !== "ALL" &&
-        rule.testKey !== testFilter
-      ) {
+      if (testFilter !== "ALL" && rule.testKey !== testFilter) {
         continue;
       }
 
@@ -4537,38 +4215,27 @@ export default function BillingDashboard() {
           ? "CHEMISTRY"
           : "MICRO";
 
-      if (
-        departmentFilter !== "ALL" &&
-        department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && department !== departmentFilter) {
         return false;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        row.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && row.formType !== formTypeFilter) {
         return false;
       }
 
-      if (
-        testFilter !== "ALL" &&
-        row.testKey !== testFilter
-      ) {
+      if (testFilter !== "ALL" && row.testKey !== testFilter) {
         return false;
       }
 
-      if (
-        itemFilter !== "ALL" &&
-        row.itemKey !== itemFilter
-      ) {
+      if (itemFilter !== "ALL" && row.itemKey !== itemFilter) {
         return false;
       }
 
       if (resultSentFrom || resultSentTo) {
-        const resultSentDate = String(
-          row.resultSentToClientAt ?? "",
-        ).slice(0, 10);
+        const resultSentDate = String(row.resultSentToClientAt ?? "").slice(
+          0,
+          10,
+        );
 
         if (!resultSentDate) {
           return false;
@@ -4596,9 +4263,7 @@ export default function BillingDashboard() {
   );
 
   const visibleUnbilled = useMemo(() => {
-    return (unbilled?.items ?? []).filter(
-      matchesCommonLineFilters,
-    );
+    return (unbilled?.items ?? []).filter(matchesCommonLineFilters);
   }, [unbilled, matchesCommonLineFilters]);
 
   const groupedVisibleUnbilled = useMemo(
@@ -4639,31 +4304,19 @@ export default function BillingDashboard() {
         return false;
       }
 
-      if (
-        departmentFilter !== "ALL" &&
-        rule.department !== departmentFilter
-      ) {
+      if (departmentFilter !== "ALL" && rule.department !== departmentFilter) {
         return false;
       }
 
-      if (
-        formTypeFilter !== "ALL" &&
-        rule.formType !== formTypeFilter
-      ) {
+      if (formTypeFilter !== "ALL" && rule.formType !== formTypeFilter) {
         return false;
       }
 
-      if (
-        testFilter !== "ALL" &&
-        rule.testKey !== testFilter
-      ) {
+      if (testFilter !== "ALL" && rule.testKey !== testFilter) {
         return false;
       }
 
-      if (
-        itemFilter !== "ALL" &&
-        rule.itemKey !== itemFilter
-      ) {
+      if (itemFilter !== "ALL" && rule.itemKey !== itemFilter) {
         return false;
       }
 
@@ -4679,11 +4332,8 @@ export default function BillingDashboard() {
   ]);
 
   const visibleInvoiceLines = useMemo(() => {
-    return (invoiceDetail?.lines ?? []).filter(
-      matchesCommonLineFilters,
-    );
+    return (invoiceDetail?.lines ?? []).filter(matchesCommonLineFilters);
   }, [invoiceDetail, matchesCommonLineFilters]);
-
 
   const invoiceSourceRows = useMemo(() => {
     const rows = new Map<
@@ -5155,11 +4805,10 @@ export default function BillingDashboard() {
     );
   }
 
-  const unresolvedInSelected =
-    visibleInvoiceLines.filter(
-      (line) =>
-        !!line.pricingIssue || line.unitPrice == null || line.amount == null,
-    ).length;
+  const unresolvedInSelected = visibleInvoiceLines.filter(
+    (line) =>
+      !!line.pricingIssue || line.unitPrice == null || line.amount == null,
+  ).length;
 
   return (
     <>
@@ -5388,17 +5037,13 @@ export default function BillingDashboard() {
                           <tr
                             key={`overview-report-price-${item.chargeKey}`}
                             className={
-                              ready
-                                ? "hover:bg-slate-50/70"
-                                : "bg-amber-50/30"
+                              ready ? "hover:bg-slate-50/70" : "bg-amber-50/30"
                             }
                           >
                             <td className="px-4 py-3 font-medium text-slate-900">
                               {item.formNumber}
                             </td>
-                            <td className="px-4 py-3">
-                              {item.reportNumber}
-                            </td>
+                            <td className="px-4 py-3">{item.reportNumber}</td>
                             <td className="px-4 py-3">
                               <div className="font-medium">
                                 {item.clientCode}
@@ -5409,9 +5054,7 @@ export default function BillingDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-4 py-3">
-                              {nice(item.formType)}
-                            </td>
+                            <td className="px-4 py-3">{nice(item.formType)}</td>
 
                             <td className="px-4 py-3">
                               {billingSampleTypesFromSnapshot(
@@ -5455,15 +5098,29 @@ export default function BillingDashboard() {
                                 : money(item.unitPrice)}
                             </td>
                             <td className="px-4 py-3">
-                              {ready ? (
-                                <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                                  Ready
-                                </span>
-                              ) : (
-                                <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                                  Pricing Needed
-                                </span>
-                              )}
+                              <div className="flex flex-col items-start gap-1.5">
+                                {ready ? (
+                                  <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                    Ready
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                    Pricing Needed
+                                  </span>
+                                )}
+
+                                {item.deletionHistory?.previouslyDeleted && (
+                                  <span
+                                    className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700"
+                                    title={`Last deleted ${formatDateTime(
+                                      item.deletionHistory.lastDeletedAt,
+                                    )}`}
+                                  >
+                                    Previously Deleted ·{" "}
+                                    {item.deletionHistory.deletionCount}×
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex justify-end gap-2">
@@ -5473,9 +5130,7 @@ export default function BillingDashboard() {
                                     billingViewLoadingKey ===
                                     `${item.sourceType}:${item.sourceId}`
                                   }
-                                  onClick={() =>
-                                    openBillingReport(item)
-                                  }
+                                  onClick={() => openBillingReport(item)}
                                 >
                                   {billingViewLoadingKey ===
                                   `${item.sourceType}:${item.sourceId}` ? (
@@ -5488,6 +5143,29 @@ export default function BillingDashboard() {
                                     ? "Opening..."
                                     : "View"}
                                 </Button>
+
+                                {ready &&
+                                  item.deletionHistory
+                                    ?.canRestoreToOriginalDraft && (
+                                    <Button
+                                      variant="secondary"
+                                      disabled={
+                                        working ===
+                                        `RESTORE_DELETED:${item.chargeKey}`
+                                      }
+                                      onClick={() =>
+                                        restoreDeletedUnbilledLine(item)
+                                      }
+                                    >
+                                      {working ===
+                                      `RESTORE_DELETED:${item.chargeKey}` ? (
+                                        <Spinner dark />
+                                      ) : (
+                                        <RotateCcw className="h-4 w-4" />
+                                      )}
+                                      Restore
+                                    </Button>
+                                  )}
 
                                 {ready && item.pricingRuleId ? (
                                   <Button
@@ -5595,13 +5273,9 @@ export default function BillingDashboard() {
                             {rule.client || "DEFAULT"}
                           </td>
 
-                          <td className="px-4 py-3">
-                            {nice(rule.department)}
-                          </td>
+                          <td className="px-4 py-3">{nice(rule.department)}</td>
 
-                          <td className="px-4 py-3">
-                            {nice(rule.formType)}
-                          </td>
+                          <td className="px-4 py-3">{nice(rule.formType)}</td>
 
                           <td className="px-4 py-3">
                             {rule.testLabel || nice(rule.testKey)}
@@ -5640,9 +5314,7 @@ export default function BillingDashboard() {
                           </td>
 
                           <td className="px-4 py-3 text-xs">
-                            <div>
-                              {formatDate(rule.effectiveFrom)}
-                            </div>
+                            <div>{formatDate(rule.effectiveFrom)}</div>
                             {rule.effectiveTo && (
                               <div className="text-slate-500">
                                 to {formatDate(rule.effectiveTo)}
@@ -5665,9 +5337,7 @@ export default function BillingDashboard() {
                           <td className="px-4 py-3 text-right">
                             <Button
                               variant="secondary"
-                              onClick={() =>
-                                openEditPriceRule(rule)
-                              }
+                              onClick={() => openEditPriceRule(rule)}
                               disabled={!!working}
                             >
                               <Pencil className="h-4 w-4" />
@@ -5677,17 +5347,16 @@ export default function BillingDashboard() {
                         </tr>
                       ))}
 
-                      {!pricesLoading &&
-                        visiblePrices.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={11}
-                              className="px-4 py-12 text-center text-sm text-slate-500"
-                            >
-                              No pricing rules found for the selected filters.
-                            </td>
-                          </tr>
-                        )}
+                      {!pricesLoading && visiblePrices.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={11}
+                            className="px-4 py-12 text-center text-sm text-slate-500"
+                          >
+                            No pricing rules found for the selected filters.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -5701,200 +5370,196 @@ export default function BillingDashboard() {
             {renderBillingFilterSection("INVOICES")}
 
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-slate-900">Invoices</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Draft, confirmed, sent, and void invoice history.
-                </p>
+              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="font-semibold text-slate-900">Invoices</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Draft, confirmed, sent, and void invoice history.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-2">
+                  {isManager && (
+                    <Button
+                      onClick={openCreateManualInvoice}
+                      disabled={working === "CREATE_MANUAL_INVOICE"}
+                    >
+                      {working === "CREATE_MANUAL_INVOICE" ? (
+                        <Spinner />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      Create Manual Invoice
+                    </Button>
+                  )}
+
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Rows
+                    </span>
+                    <select
+                      value={perPage}
+                      onChange={(e) => setPerPage(Number(e.target.value))}
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                    >
+                      {[10, 25, 50, 100].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-end gap-2">
-                {isManager && (
-                  <Button
-                    onClick={openCreateManualInvoice}
-                    disabled={working === "CREATE_MANUAL_INVOICE"}
-                  >
-                    {working === "CREATE_MANUAL_INVOICE" ? (
-                      <Spinner />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    Create Manual Invoice
-                  </Button>
-                )}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Invoice #</th>
+                      <th className="px-4 py-3">Client</th>
+                      <th className="px-4 py-3">Type</th>
+                      <th className="px-4 py-3">Period</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Lines</th>
+                      <th className="px-4 py-3 text-right">Subtotal</th>
+                      <th className="px-4 py-3 text-right">Adjustment</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3">PDF</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
 
-                <label>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">
-                    Rows
-                  </span>
-                  <select
-                    value={perPage}
-                    onChange={(e) => setPerPage(Number(e.target.value))}
-                    className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
-                  >
-                    {[10, 25, 50, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
+                  <tbody className="divide-y divide-slate-100">
+                    {(invoices?.items ?? []).map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {row.invoiceNumber || "DRAFT"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{row.clientCode}</div>
+                          {row.clientName && (
+                            <div className="text-xs text-slate-500">
+                              {row.clientName}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                              row.invoiceKind === "MANUAL"
+                                ? "bg-violet-50 text-violet-700 ring-violet-200"
+                                : "bg-slate-50 text-slate-700 ring-slate-200"
+                            }`}
+                          >
+                            {row.invoiceKind === "MANUAL"
+                              ? "Manual"
+                              : "Reports"}
+                          </span>
+                        </td>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Invoice #</th>
-                    <th className="px-4 py-3">Client</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Period</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Lines</th>
-                    <th className="px-4 py-3 text-right">Subtotal</th>
-                    <th className="px-4 py-3 text-right">Adjustment</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                    <th className="px-4 py-3">PDF</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {(invoices?.items ?? []).map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {row.invoiceNumber || "DRAFT"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{row.clientCode}</div>
-                        {row.clientName && (
-                          <div className="text-xs text-slate-500">
-                            {row.clientName}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                            row.invoiceKind === "MANUAL"
-                              ? "bg-violet-50 text-violet-700 ring-violet-200"
-                              : "bg-slate-50 text-slate-700 ring-slate-200"
-                          }`}
-                        >
-                          {row.invoiceKind === "MANUAL" ? "Manual" : "Reports"}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3 text-slate-600">
-                        {row.invoiceKind === "MANUAL"
-                          ? "—"
-                          : formatDate(row.periodStart)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusClass(
-                            row.status,
-                          )}`}
-                        >
-                          {nice(row.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {row.invoiceKind === "MANUAL"
-                          ? row._count?.manualLines ?? 0
-                          : row._count?.lines ?? 0}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {money(row.subtotal)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {money(row.adjustmentAmount)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold">
-                        {money(row.total)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.pdfFilename ? (
+                        <td className="px-4 py-3 text-slate-600">
+                          {row.invoiceKind === "MANUAL"
+                            ? "—"
+                            : formatDate(row.periodStart)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusClass(
+                              row.status,
+                            )}`}
+                          >
+                            {nice(row.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {row.invoiceKind === "MANUAL"
+                            ? (row._count?.manualLines ?? 0)
+                            : (row._count?.lines ?? 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {money(row.subtotal)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {money(row.adjustmentAmount)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {money(row.total)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.pdfFilename ? (
+                            <Button
+                              variant="secondary"
+                              onClick={() => viewInvoicePdfFromList(row)}
+                              disabled={working === `VIEW_ROW_PDF:${row.id}`}
+                            >
+                              {working === `VIEW_ROW_PDF:${row.id}` ? (
+                                <Spinner dark />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                              View PDF
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-slate-400">
+                              Not generated
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
                           <Button
                             variant="secondary"
-                            onClick={() =>
-                              viewInvoicePdfFromList(row)
-                            }
-                            disabled={
-                              working ===
-                              `VIEW_ROW_PDF:${row.id}`
-                            }
+                            onClick={() => openInvoice(row.id)}
                           >
-                            {working ===
-                            `VIEW_ROW_PDF:${row.id}` ? (
-                              <Spinner dark />
-                            ) : (
-                              <FileText className="h-4 w-4" />
-                            )}
-                            View PDF
+                            View
                           </Button>
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            Not generated
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="secondary"
-                          onClick={() => openInvoice(row.id)}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {!loading && (invoices?.items?.length ?? 0) === 0 && (
+                      <tr>
+                        <td
+                          colSpan={11}
+                          className="px-4 py-12 text-center text-sm text-slate-500"
                         >
-                          View
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {!loading && (invoices?.items?.length ?? 0) === 0 && (
-                    <tr>
-                      <td
-                        colSpan={11}
-                        className="px-4 py-12 text-center text-sm text-slate-500"
-                      >
-                        No invoices found for the selected filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
-              <div className="text-xs text-slate-500">
-                {invoices?.total ?? 0} invoice
-                {(invoices?.total ?? 0) === 1 ? "" : "s"}
+                          No invoices found for the selected filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Previous
-                </Button>
+              <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
+                <div className="text-xs text-slate-500">
+                  {invoices?.total ?? 0} invoice
+                  {(invoices?.total ?? 0) === 1 ? "" : "s"}
+                </div>
 
-                <span className="text-sm text-slate-600">
-                  Page {invoices?.page ?? page} of{" "}
-                  {Math.max(1, invoices?.pages ?? 1)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
 
-                <Button
-                  variant="secondary"
-                  disabled={page >= Math.max(1, invoices?.pages ?? 1)}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
+                  <span className="text-sm text-slate-600">
+                    Page {invoices?.page ?? page} of{" "}
+                    {Math.max(1, invoices?.pages ?? 1)}
+                  </span>
+
+                  <Button
+                    variant="secondary"
+                    disabled={page >= Math.max(1, invoices?.pages ?? 1)}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
-            </div>
             </section>
           </div>
         )}
@@ -5904,345 +5569,440 @@ export default function BillingDashboard() {
             {renderBillingFilterSection("UNBILLED")}
 
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-slate-900">
-                  Unbilled reports
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {visibleUnbilledSummary.formCount} form
-                  {visibleUnbilledSummary.formCount === 1 ? "" : "s"} ·{" "}
-                  {visibleUnbilledSummary.count} charge
-                  {visibleUnbilledSummary.count === 1 ? "" : "s"} ·{" "}
-                  {visibleUnbilledSummary.exceptionCount} exception
-                  {visibleUnbilledSummary.exceptionCount === 1 ? "" : "s"}
-                </p>
-              </div>
-
-              <div className="text-right">
-                <div className="text-xs text-slate-500">Estimated subtotal</div>
-                <div className="text-xl font-bold text-slate-900">
-                  {money(visibleUnbilledSummary.estimatedSubtotal)}
-                </div>
-              </div>
-            </div>
-
-            {visibleUnbilledSummary.exceptionCount > 0 && (
-              <div className="m-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="font-semibold">
-                    Billing exceptions need attention
+                  <h2 className="font-semibold text-slate-900">
+                    Unbilled reports
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {visibleUnbilledSummary.formCount} form
+                    {visibleUnbilledSummary.formCount === 1 ? "" : "s"} ·{" "}
+                    {visibleUnbilledSummary.count} charge
+                    {visibleUnbilledSummary.count === 1 ? "" : "s"} ·{" "}
+                    {visibleUnbilledSummary.exceptionCount} exception
+                    {visibleUnbilledSummary.exceptionCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">
+                    Estimated subtotal
                   </div>
-                  <div className="mt-1 text-xs">
-                    Missing pricing or invalid source data will never be silently
-                    billed at $0.
+                  <div className="text-xl font-bold text-slate-900">
+                    {money(visibleUnbilledSummary.estimatedSubtotal)}
                   </div>
                 </div>
               </div>
-            )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1320px] text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Form #</th>
-                    <th className="px-4 py-3">Report #</th>
-                    <th className="px-4 py-3">Form Type</th>
-                    <th className="px-4 py-3">Sample Type</th>
-                    <th className="px-4 py-3">Description</th>
-                    <th className="px-4 py-3">Type of Test</th>
-                    <th className="px-4 py-3">
-                      Pathogens / Actives / COA Items
-                    </th>
-                    <th className="px-4 py-3">Unit Price</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">Billing Ready</th>
-                    <th className="px-4 py-3">Issue</th>
-                    <th className="px-4 py-3 text-right">View</th>
-                  </tr>
-                </thead>
+              {visibleUnbilledSummary.exceptionCount > 0 && (
+                <div className="m-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <div className="font-semibold">
+                      Billing exceptions need attention
+                    </div>
+                    <div className="mt-1 text-xs">
+                      Missing pricing or invalid source data will never be
+                      silently billed at $0.
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                <tbody className="divide-y divide-slate-100">
-                  {groupedVisibleUnbilled.map((group) => (
-                    <tr
-                      key={group.key}
-                      className={
-                        group.pricingIssues.length > 0
-                          ? "bg-amber-50/40 align-top"
-                          : "align-top hover:bg-slate-50"
-                      }
-                    >
-                      <td className="px-4 py-3 font-medium">
-                        {group.formNumber}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1320px] text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Form #</th>
+                      <th className="px-4 py-3">Report #</th>
+                      <th className="px-4 py-3">Form Type</th>
+                      <th className="px-4 py-3">Sample Type</th>
+                      <th className="px-4 py-3">Description</th>
+                      <th className="px-4 py-3">Type of Test</th>
+                      <th className="px-4 py-3">
+                        Pathogens / Actives / COA Items
+                      </th>
+                      <th className="px-4 py-3">Unit Price</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
+                      <th className="px-4 py-3">Billing Ready</th>
+                      <th className="px-4 py-3">Issue</th>
+                      <th className="px-4 py-3">History</th>
+                      <th className="px-4 py-3 text-right">View</th>
+                    </tr>
+                  </thead>
 
-                      <td className="px-4 py-3">
-                        {group.reportNumber}
-                      </td>
+                  <tbody className="divide-y divide-slate-100">
+                    {groupedVisibleUnbilled.map((group) => (
+                      <tr
+                        key={group.key}
+                        className={
+                          group.pricingIssues.length > 0
+                            ? "bg-amber-50/40 align-top"
+                            : "align-top hover:bg-slate-50"
+                        }
+                      >
+                        <td className="px-4 py-3 font-medium">
+                          {group.formNumber}
+                        </td>
 
-                      <td className="px-4 py-3">
-                        {nice(group.formType)}
-                      </td>
+                        <td className="px-4 py-3">{group.reportNumber}</td>
 
-                      <td className="px-4 py-3">
-                        {group.sampleTypes.length > 0 ? (
+                        <td className="px-4 py-3">{nice(group.formType)}</td>
+
+                        <td className="px-4 py-3">
+                          {group.sampleTypes.length > 0 ? (
+                            <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                              {group.sampleTypes.map((sampleType) => (
+                                <span
+                                  key={sampleType}
+                                  className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                >
+                                  {sampleType}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        <td className="max-w-[220px] px-4 py-3 text-xs leading-5 text-slate-600">
+                          <div>{group.description || "-"}</div>
+                          {group.client && (
+                            <div className="mt-1 font-semibold text-slate-800">
+                              Client: {group.client}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
                           <div className="flex max-w-[220px] flex-wrap gap-1.5">
-                            {group.sampleTypes.map((sampleType) => (
+                            {group.testLabels.map((label) => (
                               <span
-                                key={sampleType}
-                                className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                key={label}
+                                className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
                               >
-                                {sampleType}
+                                {label}
                               </span>
                             ))}
+
+                            {group.testLabels.length === 0 && "-"}
                           </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            -
-                          </span>
-                        )}
-                      </td>
+                        </td>
 
-                      <td className="max-w-[220px] px-4 py-3 text-xs leading-5 text-slate-600">
-                        <div>{group.description || "-"}</div>
-                        {group.client && (
-                          <div className="mt-1 font-semibold text-slate-800">
-                            Client: {group.client}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex max-w-[220px] flex-wrap gap-1.5">
-                          {group.testLabels.map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
-                            >
-                              {label}
-                            </span>
-                          ))}
-
-                          {group.testLabels.length === 0 && "-"}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex max-w-[280px] flex-wrap gap-1.5">
-                          {group.itemLabels.map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800"
-                            >
-                              {label}
-                            </span>
-                          ))}
-
-                          {group.itemLabels.length === 0 && (
-                            <span className="text-xs text-slate-500">
-                              Type of Test only
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="space-y-1.5">
-                          {group.items.map((item) => {
-                            const label =
-                              item.itemLabel ||
-                              (item.itemKey
-                                ? nice(item.itemKey)
-                                : item.testLabel ||
-                                  nice(item.testKey));
-
-                            return (
-                              <div
-                                key={item.chargeKey}
-                                className="flex min-w-[170px] items-center justify-between gap-3 text-xs"
+                        <td className="px-4 py-3">
+                          <div className="flex max-w-[280px] flex-wrap gap-1.5">
+                            {group.itemLabels.map((label) => (
+                              <span
+                                key={label}
+                                className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800"
                               >
-                                <span className="max-w-[120px] truncate text-slate-500">
-                                  {label}
-                                </span>
+                                {label}
+                              </span>
+                            ))}
 
-                                <span
-                                  className={
-                                    item.unitPrice == null
-                                      ? "font-medium text-amber-700"
-                                      : "font-medium text-slate-800"
-                                  }
-                                >
-                                  {item.unitPrice == null
-                                    ? "Missing"
-                                    : money(item.unitPrice)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </td>
+                            {group.itemLabels.length === 0 && (
+                              <span className="text-xs text-slate-500">
+                                Type of Test only
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                        {group.amount > 0
-                          ? money(group.amount)
-                          : group.missingAmount
-                            ? "-"
-                            : money(0)}
-                      </td>
-
-                      <td className="px-4 py-3 text-xs text-slate-500">
-                        {formatDateTime(group.billingReadyAt)}
-                      </td>
-
-                      <td className="max-w-[300px] px-4 py-3 text-xs">
-                        {group.pricingIssues.length > 0 ? (
-                          <div className="space-y-2">
-                            {group.pricingIssues.map((item) => {
-                              const contextLabel =
+                        <td className="px-4 py-3">
+                          <div className="space-y-1.5">
+                            {group.items.map((item) => {
+                              const label =
                                 item.itemLabel ||
                                 (item.itemKey
                                   ? nice(item.itemKey)
-                                  : item.testLabel ||
-                                    nice(item.testKey));
+                                  : item.testLabel || nice(item.testKey));
 
-                              return isManager &&
-                                isMissingPricingRule(
-                                  item.pricingIssue,
-                                ) ? (
-                                <button
-                                  key={item.chargeKey}
-                                  type="button"
-                                  onClick={() =>
-                                    openPricingFromUnbilled(item)
-                                  }
-                                  className="group flex w-full items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-amber-900 transition hover:border-amber-300 hover:bg-amber-100"
-                                  title={`Create missing pricing rule for ${contextLabel}`}
-                                >
-                                  <CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0" />
-
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium">
-                                      {contextLabel}
-                                    </span>
-
-                                    <span className="mt-0.5 block text-[11px]">
-                                      {item.pricingIssue}
-                                    </span>
-
-                                    <span className="mt-1 block font-semibold text-[var(--brand)] group-hover:underline">
-                                      Set Price →
-                                    </span>
-                                  </span>
-                                </button>
-                              ) : (
+                              return (
                                 <div
                                   key={item.chargeKey}
-                                  className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900"
+                                  className="flex min-w-[170px] items-center justify-between gap-3 text-xs"
                                 >
-                                  <div className="font-medium">
-                                    {contextLabel}
-                                  </div>
-                                  <div className="mt-0.5 text-[11px]">
-                                    {item.pricingIssue}
-                                  </div>
+                                  <span className="max-w-[120px] truncate text-slate-500">
+                                    {label}
+                                  </span>
+
+                                  <span
+                                    className={
+                                      item.unitPrice == null
+                                        ? "font-medium text-amber-700"
+                                        : "font-medium text-slate-800"
+                                    }
+                                  >
+                                    {item.unitPrice == null
+                                      ? "Missing"
+                                      : money(item.unitPrice)}
+                                  </span>
                                 </div>
                               );
                             })}
                           </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="font-medium text-emerald-700">
-                              Ready
-                            </div>
+                        </td>
 
-                            {isManager &&
-                              group.items.map((item) => {
+                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                          {group.amount > 0
+                            ? money(group.amount)
+                            : group.missingAmount
+                              ? "-"
+                              : money(0)}
+                        </td>
+
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {formatDateTime(group.billingReadyAt)}
+                        </td>
+
+                        <td className="max-w-[300px] px-4 py-3 text-xs">
+                          {group.pricingIssues.length > 0 ? (
+                            <div className="space-y-2">
+                              {group.pricingIssues.map((item) => {
                                 const contextLabel =
                                   item.itemLabel ||
                                   (item.itemKey
                                     ? nice(item.itemKey)
-                                    : item.testLabel ||
-                                      nice(item.testKey));
+                                    : item.testLabel || nice(item.testKey));
 
-                                return (
+                                return isManager &&
+                                  isMissingPricingRule(item.pricingIssue) ? (
                                   <button
-                                    key={`ready-price-${item.chargeKey}`}
+                                    key={item.chargeKey}
                                     type="button"
                                     onClick={() =>
-                                      openExistingPriceFromUnbilled(item)
+                                      openPricingFromUnbilled(item)
                                     }
-                                    className="group flex w-full items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100"
-                                    title={`Edit existing price for ${contextLabel}`}
+                                    className="group flex w-full items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-amber-900 transition hover:border-amber-300 hover:bg-amber-100"
+                                    title={`Create missing pricing rule for ${contextLabel}`}
                                   >
+                                    <CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0" />
+
                                     <span className="min-w-0">
-                                      <span className="block max-w-[170px] truncate text-[11px] font-medium">
+                                      <span className="block truncate font-medium">
                                         {contextLabel}
                                       </span>
-                                      <span className="mt-0.5 block text-[11px] text-emerald-700">
-                                        {item.unitPrice == null
-                                          ? "Price unavailable"
-                                          : money(item.unitPrice)}
+
+                                      <span className="mt-0.5 block text-[11px]">
+                                        {item.pricingIssue}
+                                      </span>
+
+                                      <span className="mt-1 block font-semibold text-[var(--brand)] group-hover:underline">
+                                        Set Price →
                                       </span>
                                     </span>
-
-                                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--brand)] group-hover:underline">
-                                      <Pencil className="h-3.5 w-3.5" />
-                                      Edit Price
-                                    </span>
                                   </button>
+                                ) : (
+                                  <div
+                                    key={item.chargeKey}
+                                    className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900"
+                                  >
+                                    <div className="font-medium">
+                                      {contextLabel}
+                                    </div>
+                                    <div className="mt-0.5 text-[11px]">
+                                      {item.pricingIssue}
+                                    </div>
+                                  </div>
                                 );
                               })}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="secondary"
-                          disabled={
-                            billingViewLoadingKey ===
-                            `${group.sourceType}:${group.sourceId}`
-                          }
-                          onClick={() =>
-                            openBillingReport({
-                              sourceType: group.sourceType,
-                              sourceId: group.sourceId,
-                              formType: group.formType,
-                              formNumber: group.formNumber,
-                              reportNumber: group.reportNumber,
-                            })
-                          }
-                        >
-                          {billingViewLoadingKey ===
-                          `${group.sourceType}:${group.sourceId}` ? (
-                            <Spinner dark />
+                            </div>
                           ) : (
-                            <FileText className="h-4 w-4" />
-                          )}
-                          {billingViewLoadingKey ===
-                          `${group.sourceType}:${group.sourceId}`
-                            ? "Opening..."
-                            : "View"}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                            <div className="space-y-2">
+                              <div className="font-medium text-emerald-700">
+                                Ready
+                              </div>
 
-                  {!loading &&
-                    groupedVisibleUnbilled.length === 0 && (
+                              {isManager &&
+                                group.items.map((item) => {
+                                  const contextLabel =
+                                    item.itemLabel ||
+                                    (item.itemKey
+                                      ? nice(item.itemKey)
+                                      : item.testLabel || nice(item.testKey));
+
+                                  return (
+                                    <button
+                                      key={`ready-price-${item.chargeKey}`}
+                                      type="button"
+                                      onClick={() =>
+                                        openExistingPriceFromUnbilled(item)
+                                      }
+                                      className="group flex w-full items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100"
+                                      title={`Edit existing price for ${contextLabel}`}
+                                    >
+                                      <span className="min-w-0">
+                                        <span className="block max-w-[170px] truncate text-[11px] font-medium">
+                                          {contextLabel}
+                                        </span>
+                                        <span className="mt-0.5 block text-[11px] text-emerald-700">
+                                          {item.unitPrice == null
+                                            ? "Price unavailable"
+                                            : money(item.unitPrice)}
+                                        </span>
+                                      </span>
+
+                                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--brand)] group-hover:underline">
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        Edit Price
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-xs">
+                          {group.items.some(
+                            (item) => item.deletionHistory?.previouslyDeleted,
+                          ) ? (
+                            <div className="space-y-2">
+                              {group.items
+                                .filter(
+                                  (item) =>
+                                    item.deletionHistory?.previouslyDeleted,
+                                )
+                                .map((item) => {
+                                  const history = item.deletionHistory!;
+
+                                  const contextLabel =
+                                    item.itemLabel ||
+                                    (item.itemKey
+                                      ? nice(item.itemKey)
+                                      : item.testLabel || nice(item.testKey));
+
+                                  const ready =
+                                    !item.pricingIssue &&
+                                    item.unitPrice != null &&
+                                    item.amount != null;
+
+                                  return (
+                                    <div
+                                      key={`deleted-history-${item.chargeKey}`}
+                                      className="min-w-[210px] rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-rose-900"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                          Previously Deleted ·{" "}
+                                          {history.deletionCount}×
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-1.5 truncate font-medium">
+                                        {contextLabel}
+                                      </div>
+
+                                      <div className="mt-1 text-[11px] text-rose-700">
+                                        Last deleted:{" "}
+                                        {formatDateTime(history.lastDeletedAt)}
+                                      </div>
+
+                                      {(history.lastDeletedInvoiceNumber ||
+                                        history.lastDeletedInvoiceStatus) && (
+                                        <div className="mt-0.5 text-[11px] text-rose-700">
+                                          From:{" "}
+                                          {history.lastDeletedInvoiceNumber ||
+                                            "Draft invoice"}
+                                          {history.lastDeletedInvoiceStatus
+                                            ? ` · ${nice(history.lastDeletedInvoiceStatus)}`
+                                            : ""}
+                                        </div>
+                                      )}
+
+                                      {isManager &&
+                                        history.canRestoreToOriginalDraft &&
+                                        ready && (
+                                          <button
+                                            type="button"
+                                            disabled={
+                                              working ===
+                                              `RESTORE_DELETED:${item.chargeKey}`
+                                            }
+                                            onClick={() =>
+                                              restoreDeletedUnbilledLine(item)
+                                            }
+                                            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                          >
+                                            {working ===
+                                            `RESTORE_DELETED:${item.chargeKey}` ? (
+                                              <Spinner dark />
+                                            ) : (
+                                              <RotateCcw className="h-3.5 w-3.5" />
+                                            )}
+                                            Restore to Invoice
+                                          </button>
+                                        )}
+
+                                      {isManager &&
+                                        history.canRestoreToOriginalDraft &&
+                                        !ready && (
+                                          <div className="mt-2 text-[11px] font-medium text-amber-700">
+                                            Resolve pricing before restoring.
+                                          </div>
+                                        )}
+
+                                      {!history.canRestoreToOriginalDraft && (
+                                        <div className="mt-2 text-[11px] font-medium text-slate-600">
+                                          Original invoice is no longer an
+                                          editable draft.
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            variant="secondary"
+                            disabled={
+                              billingViewLoadingKey ===
+                              `${group.sourceType}:${group.sourceId}`
+                            }
+                            onClick={() =>
+                              openBillingReport({
+                                sourceType: group.sourceType,
+                                sourceId: group.sourceId,
+                                formType: group.formType,
+                                formNumber: group.formNumber,
+                                reportNumber: group.reportNumber,
+                              })
+                            }
+                          >
+                            {billingViewLoadingKey ===
+                            `${group.sourceType}:${group.sourceId}` ? (
+                              <Spinner dark />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
+                            {billingViewLoadingKey ===
+                            `${group.sourceType}:${group.sourceId}`
+                              ? "Opening..."
+                              : "View"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {!loading && groupedVisibleUnbilled.length === 0 && (
                       <tr>
                         <td
-                          colSpan={12}
+                          colSpan={13}
                           className="px-4 py-12 text-center text-sm text-slate-500"
                         >
                           No unbilled forms for this month.
                         </td>
                       </tr>
                     )}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
             </section>
           </div>
         )}
@@ -6263,7 +6023,10 @@ export default function BillingDashboard() {
                     Create pricing rule
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Client names are collected automatically from existing reports. Select a discovered client, use DEFAULT for the whole Client Code, or choose Other to enter a new client manually.
+                    Client names are collected automatically from existing
+                    reports. Select a discovered client, use DEFAULT for the
+                    whole Client Code, or choose Other to enter a new client
+                    manually.
                   </p>
                 </div>
               </div>
@@ -6274,9 +6037,7 @@ export default function BillingDashboard() {
                     <CircleDollarSign className="mt-0.5 h-5 w-5 shrink-0" />
 
                     <div>
-                      <div className="font-semibold">
-                        Missing pricing rule
-                      </div>
+                      <div className="font-semibold">Missing pricing rule</div>
 
                       <div className="mt-1 text-xs leading-5">
                         {pricingPrefillMessage}
@@ -6286,9 +6047,7 @@ export default function BillingDashboard() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setPricingPrefillMessage(null)
-                    }
+                    onClick={() => setPricingPrefillMessage(null)}
                     className="rounded-md p-1 text-sky-700 hover:bg-sky-100"
                     title="Dismiss"
                   >
@@ -6304,10 +6063,10 @@ export default function BillingDashboard() {
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500">
                     Choose how this Client + Form + Type of Test is priced.
-                    Individual pricing charges selected items separately.
-                    Once a fixed combination rule is configured for the scope,
-                    billing requires an exact combination price and does not
-                    fall back to individual prices.
+                    Individual pricing charges selected items separately. Once a
+                    fixed combination rule is configured for the scope, billing
+                    requires an exact combination price and does not fall back
+                    to individual prices.
                   </div>
                 </div>
 
@@ -6408,10 +6167,7 @@ export default function BillingDashboard() {
                     <option value="">Select Client</option>
 
                     {commonClientOptions.map((client) => (
-                      <option
-                        key={client.clientCode}
-                        value={client.clientCode}
-                      >
+                      <option key={client.clientCode} value={client.clientCode}>
                         {client.clientCode}
                         {client.name ? ` — ${client.name}` : ""}
                         {client.billingEnabled === false
@@ -6456,10 +6212,7 @@ export default function BillingDashboard() {
                     </option>
 
                     {pricingClientOptions.map((client) => (
-                      <option
-                        key={client.toUpperCase()}
-                        value={client}
-                      >
+                      <option key={client.toUpperCase()} value={client}>
                         {client}
                       </option>
                     ))}
@@ -6515,18 +6268,15 @@ export default function BillingDashboard() {
                         | "CHEMISTRY";
 
                       const formType =
-                        department === "MICRO"
-                          ? "MICRO_MIX"
-                          : "CHEMISTRY_MIX";
+                        department === "MICRO" ? "MICRO_MIX" : "CHEMISTRY_MIX";
 
                       setPriceForm((p) => ({
                         ...p,
                         department,
                         formType,
-                        pricingMethod:
-                          supportsCombinationPricing(formType)
-                            ? p.pricingMethod
-                            : "INDIVIDUAL",
+                        pricingMethod: supportsCombinationPricing(formType)
+                          ? p.pricingMethod
+                          : "INDIVIDUAL",
                         combinationItemKeys: [],
 
                         testKey: "",
@@ -6558,10 +6308,9 @@ export default function BillingDashboard() {
                       setPriceForm((p) => ({
                         ...p,
                         formType,
-                        pricingMethod:
-                          supportsCombinationPricing(formType)
-                            ? p.pricingMethod
-                            : "INDIVIDUAL",
+                        pricingMethod: supportsCombinationPricing(formType)
+                          ? p.pricingMethod
+                          : "INDIVIDUAL",
                         combinationItemKeys: [],
 
                         testKey: "",
@@ -6604,18 +6353,16 @@ export default function BillingDashboard() {
                     onChange={(e) => {
                       const testKey = e.target.value;
 
-                      const selected =
-                        pricingTestOptions.find(
-                          (option) => option.value === testKey,
-                        );
+                      const selected = pricingTestOptions.find(
+                        (option) => option.value === testKey,
+                      );
 
                       setPriceForm((p) => ({
                         ...p,
 
                         testKey,
 
-                        testLabel:
-                          selected?.label ?? "",
+                        testLabel: selected?.label ?? "",
 
                         customTestLabel:
                           testKey === CUSTOM_TEST_VALUE
@@ -6628,10 +6375,7 @@ export default function BillingDashboard() {
                     <option value="">Select Type of Test</option>
 
                     {pricingTestOptions.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                      >
+                      <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
@@ -6678,18 +6422,16 @@ export default function BillingDashboard() {
                         onChange={(e) => {
                           const itemKey = e.target.value;
 
-                          const selected =
-                            pricingItemOptions.find(
-                              (option) => option.value === itemKey,
-                            );
+                          const selected = pricingItemOptions.find(
+                            (option) => option.value === itemKey,
+                          );
 
                           setPriceForm((p) => ({
                             ...p,
 
                             itemKey,
 
-                            itemLabel:
-                              selected?.label ?? "",
+                            itemLabel: selected?.label ?? "",
 
                             customItemLabel:
                               itemKey === CUSTOM_ITEM_VALUE
@@ -6703,23 +6445,17 @@ export default function BillingDashboard() {
                           {priceForm.formType === "MICRO_MIX" ||
                           priceForm.formType === "MICRO_MIX_WATER"
                             ? "No Pathogen / Type of Test only"
-                            : `Select ${pricingItemName(
-                                priceForm.formType,
-                              )}`}
+                            : `Select ${pricingItemName(priceForm.formType)}`}
                         </option>
 
                         {pricingItemOptions.map((option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                          >
+                          <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
                         ))}
 
                         <option value={CUSTOM_ITEM_VALUE}>
-                          Other / Custom{" "}
-                          {pricingItemName(priceForm.formType)}
+                          Other / Custom {pricingItemName(priceForm.formType)}
                         </option>
                       </select>
                     </label>
@@ -6730,9 +6466,7 @@ export default function BillingDashboard() {
                   priceForm.itemKey === CUSTOM_ITEM_VALUE && (
                     <label>
                       <span className="mb-1 block text-xs font-medium text-slate-600">
-                        Custom{" "}
-                        {pricingItemName(priceForm.formType)}{" "}
-                        Name
+                        Custom {pricingItemName(priceForm.formType)} Name
                       </span>
 
                       <input
@@ -6806,8 +6540,7 @@ export default function BillingDashboard() {
                                               ]),
                                             )
                                           : p.combinationItemKeys.filter(
-                                              (value) =>
-                                                value !== option.value,
+                                              (value) => value !== option.value,
                                             ),
                                       }))
                                     }
@@ -6822,8 +6555,8 @@ export default function BillingDashboard() {
                       </div>
 
                       <div className="mt-1 text-[11px] leading-4 text-slate-500">
-                        The order does not matter. The same selected items always
-                        create the same combination pricing identity.
+                        The order does not matter. The same selected items
+                        always create the same combination pricing identity.
                       </div>
                     </div>
                   )}
@@ -6853,9 +6586,7 @@ export default function BillingDashboard() {
                             Existing Individual Total
                           </div>
                           <div className="mt-1 text-lg font-bold text-slate-900">
-                            {money(
-                              combinationPricingPreview.individualTotal,
-                            )}
+                            {money(combinationPricingPreview.individualTotal)}
                           </div>
 
                           {combinationPricingPreview.missingIndividual.length >
@@ -6912,9 +6643,7 @@ export default function BillingDashboard() {
                               Suggested Starting Price
                             </div>
                             <div className="mt-1 text-lg font-bold text-slate-900">
-                              {money(
-                                combinationPricingPreview.individualTotal,
-                              )}
+                              {money(combinationPricingPreview.individualTotal)}
                             </div>
                           </div>
 
@@ -6956,9 +6685,7 @@ export default function BillingDashboard() {
                           {individualPricingPreview.rule ? (
                             <>
                               <div className="mt-1 text-xl font-bold text-slate-900">
-                                {money(
-                                  individualPricingPreview.rule.unitPrice,
-                                )}
+                                {money(individualPricingPreview.rule.unitPrice)}
                               </div>
                               <div className="mt-1 text-xs text-slate-500">
                                 Effective{" "}
@@ -6969,7 +6696,8 @@ export default function BillingDashboard() {
                             </>
                           ) : (
                             <div className="mt-1 text-sm font-medium text-slate-600">
-                              No existing price is configured for this exact selection.
+                              No existing price is configured for this exact
+                              selection.
                             </div>
                           )}
                         </div>
@@ -6978,9 +6706,7 @@ export default function BillingDashboard() {
                           <Button
                             variant="secondary"
                             onClick={() =>
-                              openEditPriceRule(
-                                individualPricingPreview.rule!,
-                              )
+                              openEditPriceRule(individualPricingPreview.rule!)
                             }
                           >
                             <Pencil className="h-4 w-4" />
@@ -7089,7 +6815,9 @@ export default function BillingDashboard() {
                       <th className="px-4 py-3">Form</th>
                       <th className="px-4 py-3">Test</th>
                       <th className="px-4 py-3">Pricing Method</th>
-                      <th className="px-4 py-3">Pathogen / Active / COA Item</th>
+                      <th className="px-4 py-3">
+                        Pathogen / Active / COA Item
+                      </th>
                       <th className="px-4 py-3">Basis</th>
                       <th className="px-4 py-3 text-right">Price</th>
                       <th className="px-4 py-3">Effective</th>
@@ -7405,11 +7133,16 @@ export default function BillingDashboard() {
                             <tr>
                               <th className="px-4 py-3">Description</th>
                               <th className="px-4 py-3 text-right">Qty</th>
-                              <th className="px-4 py-3 text-right">Unit Price</th>
+                              <th className="px-4 py-3 text-right">
+                                Unit Price
+                              </th>
                               <th className="px-4 py-3 text-right">Amount</th>
-                              {invoiceDetail.status === "DRAFT" && isManager && (
-                                <th className="px-4 py-3 text-right">Action</th>
-                              )}
+                              {invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <th className="px-4 py-3 text-right">
+                                    Action
+                                  </th>
+                                )}
                             </tr>
                           </thead>
 
@@ -7435,7 +7168,9 @@ export default function BillingDashboard() {
                                       <div className="flex justify-end gap-1">
                                         <button
                                           type="button"
-                                          onClick={() => openEditManualLine(line)}
+                                          onClick={() =>
+                                            openEditManualLine(line)
+                                          }
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
                                           title="Edit invoice item"
                                         >
@@ -7444,7 +7179,9 @@ export default function BillingDashboard() {
 
                                         <button
                                           type="button"
-                                          onClick={() => openDeleteManualLine(line)}
+                                          onClick={() =>
+                                            openDeleteManualLine(line)
+                                          }
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
                                           title="Delete invoice item"
                                         >
@@ -7460,14 +7197,15 @@ export default function BillingDashboard() {
                               <tr>
                                 <td
                                   colSpan={
-                                    invoiceDetail.status === "DRAFT" && isManager
+                                    invoiceDetail.status === "DRAFT" &&
+                                    isManager
                                       ? 5
                                       : 4
                                   }
                                   className="px-4 py-10 text-center text-sm text-slate-500"
                                 >
-                                  No items added yet. Add at least one item before
-                                  confirming this invoice.
+                                  No items added yet. Add at least one item
+                                  before confirming this invoice.
                                 </td>
                               </tr>
                             )}
@@ -7477,360 +7215,381 @@ export default function BillingDashboard() {
                     </>
                   ) : (
                     <>
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">
-                        Invoice Lines
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        {visibleInvoiceLines.length} charge
-                        {visibleInvoiceLines.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">
+                            Invoice Lines
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            {visibleInvoiceLines.length} charge
+                            {visibleInvoiceLines.length === 1 ? "" : "s"}
+                          </p>
+                        </div>
 
-                    {unresolvedInSelected > 0 && (
-                      <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                        <AlertTriangle className="h-4 w-4" />
-                        {unresolvedInSelected} pricing issue
-                        {unresolvedInSelected === 1 ? "" : "s"}
+                        {unresolvedInSelected > 0 && (
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                            <AlertTriangle className="h-4 w-4" />
+                            {unresolvedInSelected} pricing issue
+                            {unresolvedInSelected === 1 ? "" : "s"}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[1040px] text-sm">
-                      <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
-                        <tr>
-                          <th className="px-4 py-3">Form #</th>
-                          <th className="px-4 py-3">Report #</th>
-                          <th className="px-4 py-3">Type</th>
-                          <th className="px-4 py-3">Sample Type</th>
-                          <th className="px-4 py-3">Test</th>
-                          <th className="px-4 py-3 text-right">Unit Price</th>
-                          <th className="px-4 py-3 text-right">Amount</th>
-                          <th className="px-4 py-3">Pricing</th>
-                          <th className="px-4 py-3 text-right">View</th>
-                          {invoiceDetail.status === "DRAFT" && isManager && (
-                            <th className="px-4 py-3 text-right">Action</th>
-                          )}
-                        </tr>
-                      </thead>
-
-                      <tbody className="divide-y divide-slate-100">
-                        {visibleInvoiceLines.map((line, lineIndex) => {
-                          const sourceKey =
-                            `${line.sourceType}:${line.sourceId}`;
-
-                          const firstSourceLineIndex =
-                            visibleInvoiceLines.findIndex(
-                              (candidate) =>
-                                `${candidate.sourceType}:${candidate.sourceId}` ===
-                                sourceKey,
-                            );
-
-                          const isFirstSourceLine =
-                            firstSourceLineIndex === lineIndex;
-
-                          return (
-                            <tr key={line.id} className="align-top">
-                              <td className="px-4 py-3 font-medium">
-                                {line.formNumber}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                {line.reportNumber}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                {nice(line.formType)}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                {billingSampleTypesFromSnapshot(
-                                  line.sourceSnapshot,
-                                ).length > 0 ? (
-                                  <div className="flex max-w-[200px] flex-wrap gap-1.5">
-                                    {billingSampleTypesFromSnapshot(
-                                      line.sourceSnapshot,
-                                    ).map((sampleType) => (
-                                      <span
-                                        key={sampleType}
-                                        className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
-                                      >
-                                        {sampleType}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-slate-400">
-                                    -
-                                  </span>
-                                )}
-                              </td>
-
-                              <td className="px-4 py-3">
-                                <div>
-                                  {line.testLabel || nice(line.testKey)}
-                                </div>
-
-                                {(line.itemLabel || line.itemKey) && (
-                                  <div className="mt-0.5 text-xs font-medium text-slate-600">
-                                    {line.itemLabel || nice(line.itemKey!)}
-                                  </div>
-                                )}
-
-                                {!line.itemKey &&
-                                  line.activeCount != null && (
-                                    <div className="text-xs text-slate-500">
-                                      Legacy: {line.activeCount} active
-                                      {line.activeCount === 1 ? "" : "s"}
-                                    </div>
-                                  )}
-                              </td>
-
-                              <td className="px-4 py-3 text-right">
-                                {line.unitPrice == null
-                                  ? "-"
-                                  : money(line.unitPrice)}
-                              </td>
-
-                              <td className="px-4 py-3 text-right font-medium">
-                                {line.amount == null
-                                  ? "-"
-                                  : money(line.amount)}
-                              </td>
-
-                              <td className="px-4 py-3 text-xs">
-                                {line.pricingIssue ? (
-                                  <span className="text-amber-800">
-                                    {line.pricingIssue}
-                                  </span>
-                                ) : line.manualOverride ? (
-                                  <span
-                                    className="text-blue-700"
-                                    title={
-                                      line.manualOverrideReason || undefined
-                                    }
-                                  >
-                                    Manual Override
-                                  </span>
-                                ) : (
-                                  <span className="text-emerald-700">
-                                    Rule
-                                  </span>
-                                )}
-                              </td>
-
-                              <td className="px-4 py-3 text-right">
-                                {isFirstSourceLine ? (
-                                  <Button
-                                    variant="secondary"
-                                    disabled={
-                                      billingViewLoadingKey ===
-                                      `${line.sourceType}:${line.sourceId}`
-                                    }
-                                    onClick={() =>
-                                      openBillingReport(line)
-                                    }
-                                  >
-                                    {billingViewLoadingKey ===
-                                    `${line.sourceType}:${line.sourceId}` ? (
-                                      <Spinner dark />
-                                    ) : (
-                                      <FileText className="h-4 w-4" />
-                                    )}
-                                    {billingViewLoadingKey ===
-                                    `${line.sourceType}:${line.sourceId}`
-                                      ? "Opening..."
-                                      : "View"}
-                                  </Button>
-                                ) : (
-                                  <span className="text-xs text-slate-300">
-                                    —
-                                  </span>
-                                )}
-                              </td>
-
+                      <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="w-full min-w-[1040px] text-sm">
+                          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
+                            <tr>
+                              <th className="px-4 py-3">Form #</th>
+                              <th className="px-4 py-3">Report #</th>
+                              <th className="px-4 py-3">Type</th>
+                              <th className="px-4 py-3">Sample Type</th>
+                              <th className="px-4 py-3">Test</th>
+                              <th className="px-4 py-3 text-right">
+                                Unit Price
+                              </th>
+                              <th className="px-4 py-3 text-right">Amount</th>
+                              <th className="px-4 py-3">Pricing</th>
+                              <th className="px-4 py-3 text-right">View</th>
                               {invoiceDetail.status === "DRAFT" &&
                                 isManager && (
+                                  <th className="px-4 py-3 text-right">
+                                    Action
+                                  </th>
+                                )}
+                            </tr>
+                          </thead>
+
+                          <tbody className="divide-y divide-slate-100">
+                            {visibleInvoiceLines.map((line, lineIndex) => {
+                              const sourceKey = `${line.sourceType}:${line.sourceId}`;
+
+                              const firstSourceLineIndex =
+                                visibleInvoiceLines.findIndex(
+                                  (candidate) =>
+                                    `${candidate.sourceType}:${candidate.sourceId}` ===
+                                    sourceKey,
+                                );
+
+                              const isFirstSourceLine =
+                                firstSourceLineIndex === lineIndex;
+
+                              return (
+                                <tr key={line.id} className="align-top">
+                                  <td className="px-4 py-3 font-medium">
+                                    {line.formNumber}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    {line.reportNumber}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    {nice(line.formType)}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    {billingSampleTypesFromSnapshot(
+                                      line.sourceSnapshot,
+                                    ).length > 0 ? (
+                                      <div className="flex max-w-[200px] flex-wrap gap-1.5">
+                                        {billingSampleTypesFromSnapshot(
+                                          line.sourceSnapshot,
+                                        ).map((sampleType) => (
+                                          <span
+                                            key={sampleType}
+                                            className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                          >
+                                            {sampleType}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-slate-400">
+                                        -
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    <div>
+                                      {line.testLabel || nice(line.testKey)}
+                                    </div>
+
+                                    {(line.itemLabel || line.itemKey) && (
+                                      <div className="mt-0.5 text-xs font-medium text-slate-600">
+                                        {line.itemLabel || nice(line.itemKey!)}
+                                      </div>
+                                    )}
+
+                                    {!line.itemKey &&
+                                      line.activeCount != null && (
+                                        <div className="text-xs text-slate-500">
+                                          Legacy: {line.activeCount} active
+                                          {line.activeCount === 1 ? "" : "s"}
+                                        </div>
+                                      )}
+                                  </td>
+
                                   <td className="px-4 py-3 text-right">
-                                    <div className="flex justify-end gap-2">
+                                    {line.unitPrice == null
+                                      ? "-"
+                                      : money(line.unitPrice)}
+                                  </td>
+
+                                  <td className="px-4 py-3 text-right font-medium">
+                                    {line.amount == null
+                                      ? "-"
+                                      : money(line.amount)}
+                                  </td>
+
+                                  <td className="px-4 py-3 text-xs">
+                                    {line.pricingIssue ? (
+                                      <span className="text-amber-800">
+                                        {line.pricingIssue}
+                                      </span>
+                                    ) : line.manualOverride ? (
+                                      <span
+                                        className="text-blue-700"
+                                        title={
+                                          line.manualOverrideReason || undefined
+                                        }
+                                      >
+                                        Manual Override
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-700">
+                                        Rule
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td className="px-4 py-3 text-right">
+                                    {isFirstSourceLine ? (
                                       <Button
                                         variant="secondary"
                                         disabled={
-                                          working === `LINE:${line.id}`
+                                          billingViewLoadingKey ===
+                                          `${line.sourceType}:${line.sourceId}`
                                         }
-                                        onClick={() => overrideLine(line)}
+                                        onClick={() => openBillingReport(line)}
                                       >
-                                        {working === `LINE:${line.id}` ? (
+                                        {billingViewLoadingKey ===
+                                        `${line.sourceType}:${line.sourceId}` ? (
                                           <Spinner dark />
-                                        ) : null}
-                                        Override
-                                      </Button>
-
-                                      <Button
-                                        variant="danger"
-                                        disabled={!!working}
-                                        onClick={() => deleteInvoiceLine(line)}
-                                        className="px-2.5"
-                                      >
-                                        {working ===
-                                        `DELETE_LINE:${line.id}` ? (
-                                          <Spinner />
                                         ) : (
-                                          <Trash2 className="h-4 w-4" />
+                                          <FileText className="h-4 w-4" />
                                         )}
-                                        Delete
+                                        {billingViewLoadingKey ===
+                                        `${line.sourceType}:${line.sourceId}`
+                                          ? "Opening..."
+                                          : "View"}
                                       </Button>
-
-                                      {isFirstSourceLine && (
-                                        <Button
-                                          variant="secondary"
-                                          onClick={() =>
-                                            openAddExtraCharge({
-                                              sourceType: line.sourceType,
-                                              sourceId: line.sourceId,
-                                              formNumber: line.formNumber,
-                                              reportNumber: line.reportNumber,
-                                            })
-                                          }
-                                          disabled={!!working}
-                                        >
-                                          <Plus className="h-4 w-4" />
-                                          Additional Charge
-                                        </Button>
-                                      )}
-                                    </div>
+                                    ) : (
+                                      <span className="text-xs text-slate-300">
+                                        —
+                                      </span>
+                                    )}
                                   </td>
-                                )}
-                            </tr>
-                          );
-                        })}
 
-                        {visibleInvoiceLines.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={
-                                invoiceDetail.status === "DRAFT" && isManager
-                                  ? 10
-                                  : 9
-                              }
-                              className="px-4 py-10 text-center text-sm text-slate-500"
-                            >
-                              No invoice lines match the selected filters.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                  {invoiceDetail.status === "DRAFT" &&
+                                    isManager && (
+                                      <td className="px-4 py-3 text-right">
+                                        <div className="flex justify-end gap-2">
+                                          <Button
+                                            variant="secondary"
+                                            disabled={
+                                              working === `LINE:${line.id}`
+                                            }
+                                            onClick={() => overrideLine(line)}
+                                          >
+                                            {working === `LINE:${line.id}` ? (
+                                              <Spinner dark />
+                                            ) : null}
+                                            Override
+                                          </Button>
 
-                  <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          Additional Charges by Form
-                        </h3>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          Add named report-level charges such as rush processing or special handling.
-                        </p>
-                      </div>
-                    </div>
+                                          <Button
+                                            variant="danger"
+                                            disabled={!!working}
+                                            onClick={() =>
+                                              deleteInvoiceLine(line)
+                                            }
+                                            className="px-2.5"
+                                          >
+                                            {working ===
+                                            `DELETE_LINE:${line.id}` ? (
+                                              <Spinner />
+                                            ) : (
+                                              <Trash2 className="h-4 w-4" />
+                                            )}
+                                            Delete
+                                          </Button>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[720px] text-sm">
-                        <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Form #</th>
-                            <th className="px-4 py-3">Report #</th>
-                            <th className="px-4 py-3">Additional Charges</th>
-                            <th className="px-4 py-3 text-right">Extra Total</th>
-                          </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100">
-                          {invoiceSourceRows
-                            .filter((row) => row.charges.length > 0)
-                            .map((row) => {
-                            const extraTotal = row.charges.reduce(
-                              (sum, charge) => sum + Number(charge.amount || 0),
-                              0,
-                            );
-
-                            return (
-                              <tr key={row.key} className="align-top">
-                                <td className="px-4 py-3 font-medium text-slate-900">
-                                  {row.formNumber}
-                                </td>
-                                <td className="px-4 py-3 text-slate-600">
-                                  {row.reportNumber}
-                                </td>
-                                <td className="px-4 py-3">
-                                  {row.charges.length ? (
-                                    <div className="space-y-2">
-                                      {row.charges.map((charge) => (
-                                        <div
-                                          key={charge.id}
-                                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                                        >
-                                          <div className="min-w-0">
-                                            <div className="truncate text-sm font-medium text-slate-800">
-                                              {charge.name}
-                                            </div>
-                                            <div className="text-xs text-slate-500">
-                                              {money(charge.amount)}
-                                            </div>
-                                          </div>
-
-                                          {invoiceDetail.status === "DRAFT" && isManager && (
-                                            <div className="flex shrink-0 gap-1">
-                                              <button
-                                                type="button"
-                                                onClick={() => openEditExtraCharge(charge)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-                                                title="Edit additional charge"
-                                              >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => openDeleteExtraCharge(charge)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                                                title="Delete additional charge"
-                                              >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                              </button>
-                                            </div>
+                                          {isFirstSourceLine && (
+                                            <Button
+                                              variant="secondary"
+                                              onClick={() =>
+                                                openAddExtraCharge({
+                                                  sourceType: line.sourceType,
+                                                  sourceId: line.sourceId,
+                                                  formNumber: line.formNumber,
+                                                  reportNumber:
+                                                    line.reportNumber,
+                                                })
+                                              }
+                                              disabled={!!working}
+                                            >
+                                              <Plus className="h-4 w-4" />
+                                              Additional Charge
+                                            </Button>
                                           )}
                                         </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </td>
-                                <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                                  {money(extraTotal)}
+                                      </td>
+                                    )}
+                                </tr>
+                              );
+                            })}
+
+                            {visibleInvoiceLines.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={
+                                    invoiceDetail.status === "DRAFT" &&
+                                    isManager
+                                      ? 10
+                                      : 9
+                                  }
+                                  className="px-4 py-10 text-center text-sm text-slate-500"
+                                >
+                                  No invoice lines match the selected filters.
                                 </td>
                               </tr>
-                            );
-                          })}
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
 
-                          {invoiceSourceRows.every(
-                            (row) => row.charges.length === 0,
-                          ) && (
-                            <tr>
-                              <td
-                                colSpan={4}
-                                className="px-4 py-8 text-center text-sm text-slate-500"
-                              >
-                                No additional charges added.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900">
+                              Additional Charges by Form
+                            </h3>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              Add named report-level charges such as rush
+                              processing or special handling.
+                            </p>
+                          </div>
+                        </div>
 
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[720px] text-sm">
+                            <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-4 py-3">Form #</th>
+                                <th className="px-4 py-3">Report #</th>
+                                <th className="px-4 py-3">
+                                  Additional Charges
+                                </th>
+                                <th className="px-4 py-3 text-right">
+                                  Extra Total
+                                </th>
+                              </tr>
+                            </thead>
+
+                            <tbody className="divide-y divide-slate-100">
+                              {invoiceSourceRows
+                                .filter((row) => row.charges.length > 0)
+                                .map((row) => {
+                                  const extraTotal = row.charges.reduce(
+                                    (sum, charge) =>
+                                      sum + Number(charge.amount || 0),
+                                    0,
+                                  );
+
+                                  return (
+                                    <tr key={row.key} className="align-top">
+                                      <td className="px-4 py-3 font-medium text-slate-900">
+                                        {row.formNumber}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-600">
+                                        {row.reportNumber}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        {row.charges.length ? (
+                                          <div className="space-y-2">
+                                            {row.charges.map((charge) => (
+                                              <div
+                                                key={charge.id}
+                                                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                              >
+                                                <div className="min-w-0">
+                                                  <div className="truncate text-sm font-medium text-slate-800">
+                                                    {charge.name}
+                                                  </div>
+                                                  <div className="text-xs text-slate-500">
+                                                    {money(charge.amount)}
+                                                  </div>
+                                                </div>
+
+                                                {invoiceDetail.status ===
+                                                  "DRAFT" &&
+                                                  isManager && (
+                                                    <div className="flex shrink-0 gap-1">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          openEditExtraCharge(
+                                                            charge,
+                                                          )
+                                                        }
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+                                                        title="Edit additional charge"
+                                                      >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          openDeleteExtraCharge(
+                                                            charge,
+                                                          )
+                                                        }
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                                                        title="Delete additional charge"
+                                                      >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                      </button>
+                                                    </div>
+                                                  )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </td>
+                                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                                        {money(extraTotal)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+
+                              {invoiceSourceRows.every(
+                                (row) => row.charges.length === 0,
+                              ) && (
+                                <tr>
+                                  <td
+                                    colSpan={4}
+                                    className="px-4 py-8 text-center text-sm text-slate-500"
+                                  >
+                                    No additional charges added.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -7918,7 +7677,9 @@ export default function BillingDashboard() {
                         </div>
                       ) : (
                         <div className="rounded-xl border border-slate-200 p-4">
-                          <h3 className="font-semibold text-slate-900">Notes</h3>
+                          <h3 className="font-semibold text-slate-900">
+                            Notes
+                          </h3>
                           <p className="mt-2 whitespace-pre-line text-sm text-slate-600">
                             {invoiceDetail.notes || "No invoice notes."}
                           </p>
@@ -7998,10 +7759,16 @@ export default function BillingDashboard() {
                             invoiceDetail.scheduledSendAt && (
                               <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
                                 <div className="font-semibold">
-                                  Scheduled for {formatDateTime(invoiceDetail.scheduledSendAt)}
+                                  Scheduled for{" "}
+                                  {formatDateTime(
+                                    invoiceDetail.scheduledSendAt,
+                                  )}
                                 </div>
                                 <div className="mt-0.5">
-                                  Recipient: {invoiceDetail.scheduledToEmail || invoiceDetail.billingEmail || "-"}
+                                  Recipient:{" "}
+                                  {invoiceDetail.scheduledToEmail ||
+                                    invoiceDetail.billingEmail ||
+                                    "-"}
                                 </div>
                               </div>
                             )}
@@ -8091,7 +7858,9 @@ export default function BillingDashboard() {
                                   onClick={cancelScheduledInvoiceSend}
                                   disabled={working === "CANCEL_SCHEDULE"}
                                 >
-                                  {working === "CANCEL_SCHEDULE" && <Spinner dark />}
+                                  {working === "CANCEL_SCHEDULE" && (
+                                    <Spinner dark />
+                                  )}
                                   Cancel Schedule
                                 </Button>
                               )}
@@ -8112,21 +7881,20 @@ export default function BillingDashboard() {
                                 </Button>
                               )}
 
-                            {invoiceDetail.status === "SENT" &&
-                              isManager && (
-                                <Button
-                                  variant="secondary"
-                                  onClick={createInvoiceRevision}
-                                  disabled={working === "REVISE"}
-                                >
-                                  {working === "REVISE" ? (
-                                    <Spinner dark />
-                                  ) : (
-                                    <GitBranch className="h-4 w-4" />
-                                  )}
-                                  Create Revision
-                                </Button>
-                              )}
+                            {invoiceDetail.status === "SENT" && isManager && (
+                              <Button
+                                variant="secondary"
+                                onClick={createInvoiceRevision}
+                                disabled={working === "REVISE"}
+                              >
+                                {working === "REVISE" ? (
+                                  <Spinner dark />
+                                ) : (
+                                  <GitBranch className="h-4 w-4" />
+                                )}
+                                Create Revision
+                              </Button>
+                            )}
 
                             {isManager && (
                               <Button
@@ -8152,7 +7920,8 @@ export default function BillingDashboard() {
                             Voided Invoice
                           </h3>
                           <p className="mt-2 text-sm text-rose-800">
-                            {invoiceDetail.voidReason || "No void reason stored."}
+                            {invoiceDetail.voidReason ||
+                              "No void reason stored."}
                           </p>
                           <div className="mt-2 text-xs text-rose-700">
                             {formatDateTime(invoiceDetail.voidedAt)}
@@ -8252,7 +8021,8 @@ export default function BillingDashboard() {
 
                         {invoiceDetail.confirmedAt && (
                           <div className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-500">
-                            Confirmed: {formatDateTime(invoiceDetail.confirmedAt)}
+                            Confirmed:{" "}
+                            {formatDateTime(invoiceDetail.confirmedAt)}
                           </div>
                         )}
 
@@ -8297,18 +8067,12 @@ export default function BillingDashboard() {
                 <div className="flex justify-center">
                   <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
                     {(
-                      [
-                        "FORM",
-                        "REPORT",
-                        "ATTACHMENTS",
-                      ] as BillingViewPane[]
+                      ["FORM", "REPORT", "ATTACHMENTS"] as BillingViewPane[]
                     ).map((pane) => (
                       <button
                         key={pane}
                         type="button"
-                        onClick={() =>
-                          setBillingViewPane(pane)
-                        }
+                        onClick={() => setBillingViewPane(pane)}
                         className={billingClassNames(
                           "rounded-full px-4 py-1.5 text-xs font-semibold transition",
                           billingViewPane === pane
@@ -8336,9 +8100,7 @@ export default function BillingDashboard() {
             </div>
 
             <div className="modal-body min-h-0 flex-1 overflow-auto px-6 py-4 max-h-[calc(90vh-72px)]">
-              {renderBillingViewedReport(
-                billingViewedReport,
-              )}
+              {renderBillingViewedReport(billingViewedReport)}
             </div>
           </div>
         </div>
@@ -8361,38 +8123,38 @@ export default function BillingDashboard() {
                     ? "Override Line Price"
                     : actionDialog.kind === "DELETE_LINE"
                       ? "Delete Invoice Line"
-                    : actionDialog.kind === "CONFIRM"
-                      ? "Confirm Invoice"
-                      : actionDialog.kind === "REOPEN"
-                        ? "Reopen Invoice for Editing"
-                        : actionDialog.kind === "REVISE"
-                          ? "Create Revised Invoice"
-                          : actionDialog.kind === "SEND"
-                        ? invoiceDetail?.status === "SENT"
-                          ? "Resend Invoice"
-                          : "Send Invoice"
-                        : actionDialog.kind === "SCHEDULE"
-                          ? invoiceDetail?.scheduledSendAt
-                            ? "Reschedule Invoice Send"
-                            : "Schedule Invoice Send"
-                          : "Void Invoice"}
+                      : actionDialog.kind === "CONFIRM"
+                        ? "Confirm Invoice"
+                        : actionDialog.kind === "REOPEN"
+                          ? "Reopen Invoice for Editing"
+                          : actionDialog.kind === "REVISE"
+                            ? "Create Revised Invoice"
+                            : actionDialog.kind === "SEND"
+                              ? invoiceDetail?.status === "SENT"
+                                ? "Resend Invoice"
+                                : "Send Invoice"
+                              : actionDialog.kind === "SCHEDULE"
+                                ? invoiceDetail?.scheduledSendAt
+                                  ? "Reschedule Invoice Send"
+                                  : "Schedule Invoice Send"
+                                : "Void Invoice"}
                 </h3>
                 <p className="mt-1 text-sm leading-5 text-slate-500">
                   {actionDialog.kind === "OVERRIDE"
                     ? "Enter the replacement unit price and document why it is being changed."
                     : actionDialog.kind === "DELETE_LINE"
                       ? "Remove this charge from the current DRAFT invoice. The invoice total will be recalculated immediately."
-                    : actionDialog.kind === "CONFIRM"
-                      ? "Review the invoice total before confirming."
-                      : actionDialog.kind === "REOPEN"
-                        ? "The same invoice number will be kept, but the current confirmed PDF and scheduled delivery details will be cleared so you can edit and confirm it again."
-                        : actionDialog.kind === "REVISE"
-                          ? "The sent invoice remains unchanged. A new DRAFT revision will be created from the latest sent version."
-                          : actionDialog.kind === "SEND"
-                        ? "Confirm the recipient before delivering the official invoice PDF."
-                        : actionDialog.kind === "SCHEDULE"
-                          ? "Choose when the invoice should be sent. The final PDF will be regenerated automatically at delivery time."
-                          : "Provide a reason before voiding this invoice."}
+                      : actionDialog.kind === "CONFIRM"
+                        ? "Review the invoice total before confirming."
+                        : actionDialog.kind === "REOPEN"
+                          ? "The same invoice number will be kept, but the current confirmed PDF and scheduled delivery details will be cleared so you can edit and confirm it again."
+                          : actionDialog.kind === "REVISE"
+                            ? "The sent invoice remains unchanged. A new DRAFT revision will be created from the latest sent version."
+                            : actionDialog.kind === "SEND"
+                              ? "Confirm the recipient before delivering the official invoice PDF."
+                              : actionDialog.kind === "SCHEDULE"
+                                ? "Choose when the invoice should be sent. The final PDF will be regenerated automatically at delivery time."
+                                : "Provide a reason before voiding this invoice."}
                 </p>
               </div>
 
@@ -8509,14 +8271,16 @@ export default function BillingDashboard() {
                     {invoiceDetail.clientCode}
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-4">
-                    <span className="text-sm text-amber-800">Invoice total</span>
+                    <span className="text-sm text-amber-800">
+                      Invoice total
+                    </span>
                     <span className="text-2xl font-bold text-amber-950">
                       {money(invoiceDetail.total)}
                     </span>
                   </div>
                   <div className="mt-3 border-t border-amber-200 pt-3 text-xs leading-5 text-amber-800">
-                    After confirmation, invoice charges become immutable. The PDF
-                    can still be regenerated until the invoice is sent.
+                    After confirmation, invoice charges become immutable. The
+                    PDF can still be regenerated until the invoice is sent.
                   </div>
                 </div>
               )}
@@ -8529,7 +8293,8 @@ export default function BillingDashboard() {
                   <div className="mt-2 text-sm leading-6 text-amber-800">
                     This invoice has not been sent yet. It will return to DRAFT
                     with the same invoice number. You can then change prices,
-                    additional charges, adjustment, or notes and confirm it again.
+                    additional charges, adjustment, or notes and confirm it
+                    again.
                   </div>
                 </div>
               )}
@@ -8586,7 +8351,8 @@ export default function BillingDashboard() {
                       {invoiceDetail.invoiceNumber || "Invoice"}
                     </div>
                     <div className="mt-1 text-xs text-sky-700">
-                      Due date will be 30 days after the scheduled/actual send date.
+                      Due date will be 30 days after the scheduled/actual send
+                      date.
                     </div>
                   </div>
 
@@ -8684,9 +8450,7 @@ export default function BillingDashboard() {
                 <Button
                   variant="danger"
                   onClick={submitDeleteInvoiceLine}
-                  disabled={
-                    working === `DELETE_LINE:${actionDialog.line.id}`
-                  }
+                  disabled={working === `DELETE_LINE:${actionDialog.line.id}`}
                 >
                   {working === `DELETE_LINE:${actionDialog.line.id}` ? (
                     <Spinner />
@@ -8854,7 +8618,10 @@ export default function BillingDashboard() {
                       {billingClients
                         .filter((client) => client.active !== false)
                         .map((client) => (
-                          <option key={client.clientCode} value={client.clientCode}>
+                          <option
+                            key={client.clientCode}
+                            value={client.clientCode}
+                          >
                             {client.clientCode}
                             {client.name ? ` — ${client.name}` : ""}
                           </option>
@@ -9044,7 +8811,8 @@ export default function BillingDashboard() {
                     {extraChargeDialog.charge.name}
                   </div>
                   <div className="mt-1 text-sm text-rose-800">
-                    {extraChargeDialog.charge.formNumber} · {money(extraChargeDialog.charge.amount)}
+                    {extraChargeDialog.charge.formNumber} ·{" "}
+                    {money(extraChargeDialog.charge.amount)}
                   </div>
                   <div className="mt-3 text-xs text-rose-700">
                     Delete this additional charge from the draft invoice?
@@ -9116,7 +8884,9 @@ export default function BillingDashboard() {
                 Cancel
               </Button>
               <Button
-                variant={extraChargeDialog.kind === "DELETE" ? "danger" : "primary"}
+                variant={
+                  extraChargeDialog.kind === "DELETE" ? "danger" : "primary"
+                }
                 onClick={submitExtraCharge}
                 disabled={
                   working === "EXTRA_ADD" ||
@@ -9304,7 +9074,8 @@ export default function BillingDashboard() {
                         Active pricing rule
                       </div>
                       <div className="mt-0.5 text-xs text-slate-500">
-                        Inactive rules are retained for history but are not used for new billing.
+                        Inactive rules are retained for history but are not used
+                        for new billing.
                       </div>
                     </div>
 
@@ -9334,12 +9105,10 @@ export default function BillingDashboard() {
                   <Button
                     onClick={submitEditPriceRule}
                     disabled={
-                      working ===
-                      `PRICE_EDIT:${pricingRuleDialog.rule.id}`
+                      working === `PRICE_EDIT:${pricingRuleDialog.rule.id}`
                     }
                   >
-                    {working ===
-                    `PRICE_EDIT:${pricingRuleDialog.rule.id}` ? (
+                    {working === `PRICE_EDIT:${pricingRuleDialog.rule.id}` ? (
                       <Spinner />
                     ) : (
                       <Pencil className="h-4 w-4" />
@@ -9386,12 +9155,10 @@ export default function BillingDashboard() {
                     variant="danger"
                     onClick={submitDeletePriceRule}
                     disabled={
-                      working ===
-                      `PRICE_DELETE:${pricingRuleDialog.rule.id}`
+                      working === `PRICE_DELETE:${pricingRuleDialog.rule.id}`
                     }
                   >
-                    {working ===
-                    `PRICE_DELETE:${pricingRuleDialog.rule.id}` ? (
+                    {working === `PRICE_DELETE:${pricingRuleDialog.rule.id}` ? (
                       <Spinner />
                     ) : (
                       <Trash2 className="h-4 w-4" />
@@ -9404,7 +9171,6 @@ export default function BillingDashboard() {
           </div>
         </div>
       )}
-
     </>
   );
 }

@@ -368,6 +368,29 @@ export class BillingController {
 
   /* =========================================================
 
+     RESTORE PREVIOUSLY DELETED REPORT INVOICE LINE
+
+  ========================================================= */
+
+  @Post('invoices/:invoiceId/lines/restore')
+  restoreDeletedInvoiceLine(
+    @Req() req: Request,
+
+    @Param('invoiceId') invoiceId: string,
+
+    @Body() body: { chargeKey: string },
+  ) {
+    return this.billing.restoreDeletedInvoiceLine(
+      (req as any).user,
+
+      invoiceId,
+
+      body?.chargeKey,
+    );
+  }
+
+  /* =========================================================
+
      DELETE REPORT INVOICE LINE
 
   ========================================================= */
