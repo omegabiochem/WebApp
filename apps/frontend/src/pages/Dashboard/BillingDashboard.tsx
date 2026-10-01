@@ -230,6 +230,7 @@ type BillingLine = {
   reportNumber: string;
   clientCode: string;
   client?: string | null;
+  resultSentToClientAt?: string | null;
   billingReadyAt: string;
   testKey: string;
   testLabel?: string | null;
@@ -304,6 +305,7 @@ type UnbilledItem = {
   reportNumber: string;
   clientCode: string;
   client?: string | null;
+  resultSentToClientAt?: string | null;
   billingReadyAt: string;
   testKey: string;
   testLabel?: string | null;
@@ -1258,6 +1260,8 @@ type BillingFilterState = {
   formTypeFilter: string;
   testFilter: string;
   itemFilter: string;
+  resultSentFrom: string;
+  resultSentTo: string;
   page: number;
   perPage: number;
 };
@@ -1271,6 +1275,8 @@ function defaultBillingFilters(): BillingFilterState {
     formTypeFilter: "ALL",
     testFilter: "ALL",
     itemFilter: "ALL",
+    resultSentFrom: "",
+    resultSentTo: "",
     page: 1,
     perPage: 25,
   };
@@ -1296,6 +1302,8 @@ function getInitialBillingFilters(
       "billingForm",
       "billingTest",
       "billingItem",
+      "billingResultSentFrom",
+      "billingResultSentTo",
       "billingPage",
       "billingPerPage",
     ].some((key) => searchParams.has(key));
@@ -1325,6 +1333,10 @@ function getInitialBillingFilters(
           searchParams.get("billingTest") || defaults.testFilter,
         itemFilter:
           searchParams.get("billingItem") || defaults.itemFilter,
+        resultSentFrom:
+          searchParams.get("billingResultSentFrom") || defaults.resultSentFrom,
+        resultSentTo:
+          searchParams.get("billingResultSentTo") || defaults.resultSentTo,
         page: parsePositiveInt(
           searchParams.get("billingPage"),
           defaults.page,
@@ -1364,6 +1376,12 @@ function getInitialBillingFilters(
           ),
           testFilter: String(saved.testFilter ?? defaults.testFilter),
           itemFilter: String(saved.itemFilter ?? defaults.itemFilter),
+          resultSentFrom: String(
+            saved.resultSentFrom ?? defaults.resultSentFrom,
+          ),
+          resultSentTo: String(
+            saved.resultSentTo ?? defaults.resultSentTo,
+          ),
           page:
             typeof saved.page === "number" && saved.page > 0
               ? saved.page
@@ -1396,13 +1414,29 @@ export default function BillingDashboard() {
     (user as any)?.uid ||
     null;
 
-  const FILTER_STORAGE_KEY = userKey
+  const filterStorageKeyForTab = useCallback(
+    (targetTab: BillingTab) =>
+      userKey
+        ? `billingDashboardFilters:${targetTab}:user:${userKey}`
+        : null,
+    [userKey],
+  );
+
+  const LEGACY_FILTER_STORAGE_KEY = userKey
     ? `billingDashboardFilters:user:${userKey}`
     : null;
 
+  const OVERVIEW_FILTER_STORAGE_KEY =
+    filterStorageKeyForTab("OVERVIEW");
+
+  /*
+   * Start Overview from its own saved filters. For users upgrading
+   * from the older shared-filter UI, fall back to the legacy saved
+   * filter set once so their existing choices are not lost.
+   */
   const initialFilters = getInitialBillingFilters(
     searchParams,
-    FILTER_STORAGE_KEY,
+    OVERVIEW_FILTER_STORAGE_KEY || LEGACY_FILTER_STORAGE_KEY,
   );
 
   const [tab, setTab] = useState<BillingTab>("OVERVIEW");
@@ -1419,10 +1453,15 @@ export default function BillingDashboard() {
   );
   const [testFilter, setTestFilter] = useState(initialFilters.testFilter);
   const [itemFilter, setItemFilter] = useState(initialFilters.itemFilter);
+  const [resultSentFrom, setResultSentFrom] = useState(
+    initialFilters.resultSentFrom,
+  );
+  const [resultSentTo, setResultSentTo] = useState(
+    initialFilters.resultSentTo,
+  );
   const [page, setPage] = useState(initialFilters.page);
   const [perPage, setPerPage] = useState(initialFilters.perPage);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
-  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
   // Dashboard-style read-only report viewer used by Billing View.
   const [billingViewedReport, setBillingViewedReport] =
@@ -1977,16 +2016,23 @@ export default function BillingDashboard() {
   ]);
 
 
-  /*
-   * Billing filters use the same persistence model as the
-   * reference dashboard: URL first, then per-user localStorage.
-   */
-  useEffect(() => {
-    const next = getInitialBillingFilters(
-      searchParams,
-      FILTER_STORAGE_KEY,
-    );
+  function currentBillingFilterState(): BillingFilterState {
+    return {
+      month,
+      clientCode,
+      invoiceStatus,
+      departmentFilter,
+      formTypeFilter,
+      testFilter,
+      itemFilter,
+      resultSentFrom,
+      resultSentTo,
+      page,
+      perPage,
+    };
+  }
 
+  function applyBillingFilterState(next: BillingFilterState) {
     setMonth(next.month);
     setClientCode(next.clientCode);
     setInvoiceStatus(next.invoiceStatus);
@@ -1994,37 +2040,79 @@ export default function BillingDashboard() {
     setFormTypeFilter(next.formTypeFilter);
     setTestFilter(next.testFilter);
     setItemFilter(next.itemFilter);
+    setResultSentFrom(next.resultSentFrom);
+    setResultSentTo(next.resultSentTo);
     setPage(next.page);
     setPerPage(next.perPage);
-    setFiltersHydrated(true);
-    // Rehydrate when the authenticated user changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [FILTER_STORAGE_KEY]);
+  }
 
-  useEffect(() => {
-    if (!filtersHydrated || !FILTER_STORAGE_KEY) return;
+  function saveBillingFiltersForTab(
+    targetTab: BillingTab,
+    state: BillingFilterState,
+  ) {
+    const storageKey = filterStorageKeyForTab(targetTab);
+    if (!storageKey) return;
 
     try {
-      localStorage.setItem(
-        FILTER_STORAGE_KEY,
-        JSON.stringify({
-          month,
-          clientCode,
-          invoiceStatus,
-          departmentFilter,
-          formTypeFilter,
-          testFilter,
-          itemFilter,
-          page,
-          perPage,
-        } satisfies BillingFilterState),
-      );
+      localStorage.setItem(storageKey, JSON.stringify(state));
     } catch {
       // Ignore storage errors in restricted browser contexts.
     }
+  }
+
+  function loadBillingFiltersForTab(targetTab: BillingTab) {
+    return getInitialBillingFilters(
+      new URLSearchParams(),
+      filterStorageKeyForTab(targetTab),
+    );
+  }
+
+  function switchBillingTab(
+    targetTab: BillingTab,
+    overrides: Partial<BillingFilterState> = {},
+  ) {
+    /*
+     * Save the tab we are leaving BEFORE applying the target tab's
+     * filters. This is what keeps Unbilled filters from being replaced
+     * when Set Price pre-fills Pricing filters.
+     */
+    saveBillingFiltersForTab(tab, currentBillingFilterState());
+
+    const targetState: BillingFilterState = {
+      ...loadBillingFiltersForTab(targetTab),
+      ...overrides,
+    };
+
+    saveBillingFiltersForTab(targetTab, targetState);
+    applyBillingFilterState(targetState);
+    setTab(targetTab);
+  }
+
+  /*
+   * Initial hydration follows the reference dashboard behavior:
+   * URL values take priority, then the saved per-user Overview values.
+   */
+  useEffect(() => {
+    const next = getInitialBillingFilters(
+      searchParams,
+      OVERVIEW_FILTER_STORAGE_KEY || LEGACY_FILTER_STORAGE_KEY,
+    );
+
+    applyBillingFilterState(next);
+    setFiltersHydrated(true);
+    // Rehydrate only when the authenticated user changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [OVERVIEW_FILTER_STORAGE_KEY, LEGACY_FILTER_STORAGE_KEY]);
+
+  /* Save the active tab independently. */
+  useEffect(() => {
+    if (!filtersHydrated) return;
+
+    saveBillingFiltersForTab(tab, currentBillingFilterState());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    FILTER_STORAGE_KEY,
     filtersHydrated,
+    tab,
     month,
     clientCode,
     invoiceStatus,
@@ -2032,10 +2120,14 @@ export default function BillingDashboard() {
     formTypeFilter,
     testFilter,
     itemFilter,
+    resultSentFrom,
+    resultSentTo,
     page,
     perPage,
+    filterStorageKeyForTab,
   ]);
 
+  /* Keep the active tab's selections reflected in the URL. */
   useEffect(() => {
     if (!filtersHydrated) return;
 
@@ -2069,6 +2161,16 @@ export default function BillingDashboard() {
     setOrDelete("billingForm", formTypeFilter, defaults.formTypeFilter);
     setOrDelete("billingTest", testFilter, defaults.testFilter);
     setOrDelete("billingItem", itemFilter, defaults.itemFilter);
+    setOrDelete(
+      "billingResultSentFrom",
+      resultSentFrom,
+      defaults.resultSentFrom,
+    );
+    setOrDelete(
+      "billingResultSentTo",
+      resultSentTo,
+      defaults.resultSentTo,
+    );
 
     if (page !== defaults.page) {
       next.set("billingPage", String(page));
@@ -2094,6 +2196,8 @@ export default function BillingDashboard() {
     formTypeFilter,
     testFilter,
     itemFilter,
+    resultSentFrom,
+    resultSentTo,
     page,
     perPage,
     searchParams,
@@ -2727,7 +2831,7 @@ export default function BillingDashboard() {
       }
 
       await refreshAll();
-      setTab("INVOICES");
+      switchBillingTab("INVOICES");
     } catch (error: any) {
       toast.error(extractMessage(error));
     } finally {
@@ -3763,19 +3867,6 @@ export default function BillingDashboard() {
       effectiveFrom: `${month}-01`,
     });
 
-    setClientCode(
-      String(item.clientCode ?? "")
-        .trim()
-        .toUpperCase(),
-    );
-    setDepartmentFilter(department);
-    setFormTypeFilter(item.formType);
-    setTestFilter(item.testKey || "ALL");
-    setItemFilter(
-      sourcePricingMethod === "COMBINATION"
-        ? "ALL"
-        : item.itemKey || "ALL",
-    );
 
     const selectionLabel =
       combinationItemKeys.length > 0
@@ -3792,7 +3883,19 @@ export default function BillingDashboard() {
       }.${selectionLabel} Enter the price and review Effective From before creating the rule.`,
     );
 
-    setTab("PRICING");
+    switchBillingTab("PRICING", {
+      clientCode: String(item.clientCode ?? "")
+        .trim()
+        .toUpperCase(),
+      departmentFilter: department,
+      formTypeFilter: item.formType,
+      testFilter: item.testKey || "ALL",
+      itemFilter:
+        sourcePricingMethod === "COMBINATION"
+          ? "ALL"
+          : item.itemKey || "ALL",
+      page: 1,
+    });
 
     window.setTimeout(() => {
       document
@@ -4427,6 +4530,7 @@ export default function BillingDashboard() {
       formType: string;
       testKey: string;
       itemKey?: string | null;
+      resultSentToClientAt?: string | null;
     }) => {
       const department =
         row.formType === "CHEMISTRY_MIX" || row.formType === "COA"
@@ -4461,6 +4565,24 @@ export default function BillingDashboard() {
         return false;
       }
 
+      if (resultSentFrom || resultSentTo) {
+        const resultSentDate = String(
+          row.resultSentToClientAt ?? "",
+        ).slice(0, 10);
+
+        if (!resultSentDate) {
+          return false;
+        }
+
+        if (resultSentFrom && resultSentDate < resultSentFrom) {
+          return false;
+        }
+
+        if (resultSentTo && resultSentDate > resultSentTo) {
+          return false;
+        }
+      }
+
       return true;
     },
     [
@@ -4468,6 +4590,8 @@ export default function BillingDashboard() {
       formTypeFilter,
       testFilter,
       itemFilter,
+      resultSentFrom,
+      resultSentTo,
     ],
   );
 
@@ -4609,7 +4733,12 @@ export default function BillingDashboard() {
       onClear: () => void;
     }[] = [];
 
-    if (month !== defaults.month) {
+    const isReportTab = tab === "OVERVIEW" || tab === "UNBILLED";
+    const isInvoiceTab = tab === "INVOICES";
+    const isPricingTab = tab === "PRICING";
+    const showTaxonomy = isReportTab || isPricingTab;
+
+    if (!isPricingTab && month !== defaults.month) {
       const [year, monthNumber] = month.split("-").map(Number);
       const date =
         Number.isFinite(year) && Number.isFinite(monthNumber)
@@ -4652,7 +4781,7 @@ export default function BillingDashboard() {
       });
     }
 
-    if (departmentFilter !== defaults.departmentFilter) {
+    if (showTaxonomy && departmentFilter !== defaults.departmentFilter) {
       chips.push({
         key: "department",
         label: `Department: ${nice(departmentFilter)}`,
@@ -4665,7 +4794,7 @@ export default function BillingDashboard() {
       });
     }
 
-    if (formTypeFilter !== defaults.formTypeFilter) {
+    if (showTaxonomy && formTypeFilter !== defaults.formTypeFilter) {
       chips.push({
         key: "form",
         label: `Form: ${nice(formTypeFilter)}`,
@@ -4677,7 +4806,7 @@ export default function BillingDashboard() {
       });
     }
 
-    if (testFilter !== defaults.testFilter) {
+    if (showTaxonomy && testFilter !== defaults.testFilter) {
       const testLabel =
         commonTestOptions.find((option) => option.value === testFilter)
           ?.label || nice(testFilter);
@@ -4692,7 +4821,7 @@ export default function BillingDashboard() {
       });
     }
 
-    if (itemFilter !== defaults.itemFilter) {
+    if (showTaxonomy && itemFilter !== defaults.itemFilter) {
       const itemLabel =
         commonItemOptions.find((option) => option.value === itemFilter)
           ?.label || nice(itemFilter);
@@ -4704,7 +4833,23 @@ export default function BillingDashboard() {
       });
     }
 
-    if (invoiceStatus !== defaults.invoiceStatus) {
+    if (isReportTab && resultSentFrom) {
+      chips.push({
+        key: "resultSentFrom",
+        label: `Result Sent From: ${resultSentFrom}`,
+        onClear: () => setResultSentFrom(defaults.resultSentFrom),
+      });
+    }
+
+    if (isReportTab && resultSentTo) {
+      chips.push({
+        key: "resultSentTo",
+        label: `Result Sent To: ${resultSentTo}`,
+        onClear: () => setResultSentTo(defaults.resultSentTo),
+      });
+    }
+
+    if (isInvoiceTab && invoiceStatus !== defaults.invoiceStatus) {
       chips.push({
         key: "status",
         label: `Invoice Status: ${nice(invoiceStatus)}`,
@@ -4715,27 +4860,18 @@ export default function BillingDashboard() {
       });
     }
 
-    if (perPage !== defaults.perPage) {
-      chips.push({
-        key: "perPage",
-        label: `Rows: ${perPage}`,
-        onClear: () => {
-          setPerPage(defaults.perPage);
-          setPage(1);
-        },
-      });
-    }
-
     return chips;
   }, [
+    tab,
     month,
     clientCode,
     departmentFilter,
     formTypeFilter,
     testFilter,
     itemFilter,
+    resultSentFrom,
+    resultSentTo,
     invoiceStatus,
-    perPage,
     commonClientOptions,
     commonTestOptions,
     commonItemOptions,
@@ -4750,6 +4886,8 @@ export default function BillingDashboard() {
     setFormTypeFilter(defaults.formTypeFilter);
     setTestFilter(defaults.testFilter);
     setItemFilter(defaults.itemFilter);
+    setResultSentFrom(defaults.resultSentFrom);
+    setResultSentTo(defaults.resultSentTo);
     setInvoiceStatus(defaults.invoiceStatus);
     setPerPage(defaults.perPage);
     setPage(defaults.page);
@@ -4757,6 +4895,265 @@ export default function BillingDashboard() {
 
   const activeCommonFilterCount = activeFilterChips.length;
   const hasActiveCommonFilters = activeCommonFilterCount > 0;
+
+  function renderBillingFilterSection(targetTab: BillingTab) {
+    const isReportTab = targetTab === "OVERVIEW" || targetTab === "UNBILLED";
+    const isInvoiceTab = targetTab === "INVOICES";
+    const isPricingTab = targetTab === "PRICING";
+    const showTaxonomy = isReportTab || isPricingTab;
+
+    const sectionTitle =
+      targetTab === "OVERVIEW"
+        ? "Overview Filters"
+        : targetTab === "UNBILLED"
+          ? "Unbilled Filters"
+          : targetTab === "INVOICES"
+            ? "Invoice Filters"
+            : "Pricing Rule Filters";
+
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              {sectionTitle}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Filters are saved separately for this Billing section.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={clearAllBillingFilters}
+            disabled={!hasActiveCommonFilters}
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-semibold shadow-sm transition ${
+              hasActiveCommonFilters
+                ? "border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
+                : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+            }`}
+          >
+            <X className="h-4 w-4" />
+            Clear Filters
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {!isPricingTab && (
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Billing Month
+              </span>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => {
+                  setMonth(e.target.value);
+                  setPage(1);
+                }}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+          )}
+
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Client Code
+            </span>
+            <select
+              value={clientCode}
+              onChange={(e) => {
+                setClientCode(e.target.value);
+                setPage(1);
+              }}
+              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="">All Client Codes</option>
+              {commonClientOptions.map((client) => (
+                <option key={client.clientCode} value={client.clientCode}>
+                  {client.clientCode}
+                  {client.name ? ` — ${client.name}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {isReportTab && (
+            <>
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Result Sent Date From
+                </span>
+                <input
+                  type="date"
+                  value={resultSentFrom}
+                  onChange={(e) => setResultSentFrom(e.target.value)}
+                  max={resultSentTo || undefined}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Result Sent Date To
+                </span>
+                <input
+                  type="date"
+                  value={resultSentTo}
+                  onChange={(e) => setResultSentTo(e.target.value)}
+                  min={resultSentFrom || undefined}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+            </>
+          )}
+
+          {showTaxonomy && (
+            <>
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Department
+                </span>
+                <select
+                  value={departmentFilter}
+                  onChange={(e) => {
+                    setDepartmentFilter(
+                      e.target.value as "ALL" | "MICRO" | "CHEMISTRY",
+                    );
+                    setFormTypeFilter("ALL");
+                    setTestFilter("ALL");
+                    setItemFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="ALL">All Departments</option>
+                  <option value="MICRO">Micro</option>
+                  <option value="CHEMISTRY">Chemistry</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Form Type
+                </span>
+                <select
+                  value={formTypeFilter}
+                  onChange={(e) => {
+                    setFormTypeFilter(e.target.value);
+                    setTestFilter("ALL");
+                    setItemFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="ALL">All Forms</option>
+                  {commonFormOptions.map((formType) => (
+                    <option key={formType} value={formType}>
+                      {nice(formType)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Type of Test
+                </span>
+                <select
+                  value={testFilter}
+                  onChange={(e) => {
+                    setTestFilter(e.target.value);
+                    setItemFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="ALL">All Tests</option>
+                  {commonTestOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Pathogen / Active / COA Item
+                </span>
+                <select
+                  value={itemFilter}
+                  onChange={(e) => {
+                    setItemFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="ALL">All Items</option>
+                  {commonItemOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+
+          {isInvoiceTab && (
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Invoice Status
+              </span>
+              <select
+                value={invoiceStatus}
+                onChange={(e) => {
+                  setInvoiceStatus(
+                    e.target.value as "ALL" | BillingInvoiceStatus,
+                  );
+                  setPage(1);
+                }}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {nice(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active filters:
+            </span>
+
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-[360px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
+              >
+                <span className="truncate">{chip.label}</span>
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+                  title={`Remove ${chip.label}`}
+                  aria-label={`Remove ${chip.label}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   const unresolvedInSelected =
     visibleInvoiceLines.filter(
@@ -4768,12 +5165,10 @@ export default function BillingDashboard() {
     <>
       <div className="space-y-5">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          {/* Header / actions */}
           <div className="flex items-start justify-between gap-6 border-b border-slate-200 px-5 py-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <CircleDollarSign className="h-6 w-6 shrink-0 text-[var(--brand)]" />
-
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                   Billing
                 </h1>
@@ -4786,21 +5181,6 @@ export default function BillingDashboard() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setFilterDialogOpen(true)}
-                className="min-w-[112px]"
-              >
-                <Settings2 className="h-4 w-4" />
-                Filters
-                {hasActiveCommonFilters && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">
-                    {activeCommonFilterCount}
-                  </span>
-                )}
-              </Button>
-
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -4832,7 +5212,6 @@ export default function BillingDashboard() {
               </Button>
             </div>
           </div>
-
         </section>
 
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -4840,7 +5219,7 @@ export default function BillingDashboard() {
             <button
               key={item}
               type="button"
-              onClick={() => setTab(item)}
+              onClick={() => switchBillingTab(item)}
               className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
                 tab === item
                   ? "bg-[var(--brand)] text-white shadow-sm"
@@ -4852,250 +5231,6 @@ export default function BillingDashboard() {
           ))}
         </div>
 
-        {activeFilterChips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Active filters:
-            </span>
-
-            {activeFilterChips.map((chip) => (
-              <span
-                key={chip.key}
-                className="inline-flex max-w-[360px] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm"
-              >
-                <span className="truncate">{chip.label}</span>
-
-                <button
-                  type="button"
-                  onClick={chip.onClear}
-                  className="ml-1 shrink-0 rounded-full px-1 text-blue-500 hover:bg-blue-100 hover:text-blue-800"
-                  title={`Remove ${chip.label}`}
-                  aria-label={`Remove ${chip.label}`}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-
-            <button
-              type="button"
-              onClick={clearAllBillingFilters}
-              className="ml-auto text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-
-        {filterDialogOpen && (
-          <div
-            className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Billing filters"
-            onClick={(event) => {
-              if (event.target === event.currentTarget) {
-                setFilterDialogOpen(false);
-              }
-            }}
-          >
-            <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Billing
-                  </div>
-                  <h2 className="mt-1 text-lg font-bold text-slate-900">
-                    Filters
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Your selections are saved automatically for your user account.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFilterDialogOpen(false)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  title="Close"
-                  aria-label="Close filters"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="max-h-[70vh] overflow-y-auto p-5">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Billing Month
-                    </span>
-                    <input
-                      type="month"
-                      value={month}
-                      onChange={(e) => {
-                        setMonth(e.target.value);
-                        setPage(1);
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Client Code
-                    </span>
-                    <select
-                      value={clientCode}
-                      onChange={(e) => {
-                        setClientCode(e.target.value);
-                        setPage(1);
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="">All Client Codes</option>
-                      {commonClientOptions.map((client) => (
-                        <option
-                          key={client.clientCode}
-                          value={client.clientCode}
-                        >
-                          {client.clientCode}
-                          {client.name ? ` — ${client.name}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Department
-                    </span>
-                    <select
-                      value={departmentFilter}
-                      onChange={(e) => {
-                        setDepartmentFilter(
-                          e.target.value as
-                            | "ALL"
-                            | "MICRO"
-                            | "CHEMISTRY",
-                        );
-                        setFormTypeFilter("ALL");
-                        setTestFilter("ALL");
-                        setItemFilter("ALL");
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="ALL">All Departments</option>
-                      <option value="MICRO">Micro</option>
-                      <option value="CHEMISTRY">Chemistry</option>
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Form Type
-                    </span>
-                    <select
-                      value={formTypeFilter}
-                      onChange={(e) => {
-                        setFormTypeFilter(e.target.value);
-                        setTestFilter("ALL");
-                        setItemFilter("ALL");
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="ALL">All Forms</option>
-                      {commonFormOptions.map((formType) => (
-                        <option key={formType} value={formType}>
-                          {nice(formType)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Type of Test
-                    </span>
-                    <select
-                      value={testFilter}
-                      onChange={(e) => {
-                        setTestFilter(e.target.value);
-                        setItemFilter("ALL");
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="ALL">All Tests</option>
-                      {commonTestOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Pathogen / Active / COA Item
-                    </span>
-                    <select
-                      value={itemFilter}
-                      onChange={(e) => setItemFilter(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="ALL">All Items</option>
-                      {commonItemOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Invoice Status
-                    </span>
-                    <select
-                      value={invoiceStatus}
-                      onChange={(e) => {
-                        setInvoiceStatus(
-                          e.target.value as
-                            | "ALL"
-                            | BillingInvoiceStatus,
-                        );
-                        setPage(1);
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {nice(status)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4">
-                <Button
-                  variant="secondary"
-                  onClick={clearAllBillingFilters}
-                  disabled={!hasActiveCommonFilters}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Reset Filters
-                </Button>
-
-                <Button onClick={() => setFilterDialogOpen(false)}>
-                  Done
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {loading && !summary ? (
           <div className="flex min-h-48 items-center justify-center rounded-xl border bg-white">
             <Spinner dark />
@@ -5104,6 +5239,8 @@ export default function BillingDashboard() {
 
         {tab === "OVERVIEW" && summary && (
           <div className="space-y-5">
+            {renderBillingFilterSection("OVERVIEW")}
+
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <SummaryCard
                 title="Unbilled"
@@ -5114,7 +5251,7 @@ export default function BillingDashboard() {
                     ? "warning"
                     : "default"
                 }
-                onClick={() => setTab("UNBILLED")}
+                onClick={() => switchBillingTab("UNBILLED")}
               />
 
               <SummaryCard
@@ -5126,7 +5263,7 @@ export default function BillingDashboard() {
                     ? "danger"
                     : "success"
                 }
-                onClick={() => setTab("UNBILLED")}
+                onClick={() => switchBillingTab("UNBILLED")}
               />
 
               {(["DRAFT", "CONFIRMED", "SENT", "VOID"] as const).map(
@@ -5145,10 +5282,12 @@ export default function BillingDashboard() {
                             ? "warning"
                             : "default"
                     }
-                    onClick={() => {
-                      setInvoiceStatus(status);
-                      setTab("INVOICES");
-                    }}
+                    onClick={() =>
+                      switchBillingTab("INVOICES", {
+                        invoiceStatus: status,
+                        page: 1,
+                      })
+                    }
                   />
                 ),
               )}
@@ -5209,7 +5348,7 @@ export default function BillingDashboard() {
 
                   <Button
                     variant="secondary"
-                    onClick={() => setTab("UNBILLED")}
+                    onClick={() => switchBillingTab("UNBILLED")}
                   >
                     View All Unbilled
                   </Button>
@@ -5403,7 +5542,7 @@ export default function BillingDashboard() {
 
                     <Button
                       variant="secondary"
-                      onClick={() => setTab("PRICING")}
+                      onClick={() => switchBillingTab("PRICING")}
                     >
                       <Plus className="h-4 w-4" />
                       Add Pricing
@@ -5558,7 +5697,10 @@ export default function BillingDashboard() {
         )}
 
         {tab === "INVOICES" && (
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="space-y-5">
+            {renderBillingFilterSection("INVOICES")}
+
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="font-semibold text-slate-900">Invoices</h2>
@@ -5753,11 +5895,15 @@ export default function BillingDashboard() {
                 </Button>
               </div>
             </div>
-          </section>
+            </section>
+          </div>
         )}
 
         {tab === "UNBILLED" && (
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="space-y-5">
+            {renderBillingFilterSection("UNBILLED")}
+
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="font-semibold text-slate-900">
@@ -6097,11 +6243,14 @@ export default function BillingDashboard() {
                 </tbody>
               </table>
             </div>
-          </section>
+            </section>
+          </div>
         )}
 
         {tab === "PRICING" && isManager && (
           <div className="space-y-5">
+            {renderBillingFilterSection("PRICING")}
+
             <form
               id="billing-pricing-rule-form"
               onSubmit={createPriceRule}

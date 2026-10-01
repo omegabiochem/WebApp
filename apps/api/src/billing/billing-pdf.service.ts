@@ -1664,8 +1664,24 @@ export class BillingPdfService {
         },
       ].filter((section) => section.rows.length > 0);
 
-      for (const section of reportSections) {
-        if (y < BOTTOM + 175) {
+      for (
+        let sectionIndex = 0;
+        sectionIndex < reportSections.length;
+        sectionIndex += 1
+      ) {
+        const section = reportSections[sectionIndex];
+
+        /*
+         * Keep Microbiology and Chemistry visually separate.
+         *
+         * When both departments exist on the same invoice, Chemistry
+         * always starts on a fresh page even if there is still room
+         * below the Microbiology section.
+         */
+        const startChemistryOnFreshPage =
+          section.title === 'CHEMISTRY' && sectionIndex > 0;
+
+        if (startChemistryOnFreshPage || y < BOTTOM + 175) {
           page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
           // Continuation pages intentionally omit the full invoice header.
@@ -1940,7 +1956,7 @@ export class BillingPdfService {
 
     ===================================================== */
 
-    if (y < BOTTOM + 150) {
+    if (y < BOTTOM + 170) {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
       // Continuation pages intentionally omit the full invoice header.
@@ -1960,38 +1976,126 @@ export class BillingPdfService {
 
     const total = Number(invoice.total);
 
-    page.drawText('Subtotal', {
-      x: labelX,
+    if (invoice.invoiceKind === 'REPORT') {
+      /*
+       * Department totals are calculated from the grouped PDF rows.
+       * Each grouped row already includes its report-level additional
+       * charges, so these totals reconcile to the report subtotal.
+       */
+      const microbiologyTotal = reportRows
+        .filter((row) => row.department === 'MICROBIOLOGY')
+        .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
 
-      y,
+      const chemistryTotal = reportRows
+        .filter((row) => row.department === 'CHEMISTRY')
+        .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
 
-      size: 9,
+      page.drawText('Microbiology Total', {
+        x: labelX,
 
-      font: regular,
-    });
+        y,
 
-    this.drawRight(page, this.money(subtotal), amountRight, y, 9, regular);
+        size: 9,
 
-    y -= 17;
+        font: regular,
+      });
 
-    page.drawText('Adjustment', {
-      x: labelX,
+      this.drawRight(
+        page,
+        this.money(microbiologyTotal),
+        amountRight,
+        y,
+        9,
+        regular,
+      );
 
-      y,
+      y -= 17;
 
-      size: 9,
+      page.drawText('Chemistry Total', {
+        x: labelX,
 
-      font: regular,
-    });
+        y,
 
-    const adjustmentText =
-      adjustment < 0
-        ? `-${this.money(Math.abs(adjustment))}`
-        : this.money(adjustment);
+        size: 9,
 
-    this.drawRight(page, adjustmentText, amountRight, y, 9, regular);
+        font: regular,
+      });
 
-    y -= 8;
+      this.drawRight(
+        page,
+        this.money(chemistryTotal),
+        amountRight,
+        y,
+        9,
+        regular,
+      );
+
+      y -= 17;
+
+      /*
+       * Keep the invoice-level adjustment visible when it changes
+       * the final amount. It is not a fourth department total; it
+       * simply explains the difference between department totals
+       * and the final invoice TOTAL.
+       */
+      if (adjustment !== 0) {
+        page.drawText('Adjustment', {
+          x: labelX,
+
+          y,
+
+          size: 9,
+
+          font: regular,
+        });
+
+        const adjustmentText =
+          adjustment < 0
+            ? `-${this.money(Math.abs(adjustment))}`
+            : this.money(adjustment);
+
+        this.drawRight(page, adjustmentText, amountRight, y, 9, regular);
+
+        y -= 17;
+      }
+    } else {
+      /*
+       * Manual invoices do not have Microbiology/Chemistry
+       * report sections, so retain the original subtotal layout.
+       */
+      page.drawText('Subtotal', {
+        x: labelX,
+
+        y,
+
+        size: 9,
+
+        font: regular,
+      });
+
+      this.drawRight(page, this.money(subtotal), amountRight, y, 9, regular);
+
+      y -= 17;
+
+      page.drawText('Adjustment', {
+        x: labelX,
+
+        y,
+
+        size: 9,
+
+        font: regular,
+      });
+
+      const adjustmentText =
+        adjustment < 0
+          ? `-${this.money(Math.abs(adjustment))}`
+          : this.money(adjustment);
+
+      this.drawRight(page, adjustmentText, amountRight, y, 9, regular);
+
+      y -= 17;
+    }
 
     page.drawLine({
       start: {
