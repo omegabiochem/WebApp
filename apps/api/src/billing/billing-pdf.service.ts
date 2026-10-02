@@ -70,6 +70,8 @@ type PdfReportRow = {
 
 const BILLING_TIME_ZONE = process.env.BILLING_TIME_ZONE || 'America/New_York';
 
+const PREVIOUS_MONTH_MANUAL_PREFIX = 'Previous Month Pending: ';
+
 /*
 
  * Invoice letterhead.
@@ -209,6 +211,10 @@ export class BillingPdfService {
     size: number,
 
     font: PDFFont,
+
+    options?: {
+      color?: ReturnType<typeof rgb>;
+    },
   ) {
     const width = font.widthOfTextAtSize(text, size);
 
@@ -220,6 +226,7 @@ export class BillingPdfService {
       size,
 
       font,
+      color: options?.color,
     });
   }
 
@@ -1606,6 +1613,15 @@ export class BillingPdfService {
           )
         : [];
 
+    const previousMonthManualLines =
+      invoice.invoiceKind === 'REPORT'
+        ? (invoice.manualLines ?? []).filter((line: any) =>
+            String(line?.description ?? '').startsWith(
+              PREVIOUS_MONTH_MANUAL_PREFIX,
+            ),
+          )
+        : [];
+
     if (invoice.invoiceKind === 'MANUAL') {
       y = this.drawManualTableHeader(
         page,
@@ -1971,6 +1987,23 @@ export class BillingPdfService {
             },
           );
 
+          const resultSentTime = row.resultSentToClientAt
+            ? new Date(row.resultSentToClientAt).getTime()
+            : Number.NaN;
+          const isPreviousMonthImported =
+            Number.isFinite(resultSentTime) &&
+            resultSentTime < new Date(invoice.periodStart).getTime();
+
+          if (isPreviousMonthImported) {
+            page.drawText('PRIOR MONTH', {
+              x: 100,
+              y: textTop - 8,
+              size: 4.8,
+              font: bold,
+              color: rgb(0.72, 0.42, 0.04),
+            });
+          }
+
           descriptionLines.forEach((line, index) => {
             page.drawText(line, {
               x: 158,
@@ -2035,19 +2068,44 @@ export class BillingPdfService {
             );
           });
 
-          this.drawRight(
-            page,
+          const rowAmountRight = PAGE_WIDTH - RIGHT - 12;
+          const rowAmountText = this.money(row.baseAmount);
 
-            this.money(row.baseAmount),
+          if (isPreviousMonthImported) {
+            const amountWidth = Math.max(
+              44,
+              bold.widthOfTextAtSize(rowAmountText, 7.0) + 10,
+            );
 
-            PAGE_WIDTH - RIGHT - 12,
+            page.drawRectangle({
+              x: rowAmountRight - amountWidth,
+              y: textTop - 3,
+              width: amountWidth,
+              height: 11,
+              color: rgb(1, 0.93, 0.93),
+              borderColor: rgb(0.82, 0.18, 0.18),
+              borderWidth: 0.45,
+            });
 
-            textTop,
-
-            7.0,
-
-            regular,
-          );
+            this.drawRight(
+              page,
+              rowAmountText,
+              rowAmountRight - 4,
+              textTop,
+              7.0,
+              bold,
+              { color: rgb(0.72, 0.08, 0.08) },
+            );
+          } else {
+            this.drawRight(
+              page,
+              rowAmountText,
+              rowAmountRight,
+              textTop,
+              7.0,
+              regular,
+            );
+          }
 
           /*
            * Do not draw a divider between a form and its additional
@@ -2186,6 +2244,105 @@ export class BillingPdfService {
 
         y -= 10;
       }
+
+      if (previousMonthManualLines.length > 0) {
+        if (y < BOTTOM + 90) {
+          page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          y = PAGE_HEIGHT - TOP;
+        }
+
+        y = this.drawReportSectionHeader(
+          page,
+          y,
+          'LAST MONTH PENDING - MANUAL',
+          bold,
+        );
+
+        page.drawText('Charge Name', {
+          x: LEFT + 6,
+          y: y - 11,
+          size: 6.8,
+          font: bold,
+          color: rgb(0.32, 0.36, 0.42),
+        });
+        this.drawRight(
+          page,
+          'Amount',
+          PAGE_WIDTH - RIGHT - 8,
+          y - 11,
+          6.8,
+          bold,
+        );
+        y -= 22;
+
+        for (const line of previousMonthManualLines) {
+          const description =
+            String(line.description ?? '')
+              .replace(PREVIOUS_MONTH_MANUAL_PREFIX, '')
+              .trim() || 'Previous-month pending charge';
+          const descriptionLines = this.wrapText(description, 70);
+          const rowHeight = Math.max(22, 9 + descriptionLines.length * 9);
+
+          if (y < BOTTOM + 12 + rowHeight) {
+            page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            y = PAGE_HEIGHT - TOP;
+            y = this.drawReportSectionHeader(
+              page,
+              y,
+              'LAST MONTH PENDING - MANUAL (CONTINUED)',
+              bold,
+            );
+          }
+
+          const textTop = y - 11;
+          descriptionLines.forEach((descriptionLine, index) => {
+            page.drawText(descriptionLine, {
+              x: LEFT + 8,
+              y: textTop - index * 9,
+              size: 7.0,
+              font: regular,
+            });
+          });
+
+          const manualLastMonthAmount = this.money(Number(line.amount ?? 0));
+          const manualLastMonthAmountRight = PAGE_WIDTH - RIGHT - 8;
+          const manualLastMonthAmountWidth = Math.max(
+            48,
+            bold.widthOfTextAtSize(manualLastMonthAmount, 7.2) + 10,
+          );
+
+          page.drawRectangle({
+            x: manualLastMonthAmountRight - manualLastMonthAmountWidth,
+            y: textTop - 3,
+            width: manualLastMonthAmountWidth,
+            height: 11,
+            color: rgb(1, 0.93, 0.93),
+            borderColor: rgb(0.82, 0.18, 0.18),
+            borderWidth: 0.45,
+          });
+
+          this.drawRight(
+            page,
+            manualLastMonthAmount,
+            manualLastMonthAmountRight - 4,
+            textTop,
+            7.2,
+            bold,
+            { color: rgb(0.72, 0.08, 0.08) },
+          );
+
+          page.drawLine({
+            start: { x: LEFT, y: y - rowHeight },
+            end: { x: PAGE_WIDTH - RIGHT, y: y - rowHeight },
+            thickness: 0.25,
+            color: rgb(0.78, 0.78, 0.78),
+          });
+
+          y -= rowHeight;
+        }
+
+        y -= 10;
+      }
     }
 
     /* =====================================================
@@ -2269,6 +2426,43 @@ export class BillingPdfService {
       );
 
       y -= 17;
+
+      const previousMonthManualTotal = previousMonthManualLines.reduce(
+        (sum: number, line: any) => sum + Number(line.amount ?? 0),
+        0,
+      );
+
+      if (previousMonthManualTotal !== 0) {
+        page.drawRectangle({
+          x: labelX - 5,
+          y: y - 4,
+          width: amountRight - labelX + 7,
+          height: 15,
+          color: rgb(1, 0.93, 0.93),
+          borderColor: rgb(0.82, 0.18, 0.18),
+          borderWidth: 0.45,
+        });
+
+        page.drawText('Last Month Pending Charges', {
+          x: labelX,
+          y,
+          size: 9,
+          font: bold,
+          color: rgb(0.72, 0.08, 0.08),
+        });
+
+        this.drawRight(
+          page,
+          this.money(previousMonthManualTotal),
+          amountRight - 3,
+          y,
+          9,
+          bold,
+          { color: rgb(0.72, 0.08, 0.08) },
+        );
+
+        y -= 17;
+      }
 
       /*
        * Keep the invoice-level adjustment visible when it changes
@@ -2400,35 +2594,46 @@ export class BillingPdfService {
     }
 
     if (invoice.notes) {
-      page.drawText('Notes', {
+      const notes = String(invoice.notes);
+      const noteLines = this.wrapText(notes, 84).slice(0, 8);
+      const notesBoxHeight = 25 + noteLines.length * 11;
+
+      if (y - notesBoxHeight < BOTTOM + 8) {
+        page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+        y = PAGE_HEIGHT - TOP;
+      }
+
+      page.drawRectangle({
         x: LEFT,
-
-        y,
-
-        size: 8.5,
-
-        font: bold,
+        y: y - notesBoxHeight + 7,
+        width: PAGE_WIDTH - LEFT - RIGHT,
+        height: notesBoxHeight,
+        color: rgb(1, 0.94, 0.94),
+        borderColor: rgb(0.78, 0.08, 0.08),
+        borderWidth: 0.9,
       });
 
-      y -= 13;
+      page.drawText('IMPORTANT NOTES', {
+        x: LEFT + 8,
+        y: y - 7,
+        size: 8.5,
+        font: bold,
+        color: rgb(0.72, 0.08, 0.08),
+      });
 
-      const notes = String(invoice.notes);
-
-      const noteLines = this.wrapText(notes, 88);
-
-      for (const line of noteLines.slice(0, 8)) {
+      let noteY = y - 21;
+      for (const line of noteLines) {
         page.drawText(line, {
-          x: LEFT,
-
-          y,
-
+          x: LEFT + 8,
+          y: noteY,
           size: 8,
-
           font: regular,
+          color: rgb(0.72, 0.08, 0.08),
         });
-
-        y -= 11;
+        noteY -= 11;
       }
+
+      y -= notesBoxHeight + 6;
     }
 
     /* =====================================================

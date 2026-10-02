@@ -391,6 +391,46 @@ export class BillingController {
 
   /* =========================================================
 
+     PREVIOUS-MONTH PENDING CHARGES
+
+  ========================================================= */
+
+  @Post('invoices/:invoiceId/previous-month/forms')
+  addPreviousMonthPendingSources(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Body() body: { sourceKeys: string[] },
+  ) {
+    return this.billing.addPreviousMonthPendingSources(
+      (req as any).user,
+      invoiceId,
+      body?.sourceKeys,
+    );
+  }
+
+  @Post('invoices/:invoiceId/previous-month/manual-charge')
+  addPreviousMonthManualCharge(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Body()
+    body: {
+      description?: string;
+      amount?: string | number;
+      charges?: Array<{
+        description: string;
+        amount: string | number;
+      }>;
+    },
+  ) {
+    return this.billing.addPreviousMonthManualCharge(
+      (req as any).user,
+      invoiceId,
+      body,
+    );
+  }
+
+  /* =========================================================
+
      MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES
 
   ========================================================= */

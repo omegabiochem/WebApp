@@ -110,6 +110,8 @@ type BillingCandidate = {
 const DEFAULT_BILLING_TIME_ZONE =
   process.env.BILLING_TIME_ZONE || 'America/New_York';
 
+const PREVIOUS_MONTH_MANUAL_PREFIX = 'Previous Month Pending: ';
+
 /*
  * Large billing months can contain hundreds/thousands of
  * candidate invoice lines. Keep DB statements bounded so we
@@ -2112,6 +2114,15 @@ export class BillingService {
     return historyByChargeKey;
   }
 
+  private previousMonthKeyFromPeriodStart(periodStart: Date) {
+    const parts = getZonedParts(periodStart, DEFAULT_BILLING_TIME_ZONE);
+
+    const previousYear = parts.month === 1 ? parts.year - 1 : parts.year;
+    const previousMonth = parts.month === 1 ? 12 : parts.month - 1;
+
+    return `${previousYear}-${String(previousMonth).padStart(2, '0')}`;
+  }
+
   /* =======================================================
      PUBLIC UNBILLED API
   ======================================================= */
@@ -3496,6 +3507,347 @@ export class BillingService {
   }
 
   /* =======================================================
+   ADD PREVIOUS-MONTH PENDING REPORTS TO CURRENT INVOICE
+======================================================= */
+
+  async addPreviousMonthPendingSources(
+    user: AuthUser,
+    invoiceId: string,
+    sourceKeysInput: string[],
+  ) {
+    this.assertManager(user);
+
+    const sourceKeys = Array.from(
+      new Set(
+        (Array.isArray(sourceKeysInput) ? sourceKeysInput : [])
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (sourceKeys.length === 0) {
+      throw new BadRequestException('Select at least one previous-month form');
+    }
+
+    if (sourceKeys.length > 250) {
+      throw new BadRequestException('Too many forms selected at once');
+    }
+
+    const invoice = await this.prisma.billingInvoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        status: true,
+        invoiceKind: true,
+        clientCode: true,
+        periodStart: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    if (invoice.status !== 'DRAFT' || invoice.invoiceKind !== 'REPORT') {
+      throw new BadRequestException(
+        'Previous-month pending forms can only be added to a DRAFT report invoice',
+      );
+    }
+
+    const previousMonth = this.previousMonthKeyFromPeriodStart(
+      invoice.periodStart,
+    );
+
+    const discovery = await this.discoverUnbilled(user, {
+      month: previousMonth,
+      clientCode: invoice.clientCode,
+    });
+
+    const bySource = new Map<string, BillingCandidate[]>();
+
+    for (const candidate of discovery.candidates) {
+      const sourceKey = `${candidate.sourceType}:${candidate.sourceId}`;
+      const current = bySource.get(sourceKey) ?? [];
+      current.push(candidate);
+      bySource.set(sourceKey, current);
+    }
+
+    const missingSources = sourceKeys.filter((key) => !bySource.has(key));
+
+    if (missingSources.length > 0) {
+      throw new BadRequestException(
+        'One or more selected forms are no longer available in last month pending charges. Refresh the invoice and try again.',
+      );
+    }
+
+    const selectedCandidates = sourceKeys.flatMap(
+      (key) => bySource.get(key) ?? [],
+    );
+
+    const notReady = selectedCandidates.filter(
+      (candidate) =>
+        !!candidate.pricingIssue ||
+        candidate.unitPrice == null ||
+        candidate.amount == null,
+    );
+
+    if (notReady.length > 0) {
+      throw new BadRequestException(
+        'Resolve pricing for every selected previous-month form before adding it to this invoice',
+      );
+    }
+
+    const chargeKeys = selectedCandidates.map(
+      (candidate) => candidate.chargeKey,
+    );
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const currentInvoice = await tx.billingInvoice.findUnique({
+        where: { id: invoiceId },
+        select: {
+          status: true,
+          invoiceKind: true,
+          clientCode: true,
+        },
+      });
+
+      if (
+        !currentInvoice ||
+        currentInvoice.status !== 'DRAFT' ||
+        currentInvoice.invoiceKind !== 'REPORT'
+      ) {
+        throw new BadRequestException(
+          'Invoice is no longer an editable report DRAFT',
+        );
+      }
+
+      if (currentInvoice.clientCode !== invoice.clientCode) {
+        throw new BadRequestException(
+          'Invoice client changed; refresh and try again',
+        );
+      }
+
+      const activeConflicts = await tx.billingInvoiceLine.findMany({
+        where: {
+          activeChargeKey: { in: chargeKeys },
+        },
+        select: {
+          activeChargeKey: true,
+          invoiceId: true,
+          formNumber: true,
+        },
+      });
+
+      if (activeConflicts.length > 0) {
+        throw new BadRequestException(
+          'One or more selected charges were already added to an invoice. Refresh and try again.',
+        );
+      }
+
+      const createData = selectedCandidates.map((candidate) => ({
+        invoiceId,
+        sourceType: candidate.sourceType,
+        sourceId: candidate.sourceId,
+        chargeKey: candidate.chargeKey,
+        activeChargeKey: candidate.chargeKey,
+        formType: candidate.formType,
+        formNumber: candidate.formNumber,
+        reportNumber: candidate.reportNumber,
+        clientCode: candidate.clientCode,
+        client: candidate.client,
+        resultSentToClientAt: candidate.resultSentToClientAt,
+        billingReadyAt: candidate.billingReadyAt,
+        testKey: candidate.testKey,
+        testLabel: candidate.testLabel,
+        itemKey: candidate.itemKey,
+        itemLabel: candidate.itemLabel,
+        activeCount: candidate.activeCount,
+        priceBasis: candidate.priceBasis,
+        quantity: candidate.quantity,
+        unitPrice: candidate.unitPrice,
+        amount: candidate.amount,
+        pricingRuleId: candidate.pricingRuleId,
+        pricingIssue: candidate.pricingIssue,
+        sourceSnapshot: candidate.sourceSnapshot,
+      }));
+
+      let createdCount = 0;
+
+      for (const batch of chunkArray(createData)) {
+        const created = await tx.billingInvoiceLine.createMany({
+          data: batch,
+          skipDuplicates: true,
+        });
+        createdCount += created.count;
+      }
+
+      if (createdCount !== createData.length) {
+        throw new BadRequestException(
+          'Some selected charges were captured concurrently. Refresh and try again.',
+        );
+      }
+
+      await this.recalculateInvoiceTotals(tx, invoiceId);
+
+      await tx.billingInvoice.update({
+        where: { id: invoiceId },
+        data: { updatedBy: user.userId },
+      });
+
+      const amount = selectedCandidates.reduce(
+        (sum, candidate) => sum.plus(candidate.amount!),
+        new Prisma.Decimal(0),
+      );
+
+      return {
+        createdCount,
+        formCount: sourceKeys.length,
+        amount: amount.toDecimalPlaces(2),
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'PREVIOUS_MONTH_PENDING_ADDED',
+      invoiceId,
+      clientCode: invoice.clientCode,
+      details: `Added ${result.formCount} previous-month pending form(s) from ${previousMonth}`,
+      changes: {
+        previousMonth,
+        sourceKeys,
+        chargeKeys,
+        formCount: result.formCount,
+        chargeCount: result.createdCount,
+        amount: result.amount.toFixed(2),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
+  }
+
+  /* =======================================================
+   ADD MANUAL PREVIOUS-MONTH PENDING CHARGE
+======================================================= */
+
+  async addPreviousMonthManualCharge(
+    user: AuthUser,
+    invoiceId: string,
+    dto: {
+      description?: string;
+      amount?: string | number;
+      charges?: Array<{
+        description: string;
+        amount: string | number;
+      }>;
+    },
+  ) {
+    this.assertManager(user);
+
+    const rawCharges =
+      Array.isArray(dto?.charges) && dto.charges.length > 0
+        ? dto.charges
+        : [
+            {
+              description: dto?.description ?? '',
+              amount: dto?.amount ?? '',
+            },
+          ];
+
+    if (rawCharges.length > 50) {
+      throw new BadRequestException(
+        'A maximum of 50 manual previous-month charges can be added at once',
+      );
+    }
+
+    const charges = rawCharges.map((charge, index) => {
+      const description = this.normalizeManualDescription(charge?.description);
+      const amount = this.parseMoney(
+        charge?.amount,
+        `charges[${index}].amount`,
+      );
+
+      if (amount.lte(0)) {
+        throw new BadRequestException(
+          `charges[${index}].amount must be greater than 0`,
+        );
+      }
+
+      return {
+        description,
+        amount,
+        storedDescription: `${PREVIOUS_MONTH_MANUAL_PREFIX}${description}`,
+      };
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: { id: invoiceId },
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      if (invoice.invoiceKind !== 'REPORT' || invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Manual previous-month charges can only be added to a DRAFT report invoice',
+        );
+      }
+
+      const createdLineIds: string[] = [];
+
+      for (const charge of charges) {
+        const line = await tx.billingManualInvoiceLine.create({
+          data: {
+            invoiceId,
+            description: charge.storedDescription,
+            quantity: 1,
+            unitPrice: charge.amount,
+            amount: charge.amount,
+            createdBy: user.userId,
+            updatedBy: user.userId,
+          },
+        });
+        createdLineIds.push(line.id);
+      }
+
+      await this.recalculateInvoiceTotals(tx, invoiceId);
+
+      await tx.billingInvoice.update({
+        where: { id: invoiceId },
+        data: { updatedBy: user.userId },
+      });
+
+      return {
+        createdLineIds,
+        clientCode: invoice.clientCode,
+        previousMonth: this.previousMonthKeyFromPeriodStart(
+          invoice.periodStart,
+        ),
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'PREVIOUS_MONTH_MANUAL_CHARGE_ADDED',
+      invoiceId,
+      clientCode: result.clientCode,
+      details:
+        charges.length === 1
+          ? `Added manual previous-month charge: ${charges[0].description}`
+          : `Added ${charges.length} manual previous-month charges`,
+      changes: {
+        previousMonth: result.previousMonth,
+        charges: result.createdLineIds.map((manualLineId, index) => ({
+          manualLineId,
+          description: charges[index].description,
+          amount: charges[index].amount.toFixed(2),
+        })),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
+  }
+
+  /* =======================================================
    MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES
 ======================================================= */
 
@@ -4374,18 +4726,19 @@ export class BillingService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       const invoice = await tx.billingInvoice.findUnique({
-        where: {
-          id: invoiceId,
-        },
+        where: { id: invoiceId },
       });
 
       if (!invoice) {
         throw new NotFoundException('Invoice not found');
       }
 
-      if (invoice.invoiceKind !== 'MANUAL') {
+      if (
+        invoice.invoiceKind !== 'MANUAL' &&
+        invoice.invoiceKind !== 'REPORT'
+      ) {
         throw new BadRequestException(
-          'Items can only be changed on a MANUAL invoice',
+          'Invoice items cannot be changed on this invoice type',
         );
       }
 
@@ -4396,24 +4749,43 @@ export class BillingService {
       }
 
       const existing = await tx.billingManualInvoiceLine.findFirst({
-        where: {
-          id: lineId,
-
-          invoiceId,
-        },
+        where: { id: lineId, invoiceId },
       });
 
       if (!existing) {
         throw new NotFoundException('Manual invoice item not found');
       }
 
-      const description =
+      const isPreviousMonthReportLine =
+        invoice.invoiceKind === 'REPORT' &&
+        String(existing.description ?? '').startsWith(
+          PREVIOUS_MONTH_MANUAL_PREFIX,
+        );
+
+      if (invoice.invoiceKind === 'REPORT' && !isPreviousMonthReportLine) {
+        throw new BadRequestException(
+          'Only previous-month manual charges can be changed on a report invoice',
+        );
+      }
+
+      const visibleExistingDescription = isPreviousMonthReportLine
+        ? String(existing.description ?? '')
+            .slice(PREVIOUS_MONTH_MANUAL_PREFIX.length)
+            .trim()
+        : existing.description;
+
+      const visibleDescription =
         dto?.description !== undefined
           ? this.normalizeManualDescription(dto.description)
-          : existing.description;
+          : visibleExistingDescription;
 
-      const quantity =
-        dto?.quantity !== undefined
+      const description = isPreviousMonthReportLine
+        ? `${PREVIOUS_MONTH_MANUAL_PREFIX}${visibleDescription}`
+        : visibleDescription;
+
+      const quantity = isPreviousMonthReportLine
+        ? 1
+        : dto?.quantity !== undefined
           ? this.parseManualQuantity(dto.quantity)
           : existing.quantity;
 
@@ -4431,19 +4803,12 @@ export class BillingService {
         .toDecimalPlaces(2);
 
       const updated = await tx.billingManualInvoiceLine.update({
-        where: {
-          id: lineId,
-        },
-
+        where: { id: lineId },
         data: {
           description,
-
           quantity,
-
           unitPrice,
-
           amount,
-
           updatedBy: user.userId,
         },
       });
@@ -4454,38 +4819,32 @@ export class BillingService {
         existing,
         updated,
         clientCode: invoice.clientCode,
+        isPreviousMonthReportLine,
+        visibleDescription,
       };
     });
 
     await this.auditInvoice(user, {
-      action: 'MANUAL_INVOICE_LINE_UPDATED',
-
+      action: result.isPreviousMonthReportLine
+        ? 'PREVIOUS_MONTH_MANUAL_CHARGE_UPDATED'
+        : 'MANUAL_INVOICE_LINE_UPDATED',
       invoiceId,
-
       clientCode: result.clientCode,
-
-      details: `Updated manual invoice item ${lineId}`,
-
+      details: result.isPreviousMonthReportLine
+        ? `Updated manual previous-month charge: ${result.visibleDescription}`
+        : `Updated manual invoice item ${lineId}`,
       changes: {
         manualLineId: lineId,
-
         before: {
           description: result.existing.description,
-
           quantity: result.existing.quantity,
-
           unitPrice: result.existing.unitPrice.toFixed(2),
-
           amount: result.existing.amount.toFixed(2),
         },
-
         after: {
           description: result.updated.description,
-
           quantity: result.updated.quantity,
-
           unitPrice: result.updated.unitPrice.toFixed(2),
-
           amount: result.updated.amount.toFixed(2),
         },
       },
@@ -4512,9 +4871,12 @@ export class BillingService {
         throw new NotFoundException('Invoice not found');
       }
 
-      if (invoice.invoiceKind !== 'MANUAL') {
+      if (
+        invoice.invoiceKind !== 'MANUAL' &&
+        invoice.invoiceKind !== 'REPORT'
+      ) {
         throw new BadRequestException(
-          'Items can only be changed on a MANUAL invoice',
+          'Invoice items cannot be changed on this invoice type',
         );
       }
 
@@ -4534,6 +4896,17 @@ export class BillingService {
 
       if (!existing) {
         throw new NotFoundException('Manual invoice item not found');
+      }
+
+      if (
+        invoice.invoiceKind === 'REPORT' &&
+        !String(existing.description ?? '').startsWith(
+          PREVIOUS_MONTH_MANUAL_PREFIX,
+        )
+      ) {
+        throw new BadRequestException(
+          'Only previous-month manual charges can be removed from a report invoice',
+        );
       }
 
       await tx.billingManualInvoiceLine.delete({
