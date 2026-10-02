@@ -429,6 +429,23 @@ export class BillingController {
     );
   }
 
+  @Post('invoices/:invoiceId/custom-charges')
+  addCustomCharges(
+    @Req() req: Request,
+    @Param('invoiceId') invoiceId: string,
+    @Body()
+    body: {
+      description?: string;
+      amount?: string | number;
+      charges?: Array<{
+        description: string;
+        amount: string | number;
+      }>;
+    },
+  ) {
+    return this.billing.addCustomCharges((req as any).user, invoiceId, body);
+  }
+
   /* =========================================================
 
      MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES

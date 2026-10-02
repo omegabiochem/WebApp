@@ -111,6 +111,7 @@ const DEFAULT_BILLING_TIME_ZONE =
   process.env.BILLING_TIME_ZONE || 'America/New_York';
 
 const PREVIOUS_MONTH_MANUAL_PREFIX = 'Previous Month Pending: ';
+const CUSTOM_CHARGE_PREFIX = 'Custom Charge: ';
 
 /*
  * Large billing months can contain hundreds/thousands of
@@ -3848,6 +3849,125 @@ export class BillingService {
   }
 
   /* =======================================================
+   ADD CUSTOM CHARGES TO REPORT INVOICE
+======================================================= */
+
+  async addCustomCharges(
+    user: AuthUser,
+    invoiceId: string,
+    dto: {
+      description?: string;
+      amount?: string | number;
+      charges?: Array<{
+        description: string;
+        amount: string | number;
+      }>;
+    },
+  ) {
+    this.assertManager(user);
+
+    const rawCharges =
+      Array.isArray(dto?.charges) && dto.charges.length > 0
+        ? dto.charges
+        : [
+            {
+              description: dto?.description ?? '',
+              amount: dto?.amount ?? '',
+            },
+          ];
+
+    if (rawCharges.length > 50) {
+      throw new BadRequestException(
+        'A maximum of 50 custom charges can be added at once',
+      );
+    }
+
+    const charges = rawCharges.map((charge, index) => {
+      const description = this.normalizeManualDescription(charge?.description);
+      const amount = this.parseMoney(
+        charge?.amount,
+        `charges[${index}].amount`,
+      );
+
+      if (amount.lte(0)) {
+        throw new BadRequestException(
+          `charges[${index}].amount must be greater than 0`,
+        );
+      }
+
+      return {
+        description,
+        amount,
+        storedDescription: `${CUSTOM_CHARGE_PREFIX}${description}`,
+      };
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.billingInvoice.findUnique({
+        where: { id: invoiceId },
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      if (invoice.invoiceKind !== 'REPORT' || invoice.status !== 'DRAFT') {
+        throw new BadRequestException(
+          'Custom charges can only be added to a DRAFT report invoice',
+        );
+      }
+
+      const createdLineIds: string[] = [];
+
+      for (const charge of charges) {
+        const line = await tx.billingManualInvoiceLine.create({
+          data: {
+            invoiceId,
+            description: charge.storedDescription,
+            quantity: 1,
+            unitPrice: charge.amount,
+            amount: charge.amount,
+            createdBy: user.userId,
+            updatedBy: user.userId,
+          },
+        });
+        createdLineIds.push(line.id);
+      }
+
+      await this.recalculateInvoiceTotals(tx, invoiceId);
+
+      await tx.billingInvoice.update({
+        where: { id: invoiceId },
+        data: { updatedBy: user.userId },
+      });
+
+      return {
+        createdLineIds,
+        clientCode: invoice.clientCode,
+      };
+    });
+
+    await this.auditInvoice(user, {
+      action: 'CUSTOM_CHARGE_ADDED',
+      invoiceId,
+      clientCode: result.clientCode,
+      details:
+        charges.length === 1
+          ? `Added custom charge: ${charges[0].description}`
+          : `Added ${charges.length} custom charges`,
+      changes: {
+        charges: result.createdLineIds.map((manualLineId, index) => ({
+          manualLineId,
+          description: charges[index].description,
+          amount: charges[index].amount.toFixed(2),
+        })),
+      },
+    });
+
+    return this.getInvoice(user, invoiceId);
+  }
+
+  /* =======================================================
    MOVE REPORT INVOICE LINES BETWEEN DRAFT INVOICES
 ======================================================= */
 
@@ -4756,23 +4876,29 @@ export class BillingService {
         throw new NotFoundException('Manual invoice item not found');
       }
 
+      const storedDescription = String(existing.description ?? '');
       const isPreviousMonthReportLine =
         invoice.invoiceKind === 'REPORT' &&
-        String(existing.description ?? '').startsWith(
-          PREVIOUS_MONTH_MANUAL_PREFIX,
-        );
+        storedDescription.startsWith(PREVIOUS_MONTH_MANUAL_PREFIX);
+      const isCustomReportLine =
+        invoice.invoiceKind === 'REPORT' &&
+        storedDescription.startsWith(CUSTOM_CHARGE_PREFIX);
 
-      if (invoice.invoiceKind === 'REPORT' && !isPreviousMonthReportLine) {
+      if (
+        invoice.invoiceKind === 'REPORT' &&
+        !isPreviousMonthReportLine &&
+        !isCustomReportLine
+      ) {
         throw new BadRequestException(
-          'Only previous-month manual charges can be changed on a report invoice',
+          'Only previous-month manual charges or custom charges can be changed on a report invoice',
         );
       }
 
       const visibleExistingDescription = isPreviousMonthReportLine
-        ? String(existing.description ?? '')
-            .slice(PREVIOUS_MONTH_MANUAL_PREFIX.length)
-            .trim()
-        : existing.description;
+        ? storedDescription.slice(PREVIOUS_MONTH_MANUAL_PREFIX.length).trim()
+        : isCustomReportLine
+          ? storedDescription.slice(CUSTOM_CHARGE_PREFIX.length).trim()
+          : existing.description;
 
       const visibleDescription =
         dto?.description !== undefined
@@ -4781,13 +4907,16 @@ export class BillingService {
 
       const description = isPreviousMonthReportLine
         ? `${PREVIOUS_MONTH_MANUAL_PREFIX}${visibleDescription}`
-        : visibleDescription;
+        : isCustomReportLine
+          ? `${CUSTOM_CHARGE_PREFIX}${visibleDescription}`
+          : visibleDescription;
 
-      const quantity = isPreviousMonthReportLine
-        ? 1
-        : dto?.quantity !== undefined
-          ? this.parseManualQuantity(dto.quantity)
-          : existing.quantity;
+      const quantity =
+        isPreviousMonthReportLine || isCustomReportLine
+          ? 1
+          : dto?.quantity !== undefined
+            ? this.parseManualQuantity(dto.quantity)
+            : existing.quantity;
 
       const unitPrice =
         dto?.unitPrice !== undefined
@@ -4820,6 +4949,7 @@ export class BillingService {
         updated,
         clientCode: invoice.clientCode,
         isPreviousMonthReportLine,
+        isCustomReportLine,
         visibleDescription,
       };
     });
@@ -4827,12 +4957,16 @@ export class BillingService {
     await this.auditInvoice(user, {
       action: result.isPreviousMonthReportLine
         ? 'PREVIOUS_MONTH_MANUAL_CHARGE_UPDATED'
-        : 'MANUAL_INVOICE_LINE_UPDATED',
+        : result.isCustomReportLine
+          ? 'CUSTOM_CHARGE_UPDATED'
+          : 'MANUAL_INVOICE_LINE_UPDATED',
       invoiceId,
       clientCode: result.clientCode,
       details: result.isPreviousMonthReportLine
         ? `Updated manual previous-month charge: ${result.visibleDescription}`
-        : `Updated manual invoice item ${lineId}`,
+        : result.isCustomReportLine
+          ? `Updated custom charge: ${result.visibleDescription}`
+          : `Updated manual invoice item ${lineId}`,
       changes: {
         manualLineId: lineId,
         before: {
@@ -4898,15 +5032,17 @@ export class BillingService {
         throw new NotFoundException('Manual invoice item not found');
       }
 
-      if (
-        invoice.invoiceKind === 'REPORT' &&
-        !String(existing.description ?? '').startsWith(
-          PREVIOUS_MONTH_MANUAL_PREFIX,
-        )
-      ) {
-        throw new BadRequestException(
-          'Only previous-month manual charges can be removed from a report invoice',
-        );
+      if (invoice.invoiceKind === 'REPORT') {
+        const storedDescription = String(existing.description ?? '');
+        const allowedReportManualLine =
+          storedDescription.startsWith(PREVIOUS_MONTH_MANUAL_PREFIX) ||
+          storedDescription.startsWith(CUSTOM_CHARGE_PREFIX);
+
+        if (!allowedReportManualLine) {
+          throw new BadRequestException(
+            'Only previous-month manual charges or custom charges can be removed from a report invoice',
+          );
+        }
       }
 
       await tx.billingManualInvoiceLine.delete({

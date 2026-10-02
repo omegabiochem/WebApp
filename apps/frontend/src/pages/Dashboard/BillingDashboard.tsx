@@ -533,6 +533,7 @@ const CUSTOM_TEST_VALUE = "__CUSTOM_TEST__";
 const CUSTOM_ITEM_VALUE = "__CUSTOM_ITEM__";
 const CUSTOM_CLIENT_VALUE = "__CUSTOM_CLIENT__";
 const PREVIOUS_MONTH_MANUAL_PREFIX = "Previous Month Pending: ";
+const CUSTOM_CHARGE_PREFIX = "Custom Charge: ";
 
 type ManualLastMonthChargeDraft = {
   id: number;
@@ -1543,6 +1544,16 @@ export default function BillingDashboard() {
   const [editManualLastMonthName, setEditManualLastMonthName] = useState("");
   const [editManualLastMonthAmount, setEditManualLastMonthAmount] =
     useState("");
+
+  const [showCustomCharge, setShowCustomCharge] = useState(false);
+  const [customCharges, setCustomCharges] = useState<
+    ManualLastMonthChargeDraft[]
+  >(() => [createManualLastMonthChargeDraft()]);
+  const [editingCustomChargeLineId, setEditingCustomChargeLineId] = useState<
+    string | null
+  >(null);
+  const [editCustomChargeName, setEditCustomChargeName] = useState("");
+  const [editCustomChargeAmount, setEditCustomChargeAmount] = useState("");
 
   const [draftAdjustment, setDraftAdjustment] = useState("0.00");
   const [draftNotes, setDraftNotes] = useState("");
@@ -2637,6 +2648,11 @@ export default function BillingDashboard() {
     setEditingManualLastMonthLineId(null);
     setEditManualLastMonthName("");
     setEditManualLastMonthAmount("");
+    setShowCustomCharge(false);
+    setCustomCharges([createManualLastMonthChargeDraft()]);
+    setEditingCustomChargeLineId(null);
+    setEditCustomChargeName("");
+    setEditCustomChargeAmount("");
   }, [selectedInvoiceId]);
 
   useEffect(() => {
@@ -3951,6 +3967,181 @@ export default function BillingDashboard() {
     }
   }
 
+  async function addCustomChargesToInvoice() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    const enteredRows = customCharges.filter(
+      (row) => row.name.trim() || row.amount.trim(),
+    );
+
+    if (enteredRows.length === 0) {
+      toast.error("Add at least one custom charge");
+      return;
+    }
+
+    const charges: Array<{ description: string; amount: string }> = [];
+
+    for (const row of enteredRows) {
+      const description = row.name.trim();
+      const amount = Number(row.amount);
+
+      if (description.length < 2) {
+        toast.error("Enter a charge name for every custom charge");
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        toast.error(`Enter an amount greater than 0 for ${description}`);
+        return;
+      }
+
+      charges.push({
+        description,
+        amount: amount.toFixed(2),
+      });
+    }
+
+    setWorking("ADD_CUSTOM_CHARGES");
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/custom-charges`,
+        {
+          method: "POST",
+          body: JSON.stringify({ charges }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setCustomCharges([createManualLastMonthChargeDraft()]);
+      setShowCustomCharge(false);
+      await refreshAll();
+      toast.success(
+        `${charges.length} custom charge${charges.length === 1 ? "" : "s"} added`,
+      );
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function startEditCustomCharge(line: BillingManualInvoiceLine) {
+    setEditingCustomChargeLineId(line.id);
+    setEditCustomChargeName(
+      String(line.description ?? "").replace(CUSTOM_CHARGE_PREFIX, ""),
+    );
+    setEditCustomChargeAmount(String(line.amount ?? ""));
+  }
+
+  function cancelEditCustomCharge() {
+    setEditingCustomChargeLineId(null);
+    setEditCustomChargeName("");
+    setEditCustomChargeAmount("");
+  }
+
+  async function saveEditCustomCharge(line: BillingManualInvoiceLine) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    const description = editCustomChargeName.trim();
+    const amount = Number(editCustomChargeAmount);
+
+    if (description.length < 2) {
+      toast.error("Enter a custom charge name");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter an amount greater than 0");
+      return;
+    }
+
+    setWorking(`EDIT_CUSTOM_CHARGE:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/manual-lines/${line.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            description,
+            quantity: 1,
+            unitPrice: amount.toFixed(2),
+          }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      cancelEditCustomCharge();
+      await refreshAll();
+      toast.success(`Updated ${description}`);
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function deleteCustomCharge(line: BillingManualInvoiceLine) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    const visibleName = String(line.description ?? "")
+      .replace(CUSTOM_CHARGE_PREFIX, "")
+      .trim();
+
+    if (
+      !window.confirm(
+        `Remove custom charge${visibleName ? ` "${visibleName}"` : ""}?`,
+      )
+    ) {
+      return;
+    }
+
+    setWorking(`DELETE_CUSTOM_CHARGE:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/manual-lines/${line.id}`,
+        { method: "DELETE" },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      await refreshAll();
+      toast.success("Custom charge removed");
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
   function openAddExtraCharge(row: {
     sourceType: string;
     sourceId: string;
@@ -4951,6 +5142,23 @@ export default function BillingDashboard() {
         String(line.description ?? "").startsWith(PREVIOUS_MONTH_MANUAL_PREFIX),
       ),
     [invoiceDetail?.manualLines],
+  );
+
+  const customChargeLines = useMemo(
+    () =>
+      (invoiceDetail?.manualLines ?? []).filter((line) =>
+        String(line.description ?? "").startsWith(CUSTOM_CHARGE_PREFIX),
+      ),
+    [invoiceDetail?.manualLines],
+  );
+
+  const customChargeTotal = useMemo(
+    () =>
+      customChargeLines.reduce(
+        (sum, line) => sum + (Number(line.amount ?? 0) || 0),
+        0,
+      ),
+    [customChargeLines],
   );
 
   const previousMonthAddedSummary = useMemo(() => {
@@ -8356,6 +8564,7 @@ export default function BillingDashboard() {
                                           (value) => !value,
                                         );
                                         setShowManualLastMonthCharge(false);
+                                        setShowCustomCharge(false);
                                       }}
                                       disabled={
                                         (lastMonthPending?.count ?? 0) === 0 ||
@@ -8374,12 +8583,27 @@ export default function BillingDashboard() {
                                           (value) => !value,
                                         );
                                         setShowLastMonthPicker(false);
+                                        setShowCustomCharge(false);
                                       }}
                                       disabled={!!working}
                                       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       <Pencil className="h-3.5 w-3.5" />
-                                      Add Manually
+                                      Add Last Month Manually
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowCustomCharge((value) => !value);
+                                        setShowLastMonthPicker(false);
+                                        setShowManualLastMonthCharge(false);
+                                      }}
+                                      disabled={!!working}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      Add Custom Charge
                                     </button>
                                   </div>
                                 )}
@@ -8700,6 +8924,281 @@ export default function BillingDashboard() {
                                     </div>
                                   </div>
                                 )}
+
+                              {showCustomCharge &&
+                                invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <div className="text-sm font-semibold text-sky-950">
+                                          Custom Charges
+                                        </div>
+                                        <p className="mt-1 text-xs text-sky-800">
+                                          Add one or more invoice-level charges
+                                          that are not tied to a report/form and
+                                          are not previous-month charges. The
+                                          charge name you enter will appear
+                                          exactly in the invoice and PDF.
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 space-y-2">
+                                      {customCharges.map((row, index) => (
+                                        <div
+                                          key={`custom-draft-${row.id}`}
+                                          className="grid gap-2 rounded-lg border border-sky-200 bg-white p-2 sm:grid-cols-[36px_1fr_150px_36px] sm:items-end"
+                                        >
+                                          <div className="hidden h-10 items-center justify-center text-xs font-semibold text-sky-400 sm:flex">
+                                            {index + 1}
+                                          </div>
+                                          <label>
+                                            <span className="mb-1 block text-xs font-medium text-sky-900">
+                                              Charge Name
+                                            </span>
+                                            <input
+                                              value={row.name}
+                                              onChange={(e) =>
+                                                setCustomCharges((current) =>
+                                                  current.map((item) =>
+                                                    item.id === row.id
+                                                      ? {
+                                                          ...item,
+                                                          name: e.target.value,
+                                                        }
+                                                      : item,
+                                                  ),
+                                                )
+                                              }
+                                              placeholder="e.g. Documentation Fee"
+                                              className="h-10 w-full rounded-lg border border-sky-300 bg-white px-3 text-sm"
+                                            />
+                                          </label>
+                                          <label>
+                                            <span className="mb-1 block text-xs font-medium text-sky-900">
+                                              Amount
+                                            </span>
+                                            <input
+                                              value={row.amount}
+                                              onChange={(e) =>
+                                                setCustomCharges((current) =>
+                                                  current.map((item) =>
+                                                    item.id === row.id
+                                                      ? {
+                                                          ...item,
+                                                          amount:
+                                                            e.target.value,
+                                                        }
+                                                      : item,
+                                                  ),
+                                                )
+                                              }
+                                              inputMode="decimal"
+                                              placeholder="0.00"
+                                              className="h-10 w-full rounded-lg border border-sky-300 bg-white px-3 text-sm"
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setCustomCharges((current) => {
+                                                if (current.length === 1) {
+                                                  return [
+                                                    createManualLastMonthChargeDraft(),
+                                                  ];
+                                                }
+                                                return current.filter(
+                                                  (item) => item.id !== row.id,
+                                                );
+                                              })
+                                            }
+                                            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 hover:bg-rose-50"
+                                            title="Remove this custom charge entry"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setCustomCharges((current) => [
+                                            ...current,
+                                            createManualLastMonthChargeDraft(),
+                                          ])
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-100"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Add Another Custom Charge
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={addCustomChargesToInvoice}
+                                        disabled={
+                                          !customCharges.some(
+                                            (row) =>
+                                              row.name.trim() ||
+                                              row.amount.trim(),
+                                          ) || working === "ADD_CUSTOM_CHARGES"
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {working === "ADD_CUSTOM_CHARGES" ? (
+                                          <Spinner />
+                                        ) : (
+                                          <Plus className="h-3.5 w-3.5" />
+                                        )}
+                                        Add Custom Charges
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                              {customChargeLines.length > 0 && (
+                                <div className="mt-4 rounded-xl border border-sky-200 bg-white p-3">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">
+                                    Custom Charges Added
+                                  </div>
+                                  <div className="mt-2 space-y-2">
+                                    {customChargeLines.map((line) => {
+                                      const visibleChargeName = String(
+                                        line.description ?? "",
+                                      )
+                                        .replace(CUSTOM_CHARGE_PREFIX, "")
+                                        .trim();
+                                      const isEditing =
+                                        editingCustomChargeLineId === line.id;
+
+                                      return (
+                                        <div
+                                          key={`custom-charge-${line.id}`}
+                                          className="rounded-lg bg-sky-50 px-3 py-2"
+                                        >
+                                          {isEditing ? (
+                                            <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto] sm:items-end">
+                                              <label>
+                                                <span className="mb-1 block text-[11px] font-medium text-sky-900">
+                                                  Charge Name
+                                                </span>
+                                                <input
+                                                  value={editCustomChargeName}
+                                                  onChange={(e) =>
+                                                    setEditCustomChargeName(
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  className="h-9 w-full rounded-md border border-sky-300 bg-white px-2.5 text-sm"
+                                                />
+                                              </label>
+                                              <label>
+                                                <span className="mb-1 block text-[11px] font-medium text-sky-900">
+                                                  Amount
+                                                </span>
+                                                <input
+                                                  value={editCustomChargeAmount}
+                                                  onChange={(e) =>
+                                                    setEditCustomChargeAmount(
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  inputMode="decimal"
+                                                  className="h-9 w-full rounded-md border border-sky-300 bg-white px-2.5 text-sm"
+                                                />
+                                              </label>
+                                              <div className="flex items-center gap-1.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    saveEditCustomCharge(line)
+                                                  }
+                                                  disabled={
+                                                    working ===
+                                                    `EDIT_CUSTOM_CHARGE:${line.id}`
+                                                  }
+                                                  className="rounded-md bg-sky-800 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-900 disabled:opacity-50"
+                                                >
+                                                  {working ===
+                                                  `EDIT_CUSTOM_CHARGE:${line.id}` ? (
+                                                    <Spinner />
+                                                  ) : (
+                                                    "Save"
+                                                  )}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={
+                                                    cancelEditCustomCharge
+                                                  }
+                                                  className="rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-between gap-3">
+                                              <div className="min-w-0">
+                                                <div className="truncate text-sm font-semibold text-slate-900">
+                                                  {visibleChargeName ||
+                                                    "Custom charge"}
+                                                </div>
+                                                <div className="text-[11px] text-sky-800">
+                                                  Custom invoice charge
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-slate-900">
+                                                  {money(line.amount)}
+                                                </span>
+                                                {invoiceDetail.status ===
+                                                  "DRAFT" &&
+                                                  isManager && (
+                                                    <>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          startEditCustomCharge(
+                                                            line,
+                                                          )
+                                                        }
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-sky-300 bg-white text-sky-800 hover:bg-sky-100"
+                                                        title={`Edit ${visibleChargeName || "custom charge"}`}
+                                                      >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          deleteCustomCharge(
+                                                            line,
+                                                          )
+                                                        }
+                                                        disabled={
+                                                          working ===
+                                                          `DELETE_CUSTOM_CHARGE:${line.id}`
+                                                        }
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-500 hover:bg-rose-50 disabled:opacity-50"
+                                                        title={`Remove ${visibleChargeName || "custom charge"}`}
+                                                      >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                      </button>
+                                                    </>
+                                                  )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
 
                               {previousMonthManualLines.length > 0 && (
                                 <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
@@ -9286,6 +9785,24 @@ export default function BillingDashboard() {
                                 </div>
                                 <span className="font-bold text-amber-950">
                                   {money(previousMonthAddedSummary.total)}
+                                </span>
+                              </div>
+                            )}
+
+                          {invoiceDetail.invoiceKind === "REPORT" &&
+                            customChargeTotal > 0 && (
+                              <div className="flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5">
+                                <div>
+                                  <div className="font-medium text-sky-900">
+                                    Custom Charges
+                                  </div>
+                                  <div className="text-[11px] text-sky-700">
+                                    {customChargeLines.length} charge
+                                    {customChargeLines.length === 1 ? "" : "s"}
+                                  </div>
+                                </div>
+                                <span className="font-bold text-sky-950">
+                                  {money(customChargeTotal)}
                                 </span>
                               </div>
                             )}
