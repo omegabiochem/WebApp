@@ -1634,7 +1634,7 @@ export class BillingPdfService {
               9,
         );
 
-        if (y < BOTTOM + 125 + rowHeight) {
+        if (y < BOTTOM + 12 + rowHeight) {
           page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
           // Continuation pages intentionally omit the full invoice header.
@@ -1902,7 +1902,12 @@ export class BillingPdfService {
                 )
               : 0;
 
-          if (y < BOTTOM + 125 + rowHeight + firstExtraChargeHeight) {
+          /*
+           * Fill continuation pages close to the footer. The footer divider
+           * is at y=31 and BOTTOM is 44, so 12pt beyond BOTTOM leaves a safe
+           * printable gap without wasting roughly 125pt on every page.
+           */
+          if (y < BOTTOM + 12 + rowHeight + firstExtraChargeHeight) {
             page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
             // Continuation pages intentionally omit the full invoice header.
@@ -2085,7 +2090,7 @@ export class BillingPdfService {
               9 + Math.max(chargeNameLines.length, 1) * 9,
             );
 
-            if (y < BOTTOM + 125 + chargeRowHeight) {
+            if (y < BOTTOM + 12 + chargeRowHeight) {
               page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
               y = PAGE_HEIGHT - TOP;
