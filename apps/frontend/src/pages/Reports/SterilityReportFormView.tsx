@@ -560,7 +560,7 @@ export default function SterilityReportFormView(
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
+const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,
@@ -661,12 +661,12 @@ export default function SterilityReportFormView(
               Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
             </div>
 
-            <div className="mt-1 grid grid-cols-3 items-center">
+            <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
               <div className="text-left text-[12px] font-bold">
                 {report?.formNumber || ""}
               </div>
 
-              <div className="text-center text-[18px] font-bold underline">
+              <div className="text-center text-[18px] font-bold underline whitespace-nowrap">
                 {/* {report?.status === "DRAFT" ||
                 report?.status === "SUBMITTED_BY_CLIENT"
                   ? "STERILITY SUBMISSION FORM"

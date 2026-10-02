@@ -693,16 +693,16 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
               Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
             </div>
 
-            <div className="mt-1 grid grid-cols-3 items-center">
-              <div className="text-left text-[12px] font-bold">
+            <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
+              <div className="justify-self-start text-left text-[12px] font-bold">
                 {report?.formNumber || ""}
               </div>
 
-              <div className="text-center text-[18px] font-bold underline">
+              <div className="justify-self-center whitespace-nowrap text-center text-[18px] font-bold underline">
                 {isSubmissionFormPane ? "APE SUBMISSION FORM" : "APE REPORT"}
               </div>
 
-              <div className="text-right text-[12px] font-bold">
+              <div className="justify-self-end text-right text-[12px] font-bold">
                 {!isFormPane && (report?.reportNumber || "")}
               </div>
             </div>

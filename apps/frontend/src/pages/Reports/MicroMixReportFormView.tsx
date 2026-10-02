@@ -686,7 +686,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
+  const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,
@@ -846,7 +846,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
               </div>
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
-            <div className="mt-1 grid grid-cols-3 items-center">
+            <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
                 {report.formNumber && report.formNumber}
@@ -854,10 +854,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline">
-                {/* {report.status === "DRAFT" ||
-                report.status === "SUBMITTED_BY_CLIENT"
-                  ? "MICRO SUBMISSION FORM"
-                  : "MICRO REPORT"} */}
 
                 {isSubmissionFormPane
                   ? "MICRO SUBMISSION FORM"
