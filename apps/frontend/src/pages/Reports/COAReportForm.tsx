@@ -460,61 +460,59 @@ export default function COAReportForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-const backToDashboard = () => {
-  if (returnTo) {
-    return navigate(decodeURIComponent(returnTo), {
+  const backToDashboard = () => {
+    if (returnTo) {
+      return navigate(decodeURIComponent(returnTo), {
+        replace: true,
+      });
+    }
+
+    if (role === "CLIENT") {
+      return navigate("/clientDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "FRONTDESK") {
+      return navigate("/frontdeskDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "MC") {
+      return navigate("/mcDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "CHEMISTRY") {
+      return navigate("/chemistryDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "QA") {
+      return navigate("/qaDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "ADMIN") {
+      return navigate("/adminDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "SYSTEMADMIN") {
+      return navigate("/systemAdminDashboard", {
+        replace: true,
+      });
+    }
+
+    return navigate("/home", {
       replace: true,
     });
-  }
-
-  if (role === "CLIENT") {
-    return navigate("/clientDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "FRONTDESK") {
-    return navigate("/frontdeskDashboard", {
-      replace: true,
-    });
-  }
-
-
-
-  if (role === "MC") {
-    return navigate("/mcDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "CHEMISTRY") {
-    return navigate("/chemistryDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "QA") {
-    return navigate("/qaDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "ADMIN") {
-    return navigate("/adminDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "SYSTEMADMIN") {
-    return navigate("/systemAdminDashboard", {
-      replace: true,
-    });
-  }
-
-  return navigate("/home", {
-    replace: true,
-  });
-};
+  };
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -1496,17 +1494,17 @@ const backToDashboard = () => {
     });
   }
 
-const fallbackRoute = useMemo(() => {
-  if (role === "CLIENT") return "/clientDashboard";
-  if (role === "FRONTDESK") return "/frontdeskDashboard";
-  if (role === "MC") return "/mcDashboard";
-  if (role === "CHEMISTRY") return "/chemistryDashboard";
-  if (role === "QA") return "/qaDashboard";
-  if (role === "ADMIN") return "/adminDashboard";
-  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+    if (role === "MC") return "/mcDashboard";
+    if (role === "CHEMISTRY") return "/chemistryDashboard";
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
 
-  return "/home";
-}, [role]);
+    return "/home";
+  }, [role]);
 
   // const handleClose = () => {
   //   if (onClose) return onClose();
@@ -1906,17 +1904,19 @@ const fallbackRoute = useMemo(() => {
           <div className="text-[12px]">
             Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
           </div>
-          <div className="mt-1 grid grid-cols-3 items-center">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
             <div />
-            <div className="text-[18px] font-bold text-center underline">
+
+            <div className="whitespace-nowrap text-center text-[18px] font-bold underline">
               {status === "DRAFT" ||
               status === "UNDER_DRAFT_REVIEW" ||
               status === "SUBMITTED_BY_CLIENT"
                 ? "COA SUBMISSION FORM"
                 : "COA REPORT"}
             </div>
-            <div className="text-right text-[12px] font-bold font-medium">
-              {!isTemplateMode && reportNumber ? <> {reportNumber}</> : null}
+
+            <div className="text-right text-[12px] font-bold">
+              {!isTemplateMode && reportNumber ? reportNumber : null}
             </div>
           </div>
         </div>

@@ -795,7 +795,7 @@ export default function ChemistryMixReportFormView(
             <div className="text-[12px]">
               Email: <span style={{ color: "blue" }}>lab@omegabiochem.com</span>
             </div>
-            <div className="mt-0 grid grid-cols-3 items-center">
+            <div className="mt-0 grid grid-cols-[1fr_auto_1fr] items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
                 {report.formNumber && report.formNumber}

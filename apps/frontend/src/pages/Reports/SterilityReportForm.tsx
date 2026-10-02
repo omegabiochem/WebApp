@@ -1970,9 +1970,9 @@ const backToDashboard = () => {
             Report
           </div> */}
           {/* Report title + number */}
-          <div className="mt-1 grid grid-cols-3 items-center">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
             <div /> {/* left spacer */}
-            <div className="text-[18px] font-bold text-center underline">
+            <div className="text-[18px] font-bold text-center underline whitespace-nowrap">
               {status === "DRAFT" ||
               status === "UNDER_DRAFT_REVIEW" ||
               status === "SUBMITTED_BY_CLIENT"

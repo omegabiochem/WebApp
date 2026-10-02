@@ -46,6 +46,8 @@ type PdfReportRow = {
 
   resultSentToClientAt: Date | string | null;
 
+  lotNo: string;
+
   description: string;
 
   sampleTypes: string[];
@@ -539,6 +541,21 @@ export class BillingPdfService {
     ).trim();
   }
 
+  private sourceLotNo(snapshot: any) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return '';
+    }
+
+    return String(
+      snapshot.lotNo ??
+        snapshot.lotBatchNo ??
+        snapshot.lotNumber ??
+        snapshot.batchNo ??
+        snapshot.batchNumber ??
+        '',
+    ).trim();
+  }
+
   private sourceSampleTypes(snapshot: any) {
     if (!snapshot || typeof snapshot !== 'object') {
       return [];
@@ -595,13 +612,15 @@ export class BillingPdfService {
     return 'MICROBIOLOGY';
   }
 
-  private async enrichInvoiceLineSampleTypes(lines: any[]) {
+  private async enrichInvoiceLineDisplayFields(lines: any[]) {
     if (!Array.isArray(lines) || lines.length === 0) {
       return lines ?? [];
     }
 
     const missing = lines.filter(
-      (line) => this.sourceSampleTypes(line?.sourceSnapshot).length === 0,
+      (line) =>
+        this.sourceSampleTypes(line?.sourceSnapshot).length === 0 ||
+        !this.sourceLotNo(line?.sourceSnapshot),
     );
 
     if (missing.length === 0) {
@@ -682,9 +701,13 @@ export class BillingPdfService {
 
       const sampleType = String(details?.sampleType ?? '').trim();
 
-      if (sampleType) {
+      const lotNo = String(details?.lotNo ?? '').trim();
+
+      if (sampleType || lotNo) {
         fallbackBySource.set(`REPORT:${source.id}`, {
-          sampleType,
+          ...(sampleType ? { sampleType } : {}),
+
+          ...(lotNo ? { lotNo } : {}),
         });
       }
     }
@@ -696,15 +719,22 @@ export class BillingPdfService {
         ? details.sampleTypes
         : [];
 
-      if (sampleTypes.length > 0) {
+      const lotBatchNo = String(details?.lotBatchNo ?? '').trim();
+
+      if (sampleTypes.length > 0 || lotBatchNo) {
         fallbackBySource.set(`CHEMISTRY_REPORT:${source.id}`, {
-          sampleTypes,
+          ...(sampleTypes.length > 0 ? { sampleTypes } : {}),
+
+          ...(lotBatchNo ? { lotBatchNo } : {}),
         });
       }
     }
 
     return lines.map((line) => {
-      if (this.sourceSampleTypes(line?.sourceSnapshot).length > 0) {
+      if (
+        this.sourceSampleTypes(line?.sourceSnapshot).length > 0 &&
+        this.sourceLotNo(line?.sourceSnapshot)
+      ) {
         return line;
       }
 
@@ -723,13 +753,37 @@ export class BillingPdfService {
           ? line.sourceSnapshot
           : {};
 
+      const currentSampleTypes = this.sourceSampleTypes(currentSnapshot);
+
+      const currentLotNo = this.sourceLotNo(currentSnapshot);
+
       return {
         ...line,
 
         sourceSnapshot: {
           ...currentSnapshot,
 
-          ...fallback,
+          ...(currentSampleTypes.length === 0
+            ? {
+                ...(fallback.sampleType != null
+                  ? { sampleType: fallback.sampleType }
+                  : {}),
+
+                ...(fallback.sampleTypes != null
+                  ? { sampleTypes: fallback.sampleTypes }
+                  : {}),
+              }
+            : {}),
+
+          ...(!currentLotNo
+            ? {
+                ...(fallback.lotNo != null ? { lotNo: fallback.lotNo } : {}),
+
+                ...(fallback.lotBatchNo != null
+                  ? { lotBatchNo: fallback.lotBatchNo }
+                  : {}),
+              }
+            : {}),
         },
       };
     });
@@ -787,6 +841,8 @@ export class BillingPdfService {
 
           resultSentToClientAt: line.resultSentToClientAt ?? null,
 
+          lotNo: this.sourceLotNo(line.sourceSnapshot),
+
           description: this.sourceDescription(line.sourceSnapshot),
 
           sampleTypes: [],
@@ -817,6 +873,10 @@ export class BillingPdfService {
 
       if (!group.description) {
         group.description = this.sourceDescription(line.sourceSnapshot);
+      }
+
+      if (!group.lotNo) {
+        group.lotNo = this.sourceLotNo(line.sourceSnapshot);
       }
 
       if (!group.resultSentToClientAt && line.resultSentToClientAt) {
@@ -990,17 +1050,17 @@ export class BillingPdfService {
     });
 
     page.drawText('Result Sent Date', {
-      x: 104,
+      x: 100,
 
       y: y - 10,
 
-      size: 6.1,
+      size: 5.8,
 
       font,
     });
 
-    page.drawText('Sample Type', {
-      x: 166,
+    page.drawText('Description', {
+      x: 158,
 
       y: y - 10,
 
@@ -1009,22 +1069,32 @@ export class BillingPdfService {
       font,
     });
 
-    page.drawText('Description', {
-      x: 238,
+    page.drawText('Type of Test', {
+      x: 286,
 
       y: y - 10,
 
-      size: 6.8,
+      size: 5.9,
 
       font,
     });
 
-    page.drawText('Type of Test', {
-      x: 342,
+    page.drawText('Sample Type', {
+      x: 336,
 
       y: y - 10,
 
-      size: 6.5,
+      size: 5.5,
+
+      font,
+    });
+
+    page.drawText('Lot No.', {
+      x: 382,
+
+      y: y - 10,
+
+      size: 5.7,
 
       font,
     });
@@ -1033,11 +1103,11 @@ export class BillingPdfService {
       'Pathogens / Actives / COA',
 
       {
-        x: 418,
+        x: 414,
 
         y: y - 10,
 
-        size: 5.9,
+        size: 5.25,
 
         font,
       },
@@ -1739,13 +1809,19 @@ export class BillingPdfService {
 
            */
 
+          const lotNoLines = this.wrapText(
+            row.lotNo || '-',
+
+            6,
+          );
+
           const sampleTypeLines =
             row.sampleTypes.length > 0
               ? row.sampleTypes.flatMap((label) =>
                   this.wrapText(
                     label,
 
-                    14,
+                    8,
                   ),
                 )
               : ['-'];
@@ -1753,7 +1829,7 @@ export class BillingPdfService {
           const descriptionLines = this.wrapText(
             row.description || '-',
 
-            21,
+            27,
           );
 
           const testLines =
@@ -1762,7 +1838,7 @@ export class BillingPdfService {
                   this.wrapText(
                     label,
 
-                    14,
+                    9,
                   ),
                 )
               : ['-'];
@@ -1773,7 +1849,7 @@ export class BillingPdfService {
                   this.wrapText(
                     label,
 
-                    16,
+                    11,
                   ),
                 )
               : ['Type of Test only'];
@@ -1786,6 +1862,8 @@ export class BillingPdfService {
           const itemLines = baseItemLines;
 
           const contentLineCount = Math.max(
+            lotNoLines.length,
+
             sampleTypeLines.length,
 
             descriptionLines.length,
@@ -1878,35 +1956,23 @@ export class BillingPdfService {
             this.formatDate(row.resultSentToClientAt) || '-',
 
             {
-              x: 104,
+              x: 100,
 
               y: textTop,
 
-              size: 6.2,
+              size: 5.9,
 
               font: regular,
             },
           );
 
-          sampleTypeLines.forEach((line, index) => {
-            page.drawText(line, {
-              x: 166,
-
-              y: textTop - index * 9,
-
-              size: 6.3,
-
-              font: regular,
-            });
-          });
-
           descriptionLines.forEach((line, index) => {
             page.drawText(line, {
-              x: 238,
+              x: 158,
 
               y: textTop - index * 9,
 
-              size: 6.5,
+              size: 6.2,
 
               font: regular,
             });
@@ -1914,11 +1980,35 @@ export class BillingPdfService {
 
           testLines.forEach((line, index) => {
             page.drawText(line, {
-              x: 342,
+              x: 286,
 
               y: textTop - index * 9,
 
-              size: 6.4,
+              size: 5.9,
+
+              font: regular,
+            });
+          });
+
+          sampleTypeLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: 336,
+
+              y: textTop - index * 9,
+
+              size: 5.6,
+
+              font: regular,
+            });
+          });
+
+          lotNoLines.forEach((line, index) => {
+            page.drawText(line, {
+              x: 382,
+
+              y: textTop - index * 9,
+
+              size: 5.6,
 
               font: regular,
             });
@@ -1929,11 +2019,11 @@ export class BillingPdfService {
               `- ${line}`,
 
               {
-                x: 418,
+                x: 414,
 
                 y: textTop - index * 9,
 
-                size: 6.1,
+                size: 5.8,
 
                 font: regular,
               },
@@ -2020,7 +2110,7 @@ export class BillingPdfService {
              * leave the Form No./Result Date columns empty and indent a
              * compact child line beneath the parent form.
              */
-            const childLeft = 158;
+            const childLeft = 202;
             const childBottom = y - chargeRowHeight;
 
             // Small connector showing this line belongs to the form above.
@@ -2048,7 +2138,7 @@ export class BillingPdfService {
 
             chargeNameLines.forEach((line, index) => {
               page.drawText(line, {
-                x: 238,
+                x: 270,
                 y: chargeTop - index * 9,
                 size: 6.5,
                 font: regular,
@@ -2626,7 +2716,7 @@ export class BillingPdfService {
 
     const pdfLines =
       invoice.invoiceKind === 'REPORT'
-        ? await this.enrichInvoiceLineSampleTypes(invoice.lines)
+        ? await this.enrichInvoiceLineDisplayFields(invoice.lines)
         : invoice.lines;
 
     const bytes = await this.buildPdf({

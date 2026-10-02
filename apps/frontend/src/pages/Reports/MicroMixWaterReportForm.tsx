@@ -764,60 +764,59 @@ export default function MicroMixWaterReportForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-const backToDashboard = () => {
-  if (returnTo) {
-    return navigate(decodeURIComponent(returnTo), {
+  const backToDashboard = () => {
+    if (returnTo) {
+      return navigate(decodeURIComponent(returnTo), {
+        replace: true,
+      });
+    }
+
+    if (role === "CLIENT") {
+      return navigate("/clientDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "FRONTDESK") {
+      return navigate("/frontdeskDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "MICRO") {
+      return navigate("/microDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "MC") {
+      return navigate("/mcDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "QA") {
+      return navigate("/qaDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "ADMIN") {
+      return navigate("/adminDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "SYSTEMADMIN") {
+      return navigate("/systemAdminDashboard", {
+        replace: true,
+      });
+    }
+
+    return navigate("/home", {
       replace: true,
     });
-  }
-
-  if (role === "CLIENT") {
-    return navigate("/clientDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "FRONTDESK") {
-    return navigate("/frontdeskDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "MICRO") {
-    return navigate("/microDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "MC") {
-    return navigate("/mcDashboard", {
-      replace: true,
-    });
-  }
-
-
-  if (role === "QA") {
-    return navigate("/qaDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "ADMIN") {
-    return navigate("/adminDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "SYSTEMADMIN") {
-    return navigate("/systemAdminDashboard", {
-      replace: true,
-    });
-  }
-
-  return navigate("/home", {
-    replace: true,
-  });
-};
+  };
 
   const routeMode = params.get("mode");
   const urlTemplateId = params.get("templateId");
@@ -2079,17 +2078,17 @@ const backToDashboard = () => {
   //   event.preventDefault();
   // });
 
-const fallbackRoute = useMemo(() => {
-  if (role === "CLIENT") return "/clientDashboard";
-  if (role === "FRONTDESK") return "/frontdeskDashboard";
-  if (role === "MICRO") return "/microDashboard";
-  if (role === "MC") return "/mcDashboard";
-  if (role === "QA") return "/qaDashboard";
-  if (role === "ADMIN") return "/adminDashboard";
-  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+    if (role === "MICRO") return "/microDashboard";
+    if (role === "MC") return "/mcDashboard";
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
 
-  return "/home";
-}, [role]);
+    return "/home";
+  }, [role]);
 
   const handleClose = () => {
     if (onClose) return onClose();
@@ -2708,9 +2707,9 @@ const fallbackRoute = useMemo(() => {
             Report
           </div> */}
           {/* Report title + number */}
-          <div className="mt-1 grid grid-cols-3 items-center">
+          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
             <div /> {/* left spacer */}
-            <div className="text-[18px] font-bold text-center underline">
+            <div className="text-[18px] font-bold text-center underline whitespace-nowrap">
               {status === "DRAFT" ||
               status === "UNDER_DRAFT_REVIEW" ||
               status === "SUBMITTED_BY_CLIENT"

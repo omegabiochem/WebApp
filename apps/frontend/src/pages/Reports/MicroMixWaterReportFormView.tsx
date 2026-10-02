@@ -694,7 +694,7 @@ export default function MicroMixWaterReportFormView(
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-  const isFormPane = pane === "FORM";
+  const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,
@@ -844,7 +844,7 @@ export default function MicroMixWaterReportFormView(
               </div>
               {/* <div className="font-medium">Report No: {report.fullNumber}</div> */}
             </div>
-            <div className="mt-1 grid grid-cols-3 items-center">
+            <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
               {/* Left: Form Number */}
               <div className="text-left text-[12px] font-bold">
                 {report.formNumber}
