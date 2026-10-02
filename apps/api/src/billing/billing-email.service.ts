@@ -569,6 +569,9 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
           clientCode:
             invoice.clientCode,
 
+            clientName:
+  invoice.clientName,
+
           attachment: {
             filename:
               deliveryInvoice.pdfFilename,

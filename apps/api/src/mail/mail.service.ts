@@ -789,6 +789,8 @@ ${description}
     invoiceNumber: string;
     clientCode: string;
 
+    clientName?: string | null;
+
     attachment: {
       filename: string;
       content: Buffer;
@@ -805,6 +807,9 @@ ${description}
     const brandName = process.env.MAIL_BRAND_NAME || 'Omega BioChem Lab';
 
     const cc = (args.cc ?? []).map((x) => String(x).trim()).filter(Boolean);
+
+    const clientDisplayName =
+  String(args.clientName || "").trim() || args.clientCode;
 
     const htmlBody = `
 <!doctype html>
@@ -893,7 +898,7 @@ ${description}
 
                     <div style="margin-top:6px;">
                       <strong>Client:</strong>
-                      ${escapeHtml(args.clientCode)}
+                      ${escapeHtml(clientDisplayName)}
                     </div>
                   </td>
                 </tr>
@@ -959,7 +964,7 @@ ${description}
 
       TextBody:
         `Invoice: ${args.invoiceNumber}\n` +
-        `Client: ${args.clientCode}\n\n` +
+        `Client: ${clientDisplayName}\n\n` +
         `${args.messageBody}\n\n` +
         `The official invoice PDF is attached.`,
 

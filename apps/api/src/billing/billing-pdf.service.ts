@@ -71,6 +71,7 @@ type PdfReportRow = {
 const BILLING_TIME_ZONE = process.env.BILLING_TIME_ZONE || 'America/New_York';
 
 const PREVIOUS_MONTH_MANUAL_PREFIX = 'Previous Month Pending: ';
+const CUSTOM_CHARGE_PREFIX = 'Custom Charge: ';
 
 /*
 
@@ -1110,7 +1111,7 @@ export class BillingPdfService {
       'Pathogens / Actives / COA',
 
       {
-        x: 422,
+        x: 424,
 
         y: y - 10,
 
@@ -1622,6 +1623,13 @@ export class BillingPdfService {
           )
         : [];
 
+    const customChargeLines =
+      invoice.invoiceKind === 'REPORT'
+        ? (invoice.manualLines ?? []).filter((line: any) =>
+            String(line?.description ?? '').startsWith(CUSTOM_CHARGE_PREFIX),
+          )
+        : [];
+
     if (invoice.invoiceKind === 'MANUAL') {
       y = this.drawManualTableHeader(
         page,
@@ -1825,7 +1833,7 @@ export class BillingPdfService {
 
            */
 
-          const lotNoLines = this.wrapText(
+          const lotNoLines = this.wrapTextHard(
             row.lotNo || '-',
 
             5,
@@ -2057,7 +2065,7 @@ export class BillingPdfService {
               `- ${line}`,
 
               {
-                x: 422,
+                x: 424,
 
                 y: textTop - index * 9,
 
@@ -2343,6 +2351,82 @@ export class BillingPdfService {
 
         y -= 10;
       }
+
+      if (customChargeLines.length > 0) {
+        if (y < BOTTOM + 90) {
+          page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          y = PAGE_HEIGHT - TOP;
+        }
+
+        y = this.drawReportSectionHeader(page, y, 'CUSTOM CHARGES', bold);
+
+        page.drawText('Charge Name', {
+          x: LEFT + 6,
+          y: y - 11,
+          size: 6.8,
+          font: bold,
+          color: rgb(0.22, 0.35, 0.48),
+        });
+        this.drawRight(
+          page,
+          'Amount',
+          PAGE_WIDTH - RIGHT - 8,
+          y - 11,
+          6.8,
+          bold,
+        );
+        y -= 22;
+
+        for (const line of customChargeLines) {
+          const description =
+            String(line.description ?? '')
+              .replace(CUSTOM_CHARGE_PREFIX, '')
+              .trim() || 'Custom charge';
+          const descriptionLines = this.wrapText(description, 70);
+          const rowHeight = Math.max(22, 9 + descriptionLines.length * 9);
+
+          if (y < BOTTOM + 12 + rowHeight) {
+            page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            y = PAGE_HEIGHT - TOP;
+            y = this.drawReportSectionHeader(
+              page,
+              y,
+              'CUSTOM CHARGES (CONTINUED)',
+              bold,
+            );
+          }
+
+          const textTop = y - 11;
+          descriptionLines.forEach((descriptionLine, index) => {
+            page.drawText(descriptionLine, {
+              x: LEFT + 8,
+              y: textTop - index * 9,
+              size: 7.0,
+              font: regular,
+            });
+          });
+
+          this.drawRight(
+            page,
+            this.money(Number(line.amount ?? 0)),
+            PAGE_WIDTH - RIGHT - 8,
+            textTop,
+            7.2,
+            bold,
+          );
+
+          page.drawLine({
+            start: { x: LEFT, y: y - rowHeight },
+            end: { x: PAGE_WIDTH - RIGHT, y: y - rowHeight },
+            thickness: 0.25,
+            color: rgb(0.78, 0.78, 0.78),
+          });
+
+          y -= rowHeight;
+        }
+
+        y -= 10;
+      }
     }
 
     /* =====================================================
@@ -2443,7 +2527,7 @@ export class BillingPdfService {
           borderWidth: 0.45,
         });
 
-        page.drawText('Last Month Pending Charges', {
+        page.drawText('Last Month Manual Charges', {
           x: labelX,
           y,
           size: 9,
@@ -2459,6 +2543,31 @@ export class BillingPdfService {
           9,
           bold,
           { color: rgb(0.72, 0.08, 0.08) },
+        );
+
+        y -= 17;
+      }
+
+      const customChargeTotal = customChargeLines.reduce(
+        (sum: number, line: any) => sum + Number(line.amount ?? 0),
+        0,
+      );
+
+      if (customChargeTotal !== 0) {
+        page.drawText('Custom Charges', {
+          x: labelX,
+          y,
+          size: 9,
+          font: bold,
+        });
+
+        this.drawRight(
+          page,
+          this.money(customChargeTotal),
+          amountRight,
+          y,
+          9,
+          bold,
         );
 
         y -= 17;
@@ -2723,6 +2832,37 @@ export class BillingPdfService {
 
     if (current) {
       result.push(current);
+    }
+
+    return result;
+  }
+
+  private wrapTextHard(text: string, maxChars: number) {
+    const raw = String(text ?? '').trim();
+
+    if (!raw) {
+      return [];
+    }
+
+    const safeMax = Math.max(1, Math.floor(maxChars));
+    const result: string[] = [];
+
+    for (const word of raw.split(/\s+/).filter(Boolean)) {
+      if (word.length <= safeMax) {
+        if (
+          result.length > 0 &&
+          result[result.length - 1].length + 1 + word.length <= safeMax
+        ) {
+          result[result.length - 1] = `${result[result.length - 1]} ${word}`;
+        } else {
+          result.push(word);
+        }
+        continue;
+      }
+
+      for (let index = 0; index < word.length; index += safeMax) {
+        result.push(word.slice(index, index + safeMax));
+      }
     }
 
     return result;
