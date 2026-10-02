@@ -4527,6 +4527,16 @@ export default function BillingDashboard() {
     return (invoiceDetail?.lines ?? []).filter(matchesCommonLineFilters);
   }, [invoiceDetail, matchesCommonLineFilters]);
 
+  const invoiceFormCount = useMemo(() => {
+    if (!invoiceDetail || invoiceDetail.invoiceKind !== "REPORT") return 0;
+
+    return new Set(
+      (invoiceDetail.lines ?? [])
+        .filter((line) => line.sourceId)
+        .map((line) => `${line.sourceType}:${line.sourceId}`),
+    ).size;
+  }, [invoiceDetail]);
+
   const activeFilterChips = useMemo(() => {
     const defaults = defaultBillingFilters();
     const chips: {
@@ -7373,6 +7383,11 @@ export default function BillingDashboard() {
                             Invoice Lines
                           </h3>
                           <p className="text-xs text-slate-500">
+                            <span className="font-semibold text-slate-700">
+                              {invoiceFormCount} form
+                              {invoiceFormCount === 1 ? "" : "s"}
+                            </span>
+                            <span className="mx-1.5 text-slate-300">•</span>
                             {visibleInvoiceLines.length} charge
                             {visibleInvoiceLines.length === 1 ? "" : "s"}
                           </p>
@@ -7701,7 +7716,7 @@ export default function BillingDashboard() {
                                             <span className="text-slate-300">
                                               ↳
                                             </span>
-                                            <span className="rounded-md border border-red-200 bg-white text-red-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                                            <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                                               Additional
                                             </span>
                                           </div>
@@ -7725,7 +7740,7 @@ export default function BillingDashboard() {
                                         </td>
 
                                         <td className="px-4 py-2">
-                                          <span className="inline-flex rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-medium text-red-500">
+                                          <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">
                                             Form charge
                                           </span>
                                         </td>
@@ -8188,6 +8203,17 @@ export default function BillingDashboard() {
                         <h3 className="font-semibold text-slate-900">Totals</h3>
 
                         <div className="mt-4 space-y-3 text-sm">
+                          {invoiceDetail.invoiceKind === "REPORT" && (
+                            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                              <span className="font-medium text-slate-600">
+                                No. of Forms
+                              </span>
+                              <span className="text-lg font-bold text-slate-900">
+                                {invoiceFormCount}
+                              </span>
+                            </div>
+                          )}
+
                           <div className="flex justify-between">
                             <span className="text-slate-500">Subtotal</span>
                             <span className="font-medium">
